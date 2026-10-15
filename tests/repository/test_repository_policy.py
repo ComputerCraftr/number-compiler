@@ -16,6 +16,7 @@ from devtools.checks.repository_policy import (
     source_line_violations,
     validation_entrypoint_violations,
 )
+from devtools.checks.semantic_name_policy import semantic_name_violations
 from devtools.checks.source_discovery import authored_files
 from devtools.paths import repository_root
 
@@ -276,6 +277,109 @@ def test_isabelle_review_uses_the_shared_source_analysis(tmp_path: Path) -> None
     )
     review = analysis_report(proofs)
     assert review["duplicates"]
+
+
+def test_semantic_name_policy_rejects_raw_dispatch_and_boundary_keys(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "src" / "number_compiler"
+    api = source_root / "api"
+    api.mkdir(parents=True)
+    consumers = api / "observation_adapters.py"
+    consumers.write_text(
+        "def observe(name, options, ledger):\n"
+        '    if name == "temporal":\n'
+        '        ledger.bump("query_temporal_observations")\n'
+        '    old = ledger.counters.get("query_temporal_observations", 0)\n'
+        '    ledger.counters["query_temporal_observations"] = old\n'
+        '    dynamic = ledger.counters.get(f"cache_{kind}_hits", 0)\n'
+        '    if "metrics" in options.info:\n'
+        '        return "ordinary diagnostic text"\n'
+        '    return field.name == "format"\n'
+        '    if family == "collatz":\n'
+        '        return selector == "nth"\n'
+    )
+    duplicate_parser = api / "other_cli.py"
+    duplicate_parser.write_text(
+        'def configure(parser):\n    parser.add_argument("--info")\n'
+    )
+    canonical = api / "cli_requests.py"
+    canonical.write_text(
+        "def configure(parser):\n"
+        '    parser.add_argument("--info")\n'
+        '    parser.add_argument("--info")\n'
+    )
+    named = source_root / "named_identity.py"
+    named.write_text(
+        "from enum import StrEnum\n"
+        "class Domain(StrEnum):\n    EXAMPLE = 'example'\n"
+        "def publish(ledger):\n"
+        "    ledger.bump(Domain.EXAMPLE)\n"
+        "    return SemanticIdentity(Domain.EXAMPLE, ())\n"
+    )
+    observations = api / "observation_types.py"
+    observations.write_text(
+        "class FamilyId(StrEnum):\n"
+        '    COLLATZ = "collatz"\n'
+        "class SelectorId(StrEnum):\n"
+        '    NTH = "nth"\n'
+        "class ObservationId(StrEnum):\n"
+        '    TEMPORAL = "temporal"\n'
+        '    METRICS = "metrics"\n'
+    )
+
+    sources = (consumers, duplicate_parser, canonical, named, observations)
+    parsed = {
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in sources
+    }
+    assert semantic_name_violations(tmp_path, parsed) == (
+        "src/number_compiler/api/cli_requests.py:3: CLI flag --info is declared more than once",
+        "src/number_compiler/api/observation_adapters.py:10: semantic dispatch must use typed identifiers",
+        "src/number_compiler/api/observation_adapters.py:11: semantic dispatch must use typed identifiers",
+        "src/number_compiler/api/observation_adapters.py:2: semantic dispatch must use typed identifiers",
+        "src/number_compiler/api/observation_adapters.py:3: metric keys must use named constants",
+        "src/number_compiler/api/observation_adapters.py:4: metric keys must use named constants",
+        "src/number_compiler/api/observation_adapters.py:5: metric keys must use named constants",
+        "src/number_compiler/api/observation_adapters.py:7: semantic dispatch must use typed identifiers",
+        "src/number_compiler/api/other_cli.py:2: API options must be declared by the family registry",
+        "src/number_compiler/api/other_cli.py:2: CLI flag --info is declared more than once",
+    )
+
+
+def test_semantic_name_policy_rejects_raw_semantic_identity_domain(
+    tmp_path: Path,
+) -> None:
+    module = tmp_path / "src" / "number_compiler" / "identity.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "def key():\n"
+        '    return SemanticIdentity("raw-domain", ())\n'
+        "def anonymous():\n"
+        '    return SemanticIdentity("", ())\n'
+        "def keyword_domain():\n"
+        '    return SemanticIdentity(digest="raw-keyword", behavior=())\n'
+    )
+    tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+
+    assert semantic_name_violations(tmp_path, {module: tree}) == (
+        "src/number_compiler/identity.py:2: semantic identity domains must use SemanticIdentityDomain",
+        "src/number_compiler/identity.py:4: semantic identity domains must use SemanticIdentityDomain",
+        "src/number_compiler/identity.py:6: semantic identity domains must use SemanticIdentityDomain",
+    )
+
+
+def test_versioned_semantic_tags_require_final_string_annotations(
+    tmp_path: Path,
+) -> None:
+    module = tmp_path / "src" / "number_compiler" / "tags.py"
+    module.parent.mkdir(parents=True)
+    module.write_text('UNTYPED: Final = "action-v1"\nTYPED: Final[str] = "action-v2"\n')
+    tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+
+    assert semantic_name_violations(tmp_path, {module: tree}) == (
+        "src/number_compiler/tags.py:1: versioned semantic tags must use named Final[str] constants",
+    )
 
 
 def test_proof_inventory_uses_shared_declaration_owner() -> None:

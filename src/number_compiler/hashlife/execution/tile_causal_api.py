@@ -23,6 +23,9 @@ from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_ports import FusedBoundaryContract
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class CausalTileAPI:
@@ -207,7 +210,9 @@ class CausalTileAPI:
             if completed is not None:
                 try:
                     with completed:
-                        self.ledger.bump("tile_causal_interface_parent_hits")
+                        self.ledger.bump(
+                            _execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS
+                        )
                         width = self.tiles.active_width(completed.output, limit)
                         if type(width) is not int:
                             raise TypeError(
@@ -239,7 +244,7 @@ class CausalTileAPI:
                 is not None
             ):
                 self._application = None
-                self.ledger.bump("behavior_width_observations")
+                self.ledger.bump(_execution_keys.BEHAVIOR_WIDTH_OBSERVATIONS)
                 return 0
             self._hold_workspace = True
             try:

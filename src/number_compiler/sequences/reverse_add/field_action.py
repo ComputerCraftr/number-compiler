@@ -16,9 +16,8 @@ validates and canonicalizes their results before publishing a field action.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, MutableMapping, MutableSequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias, cast
+from collections.abc import MutableMapping, MutableSequence
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, compose_carry_fn
@@ -28,8 +27,11 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.canonical_payload import (
     validate_bounded_semantic_key,
 )
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
@@ -42,11 +44,16 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.reverse_add.semantic_identity_cache import (
     SemanticIdentityMemoRecord,
     build_radial_identity,
     valid_radial_memo,
+)
+from number_compiler.sequences.reverse_add.semantic_tags import (
+    REVERSE_FIELD_OCCURRENCE_TAG,
 )
 
 if TYPE_CHECKING:
@@ -55,157 +62,19 @@ if TYPE_CHECKING:
     )
 
 
-SemanticKey: TypeAlias = Hashable
-BinarySemanticOp: TypeAlias = Callable[[SemanticKey, SemanticKey], SemanticKey]
-UnarySemanticOp: TypeAlias = Callable[[SemanticKey], SemanticKey]
-InnovationTransform: TypeAlias = Callable[
-    [ReverseAddCyclotomicInnovationBlock], ReverseAddCyclotomicInnovationBlock
-]
-
-MAX_INNOVATION_ORDER = 16
-MAX_RESIDUAL_CLASSES = 64
-MAX_SEMANTIC_KEY_UNITS = 256
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseDefectClassID(ArenaHandle):
-    """Scoped residual behavior after deterministic algebraic factoring."""
-
-
-@dataclass(frozen=True, slots=True)
-class ProofMachineStateID(ArenaHandle):
-    """Proof-only sort used to make the runtime boundary mechanically strict."""
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseGeometry:
-    """Symbolic geometry kept separate from bounded arithmetic payloads."""
-
-    spatial_level: int
-    orientation: int = 0
-    phase: int = 0
-    phase_count: int = 1
-    halo_left: int = 0
-    halo_right: int = 0
-
-    def __post_init__(self) -> None:
-        values = (
-            self.spatial_level,
-            self.orientation,
-            self.phase,
-            self.phase_count,
-            self.halo_left,
-            self.halo_right,
-        )
-        if any(type(value) is not int for value in values):
-            raise TypeError("reverse geometry requires exact integer metadata")
-        if self.spatial_level < 0 or self.orientation not in (0, 1):
-            raise ValueError("invalid reverse geometry level or orientation")
-        if self.phase_count <= 0 or not 0 <= self.phase < self.phase_count:
-            raise ValueError("reverse phase is outside its bounded domain")
-        if self.halo_left < 0 or self.halo_right < 0:
-            raise ValueError("reverse halos must be nonnegative")
-
-    def then(self, after: ReverseGeometry) -> ReverseGeometry:
-        """Compose oriented geometry as a semidirect-product action."""
-        if (
-            self.spatial_level != after.spatial_level
-            or self.phase_count != after.phase_count
-        ):
-            raise ValueError("reverse actions require matching spatial interfaces")
-        pulled_left, pulled_right = after.halo_left, after.halo_right
-        if self.orientation:
-            pulled_left, pulled_right = pulled_right, pulled_left
-        return ReverseGeometry(
-            self.spatial_level,
-            self.orientation ^ after.orientation,
-            (self.phase + after.phase) % self.phase_count,
-            self.phase_count,
-            self.halo_left + pulled_left,
-            self.halo_right + pulled_right,
-        )
-
-    def mirrored(self) -> ReverseGeometry:
-        return ReverseGeometry(
-            self.spatial_level,
-            self.orientation ^ 1,
-            self.phase,
-            self.phase_count,
-            self.halo_right,
-            self.halo_left,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseActionAutomorphisms:
-    """Certified component automorphisms used by geometric aliases.
-
-    Supplying :meth:`trivial` is an explicit declaration that both semantic
-    component algebras and the innovation coordinate are invariant under the
-    two transformations.  Nontrivial kernels should provide their proved maps.
-    """
-
-    mirror_residual: UnarySemanticOp
-    conjugate_residual: UnarySemanticOp
-    mirror_output: UnarySemanticOp
-    conjugate_output: UnarySemanticOp
-    mirror_innovation: InnovationTransform
-    conjugate_innovation: InnovationTransform
-
-    @classmethod
-    def trivial(cls) -> ReverseActionAutomorphisms:
-        def semantic_identity(value: SemanticKey) -> SemanticKey:
-            return value
-
-        def innovation_identity(
-            value: ReverseAddCyclotomicInnovationBlock,
-        ) -> ReverseAddCyclotomicInnovationBlock:
-            return value
-
-        return cls(
-            semantic_identity,
-            semantic_identity,
-            semantic_identity,
-            semantic_identity,
-            innovation_identity,
-            innovation_identity,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseFieldAction:
-    """Bounded factor action, not a complete source-cylinder occurrence.
-
-    The innovation is a residue in the declared cyclotomic factor. Whole-source
-    carry predicates, exact innovation geometry and successor admission cannot
-    be recovered merely from equality of these records.
-    """
-
-    base: int
-    radial: PowerTwoCyclotomicRadialQuotient
-    innovation: tuple[int, ...]
-    carry_forward: CarryFn
-    carry_backward: CarryFn
-    residual: ReverseDefectClassID
-    output: CoordinateOutputMorphismID
-    geometry: ReverseGeometry
-
-    @property
-    def source_annihilated(self) -> bool:
-        return self.radial.annihilated
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseFieldActionMetrics:
-    action_count: int
-    residual_count: int
-    output_morphism_count: int
-    compose_requests: int
-    compose_early_hits: int
-    compose_evaluations: int
-    source_annihilation_derivations: int
-    transform_hits: int
-
+from number_compiler.sequences.reverse_add.field_action_types import (
+    MAX_INNOVATION_ORDER,
+    MAX_RESIDUAL_CLASSES,
+    MAX_SEMANTIC_KEY_UNITS,
+    BinarySemanticOp,
+    ProofMachineStateID,
+    ReverseActionAutomorphisms,
+    ReverseDefectClassID,
+    ReverseFieldAction,
+    ReverseFieldActionMetrics,
+    ReverseGeometry,
+    SemanticKey,
+)
 
 _DEFAULT_REVERSE_GEOMETRY_1 = ReverseGeometry(0)
 
@@ -456,7 +325,7 @@ class ReverseFieldActionArena:
         if self._coordinate_programs is not None:
             program = self._coordinate_programs.resolve(reference)
             return SemanticIdentity(
-                "reverse-coordinate-program-v1",
+                SemanticIdentityDomain.REVERSE_COORDINATE_PROGRAM,
                 (program.base, program.pair_steps, program.normalized, program.atom),
             )
         if type(reference) is not CoordinateOutputMorphismID:
@@ -509,17 +378,19 @@ class ReverseFieldActionArena:
             raise ValueError("reverse action radial coordinates changed") from error
         if audit:
             self.ledger.bump(
-                "reverse_payload_audit_identity_operand_bits",
+                _reverse_add_keys.REVERSE_PAYLOAD_AUDIT_IDENTITY_OPERAND_BITS,
                 max(1, action.radial.no_growth.bit_length())
                 + max(1, action.radial.growth.bit_length()),
             )
         else:
-            self.ledger.bump("reverse_field_action_semantic_identity_requests")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_REQUESTS
+            )
         if reference in self._semantic_identities:
             cached = self._semantic_identities[reference]
             if not audit:
                 self.ledger.bump(
-                    "reverse_field_action_identity_validation_radial_bit_work",
+                    _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_VALIDATION_RADIAL_BIT_WORK,
                     max(1, action.radial.no_growth.bit_length())
                     + max(1, action.radial.growth.bit_length()),
                 )
@@ -536,7 +407,9 @@ class ReverseFieldActionArena:
             ):
                 raise ValueError("cached reverse semantic identity lost its seal")
             if not audit:
-                self.ledger.bump("reverse_field_action_semantic_identity_cache_hits")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_CACHE_HITS
+                )
             return cached[3]
         if reference in self._semantic_identity_issued:
             raise ValueError("reverse semantic identity lost its issued cache record")
@@ -545,10 +418,12 @@ class ReverseFieldActionArena:
             # never publish a memo or inflate execution cache counters.
             return build_radial_identity(action.radial)
 
-        self.ledger.bump("reverse_field_action_semantic_identity_cache_misses")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_CACHE_MISSES
+        )
         radial = action.radial
         self.ledger.bump(
-            "reverse_field_action_identity_radial_bit_work",
+            _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_RADIAL_BIT_WORK,
             max(1, radial.no_growth.bit_length()) + max(1, radial.growth.bit_length()),
         )
         try:
@@ -561,7 +436,9 @@ class ReverseFieldActionArena:
         except BlockContextBudgetExceeded:
             # Identity construction remains exact when the optional memo has
             # no room under a stricter request budget.
-            self.ledger.bump("reverse_field_action_semantic_identity_cache_bypasses")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_CACHE_BYPASSES
+            )
             return self._compute_semantic_identity(radial)
 
         record: SemanticIdentityMemoRecord | None = None
@@ -594,12 +471,14 @@ class ReverseFieldActionArena:
                 self.ledger.release(self._semantic_identity_owner, entries=1, nodes=1)
             raise
         self.ledger.bump(
-            "reverse_field_action_identity_retained_payload_bytes",
+            _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_RETAINED_PAYLOAD_BYTES,
             len(cast(str, identity.behavior[1]))
             + len(cast(str, identity.behavior[2]))
             + len(identity.digest),
         )
-        self.ledger.bump("reverse_field_action_semantic_identity_publications")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_PUBLICATIONS
+        )
         return identity
 
     def _compute_semantic_identity(
@@ -609,17 +488,19 @@ class ReverseFieldActionArena:
         try:
             identity = build_radial_identity(radial)
         except BaseException:
-            self.ledger.bump("reverse_field_action_semantic_identity_failed_work")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_FAILED_WORK
+            )
             raise
         radial_chars = len(cast(str, identity.behavior[1])) + len(
             cast(str, identity.behavior[2])
         )
         self.ledger.bump(
-            "reverse_field_action_identity_radial_decimal_digit_work",
+            _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_RADIAL_DECIMAL_DIGIT_WORK,
             radial_chars,
         )
         self.ledger.bump(
-            "reverse_field_action_identity_transient_payload_bytes",
+            _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_TRANSIENT_PAYLOAD_BYTES,
             radial_chars + len(identity.digest),
         )
         return identity
@@ -635,10 +516,10 @@ class ReverseFieldActionArena:
         action = self.resolve(reference)
 
         def component(role: str, value: object) -> SemanticIdentity:
-            return SemanticIdentity(role, (role, value))
+            return SemanticIdentity(SemanticIdentityDomain.ANONYMOUS, (role, value))
 
         behavior = (
-            "reverse-field-occurrence-v1",
+            REVERSE_FIELD_OCCURRENCE_TAG,
             component("base", action.base),
             component("radial-derived", action.radial.canonical_key),
             component("innovation", action.innovation),
@@ -658,7 +539,9 @@ class ReverseFieldActionArena:
                 ),
             ),
         )
-        return SemanticIdentity("reverse-field-occurrence", behavior)
+        return SemanticIdentity(
+            SemanticIdentityDomain.REVERSE_FIELD_OCCURRENCE, behavior
+        )
 
     def _canonical_block(
         self,
@@ -771,7 +654,7 @@ class ReverseFieldActionArena:
         self._action_keys[key] = result
         if _construction is not None:
             self._witnesses[result] = _construction
-        self.ledger.bump("field_action_publications")
+        self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
         return result
 
     def resolve(self, reference: FieldCellActionID) -> ReverseFieldAction:
@@ -796,14 +679,14 @@ class ReverseFieldActionArena:
         """Apply ``before`` and then ``after`` without visiting field digits."""
         first, second = self.resolve(before), self.resolve(after)
         self.compose_requests += 1
-        self.ledger.bump("temporal_parent_requests")
-        self.ledger.bump("diamond_temporal_composition_requests")
+        self.ledger.bump(_shared_keys.TEMPORAL_PARENT_REQUESTS)
+        self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
         cache_key = (before, after)
         found = self._compose.get(cache_key)
         if found is not None:
             self.compose_early_hits += 1
-            self.ledger.bump("temporal_parent_early_hits")
-            self.ledger.bump("diamond_temporal_composition_hits")
+            self.ledger.bump(_shared_keys.TEMPORAL_PARENT_EARLY_HITS)
+            self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS)
             return found
         if first.base != second.base:
             raise ValueError("cannot compose reverse actions for different radices")
@@ -845,17 +728,19 @@ class ReverseFieldActionArena:
         )
         if self.resolve(result).source_annihilated and not first.source_annihilated:
             self.source_annihilation_derivations += 1
-            self.ledger.bump("reverse_field_action_source_annihilation_derivations")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SOURCE_ANNIHILATION_DERIVATIONS
+            )
         self.ledger.reserve(self._compose_owner, 1, 0)
         self._compose[cache_key] = result
         self.compose_evaluations += 1
-        self.ledger.bump("temporal_parent_compositions")
-        self.ledger.bump("diamond_temporal_composition_evaluations")
-        self.ledger.bump("radial_action_operations")
-        self.ledger.bump("carry_action_operations", 2)
-        self.ledger.bump("innovation_action_operations")
-        self.ledger.bump("residual_refinement_operations")
-        self.ledger.bump("output_morphism_operations")
+        self.ledger.bump(_shared_keys.TEMPORAL_PARENT_COMPOSITIONS)
+        self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS)
+        self.ledger.bump(_reverse_add_keys.RADIAL_ACTION_OPERATIONS)
+        self.ledger.bump(_reverse_add_keys.CARRY_ACTION_OPERATIONS, 2)
+        self.ledger.bump(_reverse_add_keys.INNOVATION_ACTION_OPERATIONS)
+        self.ledger.bump(_reverse_add_keys.RESIDUAL_REFINEMENT_OPERATIONS)
+        self.ledger.bump(_reverse_add_keys.OUTPUT_MORPHISM_OPERATIONS)
         return result
 
     def power(self, action: FieldCellActionID, exponent: int) -> FieldCellActionID:

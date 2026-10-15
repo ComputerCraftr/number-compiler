@@ -27,6 +27,9 @@ from number_compiler.hashlife.execution.source_image_seals import (
     _require_immutable_key,
     _TypedKey,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,7 +227,7 @@ class ProviderImageInputArena:
         self._next_id += 1
         self._nodes[local_id] = record
         self._keys[key] = local_id
-        self.ledger.bump("provider_image_input_publications")
+        self.ledger.bump(_execution_keys.PROVIDER_IMAGE_INPUT_PUBLICATIONS)
         return self._handle(local_id)
 
     def children(

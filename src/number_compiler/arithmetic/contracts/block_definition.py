@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Protocol, TypeGuard, cast
+from typing import ClassVar, Final, Protocol, TypeGuard, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockEffect,
     BlockEffectAdmissionAdapter,
     _effect_key,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
+
+COMPOSED_BLOCK_DEFINITION_TAG: Final[str] = "composed-block-definition-v1"
 
 
 class CompatibilityCompositionRuntime:
@@ -131,11 +136,13 @@ class ComposedBlockDefinition:
         stable = left.stable_blank_output and right.stable_blank_output
         first_ready = max(left.blank_left_tail, left.blank_right_tail)
         behavior = (
-            "composed-block-definition-v1",
+            COMPOSED_BLOCK_DEFINITION_TAG,
             _effect_key(left),
             _effect_key(right),
         )
-        identity = SemanticIdentity("composed-block-definition", behavior)
+        identity = SemanticIdentity(
+            SemanticIdentityDomain.COMPOSED_BLOCK_DEFINITION, behavior
+        )
         values: dict[str, object] = {
             "first": left,
             "second": right,
@@ -150,7 +157,7 @@ class ComposedBlockDefinition:
                 getattr(left, "eager_boundary_quotient", False)
                 and getattr(right, "eager_boundary_quotient", False)
             ),
-            "canonical_key": ("composed-block-definition-v1", identity),
+            "canonical_key": (COMPOSED_BLOCK_DEFINITION_TAG, identity),
         }
         for name, value in values.items():
             object.__setattr__(self, name, value)

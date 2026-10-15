@@ -5,6 +5,7 @@ from __future__ import annotations
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.inverse_three_clock import InverseThreeClock
 from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.runtime import (
     ArithmeticResult,
     Run,
@@ -67,14 +68,15 @@ def tangent(result: Run | ArithmeticResult, precision: int) -> dict[str, object]
     # The modular power consumes the period-reduced clock phase; preserve
     # the unreduced exponent's size separately so normalization stays visible.
     arithmetic.ledger.bump(
-        "tangent_modular_power_exponent_bits", clock.phase.bit_length()
+        _antihydra_keys.TANGENT_MODULAR_POWER_EXPONENT_BITS, clock.phase.bit_length()
     )
     arithmetic.ledger.bump(
-        "tangent_clock_input_exponent_bits", clock_exponent.bit_length()
+        _antihydra_keys.TANGENT_CLOCK_INPUT_EXPONENT_BITS,
+        clock_exponent.bit_length(),
     )
-    arithmetic.ledger.bump("tangent_inverse_clock_demands")
+    arithmetic.ledger.bump(_antihydra_keys.TANGENT_INVERSE_CLOCK_DEMANDS)
     arithmetic.ledger.bump(
-        "tangent_modular_operand_bits",
+        _antihydra_keys.TANGENT_MODULAR_OPERAND_BITS,
         max(1, d.bit_length())
         + max(1, source_residue.bit_length())
         + max(1, scale.bit_length())

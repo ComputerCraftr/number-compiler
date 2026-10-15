@@ -16,6 +16,9 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
 from number_compiler.hashlife.execution.continuations.operation_dependencies import (
     advance_operation,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_semantic import (
@@ -258,7 +261,7 @@ def publish_temporal_table(
         action, current_side, cast(tuple[int, ...], tuple(outputs))
     )
     results.append(values.pair(anchor, continuation))
-    arena.ledger.bump("higher_extensional_table_publications")
+    arena.ledger.bump(_execution_keys.HIGHER_EXTENSIONAL_TABLE_PUBLICATIONS)
 
 
 def canonical_operation_task(

@@ -24,6 +24,10 @@ from number_compiler.hashlife.tiles.tile_results import (
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -57,10 +61,10 @@ def point(
                 self, key, len(held), "tile_scheduler_demand_descents"
             )
             if found is not None:
-                self.ledger.bump("tile_scheduler_demand_parent_hits")
+                self.ledger.bump(_shared_keys.TILE_SCHEDULER_DEMAND_PARENT_HITS)
                 output = _retain_output(self, key, found, held, _application)
                 return self.tiles.point(output, coordinate)
-            self.ledger.bump("tile_scheduler_demand_parent_misses")
+            self.ledger.bump(_observation_keys.TILE_SCHEDULER_DEMAND_PARENT_MISSES)
             clock = complete_clock(self, key, whole_output=False)
             if clock is not None:
                 output = _retain_output(self, key, clock, held, _application)
@@ -149,10 +153,10 @@ def width(
             )
             found = _probe_demand(self, key, len(held), "tile_scheduler_width_descents")
             if found is not None:
-                self.ledger.bump("tile_scheduler_demand_parent_hits")
+                self.ledger.bump(_shared_keys.TILE_SCHEDULER_DEMAND_PARENT_HITS)
                 output = _retain_output(self, key, found, held, _application)
                 return offset + self.tiles.active_width(output, remaining)
-            self.ledger.bump("tile_scheduler_demand_parent_misses")
+            self.ledger.bump(_observation_keys.TILE_SCHEDULER_DEMAND_PARENT_MISSES)
             if initial_request and fusion is None:
                 growth_hook = getattr(self.adapter, "current_growth", None)
                 growth = (
@@ -169,7 +173,9 @@ def width(
                 if growth is not None:
                     if type(growth) is not int or growth not in (0, 1):
                         raise TypeError("current growth observer returned another sort")
-                    self.ledger.bump("reverse_current_growth_width_shortcuts")
+                    self.ledger.bump(
+                        _observation_keys.REVERSE_CURRENT_GROWTH_WIDTH_SHORTCUTS
+                    )
                     return min(remaining, root.extent + growth)
             initial_request = False
             clock = complete_clock(self, key, whole_output=False)
@@ -353,7 +359,7 @@ def _admitted_midpoint(
     midpoint = scheduler._lookup_execution_key(before_key)
     if midpoint is None:
         return None
-    scheduler.ledger.bump("tile_scheduler_midpoint_hits")
+    scheduler.ledger.bump(_shared_keys.TILE_SCHEDULER_MIDPOINT_HITS)
     context = after_context(scheduler, key, children[1], midpoint.result)
     return (
         children[1],

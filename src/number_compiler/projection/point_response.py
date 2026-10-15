@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import projection as _projection_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +26,7 @@ class PointResponseRegister:
         self.ledger: ResourceLedger = compiler.ledger
         self.ledger.register_execution_root(self)
         owner = self.ledger.register(
-            "point-response", "observation_memo", "INDEX_OWNED"
+            "point-response", "observation_memo", ResourceScope.INDEX_OWNED
         )
         self.owner = owner
         self._value: MutableSequence[PointResponse] = self.ledger.make_list(
@@ -49,11 +50,11 @@ class PointResponseRegister:
     ) -> int:
         # Handle ownership/range checks precede even an identical warm hit.
         effect = self.compiler.resolve(program)
-        self.ledger.bump("point_response_requests")
+        self.ledger.bump(_projection_keys.POINT_RESPONSE_REQUESTS)
         if self._value:
             last = self._value[0]
             if last.program == program and last.position == position:
-                self.ledger.bump("point_response_cache_hits")
+                self.ledger.bump(_projection_keys.POINT_RESPONSE_CACHE_HITS)
                 return last.value
         reserved = not self._value
         if reserved:
@@ -73,5 +74,5 @@ class PointResponseRegister:
             self._value.append(result)
         else:
             self._value[0] = result
-        self.ledger.bump("point_response_evaluations")
+        self.ledger.bump(_projection_keys.POINT_RESPONSE_EVALUATIONS)
         return value

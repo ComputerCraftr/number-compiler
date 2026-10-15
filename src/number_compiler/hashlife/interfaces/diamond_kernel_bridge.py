@@ -23,6 +23,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     FiniteExpression,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 def _variable(port: PortVariable, width: int, bit: int) -> PortVariable:
@@ -116,7 +119,7 @@ def to_expression(
         handle, ready = _bridge_pop(kernels.ledger, stack)
         if handle in values:
             continue
-        kernels.ledger.bump("diamond_finite_bridge_visits")
+        kernels.ledger.bump(_interfaces_keys.DIAMOND_FINITE_BRIDGE_VISITS)
         node = boundaries.action(handle)
         if node.signature != signature:
             raise ValueError("mixed boundary signatures")
@@ -137,9 +140,12 @@ def to_expression(
                 )
         else:
             raise ValueError("only reduced primitive-domain functions can be converted")
-    peak = kernels.ledger.counters.get("diamond_finite_bridge_peak_result_entries", 0)
+    peak = kernels.ledger.counters.get(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_PEAK_RESULT_ENTRIES, 0
+    )
     kernels.ledger.bump(
-        "diamond_finite_bridge_peak_result_entries", max(0, len(values) - peak)
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_PEAK_RESULT_ENTRIES,
+        max(0, len(values) - peak),
     )
     return values[function]
 
@@ -213,14 +219,23 @@ def from_expression(
                     kernels.functions._handle(decision.high),
                 )
             )
-    kernels.ledger.bump("diamond_finite_bridge_admission_visits", admission_visits)
-    peak = kernels.ledger.counters.get("diamond_finite_bridge_admission_stack_peak", 0)
     kernels.ledger.bump(
-        "diamond_finite_bridge_admission_stack_peak", max(0, admission_peak - peak)
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_ADMISSION_VISITS,
+        admission_visits,
     )
-    peak = kernels.ledger.counters.get("diamond_finite_bridge_admission_peak_ids", 0)
+    peak = kernels.ledger.counters.get(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_ADMISSION_STACK_PEAK, 0
+    )
     kernels.ledger.bump(
-        "diamond_finite_bridge_admission_peak_ids", max(0, len(checked) - peak)
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_ADMISSION_STACK_PEAK,
+        max(0, admission_peak - peak),
+    )
+    peak = kernels.ledger.counters.get(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_ADMISSION_PEAK_IDS, 0
+    )
+    kernels.ledger.bump(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_ADMISSION_PEAK_IDS,
+        max(0, len(checked) - peak),
     )
     argument = input_expression(kernels, signature.input_size, port)
     default = kernels.evaluate(expression, variables)
@@ -240,7 +255,7 @@ def from_expression(
         current, ready = _bridge_pop(kernels.ledger, stack)
         if current in results:
             continue
-        kernels.ledger.bump("diamond_finite_bridge_visits")
+        kernels.ledger.bump(_interfaces_keys.DIAMOND_FINITE_BRIDGE_VISITS)
         decisions = [
             kernels.functions._nodes[kernels.functions._resolve(bit)] for bit in current
         ]
@@ -282,7 +297,10 @@ def from_expression(
                 logical_bit, results[low], results[high]
             )
     for name, count in (
-        ("diamond_finite_bridge_peak_result_entries", len(results)),
+        (
+            _interfaces_keys.DIAMOND_FINITE_BRIDGE_PEAK_RESULT_ENTRIES,
+            len(results),
+        ),
         ("diamond_finite_bridge_peak_split_entries", len(splits)),
     ):
         peak = kernels.ledger.counters.get(name, 0)
@@ -361,6 +379,11 @@ _Frame = TypeVar("_Frame")
 
 
 def _bridge_pop(ledger: ResourceLedger, stack: list[_Frame]) -> _Frame:
-    peak = ledger.counters.get("diamond_finite_bridge_stack_peak_frames", 0)
-    ledger.bump("diamond_finite_bridge_stack_peak_frames", max(0, len(stack) - peak))
+    peak = ledger.counters.get(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_STACK_PEAK_FRAMES, 0
+    )
+    ledger.bump(
+        _interfaces_keys.DIAMOND_FINITE_BRIDGE_STACK_PEAK_FRAMES,
+        max(0, len(stack) - peak),
+    )
     return stack.pop()

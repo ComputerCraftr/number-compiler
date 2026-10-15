@@ -13,6 +13,8 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
 from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
 from number_compiler.sequences.collatz.tile_root import initial_event_shift
 
@@ -57,7 +59,7 @@ def _shift_right_with_blank(
             if result is not None:
                 result.close()
             raise AssertionError("fixed-width tile shift lost its root")
-        tiles.ledger.bump("collatz_initial_root_structural_shifts")
+        tiles.ledger.bump(_collatz_keys.COLLATZ_INITIAL_ROOT_STRUCTURAL_SHIFTS)
         return result
     finally:
         blank.close()
@@ -139,9 +141,11 @@ def complete_collatz_root(
                     key.ports,
                     physical_support,
                 )
-                scheduler.ledger.bump("tile_collatz_initial_root_completions")
                 scheduler.ledger.bump(
-                    "collatz_initial_root_skipped_ticks",
+                    _collatz_keys.TILE_COLLATZ_INITIAL_ROOT_COMPLETIONS
+                )
+                scheduler.ledger.bump(
+                    _shared_keys.COLLATZ_INITIAL_ROOT_SKIPPED_TICKS,
                     shift - 1,
                 )
                 return scheduler.results.publish(key, completed)

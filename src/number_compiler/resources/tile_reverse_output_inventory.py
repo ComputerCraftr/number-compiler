@@ -11,6 +11,9 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.tiles.tile_result_records import ReverseBoundOutputKey
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 
 
 def reverse_bound_output_scalar_slots(result: ReverseBoundOutput) -> int:
@@ -42,7 +45,7 @@ def valid_reverse_bound_output(
             alphabet.blank == 2 * alphabet.radix - 1
             and alphabet.symbol_count == 2 * alphabet.radix
             and alphabet.interpretation == "unsigned-radix-cell-with-explicit-blank"
-            and alphabet.version == "canonical-tile-alphabet-v1"
+            and alphabet.version == CANONICAL_TILE_ALPHABET_VERSION
             and result.left.base == alphabet.radix
             and reverse_bound_output_scalar_slots(result) == 9
         )

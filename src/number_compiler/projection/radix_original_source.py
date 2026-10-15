@@ -15,6 +15,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import projection as _projection_keys
 
 
 @dataclass(slots=True)
@@ -243,7 +244,7 @@ class OriginalRadixArena:
         key = OriginalRadixKey(construction, radix, binary_start)
         existing = self.sources.get(key)
         if existing is not None:
-            self.ledger.bump("original_radix_encoding_hits")
+            self.ledger.bump(_projection_keys.ORIGINAL_RADIX_ENCODING_HITS)
             return existing
         # A base>=2 encoding has no more digits than its binary input. Reserve
         # before work; release the conservative source-cell allowance afterward.
@@ -257,17 +258,17 @@ class OriginalRadixArena:
                 for index, digit in enumerate(digits):
                     total = self.ledger.observe_arithmetic(2 * digit + carry)
                     carry, digits[index] = divmod(total, radix)
-                    self.ledger.bump("original_radix_limb_operations")
+                    self.ledger.bump(_projection_keys.ORIGINAL_RADIX_LIMB_OPERATIONS)
                 if carry:
                     digits.append(carry)
-                self.ledger.bump("original_radix_source_bit_reads")
+                self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SOURCE_BIT_READS)
                 self.ledger.bump(
-                    "original_radix_workspace_limbs_peak",
+                    _projection_keys.ORIGINAL_RADIX_WORKSPACE_LIMBS_PEAK,
                     max(
                         0,
                         len(digits)
                         - self.ledger.counters.get(
-                            "original_radix_workspace_limbs_peak", 0
+                            _projection_keys.ORIGINAL_RADIX_WORKSPACE_LIMBS_PEAK, 0
                         ),
                     ),
                 )
@@ -299,7 +300,7 @@ class OriginalRadixArena:
             raise ValueError("original radix point requires an integer coordinate")
         if not 0 <= index < len(source.digits):
             raise IndexError(index)
-        self.ledger.bump("original_radix_point_queries")
+        self.ledger.bump(_projection_keys.ORIGINAL_RADIX_POINT_QUERIES)
         return source.digits[index]
 
     def bounded_shifted_point(
@@ -365,8 +366,8 @@ class OriginalRadixArena:
             if residue >= modulus:
                 residue -= modulus
             residue = self.ledger.observe_arithmetic(residue)
-            self.ledger.bump("original_radix_bounded_source_bit_reads")
-        self.ledger.bump("original_radix_bounded_point_queries")
+            self.ledger.bump(_projection_keys.ORIGINAL_RADIX_BOUNDED_SOURCE_BIT_READS)
+        self.ledger.bump(_projection_keys.ORIGINAL_RADIX_BOUNDED_POINT_QUERIES)
         return residue // lower
 
     def _mod_multiply(self, left: int, right: int, modulus: int) -> int:
@@ -375,11 +376,15 @@ class OriginalRadixArena:
         while right:
             if right & 1:
                 result = self.ledger.observe_arithmetic(result + left) % modulus
-                self.ledger.bump("original_affine_summary_limb_operations")
+                self.ledger.bump(
+                    _projection_keys.ORIGINAL_AFFINE_SUMMARY_LIMB_OPERATIONS
+                )
             right >>= 1
             if right:
                 left = self.ledger.observe_arithmetic(left + left) % modulus
-                self.ledger.bump("original_affine_summary_limb_operations")
+                self.ledger.bump(
+                    _projection_keys.ORIGINAL_AFFINE_SUMMARY_LIMB_OPERATIONS
+                )
         return result
 
     def _compose_shift(
@@ -393,7 +398,7 @@ class OriginalRadixArena:
         multiplier = self._mod_multiply(after.multiplier, before.multiplier, modulus)
         transported = self._mod_multiply(after.multiplier, before.offset, modulus)
         offset = self.ledger.observe_arithmetic(transported + after.offset) % modulus
-        self.ledger.bump("original_affine_shift_compositions")
+        self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SHIFT_COMPOSITIONS)
         return OriginalShiftTransfer(modulus, multiplier, offset)
 
     @staticmethod
@@ -411,7 +416,9 @@ class OriginalRadixArena:
 
     def _triple_digit(self, digit: int, carry: int, radix: int) -> tuple[int, int]:
         """Return one 3*x+carry digit while observing only bounded limbs."""
-        self.ledger.bump("original_affine_summary_transition_evaluations")
+        self.ledger.bump(
+            _projection_keys.ORIGINAL_AFFINE_SUMMARY_TRANSITION_EVALUATIONS
+        )
         upper, doubled = divmod(self.ledger.observe_arithmetic(2 * digit), radix)
         extra, partial = divmod(self.ledger.observe_arithmetic(doubled + digit), radix)
         carry_extra, output = divmod(
@@ -442,7 +449,7 @@ class OriginalRadixArena:
             quotient, division_carry = self._divide_cell(
                 division_carry, source.radix, digit, shift
             )
-            self.ledger.bump("original_affine_summary_division_cells")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_DIVISION_CELLS)
             if quotient and not active:
                 width, active = position + 1, True
             shift_nodes[size + position] = OriginalShiftTransfer(
@@ -457,13 +464,13 @@ class OriginalRadixArena:
                     self._triple_digit(quotient, 2, source.radix)[0],
                 )
             )
-            self.ledger.bump("original_affine_summary_source_cells")
-            self.ledger.bump("radix_original_affine_carry_cells")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_SOURCE_CELLS)
+            self.ledger.bump(_projection_keys.RADIX_ORIGINAL_AFFINE_CARRY_CELLS)
         for node in range(size - 1, 0, -1):
             low, high = 2 * node, 2 * node + 1
             shift_nodes[node] = self._compose_shift(shift_nodes[high], shift_nodes[low])
             carry_nodes[node] = self._compose_carry(carry_nodes[low], carry_nodes[high])
-            self.ledger.bump("original_affine_summary_parent_cells")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_PARENT_CELLS)
         return width, shift_nodes, carry_nodes
 
     def _affine_summary(
@@ -475,10 +482,10 @@ class OriginalRadixArena:
             raise ValueError("original affine shift requires 0..62 bits")
         source_key = next(key for key, value in self.sources.items() if value is source)
         key = OriginalAffineSummaryKey(source_key, shift)
-        self.ledger.bump("original_affine_summary_requests")
+        self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_REQUESTS)
         found = self._affine_summaries.get(key)
         if found is not None:
-            self.ledger.bump("original_affine_summary_hits")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_HITS)
             return found
         count = len(source.digits)
         size = 1
@@ -502,18 +509,19 @@ class OriginalRadixArena:
             self._workspace.entries = workspace_reservation[1]
             self._workspace.nodes = workspace_reservation[2]
             self.ledger.bump(
-                "original_affine_summary_workspace_slots_peak",
+                _projection_keys.ORIGINAL_AFFINE_SUMMARY_WORKSPACE_SLOTS_PEAK,
                 max(
                     0,
                     self._workspace.entries
                     + self._workspace.nodes
                     - self.ledger.counters.get(
-                        "original_affine_summary_workspace_slots_peak", 0
+                        _projection_keys.ORIGINAL_AFFINE_SUMMARY_WORKSPACE_SLOTS_PEAK,
+                        0,
                     ),
                 ),
             )
         except BaseException:
-            self.ledger.bump("original_affine_summary_failures")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_FAILURES)
             raise
         try:
             width, shift_nodes, carry_nodes = self._build_affine_summary_nodes(
@@ -538,7 +546,7 @@ class OriginalRadixArena:
             self._workspace.entries = self._workspace.nodes = 0
             for owner, entries, nodes in reversed(reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
-            self.ledger.bump("original_affine_summary_failures")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_FAILURES)
             raise
         shift_ids: list[int] = []
         carry_ids: list[int] = []
@@ -582,7 +590,7 @@ class OriginalRadixArena:
             for owner, entries, nodes in reversed(reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             self._workspace.entries = self._workspace.nodes = 0
-            self.ledger.bump("original_affine_summary_failures")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_FAILURES)
             raise
         self.ledger.release(
             self._shift_owner,
@@ -602,7 +610,7 @@ class OriginalRadixArena:
             nodes=workspace_reservation[2],
         )
         self._workspace.entries = self._workspace.nodes = 0
-        self.ledger.bump("original_affine_summary_publications")
+        self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_PUBLICATIONS)
         return result
 
     def affine_shifted_point(
@@ -620,7 +628,7 @@ class OriginalRadixArena:
         summary = self._affine_summary(source, shift)
         if index > summary.width + 1:
             raise IndexError(index)
-        self.ledger.bump("radix_original_affine_digit_queries")
+        self.ledger.bump(_projection_keys.RADIX_ORIGINAL_AFFINE_DIGIT_QUERIES)
         carry = incoming
         # [0,index) has a left-to-right dyadic cover given by the set bits of
         # its length.  Visit it directly, without allocating a per-query list.
@@ -630,7 +638,7 @@ class OriginalRadixArena:
             block = 1 << (remaining.bit_length() - 1)
             node = summary.carry_tree[(summary.size + position) // block]
             carry = self._carry_nodes[node].outputs[carry]
-            self.ledger.bump("original_affine_prefix_summary_visits")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_PREFIX_SUMMARY_VISITS)
             position += block
             remaining -= block
         if index >= summary.width:
@@ -656,7 +664,7 @@ class OriginalRadixArena:
                 self.ledger.observe_arithmetic(product + transfer.offset)
                 % transfer.modulus
             )
-            self.ledger.bump("original_affine_shift_summary_visits")
+            self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SHIFT_SUMMARY_VISITS)
             stop -= block
         quotient, _ = self._divide_cell(
             division_carry, source.radix, source.digits[index], shift
@@ -664,7 +672,7 @@ class OriginalRadixArena:
         return self._triple_digit(quotient, carry, source.radix)[1]
 
     def _limb(self, value: int) -> int:
-        self.ledger.bump("original_radix_shift_limb_operations")
+        self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_LIMB_OPERATIONS)
         return self.ledger.observe_arithmetic(value)
 
     def _divide_cell(
@@ -677,30 +685,31 @@ class OriginalRadixArena:
         """
         if radix.bit_length() + shift <= 64:
             total = self._limb(self._limb(carry * radix) + digit)
-            self.ledger.bump("original_radix_shift_small_cells")
+            self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_SMALL_CELLS)
             return self._limb(total >> shift), self._limb(total & ((1 << shift) - 1))
         mask = (1 << 32) - 1
         left = (self._limb(carry & mask), self._limb(carry >> 32))
         right = (self._limb(radix & mask), self._limb(radix >> 32))
         limbs = [self._limb(digit & mask), self._limb(digit >> 32), 0, 0]
         self.ledger.bump(
-            "original_radix_shift_product_buffer_limbs_peak",
+            _projection_keys.ORIGINAL_RADIX_SHIFT_PRODUCT_BUFFER_LIMBS_PEAK,
             max(
                 0,
                 len(limbs)
                 - self.ledger.counters.get(
-                    "original_radix_shift_product_buffer_limbs_peak", 0
+                    _projection_keys.ORIGINAL_RADIX_SHIFT_PRODUCT_BUFFER_LIMBS_PEAK,
+                    0,
                 ),
             ),
         )
         self.ledger.bump(
-            "original_radix_shift_operand_limbs_peak",
+            _projection_keys.ORIGINAL_RADIX_SHIFT_OPERAND_LIMBS_PEAK,
             max(
                 0,
                 len(left)
                 + len(right)
                 - self.ledger.counters.get(
-                    "original_radix_shift_operand_limbs_peak", 0
+                    _projection_keys.ORIGINAL_RADIX_SHIFT_OPERAND_LIMBS_PEAK, 0
                 ),
             ),
         )
@@ -713,7 +722,9 @@ class OriginalRadixArena:
                     self._limb(total & mask),
                     self._limb(total >> 32),
                 )
-                self.ledger.bump("original_radix_shift_word_multiplications")
+                self.ledger.bump(
+                    _projection_keys.ORIGINAL_RADIX_SHIFT_WORD_MULTIPLICATIONS
+                )
             limbs[i + 2] = self._limb(limbs[i + 2] + incoming)
         word, bit = divmod(shift, 32)
         # Extract two quotient words directly. Never assemble the 126-bit total.
@@ -728,17 +739,18 @@ class OriginalRadixArena:
             upper = self._limb((limbs[1] & ((1 << (shift - 32)) - 1)) << 32)
             remainder = self._limb(remainder | upper)
         self.ledger.bump(
-            "original_radix_shift_quotient_buffer_limbs_peak",
+            _projection_keys.ORIGINAL_RADIX_SHIFT_QUOTIENT_BUFFER_LIMBS_PEAK,
             max(
                 0,
                 len(quotient_words)
                 - self.ledger.counters.get(
-                    "original_radix_shift_quotient_buffer_limbs_peak", 0
+                    _projection_keys.ORIGINAL_RADIX_SHIFT_QUOTIENT_BUFFER_LIMBS_PEAK,
+                    0,
                 ),
             ),
         )
         self.ledger.bump(
-            "original_radix_shift_live_buffer_limbs_peak",
+            _projection_keys.ORIGINAL_RADIX_SHIFT_LIVE_BUFFER_LIMBS_PEAK,
             max(
                 0,
                 len(left)
@@ -746,11 +758,11 @@ class OriginalRadixArena:
                 + len(limbs)
                 + len(quotient_words)
                 - self.ledger.counters.get(
-                    "original_radix_shift_live_buffer_limbs_peak", 0
+                    _projection_keys.ORIGINAL_RADIX_SHIFT_LIVE_BUFFER_LIMBS_PEAK, 0
                 ),
             ),
         )
-        self.ledger.bump("original_radix_shift_wide_cells")
+        self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_WIDE_CELLS)
         return quotient, remainder
 
     def _shifted(
@@ -773,9 +785,9 @@ class OriginalRadixArena:
         carry, active = 0, False
         for position in range(len(source.digits) - 1, -1, -1):
             digit = self._limb(source.digits[position])
-            self.ledger.bump("original_radix_shift_source_digit_reads")
+            self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_SOURCE_DIGIT_READS)
             quotient, carry = self._divide_cell(carry, source.radix, digit, shift)
-            self.ledger.bump("original_radix_shift_division_cells")
+            self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_DIVISION_CELLS)
             if quotient:
                 active = True
                 if index is None:

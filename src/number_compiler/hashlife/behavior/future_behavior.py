@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import Final
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.arithmetic.contracts.semantic_identity import (
@@ -26,6 +27,8 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
     validate_primitive_behavior_quotient,
 )
 
+QUIESCENT_BLANK_CERTIFICATE_TAG: Final[str] = "quiescent-blank-certificate-v1"
+
 QUIESCENT_PROFILE_VERSION = 1
 QUIESCENT_OBSERVATIONS = (
     "uniform-output-symbol",
@@ -36,9 +39,9 @@ QUIESCENT_OBSERVATIONS = (
     "left-boundary-transfer",
     "right-boundary-transfer",
 )
-QUIESCENT_GEOMETRY_SCHEMA = "nonempty-uniform-blank-dyadic-v1"
-QUIESCENT_COCYCLE_SCHEMA = "primitive-zero-occurrence-cocycle-v1"
-QUIESCENT_LAW = "successor-closed-uniform-blank-v1"
+QUIESCENT_GEOMETRY_SCHEMA: Final[str] = "nonempty-uniform-blank-dyadic-v1"
+QUIESCENT_COCYCLE_SCHEMA: Final[str] = "primitive-zero-occurrence-cocycle-v1"
+QUIESCENT_LAW: Final[str] = "successor-closed-uniform-blank-v1"
 
 _ACTIVE_IDENTITY_VALIDATOR: ContextVar[SemanticIdentityValidator | None] = ContextVar(
     "future_behavior_identity_validator", default=None
@@ -350,7 +353,7 @@ def _certify_quiescent_blank(
     left_transition = tuple(row[blank] for row in quotient.left_transitions)
     right_transition = tuple(row[blank] for row in quotient.right_transitions)
     key = (
-        "quiescent-blank-certificate-v1",
+        QUIESCENT_BLANK_CERTIFICATE_TAG,
         quotient.source_identity.behavior,
         quotient.semantic_identity.behavior,
         quotient.alphabet_size,
@@ -387,7 +390,7 @@ def _successor_in(
 
 def _certificate_digest(certificate: QuiescentBlankCertificate) -> str:
     key = (
-        "quiescent-blank-certificate-v1",
+        QUIESCENT_BLANK_CERTIFICATE_TAG,
         certificate.kernel.behavior,
         certificate.continuation.behavior,
         certificate.alphabet_size,

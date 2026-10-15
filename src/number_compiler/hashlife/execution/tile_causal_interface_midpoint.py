@@ -26,6 +26,10 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
 from number_compiler.hashlife.tiles.tile_result_records import CausalInterfaceKey
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 def cached_midpoint_interface_step(
@@ -93,8 +97,8 @@ def cached_midpoint_interface_step(
             frames.append(frame)
             values.append(exits[0])
             values.append(exits[1])
-            engine.ledger.bump("tile_causal_midpoint_port_reuses")
-            engine.ledger.bump("tile_causal_interface_midpoint_reuse")
+            engine.ledger.bump(_execution_keys.TILE_CAUSAL_MIDPOINT_PORT_REUSES)
+            engine.ledger.bump(_execution_keys.TILE_CAUSAL_INTERFACE_MIDPOINT_REUSE)
             return True
         frames.extend(
             (
@@ -119,7 +123,7 @@ def cached_midpoint_interface_step(
                 ),
             )
         )
-        engine.ledger.bump("tile_causal_interface_midpoint_reuse")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_INTERFACE_MIDPOINT_REUSE)
         return True
     if frame.stage == 31:
         right_argument, left_argument = values.pop(), values.pop()
@@ -174,7 +178,7 @@ def cached_midpoint_interface_step(
         values.append(payload)
         return True
     publications_before = engine.ledger.counters.get(
-        "causal_interface_result_publications", 0
+        _shared_keys.CAUSAL_INTERFACE_RESULT_PUBLICATIONS, 0
     )
     values.append(
         publish_causal_interface(
@@ -184,11 +188,11 @@ def cached_midpoint_interface_step(
         )
     )
     publications_after = engine.ledger.counters.get(
-        "causal_interface_result_publications", 0
+        _shared_keys.CAUSAL_INTERFACE_RESULT_PUBLICATIONS, 0
     )
     if publications_after > publications_before:
         engine.ledger.bump(
-            "tile_causal_interface_midpoint_publications",
+            _execution_keys.TILE_CAUSAL_INTERFACE_MIDPOINT_PUBLICATIONS,
             publications_after - publications_before,
         )
     return True

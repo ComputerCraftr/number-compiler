@@ -23,6 +23,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,10 +86,10 @@ class PrimitivePairActions:
         if boundary.anchor is None or boundary.continuation is None:
             raise ValueError("primitive-pair state requires an anchor and continuation")
         key = PrimitivePairKey(action, state, side, symbol)
-        self.ledger.bump("diamond_primitive_pair_requests")
+        self.ledger.bump(_execution_keys.DIAMOND_PRIMITIVE_PAIR_REQUESTS)
         cached = self._transitions.get(key)
         if cached is not None:
-            self.ledger.bump("diamond_primitive_pair_hits")
+            self.ledger.bump(_execution_keys.DIAMOND_PRIMITIVE_PAIR_HITS)
             return cached
         first, second = (
             self.actions.reference(node.first),
@@ -134,5 +137,5 @@ class PrimitivePairActions:
         )
         result = self.boundaries.pair(action, side, next_anchor, continuation)
         self._transitions[key] = result
-        self.ledger.bump("diamond_primitive_pair_evaluations")
+        self.ledger.bump(_execution_keys.DIAMOND_PRIMITIVE_PAIR_EVALUATIONS)
         return result

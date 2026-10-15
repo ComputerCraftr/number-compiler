@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import record_indexed_node, reserve_indexed_id
 
 
@@ -106,13 +109,13 @@ class ProviderLayerArena:
         node = ProviderLayerNode(previous, layer)
         found = self._keys.get(node)
         if found is not None:
-            self.ledger.bump("concrete_provider_layer_alias_hits")
+            self.ledger.bump(_execution_keys.CONCRETE_PROVIDER_LAYER_ALIAS_HITS)
             return self._handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, node)
-        self.ledger.bump("concrete_provider_layer_publications")
+        self.ledger.bump(_execution_keys.CONCRETE_PROVIDER_LAYER_PUBLICATIONS)
         return self._handle(local_id)
 
     def clear(self) -> None:

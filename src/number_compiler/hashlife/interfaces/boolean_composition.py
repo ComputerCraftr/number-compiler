@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
@@ -43,7 +46,7 @@ def substitute_boolean_fused(
             return environment
         pair = before, after
         indices = circuit._fused_projections.get(pair)
-        ledger.bump("semantic_bit_fused_projection_requests")
+        ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_REQUESTS)
         if indices is None:
             source, target = tx.node(before).support, tx.node(after).support
             selected: list[int] = []
@@ -51,8 +54,12 @@ def substitute_boolean_fused(
             for variable in target:
                 while cursor < len(source) and source[cursor] < variable:
                     cursor += 1
-                    ledger.bump("semantic_bit_fused_projection_support_visits")
-                ledger.bump("semantic_bit_fused_projection_support_visits")
+                    ledger.bump(
+                        _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_SUPPORT_VISITS
+                    )
+                ledger.bump(
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_SUPPORT_VISITS
+                )
                 if cursor == len(source) or source[cursor] != variable:
                     raise AssertionError(
                         "cofactor support must be a subset of its canonical parent"
@@ -60,52 +67,62 @@ def substitute_boolean_fused(
                 selected.append(cursor)
             indices = tuple(selected)
             ledger.bump(
-                "semantic_bit_fused_projection_build_slots_peak",
+                _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_BUILD_SLOTS_PEAK,
                 max(
                     0,
                     len(selected)
                     + len(indices)
                     - ledger.counters.get(
-                        "semantic_bit_fused_projection_build_slots_peak", 0
+                        _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_BUILD_SLOTS_PEAK,
+                        0,
                     ),
                 ),
             )
             circuit._fused_projections[pair] = indices
             circuit._fused_projection_slots += len(indices)
-            ledger.bump("semantic_bit_fused_projection_evaluations")
+            ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_EVALUATIONS)
             ledger.bump(
-                "semantic_bit_fused_projection_cache_entries_peak",
+                _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_CACHE_ENTRIES_PEAK,
                 max(
                     0,
                     len(circuit._fused_projections)
                     - ledger.counters.get(
-                        "semantic_bit_fused_projection_cache_entries_peak", 0
+                        _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_CACHE_ENTRIES_PEAK,
+                        0,
                     ),
                 ),
             )
             ledger.bump(
-                "semantic_bit_fused_projection_index_slots_peak",
+                _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_INDEX_SLOTS_PEAK,
                 max(
                     0,
                     circuit._fused_projection_slots
                     - ledger.counters.get(
-                        "semantic_bit_fused_projection_index_slots_peak", 0
+                        _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_INDEX_SLOTS_PEAK,
+                        0,
                     ),
                 ),
             )
         else:
-            ledger.bump("semantic_bit_fused_projection_hits")
+            ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_HITS)
         result = tuple(environment[index] for index in indices)
-        ledger.bump("semantic_bit_fused_projection_argument_visits", len(indices))
-        ledger.bump("semantic_bit_fused_environment_bindings_created", len(result))
         ledger.bump(
-            "semantic_bit_fused_normalization_bindings_peak",
+            _interfaces_keys.SEMANTIC_BIT_FUSED_PROJECTION_ARGUMENT_VISITS,
+            len(indices),
+        )
+        ledger.bump(
+            _interfaces_keys.SEMANTIC_BIT_FUSED_ENVIRONMENT_BINDINGS_CREATED,
+            len(result),
+        )
+        ledger.bump(
+            _interfaces_keys.SEMANTIC_BIT_FUSED_NORMALIZATION_BINDINGS_PEAK,
             max(
                 0,
                 len(environment)
                 + len(result)
                 - ledger.counters.get(
-                    "semantic_bit_fused_normalization_bindings_peak", 0
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_NORMALIZATION_BINDINGS_PEAK,
+                    0,
                 ),
             ),
         )
@@ -116,8 +133,10 @@ def substitute_boolean_fused(
         while node.variable is not None:
             # Ordered BDD nodes put their own split first in their support.
             argument = tx.node(environment[0])
-            ledger.bump("semantic_bit_fused_normalization_visits")
-            ledger.bump("semantic_bit_fused_normalization_binding_visits")
+            ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_NORMALIZATION_VISITS)
+            ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_FUSED_NORMALIZATION_BINDING_VISITS
+            )
             if argument.terminal is None:
                 break
             if argument.terminal.kind != "atom":
@@ -141,12 +160,13 @@ def substitute_boolean_fused(
             primitive = _Circuit(tx.arena, original.signature.inputs, tx)
             circuit._cofactor_circuits[original.signature.inputs] = primitive
             ledger.bump(
-                "semantic_bit_fused_cofactor_contexts_peak",
+                _interfaces_keys.SEMANTIC_BIT_FUSED_COFACTOR_CONTEXTS_PEAK,
                 max(
                     0,
                     len(circuit._cofactor_circuits)
                     - ledger.counters.get(
-                        "semantic_bit_fused_cofactor_contexts_peak", 0
+                        _interfaces_keys.SEMANTIC_BIT_FUSED_COFACTOR_CONTEXTS_PEAK,
+                        0,
                     ),
                 ),
             )
@@ -167,7 +187,10 @@ def substitute_boolean_fused(
         else tx.bit(circuit.inputs, variable)
         for variable in original.support
     )
-    ledger.bump("semantic_bit_fused_environment_bindings_created", len(environment))
+    ledger.bump(
+        _interfaces_keys.SEMANTIC_BIT_FUSED_ENVIRONMENT_BINDINGS_CREATED,
+        len(environment),
+    )
     first = normalized(root, environment)
     pending = [(first, False)]
     children: dict[
@@ -175,29 +198,32 @@ def substitute_boolean_fused(
     ] = {}
     while pending:
         ledger.bump(
-            "semantic_bit_fused_workspace_peak",
+            _interfaces_keys.SEMANTIC_BIT_FUSED_WORKSPACE_PEAK,
             max(
                 0,
                 len(pending)
                 + len(done)
                 + len(children)
-                - ledger.counters.get("semantic_bit_fused_workspace_peak", 0),
+                - ledger.counters.get(
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_WORKSPACE_PEAK, 0
+                ),
             ),
         )
         ledger.bump(
-            "semantic_bit_fused_retained_environment_bindings_peak",
+            _interfaces_keys.SEMANTIC_BIT_FUSED_RETAINED_ENVIRONMENT_BINDINGS_PEAK,
             max(
                 0,
                 circuit._fused_retained_bindings
                 - ledger.counters.get(
-                    "semantic_bit_fused_retained_environment_bindings_peak", 0
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_RETAINED_ENVIRONMENT_BINDINGS_PEAK,
+                    0,
                 ),
             ),
         )
         key, ready = pending.pop()
-        ledger.bump("semantic_bit_fused_frames")
+        ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_FRAMES)
         if key in done:
-            ledger.bump("semantic_bit_fused_shared_hits")
+            ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_SHARED_HITS)
             continue
         node = tx.node(key.root)
         if node.terminal is not None:
@@ -209,16 +235,17 @@ def substitute_boolean_fused(
             circuit._fused_retained_bindings += len(key.environment)
         else:
             split = circuit._fused_splits.get(key.environment)
-            ledger.bump("semantic_bit_fused_split_requests")
+            ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_SPLIT_REQUESTS)
             if split is None:
                 arguments = tuple(tx.node(value) for value in key.environment)
                 ledger.bump(
-                    "semantic_bit_fused_branch_node_references_peak",
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_BRANCH_NODE_REFERENCES_PEAK,
                     max(
                         0,
                         len(arguments)
                         - ledger.counters.get(
-                            "semantic_bit_fused_branch_node_references_peak", 0
+                            _interfaces_keys.SEMANTIC_BIT_FUSED_BRANCH_NODE_REFERENCES_PEAK,
+                            0,
                         ),
                     ),
                 )
@@ -237,48 +264,50 @@ def substitute_boolean_fused(
                 )
                 split = variable, low_environment, high_environment
                 circuit._fused_splits[key.environment] = split
-                ledger.bump("semantic_bit_fused_split_evaluations")
+                ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_SPLIT_EVALUATIONS)
                 ledger.bump(
-                    "semantic_bit_fused_split_cache_entries_peak",
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_SPLIT_CACHE_ENTRIES_PEAK,
                     max(
                         0,
                         len(circuit._fused_splits)
                         - ledger.counters.get(
-                            "semantic_bit_fused_split_cache_entries_peak",
+                            _interfaces_keys.SEMANTIC_BIT_FUSED_SPLIT_CACHE_ENTRIES_PEAK,
                             0,
                         ),
                     ),
                 )
                 ledger.bump(
-                    "semantic_bit_fused_environment_bindings_created",
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_ENVIRONMENT_BINDINGS_CREATED,
                     len(low_environment) + len(high_environment),
                 )
                 ledger.bump(
-                    "semantic_bit_fused_branch_environment_bindings_peak",
+                    _interfaces_keys.SEMANTIC_BIT_FUSED_BRANCH_ENVIRONMENT_BINDINGS_PEAK,
                     max(
                         0,
                         len(key.environment)
                         + len(low_environment)
                         + len(high_environment)
                         - ledger.counters.get(
-                            "semantic_bit_fused_branch_environment_bindings_peak", 0
+                            _interfaces_keys.SEMANTIC_BIT_FUSED_BRANCH_ENVIRONMENT_BINDINGS_PEAK,
+                            0,
                         ),
                     ),
                 )
             else:
-                ledger.bump("semantic_bit_fused_split_hits")
+                ledger.bump(_interfaces_keys.SEMANTIC_BIT_FUSED_SPLIT_HITS)
             variable, low_environment, high_environment = split
             low = normalized(key.root, low_environment)
             high = normalized(key.root, high_environment)
             children[key] = variable, low, high
             pending.extend(((key, True), (high, False), (low, False)))
     ledger.bump(
-        "semantic_bit_fused_retained_environment_bindings_peak",
+        _interfaces_keys.SEMANTIC_BIT_FUSED_RETAINED_ENVIRONMENT_BINDINGS_PEAK,
         max(
             0,
             circuit._fused_retained_bindings
             - ledger.counters.get(
-                "semantic_bit_fused_retained_environment_bindings_peak", 0
+                _interfaces_keys.SEMANTIC_BIT_FUSED_RETAINED_ENVIRONMENT_BINDINGS_PEAK,
+                0,
             ),
         ),
     )

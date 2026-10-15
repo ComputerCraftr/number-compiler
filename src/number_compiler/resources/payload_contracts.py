@@ -9,6 +9,7 @@ from types import FunctionType, MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 from weakref import ReferenceType, ref
 
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.payload_containers import audit_mapping_items
 
 if TYPE_CHECKING:
@@ -386,18 +387,18 @@ def _store_identity_index(
         for key, item in audit_mapping_items(container):
             values[id(key)] = key
             values[id(item)] = item
-            ledger.bump("payload_audit_contract_member_visits", 2)
+            ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS, 2)
             # This is an accounting envelope, not another semantic container.
             # Do not recursively approve arbitrary nested records or subclasses.
             if type(item) is _DynamicMemoValue:
                 values[id(item.value)] = item.value
-                ledger.bump("payload_audit_contract_member_visits")
+                ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS)
     elif isinstance(container, Sequence) and not isinstance(
         container, (str, bytes, bytearray)
     ):
         for item in container:
             values[id(item)] = item
-            ledger.bump("payload_audit_contract_member_visits")
+            ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS)
     return values
 
 
@@ -537,7 +538,7 @@ def audit_payload_contracts(ledger: ResourceLedger) -> PayloadAuditContractAudit
     dependency_tainted_roots: set[int] = set()
     for binding in ledger._payload_audit_contracts.values():
         for identity, family, reference in binding.dependencies:
-            ledger.bump("payload_audit_contract_dependency_visits")
+            ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_DEPENDENCY_VISITS)
             dependency_root = reference()
             dependency_key = (identity, family)
             dependency_binding = ledger._payload_audit_contracts.get(dependency_key)

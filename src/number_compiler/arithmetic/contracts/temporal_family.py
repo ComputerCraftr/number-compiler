@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
+from number_compiler.resources.metric_keys import (
+    arithmetic_contracts as _contracts_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
@@ -14,6 +17,7 @@ if TYPE_CHECKING:
 
 Family = Literal["reverse-add", "collatz"]
 OutputEncoding = Literal["digits", "pair", "binary"]
+CERTIFIED_TEMPORAL_ACTION_TAG: Final[str] = "certified-temporal-v3"
 _ISSUER = object()
 
 
@@ -92,7 +96,7 @@ class TemporalFamilyCertificate:
     def temporal_key(self) -> tuple[str, str, int, int, str, str]:
         self._validate_issuance()
         return (
-            "certified-temporal-v3",
+            CERTIFIED_TEMPORAL_ACTION_TAG,
             self.family,
             self.base,
             self.steps,
@@ -124,11 +128,14 @@ def _verify_program(
         if node.base != effect.base or node.blank != effect.blank:
             raise ValueError("arithmetic program contains mixed alphabets")
         if ledger is not None:
-            ledger.bump("certificate_dag_visits")
-            peak = ledger.counters.get("certificate_workspace_peak", 0)
+            ledger.bump(_contracts_keys.CERTIFICATE_DAG_VISITS)
+            peak = ledger.counters.get(_contracts_keys.CERTIFICATE_WORKSPACE_PEAK, 0)
             size = len(pending) + len(facts) + len(active)
             if size > peak:
-                ledger.bump("certificate_workspace_peak", size - peak)
+                ledger.bump(
+                    _contracts_keys.CERTIFICATE_WORKSPACE_PEAK,
+                    size - peak,
+                )
         if type(node) is ProgramComposition and isinstance(node, ProgramComposition):
             if not ready:
                 if identity in active:

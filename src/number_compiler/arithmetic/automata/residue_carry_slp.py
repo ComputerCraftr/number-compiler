@@ -20,6 +20,9 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     centered_carry_fn,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_automata as _automata_keys,
+)
 from number_compiler.resources.stores import LedgerList
 
 PAIR_RESIDUE_MODULUS = 32
@@ -141,7 +144,7 @@ class ResidueCarrySLPResult:
         units = max(1, (operand_bits + max(1, result_bits) + 63) // 64)
         self.ledger.reserve(self._owner, nodes=units)
         self.ledger.bump(
-            "residue_carry_slp_metadata_operand_bits",
+            _automata_keys.RESIDUE_CARRY_SLP_METADATA_OPERAND_BITS,
             operand_bits,
         )
         return units
@@ -262,7 +265,7 @@ class ResidueCarrySLPProjector:
         except BaseException:
             self.ledger.release(self._stack_owner, entries=1, nodes=1)
             raise
-        self.ledger.bump("residue_carry_slp_workspace_frames")
+        self.ledger.bump(_automata_keys.RESIDUE_CARRY_SLP_WORKSPACE_FRAMES)
 
     def _pop(self) -> tuple[int, bool]:
         frame = self._stack.pop()
@@ -292,7 +295,7 @@ class ResidueCarrySLPProjector:
         finally:
             self.ledger.release(self._stack_owner, nodes=units)
         self.ledger.bump(
-            "residue_carry_slp_metadata_operand_bits",
+            _automata_keys.RESIDUE_CARRY_SLP_METADATA_OPERAND_BITS,
             max(1, left.bit_length()) + max(1, right.bit_length()),
         )
         return result
@@ -389,7 +392,7 @@ class ResidueCarrySLPProjector:
 
         low = outcome(0)
         high = outcome(1)
-        self.ledger.bump("residue_carry_slp_compositions")
+        self.ledger.bump(_automata_keys.RESIDUE_CARRY_SLP_COMPOSITIONS)
         return _Summary(low, high, before.node)
 
     def _power(
@@ -399,7 +402,7 @@ class ResidueCarrySLPProjector:
         base = summary
         exponent = count
         while exponent:
-            self.ledger.bump("residue_carry_slp_repeat_bits")
+            self.ledger.bump(_automata_keys.RESIDUE_CARRY_SLP_REPEAT_BITS)
             if exponent & 1:
                 result = self._compose(result, base, output)
             exponent_bits = max(1, exponent.bit_length())
@@ -411,7 +414,7 @@ class ResidueCarrySLPProjector:
             finally:
                 self.ledger.release(self._stack_owner, nodes=units)
             self.ledger.bump(
-                "residue_carry_slp_repeat_shift_operand_bits",
+                _automata_keys.RESIDUE_CARRY_SLP_REPEAT_SHIFT_OPERAND_BITS,
                 max(1, exponent.bit_length() + 1),
             )
             if exponent:
@@ -478,7 +481,7 @@ class ResidueCarrySLPProjector:
                 else:
                     raise AssertionError(node.kind)
                 self._memo[node_id] = summary
-                self.ledger.bump("residue_carry_slp_unique_nodes")
+                self.ledger.bump(_automata_keys.RESIDUE_CARRY_SLP_UNIQUE_NODES)
 
             for node_id, summary in self._memo.items():
                 if self._validated_node(arena, node_id) != summary.node:

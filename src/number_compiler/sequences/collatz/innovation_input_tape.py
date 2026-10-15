@@ -7,11 +7,20 @@ they never identify or authorize an arithmetic endpoint.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Self
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_305,
+    PATH_630,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     boundary_macro_26847_phase,
 )
@@ -543,6 +552,76 @@ class ParityProgramBuilder:
             macro.source, macro.endpoint, specs, odd_symbols=macro.odd_symbols
         )
 
+    def append_unified_skew_chain(self, chain: object) -> None:
+        """Commit one joined border/helix grammar, with all seams.
+
+        No intermediate parity word is materialized. The composed producer
+        guards and its quadratic skew transfer must agree before publication.
+        """
+        from number_compiler.sequences.collatz.unified_skew_chain import (
+            UnifiedSkewChain,
+        )
+
+        if type(chain) is not UnifiedSkewChain:
+            raise TypeError("unified skew grammar needs its issued action")
+        chain.verify()
+        self._append_admitted(
+            chain.source,
+            chain.endpoint,
+            chain.factors,
+            odd_symbols=chain.odd_symbols,
+        )
+
+    def append_guarded_skew_repetitions(
+        self,
+        chain: object,
+        power: object,
+        endpoint: int,
+        *,
+        preflight: Callable[[int], None],
+    ) -> None:
+        """Retain the exact repeated word under its source-issued cylinder."""
+        from number_compiler.sequences.collatz.skew_cylinder_repeat import (
+            GuardedSkewCylinderPower,
+        )
+        from number_compiler.sequences.collatz.unified_skew_chain import (
+            UnifiedSkewChain,
+        )
+
+        if (
+            type(chain) is not UnifiedSkewChain
+            or type(power) is not GuardedSkewCylinderPower
+            or type(endpoint) is not int
+        ):
+            raise TypeError("repeated skew grammar needs issued source authority")
+        chain.verify()
+        power.verify()
+        if (
+            power.source != chain.source
+            or power.action is not chain.fields
+            or power.repetitions <= 1
+            or not power.cylinder.admits(power.repetitions)
+        ):
+            raise ValueError("repeated parity grammar differs from its source cylinder")
+        current = chain.source
+        for _ in range(power.repetitions):
+            preflight(
+                current.bit_length()
+                + chain.fields.gain.bit_length()
+                + 2 * chain.fields.steps
+                + 16
+            )
+            following = chain.fields.endpoint(current)
+            self._append_admitted(
+                current,
+                following,
+                chain.factors,
+                odd_symbols=chain.odd_symbols,
+            )
+            current = following
+        if current != endpoint:
+            raise ValueError("repeated parity grammar endpoint differs from its power")
+
     def append_terminal_power2_macro(self, macro: object) -> None:
         from number_compiler.sequences.collatz.terminal_preimage import (
             CollatzTerminalPower2Macro,
@@ -690,21 +769,21 @@ def _boundary_macro_specs(
     macro: object,
 ) -> tuple[tuple[tuple[int, ...], int], ...]:
     """Return the producer-admitted compact runs before factor allocation."""
-    family = getattr(macro, "family", None)
+    identity = getattr(macro, "identity", None)
     repetitions = getattr(macro, "repetitions", None)
-    if type(family) is not str or type(repetitions) is not int or repetitions <= 0:
+    if identity is None or type(repetitions) is not int or repetitions <= 0:
         raise ValueError("boundary macro repetitions are malformed")
-    if family == "421":
+    if identity == ENTRY_421:
         specs: list[tuple[tuple[int, ...], int]] = [((0,), 2)]
         if repetitions > 1:
             specs.append(((1, 0), repetitions - 1))
         specs.append(((1,), 1))
         return tuple(specs)
-    if family == "4721":
+    if identity == ENTRY_4721:
         return (((0,), 1), ((1,), 2 * repetitions))
-    if family == "0563":
+    if identity == ENTRY_0563:
         return (((0,), 1), ((1,), 2 * repetitions))
-    if (phase := boundary_macro_26847_phase(family)) is not None:
+    if (phase := boundary_macro_26847_phase(identity)) is not None:
         specs = []
         if phase < 4:
             specs.append(((0,), 4 - phase))
@@ -712,11 +791,11 @@ def _boundary_macro_specs(
             specs.append(((1, 0, 0, 0), repetitions - 1))
         specs.append(((1,), 1))
         return tuple(specs)
-    if family == "630":
+    if identity == PATH_630:
         return (((0,), 1), ((1,), 1), ((0,), repetitions))
-    if family == "305":
+    if identity == PATH_305:
         return (((1,), 1), ((0,), repetitions))
-    if family == "989":
+    if identity == ENTRY_89_AT_NINE:
         return (((1,), repetitions),)
     raise ValueError("unknown admitted Collatz boundary family")
 

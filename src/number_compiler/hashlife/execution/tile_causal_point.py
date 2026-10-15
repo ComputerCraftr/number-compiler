@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame as _Frame
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> bool:
@@ -53,7 +56,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
             raise TypeError("causal coordinate requires an exact integer")
         if not 0 <= coordinate < node.width:
             raise IndexError(coordinate)
-        self.ledger.bump("tile_causal_point_parent_requests")
+        self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_PARENT_REQUESTS)
         if self._children(action) is None:
             key, completed = probe_causal_result(
                 self.scheduler.results,
@@ -80,7 +83,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
                 self._result_leases.append(completed)
             else:
                 self.scheduler._pin_causal(self._application, key, completed)
-            self.ledger.bump("tile_causal_point_parent_hits")
+            self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_PARENT_HITS)
             values.append(symbol)
             return True
         if (
@@ -97,7 +100,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
             is not None
         ):
             values.append(self.tiles.alphabet(node.alphabet).blank)
-            self.ledger.bump("behavior_point_observations")
+            self.ledger.bump(_execution_keys.BEHAVIOR_POINT_OBSERVATIONS)
             return True
         if not node.level:
             frame.stage = 3
@@ -143,7 +146,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
         (transferred, base_right) if side else (base_left, transferred)
     )
     frame.stage = 2
-    self.ledger.bump("tile_causal_point_demanded_descents")
+    self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_DEMANDED_DESCENTS)
     frames.extend(
         (
             frame,

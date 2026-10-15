@@ -23,6 +23,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     RadialMultiplier,
     SymbolicInnovationArena,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 def _nonnegative(value: int) -> None:
@@ -125,5 +128,5 @@ def advance_centered_events(
     result = arena.linear_combination(
         ((1, radial), (1, correction), (-1, reflected), (9, start), (-9, end))
     )
-    arena.ledger.bump("centered_event_advance_attempts")
+    arena.ledger.bump(_fields_keys.CENTERED_EVENT_ADVANCE_ATTEMPTS)
     return normalize_event_sum(arena, result)

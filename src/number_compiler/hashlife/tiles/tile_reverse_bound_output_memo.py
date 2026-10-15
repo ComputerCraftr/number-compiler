@@ -5,9 +5,16 @@ from __future__ import annotations
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.tiles.tile_result_records import ReverseBoundOutputKey
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.result_cache_kinds import (
     REVERSE_BOUND_OUTPUT_RETAINED_NODES,
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
+)
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
 )
 
 
@@ -25,7 +32,7 @@ def _validate_key(
         alphabet.blank != 2 * alphabet.radix - 1
         or alphabet.symbol_count != 2 * alphabet.radix
         or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-        or alphabet.version != "canonical-tile-alphabet-v1"
+        or alphabet.version != CANONICAL_TILE_ALPHABET_VERSION
     ):
         raise ValueError("tile alphabet is not a canonical reverse pair field")
     return alphabet.radix, node.level
@@ -36,13 +43,17 @@ def lookup_reverse_bound_output(
 ) -> ReverseBoundOutput | None:
     """Probe one exact tile summary before visiting its descendants."""
     base, _level = _validate_key(results, key)
-    results.ledger.bump("reverse_bound_output_requests")
+    results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_REQUESTS)
     found = results._memo.get(key)
     if found is None:
-        record_unattributed_post_eviction_miss(results.ledger, "interface")
-        if results.ledger.counters.get("result_cache_interface_evicted_entries", 0):
+        record_unattributed_post_eviction_miss(
+            results.ledger, ResultCacheKind.INTERFACE
+        )
+        if results.ledger.counters.get(
+            _tiles_keys.RESULT_CACHE_INTERFACE_EVICTED_ENTRIES, 0
+        ):
             results.ledger.bump(
-                "reverse_bound_output_post_eviction_misses_attribution_unknown"
+                _tiles_keys.REVERSE_BOUND_OUTPUT_POST_EVICTION_MISSES_ATTRIBUTION_UNKNOWN
             )
         return None
     if type(found) is not ReverseBoundOutput:
@@ -50,7 +61,7 @@ def lookup_reverse_bound_output(
     found.__post_init__()
     if found.left.base != base:
         raise ValueError("reverse output memo contains another radix")
-    results.ledger.bump("reverse_bound_output_early_hits")
+    results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_EARLY_HITS)
     return found
 
 
@@ -65,12 +76,12 @@ def _publish(
     value.__post_init__()
     if value.left.base != base:
         raise ValueError("reverse output publication has another radix")
-    results.ledger.bump("reverse_bound_output_publication_requests")
+    results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_PUBLICATION_REQUESTS)
     found = results._memo.get(key)
     if found is not None:
         if type(found) is not ReverseBoundOutput or found != value:
             raise ValueError("reverse output tile already has another summary")
-        results.ledger.bump("reverse_bound_output_late_duplicates")
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_LATE_DUPLICATES)
         return found
     referenced = results._tiles_for(key, value)
     reverse_entries = results._index_entries(referenced)
@@ -92,7 +103,7 @@ def _publish(
         for owner, entries, nodes in reservations:
             results.ledger.release(owner, entries, nodes)
         raise
-    results.ledger.bump("reverse_bound_output_publications")
+    results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_PUBLICATIONS)
     return value
 
 
@@ -106,11 +117,11 @@ def publish_reverse_bound_output_leaf(
         if level or node.symbol is None:
             raise ValueError("reverse output leaf publication requires an exact leaf")
         value = ReverseBoundOutput.leaf(base, node.symbol)
-        results.ledger.bump("reverse_bound_output_leaf_evaluations")
-        results.ledger.bump("reverse_bound_output_evaluations")
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_LEAF_EVALUATIONS)
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_EVALUATIONS)
         return _publish(results, key, value)
     except BaseException:
-        results.ledger.bump("reverse_bound_output_failures")
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_FAILURES)
         raise
 
 
@@ -138,11 +149,11 @@ def publish_reverse_bound_output_parent(
                 "reverse output parent differs from its completed children"
             )
         value = left.then(right, results.ledger)
-        results.ledger.bump("reverse_bound_output_parent_compositions")
-        results.ledger.bump("reverse_bound_output_evaluations")
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_PARENT_COMPOSITIONS)
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_EVALUATIONS)
         return _publish(results, key, value)
     except BaseException:
-        results.ledger.bump("reverse_bound_output_failures")
+        results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_FAILURES)
         raise
 
 

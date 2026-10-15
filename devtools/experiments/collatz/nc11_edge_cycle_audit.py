@@ -8,7 +8,14 @@ from pathlib import Path
 
 from devtools.paths import report_output
 from devtools.verification.oracles.sequence_arithmetic import collatz_literal
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    ENTRY_4721,
+    ENTRY_26847_PHASES,
+    BoundaryActionIdentity,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
+    boundary_metric_suffix,
     select_boundary_macro,
     validate_boundary_macro,
 )
@@ -44,27 +51,32 @@ def audit(output: Path) -> dict[str, object]:
     if len(edges) != 15 or cycles != expected:
         raise AssertionError(("unexpected decimal graph", edges, cycles))
     counts: Counter[str] = Counter()
-    entries = (
-        ("0563", 30, 40),
-        ("26847", 112, 160),
-        ("26847P1", 56, 80),
-        ("26847P2", 28, 40),
-        ("26847P3", 14, 20),
-        ("26847P4", 7, 10),
+    entries: tuple[tuple[BoundaryActionIdentity, int, int], ...] = (
+        (ENTRY_0563, 30, 40),
+        (ENTRY_26847_PHASES[0], 112, 160),
+        (ENTRY_26847_PHASES[1], 56, 80),
+        (ENTRY_26847_PHASES[2], 28, 40),
+        (ENTRY_26847_PHASES[3], 14, 20),
+        (ENTRY_26847_PHASES[4], 7, 10),
     )
-    for family, residue, modulus in entries:
+    for identity, residue, modulus in entries:
+        suffix = boundary_metric_suffix(identity)
         for offset in range(1600):
             source = residue + modulus * offset
             macro = select_boundary_macro(source, 128, minimum_repetitions=1)
-            accepted = {family, "4721"} if family == "26847P3" else {family}
-            if macro is None or macro.family not in accepted:
-                raise AssertionError(("missing guarded macro", family, source))
+            accepted = (
+                {identity, ENTRY_4721}
+                if identity == ENTRY_26847_PHASES[3]
+                else {identity}
+            )
+            if macro is None or macro.identity not in accepted:
+                raise AssertionError(("missing guarded macro", suffix, source))
             validate_boundary_macro(macro)
             if macro.endpoint != collatz_literal(source, macro.physical_ticks):
-                raise AssertionError(("wrong physical endpoint", family, source))
+                raise AssertionError(("wrong physical endpoint", suffix, source))
             if macro.fields.endpoint(source) != macro.endpoint:
-                raise AssertionError(("wrong affine endpoint", family, source))
-            counts[family] += 1
+                raise AssertionError(("wrong affine endpoint", suffix, source))
+            counts[suffix] += 1
     report: dict[str, object] = {
         "source_residue_guards": 20,
         "physical_digit_edges": len(edges),

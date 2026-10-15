@@ -25,7 +25,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
     TransferSummaryID,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.functions.finite_port_action import (
     FinitePortActionArena,
     PortVariable,
@@ -47,6 +50,10 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 class _BoundedBoundaryUniverse(Protocol):
@@ -128,8 +135,8 @@ class PrimitiveKernel:
         domain = self.domain(side)
         self._check(state, self._domain_count(side))
         self._check(symbol, self.blank + 1)
-        self.ledger.bump("diamond_kernel_transition_evaluations")
-        self.ledger.bump("primitive_transition_evaluations")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TRANSITION_EVALUATIONS)
+        self.ledger.bump(_shared_keys.PRIMITIVE_TRANSITION_EVALUATIONS)
         behavior = self.behavior
         if behavior is not None:
             classes = (
@@ -157,8 +164,8 @@ class PrimitiveKernel:
         self._check(left, self.left_count)
         self._check(right, self.right_count)
         self._check(symbol, self.blank + 1)
-        self.ledger.bump("diamond_kernel_output_evaluations")
-        self.ledger.bump("primitive_output_evaluations")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_OUTPUT_EVALUATIONS)
+        self.ledger.bump(_shared_keys.PRIMITIVE_OUTPUT_EVALUATIONS)
         if type(self.effect) is SymbolicBinaryDivisionEffect:
             result = self.effect.emit(left, symbol, right)
         elif self.behavior is None:
@@ -181,7 +188,7 @@ class PrimitiveKernel:
         self._check(left, self.left_count)
         self._check(right, self.right_count)
         self._check(symbol, self.blank + 1)
-        self.ledger.bump("primitive_occurrence_observation_evaluations")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_OCCURRENCE_OBSERVATION_EVALUATIONS)
         if self.behavior is not None:
             return self.behavior.observation(
                 self.behavior.left_classes[left],
@@ -196,7 +203,7 @@ class PrimitiveKernel:
     def is_absorbing(self, side: BoundarySide, state: int) -> bool:
         """Check the complete primitive alphabet, never a sampled input word."""
         self._check(state, self._domain_count(side))
-        self.ledger.bump("diamond_kernel_absorber_checks")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_ABSORBER_CHECKS)
         if type(self.effect) is NonblankBlockEffect:
             return state == 1
         return all(
@@ -490,7 +497,7 @@ class DiamondKernelArena:
             symmetry: CertifiedLocalSymmetry | None = None
             if has_runtime_behavior:
                 source = SemanticIdentity(
-                    "primitive-behavior",
+                    SemanticIdentityDomain.PRIMITIVE_BEHAVIOR,
                     ("primitive-behavior", _effect_key(effect)),
                 )
                 work = PrimitiveBehaviorWork()
@@ -501,11 +508,11 @@ class DiamondKernelArena:
                     )
                 finally:
                     self.ledger.bump(
-                        "primitive_behavior_refinement_observation_checks",
+                        _interfaces_keys.PRIMITIVE_BEHAVIOR_REFINEMENT_OBSERVATION_CHECKS,
                         work.observation_checks,
                     )
                     self.ledger.bump(
-                        "primitive_behavior_refinement_successor_checks",
+                        _interfaces_keys.PRIMITIVE_BEHAVIOR_REFINEMENT_SUCCESSOR_CHECKS,
                         work.successor_checks,
                     )
                 symmetry = (
@@ -524,7 +531,7 @@ class DiamondKernelArena:
         except BaseException:
             for owner, entries, nodes in reversed(reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
-            self.ledger.bump("primitive_behavioral_quotient_failures")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_QUOTIENT_FAILURES)
             raise
         self.ledger.register_container(
             left_owner,
@@ -549,10 +556,16 @@ class DiamondKernelArena:
                     "runtime primitive omitted its symmetry certificate"
                 )
             self._local_symmetries[handle.local_id] = symmetry
-            self.ledger.bump("primitive_behavioral_quotient_evaluations")
-            self.ledger.bump("primitive_behavioral_classes", class_count)
-            self.ledger.bump("primitive_behavioral_class_population", class_count)
-        self.ledger.bump("diamond_primitive_domain_states", left_count + right_count)
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_QUOTIENT_EVALUATIONS)
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_CLASSES, class_count)
+            self.ledger.bump(
+                _interfaces_keys.PRIMITIVE_BEHAVIORAL_CLASS_POPULATION,
+                class_count,
+            )
+        self.ledger.bump(
+            _interfaces_keys.DIAMOND_PRIMITIVE_DOMAIN_STATES,
+            left_count + right_count,
+        )
         return handle
 
     def _domain(
@@ -580,7 +593,9 @@ class DiamondKernelArena:
             state = values[cursor]
             cursor += 1
             for symbol in range(effect.blank + 1):
-                self.ledger.bump("diamond_kernel_domain_transition_evaluations")
+                self.ledger.bump(
+                    _interfaces_keys.DIAMOND_KERNEL_DOMAIN_TRANSITION_EVALUATIONS
+                )
                 target = effect.advance(side, state, symbol)
                 if target not in identities:
                     if len(values) >= MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES:
@@ -629,7 +644,7 @@ class DiamondKernelArena:
         found = self._behavioral_quotients.get(handle.local_id)
         if found is None or kernel.behavior is not found:
             raise AssertionError("runtime primitive omitted its behavioral certificate")
-        self.ledger.bump("primitive_behavioral_quotient_hits")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_QUOTIENT_HITS)
         return found
 
     def local_symmetry(self, handle: ActionProgramID) -> CertifiedLocalSymmetry:
@@ -638,7 +653,7 @@ class DiamondKernelArena:
         found = self._local_symmetries.get(handle.local_id)
         if found is None:
             raise AssertionError("runtime primitive omitted its symmetry certificate")
-        self.ledger.bump("primitive_behavioral_symmetry_hits")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_SYMMETRY_HITS)
         return found
 
     def expression(self, handle: TransferSummaryID) -> FiniteExpression:
@@ -654,9 +669,12 @@ class DiamondKernelArena:
             self.functions._resolve(bit)
         found = self._expression_ids.get(expression)
         if found is not None:
-            self.ledger.bump("finite_expression_interner_requests")
-            self.ledger.bump("finite_expression_component_checks", len(expression.bits))
-            self.ledger.bump("finite_expression_interner_hits")
+            self.ledger.bump(_interfaces_keys.FINITE_EXPRESSION_INTERNER_REQUESTS)
+            self.ledger.bump(
+                _interfaces_keys.FINITE_EXPRESSION_COMPONENT_CHECKS,
+                len(expression.bits),
+            )
+            self.ledger.bump(_interfaces_keys.FINITE_EXPRESSION_INTERNER_HITS)
             return found
         self.ledger.reserve_many(
             ((self._expression_owner, 1, 1), (self._expression_key_owner, 1, 0))
@@ -666,9 +684,12 @@ class DiamondKernelArena:
         )
         self._expressions.append(expression)
         self._expression_ids[expression] = handle
-        self.ledger.bump("finite_expression_interner_requests")
-        self.ledger.bump("finite_expression_component_checks", len(expression.bits))
-        self.ledger.bump("finite_expression_interner_evaluations")
+        self.ledger.bump(_interfaces_keys.FINITE_EXPRESSION_INTERNER_REQUESTS)
+        self.ledger.bump(
+            _interfaces_keys.FINITE_EXPRESSION_COMPONENT_CHECKS,
+            len(expression.bits),
+        )
+        self.ledger.bump(_interfaces_keys.FINITE_EXPRESSION_INTERNER_EVALUATIONS)
         return handle
 
     def constant(self, domain: int, value: int) -> TransferSummaryID:
@@ -797,12 +818,12 @@ class DiamondKernelArena:
         if tuple(node.domain for node in nodes) != domains:
             raise ValueError("primitive expression domains disagree")
         key = _KernelApplication(kernel, operation, int(side), arguments)
-        self.ledger.bump("diamond_kernel_expression_requests")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_EXPRESSION_REQUESTS)
         found = self._applications.get(key)
         if found is not None:
-            self.ledger.bump("diamond_kernel_expression_hits")
+            self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_EXPRESSION_HITS)
             return found
-        self.ledger.bump("diamond_kernel_expression_evaluations")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_EXPRESSION_EVALUATIONS)
         # A single variable input is already a bounded primitive slice. Avoid
         # constructing a complete multi-input template for constant workloads.
         nonconstant = sum(any(bit.local_id >= 2 for bit in node.bits) for node in nodes)
@@ -843,10 +864,10 @@ class DiamondKernelArena:
         constants: tuple[int | None, ...],
     ) -> _KernelTemplate:
         key = _KernelTemplateKey(kernel, operation, int(side), constants)
-        self.ledger.bump("diamond_kernel_template_requests")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TEMPLATE_REQUESTS)
         found = self._templates.get(key)
         if found is not None:
-            self.ledger.bump("diamond_kernel_template_hits")
+            self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TEMPLATE_HITS)
             return found
         parameters = tuple(
             self.variable(
@@ -866,7 +887,7 @@ class DiamondKernelArena:
         )
         template = _KernelTemplate(parameters, function)
         self._templates[key] = template
-        self.ledger.bump("diamond_kernel_template_evaluations")
+        self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TEMPLATE_EVALUATIONS)
         return template
 
     def _direct(

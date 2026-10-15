@@ -58,10 +58,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import comb, factorial, gcd, isqrt
 
-from number_compiler.arithmetic.fields.radix import bit_width
-from number_compiler.sequences.power_numbers.factor_morphism import (
+from devtools.verification.special_factor_reference import (
     batched_special_factor_witness,
 )
+from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.sequences.power_numbers.numbers import (
     fermat_number,
     mersenne_number,

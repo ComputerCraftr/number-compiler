@@ -22,6 +22,7 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.reverse_add.boundary_window_store import (
     BoundaryOperation,
@@ -192,7 +193,7 @@ class FiniteBoundaryWindow:
         carry = 0
         if self.operation == "reverse-add":
             self.relation_store.ledger.bump(
-                "reverse_boundary_window_source_inner_scan_reads",
+                _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_SOURCE_INNER_SCAN_READS,
                 2 * (len(source_digits_lsd) - self.digits),
             )
             for index in range(len(source_digits_lsd) - self.digits):
@@ -202,7 +203,7 @@ class FiniteBoundaryWindow:
         # In 2*reverse, the reversed source is consumed from the original MSD.
         # The low K output digits and the unknown middle determine this carry.
         self.relation_store.ledger.bump(
-            "reverse_boundary_window_source_inner_scan_reads",
+            _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_SOURCE_INNER_SCAN_READS,
             len(source_digits_lsd) - self.digits,
         )
         for digit in reversed(source_digits_lsd[self.digits :]):
@@ -353,7 +354,9 @@ class FiniteBoundaryWindow:
         max_operations = require_integer(max_operations, "boundary operation limit", 0)
         self._operation_limit = max_operations
         self._call_operations = 0
-        self.relation_store.ledger.bump("reverse_boundary_window_queries")
+        self.relation_store.ledger.bump(
+            _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_QUERIES
+        )
         result = tiles
         try:
             if initial_inner is not None:
@@ -504,12 +507,12 @@ class FiniteBoundaryWindow:
 
     def _cache_get(self, key: _RelationKey) -> frozenset[WindowTile] | None:
         memo = self.relation_store.memo
-        memo.ledger.bump("reverse_boundary_window_relation_lookups")
+        memo.ledger.bump(_reverse_add_keys.REVERSE_BOUNDARY_WINDOW_RELATION_LOOKUPS)
         try:
             record = memo[key]
         except KeyError:
             self.cache_misses += 1
-            memo.ledger.bump("reverse_boundary_window_relation_misses")
+            memo.ledger.bump(_reverse_add_keys.REVERSE_BOUNDARY_WINDOW_RELATION_MISSES)
             return None
         if (
             type(record) is not BoundaryRelationRecord
@@ -530,18 +533,20 @@ class FiniteBoundaryWindow:
             raise ValueError("cached boundary relation is malformed")
         result = record.outcomes
         self.cache_hits += 1
-        memo.ledger.bump("reverse_boundary_window_relation_hits")
+        memo.ledger.bump(_reverse_add_keys.REVERSE_BOUNDARY_WINDOW_RELATION_HITS)
         return result
 
     def _cache_store(self, key: _RelationKey, value: frozenset[WindowTile]) -> None:
         if self.relation_store.publish(key, value):
             self.relation_store.ledger.bump(
-                "reverse_boundary_window_relation_publications"
+                _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_RELATION_PUBLICATIONS
             )
 
     def _charge_composition(self) -> None:
         self._charge_operation()
-        self.relation_store.ledger.bump("reverse_boundary_window_compositions")
+        self.relation_store.ledger.bump(
+            _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_COMPOSITIONS
+        )
 
     def _charge_operation(self) -> None:
         self._call_operations += 1
@@ -743,15 +748,20 @@ class ReverseBoundaryWindowObserver:
             raise ValueError("boundary observer source or index binding changed")
         cached = self._cached_record()
         if cached is not None:
-            self.ledger.bump("reverse_boundary_window_observation_cache_hits")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_OBSERVATION_CACHE_HITS
+            )
             return cached.observation
-        self.ledger.bump("reverse_boundary_window_observation_cache_misses")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_OBSERVATION_CACHE_MISSES
+        )
         source_ports = None
         if self.source_workspace is None:
             source_digits = digits_lsd(seed, 10)
             exact_source = None
             self.ledger.bump(
-                "reverse_boundary_window_source_digit_decodes", len(source_digits)
+                _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_SOURCE_DIGIT_DECODES,
+                len(source_digits),
             )
         else:
             exact_source = self.source_workspace.actions.source(
@@ -776,7 +786,8 @@ class ReverseBoundaryWindowObserver:
             engines.append(engine)
             try:
                 self.ledger.bump(
-                    "reverse_boundary_window_source_digit_reads", 2 * window_digits
+                    _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_SOURCE_DIGIT_READS,
+                    2 * window_digits,
                 )
                 initial = engine._source_tile_from_validated_digits(source_digits)
                 source_carry = None

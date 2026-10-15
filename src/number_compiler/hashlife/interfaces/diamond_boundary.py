@@ -25,6 +25,9 @@ from number_compiler.hashlife.actions.diamond_actions import (
     TemporalActionArena,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,12 +509,15 @@ class BoundaryActionArena:
             # Slots in distinct algorithm work containers, including both
             # frontiers while a reduction level is being constructed.
             peak = self.ledger.counters.get(
-                "boundary_function_workspace_peak", 0
-            ) + counters.get("boundary_function_workspace_peak", 0)
+                _interfaces_keys.BOUNDARY_FUNCTION_WORKSPACE_PEAK, 0
+            ) + counters.get(_interfaces_keys.BOUNDARY_FUNCTION_WORKSPACE_PEAK, 0)
             live = (
                 frontier + next_frontier + len(new_nodes) + len(staged) + len(outputs)
             )
-            measure("boundary_function_workspace_peak", max(0, live - peak))
+            measure(
+                _interfaces_keys.BOUNDARY_FUNCTION_WORKSPACE_PEAK,
+                max(0, live - peak),
+            )
 
         nodes: list[BoundaryActionID] = []
         for value in values:
@@ -581,7 +587,7 @@ class BoundaryActionArena:
         while node.kind == "decision":
             if node.low is None or node.high is None:
                 raise AssertionError("incomplete finite decision")
-            self.ledger.bump("boundary_decision_visits")
+            self.ledger.bump(_interfaces_keys.BOUNDARY_DECISION_VISITS)
             action = node.high if (state.literal >> node.bit) & 1 else node.low
             node = self.action(action)
         if node.kind == "invalid":

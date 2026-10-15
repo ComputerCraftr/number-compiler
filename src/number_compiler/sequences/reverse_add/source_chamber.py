@@ -11,6 +11,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
     skew_normalized_digit,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
@@ -67,7 +68,7 @@ def validate_same_carry_chamber(
 def _validate_ports(ports: SourceCarryPorts, steps: int) -> SameCarryChamberCertificate:
     source, ledger = ports.source, ports.ledger
     if ports.terminal:
-        ledger.bump("reverse_source_chamber_rejections")
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_REJECTIONS)
         raise SameCarryChamberRejected("original source leaves the no-growth chamber")
     exponent = steps - 1
     all_zero = True
@@ -85,16 +86,16 @@ def _validate_ports(ports: SourceCarryPorts, steps: int) -> SameCarryChamberCert
             try:
                 endpoint = _endpoint_pair(pair, beta, exponent, 2 * source.base - 2)
             except SameCarryChamberRejected:
-                ledger.bump("reverse_source_chamber_rejections")
+                ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_REJECTIONS)
                 raise
             all_zero &= pair + beta == 0
             if int(endpoint + left_in >= source.base) != left_out:
-                ledger.bump("reverse_source_chamber_rejections")
+                ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_REJECTIONS)
                 raise SameCarryChamberRejected(
                     "powered pair changes an original source carry port"
                 )
-            ledger.bump("reverse_source_chamber_guard_coordinates")
-    ledger.bump("reverse_source_chamber_admissions")
+            ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_GUARD_COORDINATES)
+    ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_ADMISSIONS)
     return SameCarryChamberCertificate(steps, ports.width, all_zero)
 
 
@@ -125,13 +126,13 @@ def _same_carry_digit(
     if source.base == 10:
         domain = int(endpoint >= 9) + int(endpoint > 9)
         digit = skew_normalized_digit(domain, endpoint % 9, left_in)
-        ledger.bump("reverse_source_mod9_digit_reconstructions")
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_MOD9_DIGIT_RECONSTRUCTIONS)
     else:
         digit = endpoint + left_in - source.base * left_out
-        ledger.bump("reverse_source_radix_digit_reconstructions")
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_RADIX_DIGIT_RECONSTRUCTIONS)
     if not 0 <= digit < source.base:
         raise ValueError("same-carry chamber emitted a non-radix digit")
-    ledger.bump("reverse_source_chamber_projection_coordinates")
+    ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CHAMBER_PROJECTION_COORDINATES)
     return digit
 
 

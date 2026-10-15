@@ -8,7 +8,8 @@ from typing import TypeAlias
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 from number_compiler.hashlife.execution.dyadic_return_transport import _low_bits
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
 )
@@ -55,9 +56,9 @@ def _balanced_saturated_audit(
                 odd += bit
                 delta += law.weights[bit]
                 minimum = min(minimum, delta)
-                ledger.bump("dyadic_payload_audit_branch_steps")
+                ledger.bump(_resources_keys.DYADIC_PAYLOAD_AUDIT_BRANCH_STEPS)
                 ledger.bump(
-                    "dyadic_payload_audit_operand_bits",
+                    _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                     state.bit_length()
                     + transfer.upper.bit_length()
                     + abs(transfer.offset).bit_length()
@@ -67,7 +68,7 @@ def _balanced_saturated_audit(
         else:
             stack.append((span, residue, None))
             ledger.bump(
-                "dyadic_payload_audit_operand_bits",
+                _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                 span.bit_length() + residue.bit_length(),
             )
             span = 1 << ((span - 1).bit_length() - 1)
@@ -79,7 +80,7 @@ def _balanced_saturated_audit(
             if left is None:
                 stack.append((parent_span, parent_residue, result))
                 ledger.bump(
-                    "dyadic_payload_audit_operand_bits",
+                    _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                     parent_span.bit_length()
                     + parent_residue.bit_length()
                     + sum(
@@ -99,9 +100,9 @@ def _balanced_saturated_audit(
                 break
             right = result
             transfer = left[0].then(right[0], multiply=mul, add=add)
-            ledger.bump("dyadic_payload_audit_compositions")
+            ledger.bump(_resources_keys.DYADIC_PAYLOAD_AUDIT_COMPOSITIONS)
             ledger.bump(
-                "dyadic_payload_audit_operand_bits",
+                _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                 sum(
                     abs(value).bit_length()
                     for value in (
@@ -151,7 +152,7 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                 and table.nodes_per_entry == 3
                 and ledger.is_factory_container(table)
                 and table_inventory.name == "collatz-physical-d8-local-table"
-                and table_inventory.scope == "ENGINE_OWNED"
+                and table_inventory.scope == ResourceScope.ENGINE_OWNED
                 and table_inventory.accounting_delta == 0
                 and not table_inventory.disposed
                 and table_inventory.entries == len(table)
@@ -176,7 +177,9 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                         ones += bit
                         low = (3 * low + 1) // 2 if bit else low // 2
                         high = (3 * high + 1) // 2 if high & 1 else high // 2
-                    ledger.bump("collatz_d8_payload_audit_local_symbols", 16)
+                    ledger.bump(
+                        _resources_keys.COLLATZ_D8_PAYLOAD_AUDIT_LOCAL_SYMBOLS, 16
+                    )
                     if record != (ones, low) or high - low != 3**ones:
                         table_valid = False
                         break
@@ -204,7 +207,7 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                 and table.nodes_per_entry == 24
                 and ledger.is_factory_container(table)
                 and table_inventory.name == "collatz-physical-d8-width-prefix-table"
-                and table_inventory.scope == "ENGINE_OWNED"
+                and table_inventory.scope == ResourceScope.ENGINE_OWNED
                 and table_inventory.accounting_delta == 0
                 and not table_inventory.disposed
                 and table_inventory.entries == len(table)
@@ -252,7 +255,9 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                             low //= 2
                             high //= 2
                         expected.append((multiplier, offset))
-                    ledger.bump("collatz_d8_payload_audit_local_symbols", 16)
+                    ledger.bump(
+                        _resources_keys.COLLATZ_D8_PAYLOAD_AUDIT_LOCAL_SYMBOLS, 16
+                    )
                     if (
                         prefixes != tuple(expected)
                         or odd_mask.bit_count() != ones

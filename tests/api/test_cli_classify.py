@@ -37,14 +37,14 @@ def test_classify_admitted_clock_avoids_recurrence_and_full_filtration(
                 str(parameter),
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "prime" and row["decided"]
     assert "classical_ceiling_allowed" not in row
     assert row["certificate"]["specialization_raw_squarings"] == 0
@@ -68,14 +68,14 @@ def test_classify_unadmitted_clock_returns_unknown_without_fallback(
                 str(parameter),
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "unknown" and not row["decided"]
     assert row["certificate"]["specialization_raw_squarings"] == 0
 
@@ -90,7 +90,15 @@ def test_removed_classical_cli_options_are_rejected(
     monkeypatch.setattr(
         CanonicalSequenceCompiler, "resolve_special_theorem", _forbidden
     )
-    args = ["fermat", "--nth", "4", "--no-value", "--info", "primality", option]
+    args = [
+        "fermat",
+        "--nth",
+        "4",
+        "--no-value",
+        "--info",
+        "number-theory.primality",
+        option,
+    ]
     if option == "--max-classical-squarings":
         args.append("100")
     with pytest.raises(SystemExit) as exc:
@@ -114,14 +122,14 @@ def test_composite_exponent_and_small_forms_remain_decidable(
                     parameter,
                     "--no-value",
                     "--info",
-                    "primality",
+                    "number-theory.primality",
                     "--format",
                     "json",
                 ]
             )
             == 0
         )
-        row = json.loads(capsys.readouterr().out)["info"]["primality"]
+        row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
         assert row["status"] == status
 
 
@@ -145,7 +153,7 @@ def test_candidate_budget_and_domain_rejected_before_theorem_work(
                     args[1],
                     "--no-value",
                     "--info",
-                    "primality",
+                    "number-theory.primality",
                     *args[2:],
                 ]
             )
@@ -165,16 +173,16 @@ def test_factor_output_and_extra_work_are_explicit(
                 "131",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["factor_witness"] == 263
     assert row["etale_ring_multiplications"] == 261
     assert row["certificate"]["specialization_raw_squarings"] == 0
@@ -186,9 +194,9 @@ def test_factor_output_and_extra_work_are_explicit(
                 "11",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--format",
                 "json",
             ]
@@ -196,8 +204,8 @@ def test_factor_output_and_extra_work_are_explicit(
         == 0
     )
     info = json.loads(capsys.readouterr().out)["info"]
-    assert info["primality"]["status"] == "composite"
-    assert info["factor"]["factor_witness"] == 23
+    assert info["number-theory.primality"]["status"] == "composite"
+    assert info["number-theory.factor"]["factor_witness"] == 23
     assert (
         main(
             [
@@ -206,9 +214,9 @@ def test_factor_output_and_extra_work_are_explicit(
                 "12",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--format",
                 "json",
             ]
@@ -216,8 +224,8 @@ def test_factor_output_and_extra_work_are_explicit(
         == 0
     )
     info = json.loads(capsys.readouterr().out)["info"]
-    assert info["primality"]["status"] == "composite"
-    assert info["factor"]["factor_expression"] == "2^2-1"
+    assert info["number-theory.primality"]["status"] == "composite"
+    assert info["number-theory.factor"]["factor_expression"] == "2^2-1"
 
 
 def test_no_factor_request_leaves_missing_prime_bit_unresolved(
@@ -235,14 +243,14 @@ def test_no_factor_request_leaves_missing_prime_bit_unresolved(
                 "131",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "unknown"
     assert row["factor_witness"] is None
     assert row["etale_ring_multiplications"] == 0
@@ -259,15 +267,15 @@ def test_factor_prime_control_does_not_become_a_prime_certificate(
                 "13",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "unknown" and row["factor_witness"] is None
     assert row["etale_ring_multiplications"] > 0

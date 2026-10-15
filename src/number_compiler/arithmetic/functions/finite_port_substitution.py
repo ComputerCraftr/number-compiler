@@ -18,6 +18,9 @@ from number_compiler.arithmetic.functions.finite_port_action import (
     _Decision,
     _DecisionIndexKey,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_port_action import (
@@ -119,7 +122,7 @@ class FinitePortSubstitution:
         # directly instead of re-entering its public sequence facade millions
         # of times during exhaustive proof compilation.
         nodes = arena._nodes._data
-        self.ledger.bump("finite_port_substitution_requests")
+        self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_REQUESTS)
         # Constants and identity substitutions require no memo allocation.
         while root >= 2:
             node = nodes[root]
@@ -127,11 +130,11 @@ class FinitePortSubstitution:
             condition = substitutions.get(node.variable)
             if condition is None or condition.local_id >= 2:
                 break
-            self.ledger.bump("finite_port_substitution_constant_prunes")
-            self.ledger.bump("finite_port_substitution_visits")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_CONSTANT_PRUNES)
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_VISITS)
             root = node.high if condition.local_id else node.low
         if root < 2 or not substitutions:
-            self.ledger.bump("finite_port_substitution_direct_results")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_DIRECT_RESULTS)
             return arena._handle(root)
         local_support: dict[int, frozenset[PortVariable]] = {
             0: frozenset(),
@@ -146,10 +149,14 @@ class FinitePortSubstitution:
             while frames:
                 self._peak("finite_port_substitution_support_frames_peak", len(frames))
                 current, ready = frames.pop()
-                self.ledger.bump("finite_port_substitution_support_frame_pops")
+                self.ledger.bump(
+                    _functions_keys.FINITE_PORT_SUBSTITUTION_SUPPORT_FRAME_POPS
+                )
                 if current in local_support:
                     continue
-                self.ledger.bump("finite_port_substitution_support_visits")
+                self.ledger.bump(
+                    _functions_keys.FINITE_PORT_SUBSTITUTION_SUPPORT_VISITS
+                )
                 decision = nodes[current]
                 assert decision.variable is not None
                 if not ready:
@@ -192,7 +199,7 @@ class FinitePortSubstitution:
                 _PortIndexComponent(variable, replacement_handle.local_id)
             )
         if not components:
-            self.ledger.bump("finite_port_substitution_direct_results")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_DIRECT_RESULTS)
             return arena._handle(root)
         self._peak("finite_port_substitution_components_peak", len(components))
         key = _SubstitutionIndexKey(root, tuple(components))
@@ -200,7 +207,7 @@ class FinitePortSubstitution:
         if cached is not None:
             if type(cached) is not int or not 0 <= cached < len(nodes):
                 raise ValueError("cached substitution has an invalid private identity")
-            self.ledger.bump("finite_port_substitution_cache_hits")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_CACHE_HITS)
             return arena._handle(cached)
         # Every nontrivial cold query needs a root memo slot, even if its final
         # function aliases an existing node. Reject an exhausted entry budget
@@ -209,11 +216,13 @@ class FinitePortSubstitution:
             self.ledger.max_cache_entries is not None
             and self.ledger.entries >= self.ledger.max_cache_entries
         ):
-            self.ledger.bump("finite_port_substitution_preflight_rejections")
+            self.ledger.bump(
+                _functions_keys.FINITE_PORT_SUBSTITUTION_PREFLIGHT_REJECTIONS
+            )
             raise BlockContextBudgetExceeded(
                 "finite port substitution memo budget exhausted"
             )
-        self.ledger.bump("finite_port_substitution_evaluations")
+        self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_EVALUATIONS)
         replacements = {part.variable: part.function for part in components}
         self._peak("finite_port_substitution_replacements_peak", len(replacements))
         initial: _State = (
@@ -241,7 +250,9 @@ class FinitePortSubstitution:
                 value = conditions[node.variable]
                 if value not in (0, 1):
                     break
-                self.ledger.bump("finite_port_substitution_constant_prunes")
+                self.ledger.bump(
+                    _functions_keys.FINITE_PORT_SUBSTITUTION_CONSTANT_PRUNES
+                )
                 index = node.high if value else node.low
             if index < 2:
                 return index, ()
@@ -252,22 +263,24 @@ class FinitePortSubstitution:
 
         def intern(variable: PortVariable, low: int, high: int) -> int:
             if low == high:
-                self.ledger.bump("finite_port_substitution_late_aliases")
+                self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_LATE_ALIASES)
                 return low
             if low >= 0 and high >= 0:
                 found = arena._keys.get(_DecisionIndexKey(variable, low, high))
                 if found is not None:
-                    self.ledger.bump("finite_port_substitution_late_aliases")
+                    self.ledger.bump(
+                        _functions_keys.FINITE_PORT_SUBSTITUTION_LATE_ALIASES
+                    )
                     return found
             stage_key = variable, low, high
             found_index = stage_keys.get(stage_key)
             if found_index is not None:
-                self.ledger.bump("finite_port_substitution_late_aliases")
+                self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_LATE_ALIASES)
                 return found_index
             staged.append(stage_key)
             index = -len(staged)
             stage_keys[stage_key] = index
-            self.ledger.bump("finite_port_substitution_staged_nodes")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_STAGED_NODES)
             return index
 
         while pending:
@@ -288,7 +301,7 @@ class FinitePortSubstitution:
                 results_input_count + splits_input_count,
             )
             state, ready = pending.pop()
-            self.ledger.bump("finite_port_substitution_visits")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_VISITS)
             if state in results:
                 continue
             index, inputs = state
@@ -304,7 +317,7 @@ class FinitePortSubstitution:
                     variable, results[lower_state], results[upper_state]
                 )
                 continue
-            self.ledger.bump("finite_port_substitution_cofactor_tasks")
+            self.ledger.bump(_functions_keys.FINITE_PORT_SUBSTITUTION_COFACTOR_TASKS)
             candidates = []
             for original, replacement in inputs:
                 top = original if replacement == -1 else nodes[replacement].variable
@@ -352,7 +365,9 @@ class FinitePortSubstitution:
         while scan:
             self._peak("finite_port_substitution_publication_scan_peak", len(scan))
             self._peak("finite_port_substitution_reachable_peak", len(reachable))
-            self.ledger.bump("finite_port_substitution_publication_visits")
+            self.ledger.bump(
+                _functions_keys.FINITE_PORT_SUBSTITUTION_PUBLICATION_VISITS
+            )
             index = scan.pop()
             if index >= 0 or index in reachable:
                 continue
@@ -372,7 +387,9 @@ class FinitePortSubstitution:
                 )
             )
         except BlockContextBudgetExceeded:
-            self.ledger.bump("finite_port_substitution_publication_rejections")
+            self.ledger.bump(
+                _functions_keys.FINITE_PORT_SUBSTITUTION_PUBLICATION_REJECTIONS
+            )
             raise
         published: dict[int, int] = {}
         for offset, (variable, low, high) in enumerate(staged):
@@ -390,8 +407,12 @@ class FinitePortSubstitution:
         if support_new:
             self.supports[root] = ordered
         self.memo[key] = output
-        self.ledger.bump("finite_port_substitution_published_nodes", count)
         self.ledger.bump(
-            "finite_port_substitution_discarded_nodes", len(staged) - count
+            _functions_keys.FINITE_PORT_SUBSTITUTION_PUBLISHED_NODES,
+            count,
+        )
+        self.ledger.bump(
+            _functions_keys.FINITE_PORT_SUBSTITUTION_DISCARDED_NODES,
+            len(staged) - count,
         )
         return arena._handle(output)

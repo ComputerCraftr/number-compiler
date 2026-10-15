@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import fields
 from typing import TypeVar, cast
 
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.metric_records import (
     HashLifeProjectionMetrics,
     LedgerMetrics,
@@ -34,7 +35,7 @@ _ALIASES = {
     "hashlife_finite_action_conjugate_alias_hits": "finite_action_conjugate_alias_hits",
     "hashlife_peak_live_tile_roots": "peak_live_tile_roots",
     "hashlife_tile_observations": "tile_observations",
-    "hashlife_direct_powered_point_queries": "direct_powered_point_queries",
+    "hashlife_direct_powered_point_queries": _collatz_keys.DIRECT_POWERED_POINT_QUERIES,
     "hashlife_high_level_tile_misses": "high_level_tile_misses",
 }
 
@@ -75,8 +76,8 @@ _RETIRED_COUNTERS = frozenset(
 # but do not duplicate columns on the engine-wide metric record.
 _WORK_COUNTER_FIELDS = _RETIRED_COUNTERS | frozenset(
     (
-        "collatz_physical_factored_output_compilations",
-        "collatz_physical_joint_output_tables_elided",
+        _collatz_keys.COLLATZ_PHYSICAL_FACTORED_OUTPUT_COMPILATIONS,
+        _collatz_keys.COLLATZ_PHYSICAL_JOINT_OUTPUT_TABLES_ELIDED,
     )
 )
 

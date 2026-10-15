@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 from array import array
 from collections.abc import Callable, MutableMapping
 from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts import semantic_identity
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide, _effect_key
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
@@ -71,14 +71,18 @@ def test_primitive_semantics_are_deeply_cacheless_and_cannot_be_warmed_or_mutate
 def test_forced_digest_collision_does_not_alias_finite_or_composed_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-
-    class Collision:
-        def hexdigest(self) -> str:
-            return "constant digest"
-
-    monkeypatch.setattr(hashlib, "sha256", lambda *args: Collision())
+    monkeypatch.setattr(
+        semantic_identity,
+        "_tuple_digest",
+        lambda _value, _children: b"same digest for every tuple",
+    )
     one, two, equal = _finite(), _finite(flip=True), _finite()
-    assert one.semantic_digest == two.semantic_digest
+    one_identity = one.canonical_key[1]
+    two_identity = two.canonical_key[1]
+    assert isinstance(one_identity, SemanticIdentity)
+    assert isinstance(two_identity, SemanticIdentity)
+    assert one_identity.digest == two_identity.digest
+    assert one_identity.behavior != two_identity.behavior
     assert one.canonical_key != two.canonical_key
     assert one.canonical_key == equal.canonical_key
     compiler = LazyCompiler(ResourceLedger())

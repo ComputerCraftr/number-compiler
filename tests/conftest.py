@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
+from types import MappingProxyType
 
 import pytest
 
-pytest_plugins = ("devtools.checks.pytest_policy",)
+pytest_plugins = ("devtools.checks.pytest_policy", "tests.support.production_ast")
 
+from devtools.checks import isabelle_syntax
+from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.test_run_evidence import (
     EXECUTION_MODE,
     GIT_COMMIT_AFTER,
@@ -27,15 +30,42 @@ from devtools.checks.test_run_evidence import (
     classify_execution_mode,
 )
 from devtools.git_source import GitSource, git_source
-from devtools.paths import repository_root
+from devtools.paths import isabelle_root, repository_root
 from number_compiler.resources.process_cache import (
     CacheLease,
     ImmutableValue,
     ProcessCache,
 )
+from tests.support.isabelle_proof_graph import RepositoryProofGraph
 
 _ROOT = repository_root()
 _STAMP = pytest.StashKey[GitSource]()
+
+
+@pytest.fixture(scope="session")
+def repository_sessions() -> Mapping[str, isabelle_syntax.Session]:
+    """Parse the immutable repository session registry once for source tests."""
+    return MappingProxyType(
+        {session.name: session for session in discover_sessions(isabelle_root())}
+    )
+
+
+@pytest.fixture(scope="session")
+def repository_proof_graph(
+    repository_sessions: Mapping[str, isabelle_syntax.Session],
+) -> RepositoryProofGraph:
+    """Share parsed repository theory headers; mutation tests use private roots."""
+    root = isabelle_root()
+    headers = {
+        path: isabelle_syntax.parse_theory_header(path.read_text(), path)
+        for path in root.rglob("*.thy")
+    }
+    theory_imports = {theory: imports for theory, imports in headers.values()}
+    return RepositoryProofGraph(
+        repository_sessions,
+        MappingProxyType(headers),
+        MappingProxyType(theory_imports),
+    )
 
 
 @pytest.fixture

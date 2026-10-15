@@ -11,6 +11,7 @@ from number_compiler.sequences.power_numbers.frobenius_chunk import (
 )
 from number_compiler.sequences.power_numbers.germ import (
     SpecialGermConstraintState,
+    SpecialGermPlan,
     SpecialGermTransfer,
     build_special_germ_plan,
     compose_support_packets,
@@ -134,7 +135,10 @@ def test_downstream_branch_mask_is_pulled_back_through_adjacent_germ_transport()
     assert combined.constraints.mask.bits == 0b01
     assert combined.constraints.checks == 1
     assert combined.constraints.pullbacks == 2
-    assert combined.probe().status == "ALL_PASS"
+    abstract = combined.constraints.result(combined.spec)
+    assert abstract.status == "ALL_PASS" and not abstract.candidate_derived
+    probe = combined.probe()
+    assert probe.status == "UNKNOWN" and not probe.candidate_derived
     assert combined.factor_enumeration == 0 and combined.one_level_replays == 0
 
 
@@ -163,8 +167,75 @@ def test_candidate_support_ideals_intersect_inside_constrained_germ_without_slot
     assert combined.constraints.checks == 3
     assert combined.constraints.pullbacks == 5
     row = combined.probe()
-    assert row.status == "SPLIT" and row.gcd_packet == 17
+    abstract = combined.constraints.result(combined.spec)
+    assert abstract.status == "SPLIT" and abstract.gcd_packet == 17
+    assert not abstract.candidate_derived
+    assert row.status == "UNKNOWN" and row.gcd_packet is None
+    assert not row.candidate_derived
     assert combined.support_observations == 0
+
+
+def test_plan_probe_rejects_caller_masks_and_unbound_defects() -> None:
+    modulus = (1 << 32) + 1
+    spec = SpecialFrobeniusChunkSpec("fermat", 5, 1, 1, 10, modulus.bit_length())
+    transfer = SpecialGermTransfer.atom("fermat").power_block(spec.span)
+
+    for bits, abstract_status in ((0b01, "ALL_PASS"), (0b10, "ALL_FAIL")):
+        constraints = SpecialGermConstraintState.from_mask(
+            SpecialBranchMask(bits),
+            method="caller-geometry-label",
+            candidate_derived=True,
+        )
+        plan = SpecialGermPlan(spec, transfer, constraints)
+        abstract = plan.constraints.result(spec)
+        assert abstract.status == abstract_status
+        assert not abstract.candidate_derived
+        result = plan.probe()
+        assert result.status == "UNKNOWN"
+        assert not result.candidate_derived
+
+    # Raw zero and unit residues have only abstract support meanings, even
+    # when the caller labels them candidate-derived at construction time.
+    for defect, abstract_status in ((0, "ALL_PASS"), (1, "ALL_FAIL")):
+        plan = build_special_germ_plan(spec).pullback_defect(
+            modulus,
+            defect,
+            method="caller-claimed-terminal-defect",
+            candidate_derived=True,
+        )
+        abstract = plan.constraints.result(spec)
+        assert abstract.status == abstract_status
+        assert not abstract.candidate_derived
+        result = plan.probe()
+        assert result.status == "UNKNOWN"
+        assert not result.candidate_derived
+
+    mismatched = build_special_germ_plan(spec).pullback_defect(
+        15, 3, method="proper-factor-of-the-wrong-modulus", candidate_derived=True
+    )
+    abstract = mismatched.constraints.result(spec)
+    assert abstract.status == "SPLIT" and abstract.gcd_packet == 3
+    assert not abstract.candidate_derived
+    assert mismatched.probe().status == "UNKNOWN"
+
+
+def test_plan_probe_accepts_verified_candidate_factor_over_conflicting_mask() -> None:
+    modulus = (1 << 32) + 1
+    spec = SpecialFrobeniusChunkSpec("fermat", 5, 1, 1, 10, modulus.bit_length())
+    plan = build_special_germ_plan(spec).pullback_defect(
+        modulus, 641, method="untrusted-factor-label", candidate_derived=False
+    )
+    # The checked gcd is actual source-bound evidence; an arbitrary contrary
+    # mask and the caller-controlled flag cannot suppress or relabel it.
+    plan = plan.pullback_mask(
+        SpecialBranchMask(0b01),
+        method="caller-claims-prime",
+        candidate_derived=True,
+    )
+    result = plan.probe()
+    assert result.status == "SPLIT"
+    assert result.gcd_packet == 641
+    assert result.candidate_derived
 
 
 def test_constraint_state_rank_does_not_grow_with_repeated_mask_pullback() -> None:

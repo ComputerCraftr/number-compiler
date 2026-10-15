@@ -34,6 +34,10 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,12 +132,12 @@ class HigherBimachineRuntime:
         self.ledger.reserve(self._operation_owner, entries=1)
         self._operations[task] = result
         built[task] = result
-        self.ledger.bump("opaque_higher_operation_publications")
+        self.ledger.bump(_execution_keys.OPAQUE_HIGHER_OPERATION_PUBLICATIONS)
 
     def _operation(self, root: _Operation) -> HigherExpressionID:
         found = self._operations.get(root)
         if found is not None:
-            self.ledger.bump("higher_operation_early_hits")
+            self.ledger.bump(_execution_keys.HIGHER_OPERATION_EARLY_HITS)
             return found
         published: dict[_Operation, HigherExpressionID] = {}
         if isinstance(root, _Initial):
@@ -201,7 +205,7 @@ class HigherBimachineRuntime:
         root = _Transfer(action, source, side)
         found = self._transfers.get(root)
         if found is not None:
-            self.ledger.bump("higher_spatial_transfer_early_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SPATIAL_TRANSFER_EARLY_HITS)
             return found
         stack: list[tuple[SourceCellID, bool]] = [(source, False)]
         built: dict[int, HigherFunctionID] = {}
@@ -241,7 +245,7 @@ class HigherBimachineRuntime:
             self.ledger.reserve(self._transfer_owner, entries=1)
             self._transfers[key] = result
             built[current.local_id] = result
-            self.ledger.bump("higher_spatial_transfer_publications")
+            self.ledger.bump(_execution_keys.HIGHER_SPATIAL_TRANSFER_PUBLICATIONS)
         return built[source.local_id]
 
     def _range_cells(
@@ -255,7 +259,7 @@ class HigherBimachineRuntime:
         )
 
         result = range_cells(self.sources, source, start, end)
-        self.ledger.bump("higher_range_dyadic_cells", len(result))
+        self.ledger.bump(_execution_keys.HIGHER_RANGE_DYADIC_CELLS, len(result))
         return result
 
     def _summary_boundary(
@@ -329,8 +333,8 @@ class HigherBimachineRuntime:
         source: SourceBindingID,
         coordinate: int,
     ) -> int:
-        self.ledger.bump("higher_point_observations")
-        self.ledger.bump("higher_observation_fallback")
+        self.ledger.bump(_execution_keys.HIGHER_POINT_OBSERVATIONS)
+        self.ledger.bump(_execution_keys.HIGHER_OBSERVATION_FALLBACK)
         extent = self.sources.binding_extent(source)
         if type(coordinate) is not int or not 0 <= coordinate < extent:
             raise IndexError(coordinate)
@@ -384,7 +388,7 @@ class HigherBimachineRuntime:
         value = self.semantics.evaluate(output)
         if type(value) is not int:
             raise AssertionError("higher output did not reduce to a scalar symbol")
-        self.ledger.bump("output_morphism_visits")
+        self.ledger.bump(_shared_keys.OUTPUT_MORPHISM_VISITS)
         return value
 
     def _runtime_boundary(
@@ -429,7 +433,7 @@ class HigherBimachineRuntime:
         coordinate: int,
     ) -> int:
         """Observe a point through canonical K summaries, without syntax replay."""
-        self.ledger.bump("higher_point_observations")
+        self.ledger.bump(_execution_keys.HIGHER_POINT_OBSERVATIONS)
         extent = self.sources.binding_extent(source)
         if type(coordinate) is not int or not 0 <= coordinate < extent:
             raise IndexError(coordinate)
@@ -445,7 +449,7 @@ class HigherBimachineRuntime:
         )
         if type(result) is not int:
             raise AssertionError("structural higher output did not reduce to a symbol")
-        self.ledger.bump("output_morphism_visits")
+        self.ledger.bump(_shared_keys.OUTPUT_MORPHISM_VISITS)
         return result
 
     def width_structural(
@@ -454,7 +458,7 @@ class HigherBimachineRuntime:
         source: SourceBindingID,
     ) -> int:
         """Find the active extent through logarithmic structural observations."""
-        self.ledger.bump("higher_width_observations")
+        self.ledger.bump(_execution_keys.HIGHER_WIDTH_OBSERVATIONS)
         extent = self.sources.binding_extent(source)
         _base, blank = self.schema.alphabet(action)
         low, high = 0, extent
@@ -464,12 +468,12 @@ class HigherBimachineRuntime:
                 high = middle
             else:
                 low = middle + 1
-            self.ledger.bump("spatial_observation_descents")
+            self.ledger.bump(_execution_keys.SPATIAL_OBSERVATION_DESCENTS)
         return low
 
     def width(self, action: FieldCellActionID, source: SourceBindingID) -> int:
-        self.ledger.bump("higher_width_observations")
-        self.ledger.bump("higher_observation_fallback")
+        self.ledger.bump(_execution_keys.HIGHER_WIDTH_OBSERVATIONS)
+        self.ledger.bump(_execution_keys.HIGHER_OBSERVATION_FALLBACK)
         extent = self.sources.binding_extent(source)
         _base, blank = self.schema.alphabet(action)
         low, high = 0, extent
@@ -479,7 +483,7 @@ class HigherBimachineRuntime:
                 high = middle
             else:
                 low = middle + 1
-            self.ledger.bump("spatial_observation_descents")
+            self.ledger.bump(_execution_keys.SPATIAL_OBSERVATION_DESCENTS)
         return low
 
 

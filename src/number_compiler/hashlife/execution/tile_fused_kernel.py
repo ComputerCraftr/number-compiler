@@ -42,6 +42,9 @@ from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import LedgerDict
 
 
@@ -158,14 +161,14 @@ def leaf_product(
         blank = self._leaf_records.get(found)
         if type(blank) is not int or blank != kernel.blank:
             raise ValueError("leaf product lost its reverse admission")
-        self.ledger.bump("tile_leaf_product_requests")
-        self.ledger.bump("tile_leaf_product_early_hits")
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EARLY_HITS)
         return found
-    self.ledger.bump("tile_leaf_product_requests")
+    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
     # Reserve both bindings before semantic construction. A zero/exhausted
     # cache budget must not execute the kernel and reject publication later.
     self.ledger.reserve(self._leaf_owner, entries=2)
-    self.ledger.bump("tile_leaf_product_evaluations")
+    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EVALUATIONS)
     interface: LocalInterfaceID | None = None
     added_reverse = False
     added_key = False
@@ -192,7 +195,7 @@ def leaf_product(
                     symbol=symbol,
                 )
                 interface = self.quotients.intern(wiring.signature, macro)
-                self.ledger.bump("reverse_port_leaf_interfaces")
+                self.ledger.bump(_execution_keys.REVERSE_PORT_LEAF_INTERFACES)
         elif (
             division_radix := certified_binary_division_radix(kernel.effect)
         ) is not None:
@@ -205,7 +208,9 @@ def leaf_product(
 
             macro = division_leaf_components(_ports(kernel), division_radix, symbol)
             if type(kernel.effect) is SymbolicBinaryDivisionEffect:
-                self.ledger.bump("symbolic_tile_division_leaf_compilations")
+                self.ledger.bump(
+                    _execution_keys.SYMBOLIC_TILE_DIVISION_LEAF_COMPILATIONS
+                )
         elif type(kernel.effect) is DigitNormalizeBlockEffect and kernel.base == 10:
             from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
                 attach_leaf_sectors,
@@ -248,8 +253,8 @@ def leaf_product(
         raise
     if not added_reverse:
         self.ledger.release(self._leaf_owner, entries=1)
-        self.ledger.bump("tile_leaf_product_late_aliases")
-    self.ledger.bump("tile_leaf_product_publications")
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_LATE_ALIASES)
+    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_PUBLICATIONS)
     return interface
 
 
@@ -309,7 +314,7 @@ def fused_interface(
         workspace.append_frame((source, producer_ports, False))
         root_item = source, producer_ports
         while workspace.frames:
-            self.ledger.bump("tile_fused_frames")
+            self.ledger.bump(_execution_keys.TILE_FUSED_FRAMES)
             frame = workspace.pop_frame()
             if type(frame) is not tuple or len(frame) != 3:
                 raise TypeError("fused traversal contains another frame sort")

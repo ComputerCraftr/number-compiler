@@ -27,6 +27,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 LEFT_A = PortVariable(0, 0, "diamond-pair-left-a", 0)
 RIGHT_A = PortVariable(0, 1, "diamond-pair-right-a", 0)
@@ -112,8 +115,8 @@ class ContextProgramArena:
     def _intern(self, node: ContextNode) -> ContextProgramID:
         found = self._ids.get(node)
         if found is not None:
-            self.ledger.bump("context_program_interner_requests")
-            self.ledger.bump("context_program_interner_hits")
+            self.ledger.bump(_execution_keys.CONTEXT_PROGRAM_INTERNER_REQUESTS)
+            self.ledger.bump(_execution_keys.CONTEXT_PROGRAM_INTERNER_HITS)
             return found
         self.ledger.reserve_many(((self.node_owner, 1, 1), (self.id_owner, 1, 0)))
         handle = ContextProgramID(
@@ -121,8 +124,8 @@ class ContextProgramArena:
         )
         self._nodes.append(node)
         self._ids[node] = handle
-        self.ledger.bump("context_program_interner_requests")
-        self.ledger.bump("context_program_interner_evaluations")
+        self.ledger.bump(_execution_keys.CONTEXT_PROGRAM_INTERNER_REQUESTS)
+        self.ledger.bump(_execution_keys.CONTEXT_PROGRAM_INTERNER_EVALUATIONS)
         return handle
 
     def leaf(self, action: ActionProgramID, symbol: int) -> ContextProgramID:
@@ -238,16 +241,19 @@ class ContextProgramArena:
             (root, 0, None)
         ]
         while pending:
-            peak = self.ledger.counters.get("context_program_workspace_peak", 0)
+            peak = self.ledger.counters.get(
+                _execution_keys.CONTEXT_PROGRAM_WORKSPACE_PEAK, 0
+            )
             self.ledger.bump(
-                "context_program_workspace_peak", max(0, len(pending) - peak)
+                _execution_keys.CONTEXT_PROGRAM_WORKSPACE_PEAK,
+                max(0, len(pending) - peak),
             )
             request, phase, previous = pending.pop()
             aid, bid = self._validate(request)
             if phase == 0:
-                self.ledger.bump("context_observation_requests")
+                self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_REQUESTS)
                 if request in self.observations:
-                    self.ledger.bump("context_observation_cache_hits")
+                    self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_CACHE_HITS)
                     continue
             node = self.resolve(request.program)
             if node.kind == "leaf":
@@ -324,5 +330,5 @@ class ContextProgramArena:
                     continue
                 result = self.observations[previous]
             self.observations[request] = result
-            self.ledger.bump("context_observation_evaluations")
+            self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_EVALUATIONS)
         return self.observations[root]

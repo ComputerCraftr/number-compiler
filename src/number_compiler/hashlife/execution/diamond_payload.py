@@ -56,6 +56,10 @@ from number_compiler.hashlife.execution.diamond_continuation_payload import (
 from number_compiler.hashlife.execution.diamond_demand_payload import (
     DemandPayloadRegistry,
 )
+from number_compiler.hashlife.execution.diamond_law_contracts import (
+    BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW,
+    COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW,
+)
 from number_compiler.hashlife.execution.diamond_pair_macros import (
     PairMacroKey,
     PairMacroRecord,
@@ -404,7 +408,7 @@ class DiamondPayloadRegistry:
             if (
                 type(value.kernels) is not tuple
                 or type(value.law) is not str
-                or value.law != "bimachine-two-sided-substitution-v1"
+                or value.law != BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW
                 or type(value.root) is not ActionProgramID
                 or not self._handle(value.root)
             ):
@@ -709,7 +713,7 @@ class DiamondPayloadRegistry:
             type(value.action) is not ActionProgramID
             or value.action.kind != "diamond-action"
             or not self._handle(value.action)
-            or value.law != "complete-right-boundary-synchronization-v1"
+            or value.law != COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW
             or type(value.law) is not str
             or value.radius is not None
             and not _integer(value.radius)

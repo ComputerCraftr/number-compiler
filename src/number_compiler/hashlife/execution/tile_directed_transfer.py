@@ -29,6 +29,9 @@ from number_compiler.resources.causal_workspace import (
     CausalValueStack,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class _Host(Protocol):
@@ -135,10 +138,12 @@ def _run_directed(
     law = admission.kernel
     frames.append(_Frame(tile, incoming))
     while frames:
-        old_peak = host.ledger.counters.get("tile_directed_transfer_workspace_peak", 0)
+        old_peak = host.ledger.counters.get(
+            _execution_keys.TILE_DIRECTED_TRANSFER_WORKSPACE_PEAK, 0
+        )
         if len(frames) + len(values) > old_peak:
             host.ledger.bump(
-                "tile_directed_transfer_workspace_peak",
+                _execution_keys.TILE_DIRECTED_TRANSFER_WORKSPACE_PEAK,
                 len(frames) + len(values) - old_peak,
             )
         frame = frames.pop()
@@ -178,7 +183,7 @@ def _run_directed(
                 values.append(
                     publish_prepared_directed_transfer(results, frame.request, outgoing)
                 )
-                host.ledger.bump("tile_directed_transfer_interface_hits")
+                host.ledger.bump(_execution_keys.TILE_DIRECTED_TRANSFER_INTERFACE_HITS)
                 continue
             node = host.tiles.resolve(frame.tile)
             if not node.level:
@@ -196,7 +201,9 @@ def _run_directed(
                         outgoing,
                     )
                 )
-                host.ledger.bump("tile_directed_transfer_leaf_evaluations")
+                host.ledger.bump(
+                    _execution_keys.TILE_DIRECTED_TRANSFER_LEAF_EVALUATIONS
+                )
                 continue
             if node.left is None or node.right is None:
                 raise ValueError("directed transfer reached a malformed parent")
@@ -219,7 +226,7 @@ def _run_directed(
         values.append(
             publish_prepared_directed_transfer(results, frame.request, outgoing)
         )
-        host.ledger.bump("tile_directed_transfer_parent_evaluations")
+        host.ledger.bump(_execution_keys.TILE_DIRECTED_TRANSFER_PARENT_EVALUATIONS)
     if len(values) != 1:
         raise AssertionError("directed transfer scheduler returned another shape")
     return values.pop()

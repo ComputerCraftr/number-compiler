@@ -62,7 +62,7 @@ def test_physical_clock_cli_uses_bound_interface(
                 "--seed",
                 str(seed),
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--info",
                 "metrics",
                 "--no-value",
@@ -73,7 +73,7 @@ def test_physical_clock_cli_uses_bound_interface(
         == 0
     )
     info = json.loads(capsys.readouterr().out)["info"]
-    result = info["clock"]
+    result = info["temporal.clock"]
     _, odd = _reference(seed, ticks)
     growth = result["value"]["homogeneous_growth"]
     assert (growth["growths"], growth["halvings"], growth["radix"]) == (
@@ -84,7 +84,14 @@ def test_physical_clock_cli_uses_bound_interface(
     order = growth["homogeneous_radix_order"]
     gain = Fraction(3**odd, 2 ** (ticks - odd))
     assert Fraction(10) ** order <= gain < Fraction(10) ** (order + 1)
-    assert {k: v for k, v in result["value"].items() if k != "homogeneous_growth"} == {
+    radial = result["value"]["radial_sturmian"]
+    assert (radial["growths"], radial["halvings"]) == (odd, ticks - odd)
+    assert radial["prefix_value"] == int(bin(3**odd)[2:][:8].ljust(8, "0"), 2)
+    assert {
+        k: v
+        for k, v in result["value"].items()
+        if k not in {"homogeneous_growth", "radial_sturmian"}
+    } == {
         "events": odd,
         "divisions": ticks - odd,
         "physical_ticks": ticks,
@@ -127,8 +134,8 @@ def test_clock_budget_is_checked_before_execution(
                 "--seed",
                 "11",
                 "--info",
-                "clock",
-                "--max-events",
+                "temporal.clock",
+                "--temporal-clock-max-events",
                 "4",
             ]
         )
@@ -265,7 +272,7 @@ def test_cli_prepares_demanded_d8_width_before_value_rendering(
         "--nth",
         "64",
         "--info",
-        "clock",
+        "temporal.clock",
         "--format",
         "json",
     ]
@@ -273,7 +280,7 @@ def test_cli_prepares_demanded_d8_width_before_value_rendering(
         arguments.append("--no-value")
     assert main(arguments) == 0
     packet = json.loads(capsys.readouterr().out)
-    width = packet["info"]["clock"]["width_tape"]
+    width = packet["info"]["temporal.clock"]["width_tape"]
     assert width is not None
     endpoint, _ = _reference(27, 64)
     assert width["target_width"] == endpoint.bit_length()

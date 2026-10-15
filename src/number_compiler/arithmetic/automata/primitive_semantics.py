@@ -39,6 +39,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 )
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    arithmetic_automata as _automata_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +102,7 @@ class PrimitiveSemanticsAdapter:
             kernel = self.kernels.kernel(handle)
         found = self.records.get(handle)
         if found is not None:
-            self.ledger.bump("primitive_semantics_cache_hits")
+            self.ledger.bump(_automata_keys.PRIMITIVE_SEMANTICS_CACHE_HITS)
             return found
         # A record needs one entry even when every function already exists.
         # This read-only preflight preserves rejection before avoidable work.
@@ -146,7 +149,7 @@ class PrimitiveSemanticsAdapter:
             prepared.reserve_with(((self.records.owner, 1, 0),))
             prepared.publish_reserved()
             self.records._data[handle] = record
-            self.ledger.bump("primitive_semantics_compilations")
+            self.ledger.bump(_automata_keys.PRIMITIVE_SEMANTICS_COMPILATIONS)
             return record
         finally:
             if prepared is None:
@@ -188,7 +191,7 @@ class PrimitiveSemanticsAdapter:
         peak = 1
         while pending:
             depth, values, ready = pending.pop()
-            self.ledger.bump("primitive_semantics_synthesis_frames")
+            self.ledger.bump(_automata_keys.PRIMITIVE_SEMANTICS_SYNTHESIS_FRAMES)
             if ready:
                 high, low = results.pop(), results.pop()
                 results.append(
@@ -206,13 +209,15 @@ class PrimitiveSemanticsAdapter:
                     else:
                         value = kernel.emit(left, symbol, right)
                     terminal = SemanticTerminal("atom", value)
-                    self.ledger.bump("primitive_semantics_admissible_evaluations")
+                    self.ledger.bump(
+                        _automata_keys.PRIMITIVE_SEMANTICS_ADMISSIBLE_EVALUATIONS
+                    )
                 terminal_id = terminals.get(terminal)
                 if terminal_id is None:
                     terminal_id = transaction.terminal(signature, terminal)
                     terminals[terminal] = terminal_id
                 else:
-                    self.ledger.bump("primitive_semantics_terminal_hits")
+                    self.ledger.bump(_automata_keys.PRIMITIVE_SEMANTICS_TERMINAL_HITS)
                 results.append(terminal_id)
             else:
                 index, bit = bits[depth]
@@ -231,19 +236,24 @@ class PrimitiveSemanticsAdapter:
             peak = max(peak, len(pending) + len(results))
         result = transaction.admissible(results[0])
         self.ledger.bump(
-            "primitive_semantics_workspace_peak",
+            _automata_keys.PRIMITIVE_SEMANTICS_WORKSPACE_PEAK,
             max(
                 0,
                 peak
-                - self.ledger.counters.get("primitive_semantics_workspace_peak", 0),
+                - self.ledger.counters.get(
+                    _automata_keys.PRIMITIVE_SEMANTICS_WORKSPACE_PEAK, 0
+                ),
             ),
         )
         self.ledger.bump(
-            "primitive_semantics_staged_nodes_peak",
+            _automata_keys.PRIMITIVE_SEMANTICS_STAGED_NODES_PEAK,
             max(
                 0,
                 len(transaction.staged)
-                - self.ledger.counters.get("primitive_semantics_staged_nodes_peak", 0),
+                - self.ledger.counters.get(
+                    _automata_keys.PRIMITIVE_SEMANTICS_STAGED_NODES_PEAK,
+                    0,
+                ),
             ),
         )
         return result

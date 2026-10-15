@@ -18,6 +18,9 @@ from number_compiler.hashlife.execution.continuations.provider_layers import (
     ProviderLayerID,
 )
 from number_compiler.hashlife.execution.field_images import SourceCellID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
@@ -66,7 +69,7 @@ def cached_residual(
     )
     result = scheduler._memo.get(key)
     if result is not None:
-        scheduler.ledger.bump("concrete_port_task_early_hits")
+        scheduler.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
     return result
 
 

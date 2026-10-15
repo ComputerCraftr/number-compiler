@@ -175,19 +175,19 @@ assert not any(name == 'devtools' or name.startswith('devtools.') for name in sy
 captured = StringIO()
 with patch('number_compiler.sequences.comma.certificates._verify', side_effect=AssertionError('report replayed admission')):
     with redirect_stdout(captured):
-        assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
+        assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'safety.certificate', '--format', 'json']) == 0
 comma_status = json.loads(captured.getvalue())
 captured_compact = StringIO()
 with redirect_stdout(captured_compact):
-    assert main(['a367620', '--nth-power10', '0', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
+    assert main(['a367620', '--nth-power10', '0', '--no-value', '--info', 'safety.certificate', '--format', 'json']) == 0
 compact_status = json.loads(captured_compact.getvalue())
 assert compact_status['index'] == {'encoding': 'power10', 'exponent': 0}
 assert compact_status['value'] is None
 
 assert comma_status['index_unit'] == 'oeis_index'
 assert comma_status['value'] is None
-assert comma_status['info']['certificate']['runtime_verified'] is False
-assert comma_status['info']['certificate']['isabelle_instance_checked'] is False
+assert comma_status['info']['safety.certificate']['runtime_verified'] is False
+assert comma_status['info']['safety.certificate']['isabelle_instance_checked'] is False
 captured = StringIO()
 with redirect_stdout(captured):
     assert main(['a367620', '--nth', '412987860']) == 0
@@ -206,13 +206,13 @@ def traced_arithmetic_result(self):
 runtime.AntihydraArithmeticTerm.result = traced_arithmetic_result
 captured = StringIO()
 with redirect_stdout(captured):
-    assert main(['antihydra', '--nth', '64', '--no-value', '--info', 'hensel', '--info', 'mahler', '--info', 'metrics', '--format', 'json']) == 0
+    assert main(['antihydra', '--nth', '64', '--no-value', '--info', 'arithmetic.hensel', '--info', 'arithmetic.mahler', '--info', 'metrics', '--format', 'json']) == 0
 arithmetic = json.loads(captured.getvalue())
 assert arithmetic['value'] is None
-for name in ('hensel', 'mahler'):
+for name in ('arithmetic.hensel', 'arithmetic.mahler'):
     packet = arithmetic['info'][name]
     assert packet['guarded_physical_status'] == 'not_requested'
-mahler_action = arithmetic['info']['mahler']['value']['associated_action']
+mahler_action = arithmetic['info']['arithmetic.mahler']['value']['associated_action']
 assert mahler_action['first_failure'] == 2
 root_shell = mahler_action['root_shell']
 assert root_shell['coordinate'] == 'r_squared=theta=2*fractional_offset'
@@ -245,8 +245,8 @@ CollatzSourcePublisher.publish = traced_publish
 try:
     captured = StringIO()
     with redirect_stdout(captured):
-        assert main(['collatz', '--events', '5', '--seed', '27', '--info', 'safety', '--format', 'json']) == 0
-    safety = json.loads(captured.getvalue())['info']['safety']
+        assert main(['collatz', '--events', '5', '--seed', '27', '--info', 'safety.execution', '--format', 'json']) == 0
+    safety = json.loads(captured.getvalue())['info']['safety.execution']
     assert safety['value']['events'] == 5
     assert not safety['value']['descended_below_source']
     assert not safety['value']['all_time_claim']
@@ -382,9 +382,9 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 "11",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--format",
                 "json",
             ],
@@ -396,8 +396,10 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
         )
         factor: object = json.loads(factor_cli.stdout)
         info = factor.get("info") if isinstance(factor, dict) else None
-        primality = info.get("primality") if isinstance(info, dict) else None
-        witness = info.get("factor") if isinstance(info, dict) else None
+        primality = (
+            info.get("number-theory.primality") if isinstance(info, dict) else None
+        )
+        witness = info.get("number-theory.factor") if isinstance(info, dict) else None
         if (
             not isinstance(primality, dict)
             or primality.get("status") != "composite"
@@ -411,6 +413,26 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["reverse-add", "--seed", "196", "--nth-power10", "0"], 0, "887"),
             (["2rev10", "--seed", "10", "--nth", "0"], 0, "10"),
             (["2rev10", "--seed", "10", "--nth-power10", "0"], 0, "2"),
+            (
+                [
+                    "2rev10",
+                    "--seed",
+                    "196",
+                    "--nth",
+                    "64",
+                    "--no-value",
+                    "--info",
+                    "spatial.stencil",
+                    "--info",
+                    "temporal.bank",
+                    "--info",
+                    "temporal.closed-form",
+                    "--info",
+                    "spatial.pair-bank",
+                ],
+                0,
+                "",
+            ),
             (["reverse-add", "--nth-power10", "0", "--seed", "1"], 0, "2"),
             (["collatz", "--nth-power10", "6", "--seed", "27"], 0, "4"),
             (["antihydra", "--nth-power10", "0"], 0, "12"),
@@ -443,7 +465,19 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["a367620", "--nth", "412987860"], 0, "19999999999"),
             (["a367620", "--nth", "412987861"], 3, ""),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
-            (["collatz", "--events", "5", "--seed", "27", "--info", "safety"], 0, ""),
+            (
+                [
+                    "collatz",
+                    "--events",
+                    "5",
+                    "--seed",
+                    "27",
+                    "--info",
+                    "safety.execution",
+                ],
+                0,
+                "",
+            ),
             (["collatz", "--nth", "1000000", "--seed", "27"], 0, "4"),
             (
                 [
@@ -479,20 +513,31 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     "--nth",
                     "10",
                     "--info",
-                    "ledger",
+                    "safety.ledger",
                     "--info",
-                    "clock",
+                    "temporal.clock",
                     "--info",
-                    "hensel",
+                    "arithmetic.hensel",
                     "--info",
-                    "mahler",
+                    "arithmetic.mahler",
                     "--info",
                     "metrics",
                 ],
                 0,
                 "454",
             ),
-            (["fermat", "--nth", "4", "--no-value", "--info", "primality"], 3, ""),
+            (
+                [
+                    "fermat",
+                    "--nth",
+                    "4",
+                    "--no-value",
+                    "--info",
+                    "number-theory.primality",
+                ],
+                3,
+                "",
+            ),
             (["not-a-family", "--nth", "0"], 2, ""),
         ]
         cold_processes: list[dict[str, object]] = []
@@ -523,6 +568,24 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 raise ValueError(
                     f"installed CLI contract failed: {arguments}: {observed}"
                 )
+            if arguments[0] == "2rev10" and "spatial.stencil" in arguments:
+                details = json.loads(observed.stderr)
+                rows = {
+                    row["observer"]: row
+                    for row in details["temporal.bank"]["envelopes"]
+                }
+                if (
+                    details["spatial.stencil"]["digit"] != 8
+                    or rows["growth"]["exact_sum"] != 24
+                    or details["temporal.closed-form"]["prefix_steps"] != 16
+                    or details["temporal.closed-form"]["entry_value"] != 173488
+                    or details["temporal.closed-form"]["suffix_steps"] != 48
+                    or details["spatial.pair-bank"]["position_unit"]
+                    != "final_outer_to_inner_pair"
+                ):
+                    raise ValueError(
+                        "installed 2rev10 cylinder observations are inexact"
+                    )
             if arguments[0] == "prime" and "--info" in arguments:
                 metrics = json.loads(observed.stderr)["metrics"]
                 if (
@@ -533,14 +596,14 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     raise ValueError(
                         "installed prime CLI bypassed the descriptor owner"
                     )
-            if arguments[0] == "antihydra" and "ledger" in arguments:
+            if arguments[0] == "antihydra" and "safety.ledger" in arguments:
                 details = json.loads(observed.stderr)
-                if details["ledger"]["value"]["ledger"] != 11:
+                if details["safety.ledger"]["value"]["ledger"] != 11:
                     raise ValueError(
                         "installed Antihydra ledger differs from arithmetic source"
                     )
-                mahler = details["mahler"]["value"]
-                hensel = details["hensel"]["value"]
+                mahler = details["arithmetic.mahler"]["value"]
+                hensel = details["arithmetic.hensel"]["value"]
                 execution = details["metrics"]["execution_metrics"]
                 construction = execution["construction"]
                 observations = execution["observations"]
@@ -557,8 +620,8 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     raise ValueError(
                         "installed Mahler consumer bypassed the shared scheduler"
                     )
-            if arguments[0] == "collatz" and "safety" in arguments:
-                safety = json.loads(observed.stderr)["safety"]
+            if arguments[0] == "collatz" and "safety.execution" in arguments:
+                safety = json.loads(observed.stderr)["safety.execution"]
                 if (
                     safety["value"]["events"] != 5
                     or safety["value"]["descended_below_source"]

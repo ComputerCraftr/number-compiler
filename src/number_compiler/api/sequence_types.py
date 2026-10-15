@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.arithmetic.fields.symbolic_extent import Extent
 from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
 from number_compiler.sequences.power_numbers.numbers import MersenneNumberSpec
@@ -323,7 +324,7 @@ class SpecialDepthCertificateSummary:
     An explicitly requested proper-factor witness can establish compositeness.
     """
 
-    family: str
+    family: FamilyId
     parameter: int
     modulus_bits: int
     status: str
@@ -345,7 +346,7 @@ class SpecialDepthCertificateSummary:
     factor_witness: int | None = None
 
     def __post_init__(self) -> None:
-        if self.family not in ("fermat", "mersenne"):
+        if self.family not in (FamilyId.FERMAT, FamilyId.MERSENNE):
             raise ValueError(self.family)
         if self.status not in ("prime", "composite", "unknown"):
             raise ValueError(self.status)

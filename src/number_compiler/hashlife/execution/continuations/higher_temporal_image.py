@@ -36,6 +36,9 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -329,7 +332,7 @@ class HigherTemporalImageArena:
             self.ledger.release(self._key_owner, entries=1)
             self.ledger.release(self._seal_owner, entries=1)
             raise
-        self.ledger.bump("higher_temporal_image_publications")
+        self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_PUBLICATIONS)
         return self._handle(local_id)
 
     def _ports(
@@ -443,7 +446,9 @@ class HigherTemporalImageArena:
                 if current in self._source_summaries:
                     continue
                 node = self.sources.resolve(current)
-                self.ledger.bump("higher_temporal_source_prefix_node_visits")
+                self.ledger.bump(
+                    _execution_keys.HIGHER_TEMPORAL_SOURCE_PREFIX_NODE_VISITS
+                )
                 if not node.level:
                     prefix = int(self.sources.symbol(current) != blank)
                     summary = prefix, False
@@ -556,9 +561,11 @@ class HigherTemporalImageArena:
             while pending:
                 current = pending[-1]
                 key = _BlankKey(self._consumer, current)
-                self.ledger.bump("higher_temporal_image_workspace_probes")
+                self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_WORKSPACE_PROBES)
                 if key in self._built:
-                    self.ledger.bump("higher_temporal_image_blank_macro_cache_hits")
+                    self.ledger.bump(
+                        _execution_keys.HIGHER_TEMPORAL_IMAGE_BLANK_MACRO_CACHE_HITS
+                    )
                     pending.pop()
                     self.ledger.release(self._frame_owner, entries=1, nodes=1)
                     continue
@@ -578,7 +585,9 @@ class HigherTemporalImageArena:
                         continue
                     result = self.spatial.combine(left, right)
                 self._remember_built(key, result)
-                self.ledger.bump("higher_temporal_image_blank_macro_nodes")
+                self.ledger.bump(
+                    _execution_keys.HIGHER_TEMPORAL_IMAGE_BLANK_MACRO_NODES
+                )
                 pending.pop()
                 self.ledger.release(self._frame_owner, entries=1, nodes=1)
             return self._built[_BlankKey(self._consumer, width)]
@@ -596,7 +605,7 @@ class HigherTemporalImageArena:
             frame.right,
         )
         value = self.semantics.evaluate(activity)
-        self.ledger.bump("higher_temporal_image_blank_summary_checks")
+        self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_BLANK_SUMMARY_CHECKS)
         if type(value) is not int or value not in (0, 1):
             raise ValueError("temporal provider has invalid activity summary")
         return value == 0
@@ -639,17 +648,19 @@ class HigherTemporalImageArena:
                 frame = self._frames.pop()
                 self.ledger.release(self._frame_owner, entries=1, nodes=1)
                 key = self._node_key(frame, prior.active_extent)
-                self.ledger.bump("higher_temporal_image_workspace_probes")
+                self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_WORKSPACE_PROBES)
                 if key in self._built:
-                    self.ledger.bump("higher_temporal_image_memo_hits")
+                    self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_MEMO_HITS)
                     continue
                 if key.source_extent == 0 and self._provider_subtree_is_blank(frame):
-                    self.ledger.bump("higher_temporal_image_blank_subtree_hits")
+                    self.ledger.bump(
+                        _execution_keys.HIGHER_TEMPORAL_IMAGE_BLANK_SUBTREE_HITS
+                    )
                     self._remember_built(key, self._blank_macro(frame.width))
                     continue
                 node = self.outputs.resolve(frame.output)
                 self.interfaces.resolve(frame.interface)
-                self.ledger.bump("higher_temporal_image_node_visits")
+                self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_NODE_VISITS)
                 if type(node) is RecursiveOutputLeaf:
                     if (
                         frame.ready
@@ -706,7 +717,10 @@ class HigherTemporalImageArena:
                     )
                     left_key = self._node_key(left_frame, prior.active_extent)
                     right_key = self._node_key(right_frame, prior.active_extent)
-                    self.ledger.bump("higher_temporal_image_boundary_substitutions", 2)
+                    self.ledger.bump(
+                        _execution_keys.HIGHER_TEMPORAL_IMAGE_BOUNDARY_SUBSTITUTIONS,
+                        2,
+                    )
                     if not frame.ready:
                         self._push(
                             _Frame(

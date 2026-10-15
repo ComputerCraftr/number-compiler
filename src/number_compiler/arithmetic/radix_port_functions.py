@@ -16,6 +16,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_radix_port_functions as _radix_port_functions_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +90,7 @@ class DivisionCarry:
             self.transfer.then(after.transfer, ledger),
             self.preimage(after.threshold, ledger),
         )
-        ledger.bump("tile_radix_affine_compositions")
+        ledger.bump(_radix_port_functions_keys.TILE_RADIX_AFFINE_COMPOSITIONS)
         return result
 
     def apply(self, state: int, ledger: ResourceLedger) -> int:
@@ -172,7 +175,7 @@ class RadixPortFunction:
             or not 0 <= ports[1] < 2 * self.radix
         ):
             raise ValueError("invalid concrete division ports")
-        ledger.bump("tile_radix_algebraic_observations")
+        ledger.bump(_radix_port_functions_keys.TILE_RADIX_ALGEBRAIC_OBSERVATIONS)
         if self.kind == "constant":
             return self.value
         remainder, active = divmod(ports[1], 2)
@@ -196,7 +199,7 @@ class RadixPortFunction:
             return self
         if self.kind in ("active", "inactive"):
             assert self.threshold is not None
-            ledger.bump("tile_radix_activation_compositions")
+            ledger.bump(_radix_port_functions_keys.TILE_RADIX_ACTIVATION_COMPOSITIONS)
             return RadixPortFunction(
                 self.signature,
                 self.radix,

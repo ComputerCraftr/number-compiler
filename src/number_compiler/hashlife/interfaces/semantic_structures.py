@@ -37,6 +37,9 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     substitute_boolean,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -118,9 +121,11 @@ class StructureArena:
         _ports(inputs)
         if any(port not in inputs for port in node.signature.inputs):
             raise ValueError("declaration must preserve every existing finite input")
-        self.ledger.bump("semantic_structure_declaration_requests")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_REQUESTS)
         if inputs == node.signature.inputs:
-            self.ledger.bump("semantic_structure_declaration_identity_hits")
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_IDENTITY_HITS
+            )
             return value
         key = StructureDeclarationKey(value, inputs)
         cached = self._declarations.get(key)
@@ -130,7 +135,7 @@ class StructureArena:
                 inputs, node.signature.output
             ):
                 raise ValueError("cached declaration has another complete interface")
-            self.ledger.bump("semantic_structure_declaration_early_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_EARLY_HITS)
             return cached
         if (
             self.ledger.max_cache_entries is not None
@@ -157,7 +162,9 @@ class StructureArena:
             prepared.publish_reserved()
             result = prepared.roots[0]
             self._declarations._data[key] = result
-            self.ledger.bump("semantic_structure_declaration_evaluations")
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_EVALUATIONS
+            )
             return result
         finally:
             if prepared is None:
@@ -388,22 +395,23 @@ class _Builder:
         self._circuits: dict[tuple[FinitePort, ...], _Circuit] = {}
 
     def circuit(self, inputs: tuple[FinitePort, ...]) -> _Circuit:
-        self.arena.ledger.bump("semantic_structure_circuit_requests")
+        self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_REQUESTS)
         existing = self._circuits.get(inputs)
         if existing is not None:
-            self.arena.ledger.bump("semantic_structure_circuit_hits")
+            self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_HITS)
             return existing
         self.tx.reserve_workspace(entries=1)
         result = _Circuit(self.arena.functions, inputs, self.tx)
         self._circuits[inputs] = result
-        self.arena.ledger.bump("semantic_structure_circuit_evaluations")
+        self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_EVALUATIONS)
         self.arena.ledger.bump(
-            "semantic_structure_circuit_workspace_peak",
+            _interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_WORKSPACE_PEAK,
             max(
                 0,
                 len(self._circuits)
                 - self.arena.ledger.counters.get(
-                    "semantic_structure_circuit_workspace_peak", 0
+                    _interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_WORKSPACE_PEAK,
+                    0,
                 ),
             ),
         )
@@ -565,7 +573,7 @@ class _Builder:
             if task in self.rewrites:
                 continue
             node = self.node(task.root)
-            self.arena.ledger.bump("semantic_structure_rewrite_frames")
+            self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_REWRITE_FRAMES)
             if ready:
                 inputs, valid, children, aliases = prepared[task]
                 signature = FunctionSignature(inputs, node.signature.output)

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from math import gcd
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheLease,
@@ -20,7 +21,7 @@ from number_compiler.resources.process_cache import (
 )
 from number_compiler.sequences.comma.arithmetic import cycle_transfer
 
-CYCLE_CACHE_VERSION = "comma-interior-cycle-v2-phase-coset"
+CYCLE_CACHE_VERSION: Final[str] = "comma-interior-cycle-v2-phase-coset"
 _CYCLE_PUBLISHER = object()
 CycleSummary = tuple[int, int, int]
 
@@ -107,9 +108,9 @@ class CycleActionReuse:
         self.charge(8)
         self.charge_bits(8 * copies.bit_length() + 640)
         result = normalized_cycle(leading, digit, copies)
-        self.ledger.bump("comma_transfer_constructions")
-        self.ledger.bump("comma_cycle_rule_evaluations")
-        self.ledger.bump("comma_hashlife_coefficient_compositions")
+        self.ledger.bump(_comma_keys.COMMA_TRANSFER_CONSTRUCTIONS)
+        self.ledger.bump(_comma_keys.COMMA_CYCLE_RULE_EVALUATIONS)
+        self.ledger.bump(_comma_keys.COMMA_HASHLIFE_COEFFICIENT_COMPOSITIONS)
         return result
 
     def _lookup(
@@ -150,7 +151,7 @@ class CycleActionReuse:
             published = False
         self.count("publications" if published else "bypasses")
         if not published:
-            self.ledger.bump("comma_hashlife_capacity_bypasses")
+            self.ledger.bump(_comma_keys.COMMA_HASHLIFE_CAPACITY_BYPASSES)
         return result, False
 
     def resolve(
@@ -165,7 +166,7 @@ class CycleActionReuse:
                 )
             except BlockContextBudgetExceeded:
                 self.count("bypasses")
-                self.ledger.bump("comma_hashlife_capacity_bypasses")
+                self.ledger.bump(_comma_keys.COMMA_HASHLIFE_CAPACITY_BYPASSES)
             else:
                 with lease:
                     # Complete phase rotations have the same duration, sum and

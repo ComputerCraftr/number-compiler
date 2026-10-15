@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterator
 from contextlib import ExitStack
+from dataclasses import replace
 from typing import Self, cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
@@ -23,10 +24,26 @@ from number_compiler.hashlife.execution.source_bound_images import (
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
+from number_compiler.resources.metric_keys import (
+    double_reverse as _double_reverse_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.output_stream_metrics import (
     closing_output_stream,
     initialize_output_stream_metrics,
     measured_output_stream,
+)
+from number_compiler.sequences.double_reverse.protected_temporal_bank import (
+    MAX_PROTECTED_PERIOD,
+    ExactTemporalPairPort,
+    ProtectedPeriodicBank,
+    protected_periodic_bank,
+)
+from number_compiler.sequences.double_reverse.radix25_temporal_bank import (
+    JointRadix25TemporalBank,
+    Radix25ShiftPort,
+    radix25_shift_port,
+    temporal_bank_walsh64,
 )
 from number_compiler.sequences.double_reverse.source_adapter import (
     _DoubleReverseAction,
@@ -34,9 +51,22 @@ from number_compiler.sequences.double_reverse.source_adapter import (
     _DoubleReverseSource,
     _DoubleReverseSourceAdapter,
 )
+from number_compiler.sequences.double_reverse.temporal_border_bank import (
+    OBSERVERS,
+    TemporalBorderEnvelope,
+    power_temporal_border,
+)
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
-    DoubleReversePortAction,
     DoubleReverseTemporalHashlife,
+    PointedDigitStencil,
+    growth_ports,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    DoubleReverseSourcePrefix,
+    IssuedDoubleReversePortAction,
+    IssuedDoubleReverseSourcePrefix,
+    UncertifiedPointedStencilError,
+    source_prefix_node_cost,
     temporal_action_node_cost,
 )
 from number_compiler.sequences.double_reverse.temporal_ports import (
@@ -150,25 +180,55 @@ class DoubleReverseTerm:
             initialize_output_stream_metrics(
                 self._ledger, "double_reverse_output_stream"
             )
-            self._ledger.bump("recursive_output_stream_node_visits", 0)
+            self._ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS, 0)
             for counter in (
-                "double_reverse_spatial_transducer_applications",
-                "double_reverse_temporal_square_applications",
-                "double_reverse_represented_growth_cells",
-                "double_reverse_hashlife_cones",
-                "double_reverse_hashlife_cone_hits",
-                "double_reverse_hashlife_tile_selections",
-                "double_reverse_hashlife_powered_t2_steps",
-                "double_reverse_hashlife_power_chunks",
-                "double_reverse_boundary_classifications",
-                "double_reverse_boundary_node_visits",
-                "double_reverse_temporal_hashlife_publications",
-                "double_reverse_temporal_port_action_publications",
-                "double_reverse_temporal_port_action_cache_hits",
-                "double_reverse_weighted_carry_port_publications",
-                "double_reverse_temporal_moment_port_publications",
-                "double_reverse_temporal_affine_port_publications",
-                "double_reverse_hashlife_bit_budget_refusals",
+                _double_reverse_keys.DOUBLE_REVERSE_SPATIAL_TRANSDUCER_APPLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONES,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONE_HITS,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_TILE_SELECTIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS,
+                _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_CLASSIFICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_NODE_VISITS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_HASHLIFE_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_CACHE_HITS,
+                _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_MOMENT_PORT_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_AFFINE_PORT_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_TILES,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_PREFIX_CURSOR_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_PREFIX_CACHE_DISCARDS,
+                _double_reverse_keys.DOUBLE_REVERSE_ENDPOINT_PROJECTOR_DISCARDS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_ENVELOPE_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MATRIX_COMPOSITIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MATRIX_CELLS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_CONSTRUCTIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_TRANSITION_EVALUATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_OUTPUT_EVALUATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_STATE_VISITS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_REFINEMENT_SWEEPS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_REFINEMENT_ROUNDS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_CERTIFIED_SUFFIX_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_EXACT_PAIR_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_PUBLICATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_STENCIL_EVALUATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_GUARD_NODES,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_INTERVAL_VISITS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_STATE_VISITS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_SWEEPS,
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_ROUNDS,
             ):
                 self._ledger.bump(counter, 0)
             self._ledger.register_execution_root(self)
@@ -222,6 +282,7 @@ class DoubleReverseTerm:
                 "temporal-cones",
                 "temporal-slices",
                 "temporal-port-actions",
+                "temporal-source-prefix",
             )
         )
         memo_rows: list[OwnedMemo[object, object]] = []
@@ -254,11 +315,17 @@ class DoubleReverseTerm:
                 temporal_memo: OwnedMemo[object, object] = OwnedMemo(
                     ledger, owner, nodes_per_entry=1
                 )
-            else:
+            elif index == 2:
                 temporal_memo = OwnedMemo(
                     ledger,
                     owner,
                     node_cost=temporal_action_node_cost,
+                )
+            else:
+                temporal_memo = OwnedMemo(
+                    ledger,
+                    owner,
+                    node_cost=source_prefix_node_cost,
                 )
             temporal_rows.append(temporal_memo)
             rollback.enter_context(cleanup_on_error(temporal_memo.dispose))
@@ -273,9 +340,14 @@ class DoubleReverseTerm:
             cast(OwnedMemo[tuple[int, int], int], temporal_memos[0]),
             cast(OwnedMemo[tuple[int, int, int], int], temporal_memos[1]),
             cast(
-                OwnedMemo[tuple[int, int, int], DoubleReversePortAction],
+                OwnedMemo[tuple[int, int, int], IssuedDoubleReversePortAction],
                 temporal_memos[2],
             ),
+            cast(
+                OwnedMemo[int, IssuedDoubleReverseSourcePrefix],
+                temporal_memos[3],
+            ),
+            self._source.root,
             self.max_steps,
         )
         rollback.enter_context(
@@ -339,6 +411,24 @@ class DoubleReverseTerm:
         assert image is not None
         view = self._scheduler._source_image_core().view(image)
         self._adapter._view_payload(view)
+        if any(len(memo) for memo in self._adapter.projector_memos) or len(
+            self._reverse_memo
+        ):
+            discarded = self._release_ephemeral_projection_tables()
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_ENDPOINT_PROJECTOR_DISCARDS,
+                discarded,
+            )
+
+    def _release_ephemeral_projection_tables(self) -> int:
+        """Drop transient transducer dictionaries after retaining exact SLP roots."""
+        released = 0
+        for memo in self._adapter.projector_memos:
+            released += len(memo)
+            memo.clear()
+        released += len(self._reverse_memo)
+        self._reverse_memo.clear()
+        return released
 
     def _root(self) -> int:
         self.prepare_endpoint()
@@ -361,24 +451,357 @@ class DoubleReverseTerm:
         return self.source_digits
 
     def width(self) -> int:
-        root = self._root()
-        return self._arena.nodes[root].length
+        self._check_open()
+        if self._image is not None:
+            root = self._root()
+            return self._arena.nodes[root].length
+        try:
+            entry = self._certified_prefix_entry(
+                max_prefix=min(32, self.generation),
+                require_even_remainder=True,
+            )
+        except UncertifiedPointedStencilError:
+            root = self._root()
+            return self._arena.nodes[root].length
+        return self._pointed_shape(entry)[3]
+
+    def _pointed_shape(
+        self, entry: DoubleReverseSourcePrefix
+    ) -> tuple[int, int, int, int]:
+        """Resolve and budget the one exact source prefix plus F growth law."""
+        phase = entry.certified_phase
+        if phase is None:
+            raise AssertionError("admitted prefix cursor lacks a certified phase")
+        root = self._adapter.temporal_hashlife.root_of(entry.target)
+        steps = (self.generation - entry.physical_steps) // 2
+        left, right = growth_ports(phase, steps)
+        width = self._arena.nodes[root].length + left + right
+        if self._adapter._width_bits(width) > self.max_state_bits:
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS
+            )
+            raise BlockContextBudgetExceeded(
+                "2rev10 powered endpoint exceeds the admitted state-bit budget"
+            )
+        return root, phase, steps, width
+
+    def _certified_prefix_entry(
+        self, *, max_prefix: int, require_even_remainder: bool
+    ) -> DoubleReverseSourcePrefix:
+        """Reuse one exact owner-issued chronological source-prefix cursor."""
+        self._check_open()
+        if type(require_even_remainder) is not bool:
+            raise TypeError("prefix parity selector must be Boolean")
+        limit = min(require_integer(max_prefix, "prefix limit", 0), 32, self.generation)
+        engine = self._adapter.temporal_hashlife
+        cursor = engine.source_prefix()
+        explored = 0
+        if cursor is None:
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
+            )
+            cursor = self._adapter._advance_temporal_prefix()
+        else:
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS
+            )
+            if cursor.physical_steps > limit:
+                raise UncertifiedPointedStencilError(
+                    "cached exact prefix exceeds this request's admission bound"
+                )
+        try:
+            while True:
+                prefix = cursor.physical_steps
+                phase = cursor.certified_phase
+                even_suffix = (self.generation - prefix) % 2 == 0
+                positive_suffix = self.generation > prefix
+                if phase is not None and (
+                    not require_even_remainder or even_suffix and positive_suffix
+                ):
+                    return cursor
+                if prefix >= limit:
+                    raise UncertifiedPointedStencilError(
+                        "no admitted certified 2rev10 prefix was found"
+                    )
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
+                )
+                explored += 1
+                cursor = self._adapter._advance_temporal_prefix()
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS
+                )
+        finally:
+            if explored:
+                discarded = self._release_ephemeral_projection_tables()
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_PREFIX_CACHE_DISCARDS,
+                    discarded,
+                )
+
+    def pointed_stencil(self, position: int) -> PointedDigitStencil:
+        """Resolve one LSD-first digit from its certified local temporal cone."""
+        self._check_open()
+        position = require_integer(position, "digit coordinate")
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError(
+                "pointed stencil requires at least two generations"
+            )
+        entry = self._certified_prefix_entry(
+            max_prefix=min(32, self.generation - 2),
+            require_even_remainder=True,
+        )
+        root, phase, f_steps, width = self._pointed_shape(entry)
+        if not 0 <= position < width:
+            raise IndexError(position)
+        point = self._adapter.temporal_hashlife.pointed_stencil(
+            root, f_steps, phase, width - position - 1
+        )
+        return replace(point, prefix_steps=entry.physical_steps)
+
+    def temporal_border_bank(
+        self,
+    ) -> tuple[int, tuple[TemporalBorderEnvelope, ...]]:
+        """Bound temporal border ports after one exact certified prefix scan."""
+        self._check_open()
+        entry = self._certified_prefix_entry(
+            max_prefix=min(32, self.generation),
+            require_even_remainder=False,
+        )
+        if entry.certified_phase is None:
+            raise AssertionError("admitted prefix cursor lacks a certified phase")
+        engine = self._adapter.temporal_hashlife
+        root = engine.root_of(entry.target)
+        edge = engine.edge_signature(root)
+        if edge is None:
+            raise AssertionError("certified temporal border has no edge cells")
+        horizon = self.generation - entry.physical_steps
+        envelopes = tuple(
+            power_temporal_border(
+                edge,
+                horizon,
+                observer,
+                ledger=self._ledger,
+                scratch_owner=self._scratch_owner,
+            )
+            for observer in OBSERVERS
+            if observer != "joint"
+        )
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_PUBLICATIONS
+        )
+        return entry.physical_steps, envelopes
+
+    def exact_temporal_pair(self, pair_position: int) -> ExactTemporalPairPort:
+        """Read one exact final pair, consuming a guarded bank when admitted.
+
+        A complete protected source halo can make the bank the actual output
+        producer. If its source guard refuses, the two exact pointed cones
+        remain the fallback. Neither path publishes a complete endpoint root.
+        """
+        self._check_open()
+        pair_position = require_integer(pair_position, "pair position", 0)
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError(
+                "pointed pair requires at least two physical generations"
+            )
+        entry = self._certified_prefix_entry(
+            max_prefix=min(32, self.generation - 2),
+            require_even_remainder=True,
+        )
+        root, phase, steps, width = self._pointed_shape(entry)
+        if 2 * pair_position >= width:
+            raise IndexError(pair_position)
+        source_width = self._arena.nodes[root].length
+        right_position = source_width - 1 - pair_position
+        final_pair: tuple[int, int] | None = None
+        # Two cheap source witnesses avoid asking the temporal bank to fold a
+        # large halo for plainly nonperiodic rays. The full causal halo is
+        # still independently checked by protected_periodic_bank below.
+        if (
+            steps <= pair_position
+            and pair_position + steps + 2 <= source_width
+            and right_position + steps + 2 <= source_width
+            and self._symbol_at(root, pair_position)
+            == self._symbol_at(root, pair_position + 2)
+            and self._symbol_at(root, right_position)
+            == self._symbol_at(root, right_position + 2)
+        ):
+            try:
+                bank = protected_periodic_bank(
+                    self._arena,
+                    root,
+                    phase,
+                    pair_position,
+                    steps,
+                    2,
+                    physical_prefix=entry.physical_steps,
+                    ledger=self._ledger,
+                    scratch_owner=self._scratch_owner,
+                )
+            except ValueError:
+                # A failed finite guard returns control to the exact cone path.
+                pass
+            else:
+                final_pair = bank.at(steps - 1).next_digits
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_POINTED_REUSE
+                )
+        if final_pair is None:
+            engine = self._adapter.temporal_hashlife
+            left = engine.pointed_stencil(root, steps, phase, pair_position)
+            right = engine.pointed_stencil(
+                root, steps, phase, width - 1 - pair_position
+            )
+            final_pair = left.digit, right.digit
+        result = ExactTemporalPairPort.from_digits(
+            pair_position,
+            width,
+            entry.physical_steps,
+            steps,
+            *final_pair,
+        )
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_EXACT_PAIR_PUBLICATIONS
+        )
+        return result
+
+    def protected_temporal_bank(
+        self, pair_position: int, *, period: int = 2
+    ) -> ProtectedPeriodicBank:
+        """Source-certify and pump five-band temporal ports on an interior ray.
+
+        The source-periodic guard covers the full moving left/right causal
+        halos for the requested two-step horizon. A failed or incomplete
+        protected grammar is never promoted from the edge relation alone.
+        """
+        self._check_open()
+        pair_position = require_integer(pair_position, "pair position", 0)
+        period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError(
+                "protected temporal bank requires two physical generations"
+            )
+        entry = self._certified_prefix_entry(
+            max_prefix=min(32, self.generation - 2),
+            require_even_remainder=True,
+        )
+        if entry.certified_phase is None:
+            raise AssertionError("admitted temporal bank lacks its certified phase")
+        root, phase, steps, _width = self._pointed_shape(entry)
+        try:
+            return protected_periodic_bank(
+                self._arena,
+                root,
+                phase,
+                pair_position,
+                steps,
+                period,
+                physical_prefix=entry.physical_steps,
+                ledger=self._ledger,
+                scratch_owner=self._scratch_owner,
+            )
+        except ValueError as exc:
+            raise UncertifiedPointedStencilError(str(exc)) from exc
+
+    def source_radix25_shift(self, *, places: int = 8) -> Radix25ShiftPort:
+        """Project the initial decimal source through the radix-2/5 shift law."""
+        self._check_open()
+        result = radix25_shift_port(
+            self._arena,
+            self._source.root,
+            places=places,
+            max_bits=self.max_state_bits,
+            ledger=self._ledger,
+            scratch_owner=self._scratch_owner,
+        )
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS
+        )
+        return result
+
+    def joint_radix25_temporal_bank(
+        self,
+        pair_position: int,
+        *,
+        period: int = 2,
+        places: int = 8,
+        walsh_start: int = 0,
+    ) -> JointRadix25TemporalBank:
+        """Join source CRT and 64 Walsh lanes under one protected source root."""
+        self._check_open()
+        pair_position = require_integer(pair_position, "pair position", 0)
+        period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
+        walsh_start = require_integer(walsh_start, "Walsh64 start tick", 0)
+        if self.generation < 128:
+            raise UncertifiedPointedStencilError(
+                "joint Walsh64 bank needs 64 two-step temporal frames"
+            )
+        entry = self._certified_prefix_entry(
+            max_prefix=min(32, self.generation - 128),
+            require_even_remainder=True,
+        )
+        if entry.certified_phase is None:
+            raise AssertionError("authenticated bank lacks its boundary phase")
+        root, phase, steps, _width = self._pointed_shape(entry)
+        try:
+            bank = protected_periodic_bank(
+                self._arena,
+                root,
+                phase,
+                pair_position,
+                steps,
+                period,
+                physical_prefix=entry.physical_steps,
+                ledger=self._ledger,
+                scratch_owner=self._scratch_owner,
+            )
+            walsh = temporal_bank_walsh64(bank, start_tick=walsh_start)
+            source = radix25_shift_port(
+                self._arena,
+                root,
+                places=places,
+                max_bits=self.max_state_bits,
+                physical_prefix=entry.physical_steps,
+                ledger=self._ledger,
+                scratch_owner=self._scratch_owner,
+            )
+        except ValueError as exc:
+            raise UncertifiedPointedStencilError(str(exc)) from exc
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS
+        )
+        return JointRadix25TemporalBank(entry.physical_steps, source, bank, walsh)
 
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
+        self._check_open()
+        if position < 0:
+            raise IndexError(position)
+        if self._image is not None:
+            return self._digit_at_root(self._root(), position)
+        if self.generation >= 2:
+            try:
+                return self.pointed_stencil(position).digit
+            except UncertifiedPointedStencilError:
+                pass
         root = self._root()
+        return self._digit_at_root(root, position)
+
+    def _symbol_at(self, root: int, position: int) -> int:
+        return symbol_at(self._arena, root, position)
+
+    def _digit_at_root(self, root: int, position: int) -> int:
+        """Read one LSD-first digit from an already resolved output root."""
         width = self._arena.nodes[root].length
         if not 0 <= position < width:
             raise IndexError(position)
         return self._symbol_at(root, width - position - 1)
 
-    def _symbol_at(self, root: int, position: int) -> int:
-        return symbol_at(self._arena, root, position)
-
     def _iter_symbols(self, root: int, *, reverse: bool) -> Generator[int, None, None]:
         def record_visit(is_node: bool) -> None:
             if is_node:
-                self._ledger.bump("recursive_output_stream_node_visits")
+                self._ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS)
 
         def walk() -> Generator[int, None, None]:
             self._active_symbol_walks += 1
@@ -456,14 +879,36 @@ class DoubleReverseTerm:
             ledger=self._ledger,
             scratch_owner=self._scratch_owner,
         )
-        self._ledger.bump("double_reverse_weighted_carry_port_publications")
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS
+        )
         return result
 
     def temporal_closed_form(
         self, *, modulus: int | None = None, max_bits: int = 4096
     ) -> DoubleReverseClosedForm:
-        """Lazily project source/endpoint moments and cylinder growth."""
+        """Publish exact endpoint moments and any certified suffix affine law.
+
+        Unlike NC13, a seed outside the cylinder does not discard the exact
+        later entry-phase action. Prefix and suffix are never confused: the
+        suffix shift is relative to the authenticated *entry source*, and its
+        linear gain does not claim to cover the uncertified prefix.
+        """
         self._check_open()
+        entry_root: int | None = None
+        prefix_steps: int | None = None
+        source_phase = self._adapter.temporal_hashlife.certify(self._source.root)
+        if self.generation >= 2 and (source_phase is None or self.generation % 2 != 0):
+            try:
+                entry = self._certified_prefix_entry(
+                    max_prefix=min(32, self.generation - 2),
+                    require_even_remainder=True,
+                )
+            except UncertifiedPointedStencilError:
+                pass
+            else:
+                entry_root = self._adapter.temporal_hashlife.root_of(entry.target)
+                prefix_steps = entry.physical_steps
         endpoint = self._root()
         result = closed_form_from_roots(
             self._arena,
@@ -474,10 +919,20 @@ class DoubleReverseTerm:
             max_bits=max_bits,
             ledger=self._ledger,
             scratch_owner=self._scratch_owner,
+            entry_root=entry_root,
+            prefix_steps=prefix_steps,
         )
-        self._ledger.bump("double_reverse_temporal_moment_port_publications")
-        if result.affine_gain is not None and result.affine_shift is not None:
-            self._ledger.bump("double_reverse_temporal_affine_port_publications")
+        if result.suffix_affine_gain is not None:
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_CERTIFIED_SUFFIX_PUBLICATIONS
+            )
+        self._ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_MOMENT_PORT_PUBLICATIONS
+        )
+        if result.affine_gain is not None or result.suffix_affine_gain is not None:
+            self._ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_AFFINE_PORT_PUBLICATIONS
+            )
         return result
 
     def dispose(self) -> None:

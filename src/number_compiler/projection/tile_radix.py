@@ -21,6 +21,10 @@ from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import projection as _projection_keys
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 
 MAX_FINITE_TILE_RADIX = 256
 MAX_TILE_RADIX = 1 << 63
@@ -159,7 +163,7 @@ class TileRadixProjection:
             2,
             2,
             "unsigned-radix-cell-with-explicit-blank",
-            "canonical-tile-alphabet-v1",
+            CANONICAL_TILE_ALPHABET_VERSION,
         ):
             raise ValueError("tile radix input is not a canonical binary tile")
         # The authenticated adapter owns primitive admission.  A Collatz
@@ -193,7 +197,7 @@ class TileRadixProjection:
     def _stage(self, exponent: int) -> TileApplication:
         found = self._stages.get(exponent)
         if found is not None:
-            self.ledger.bump("tile_radix_stage_early_hits")
+            self.ledger.bump(_projection_keys.TILE_RADIX_STAGE_EARLY_HITS)
             return found
         self.ledger.reserve(self._stage_owner, entries=1)
         application: TileApplication | None = None
@@ -206,7 +210,7 @@ class TileRadixProjection:
             if previous is None:
                 action = self.adapter.power(self.action, exponent)
                 source = self._source.tile
-                self.ledger.bump("tile_radix_direct_power_stages")
+                self.ledger.bump(_projection_keys.TILE_RADIX_DIRECT_POWER_STAGES)
             else:
                 previous.complete()
                 suffix = self.adapter.power(
@@ -215,9 +219,9 @@ class TileRadixProjection:
                 )
                 action = self.adapter.compose(previous.action, suffix)
                 source = self._source.tile
-                self.ledger.bump("tile_radix_completed_stage_reuses")
+                self.ledger.bump(_projection_keys.TILE_RADIX_COMPLETED_STAGE_REUSES)
                 self.ledger.bump(
-                    "tile_radix_completed_stage_reuse_span",
+                    _projection_keys.TILE_RADIX_COMPLETED_STAGE_REUSE_SPAN,
                     exponent - previous_exponent,
                 )
             application = self.scheduler.application(
@@ -237,10 +241,10 @@ class TileRadixProjection:
                 raise ValueError("division activity disagrees with its quotient")
             self._stages[exponent] = application
             application = None
-            self.ledger.bump("tile_radix_stage_publications")
-            self.ledger.bump("tile_radix_binary_power_observations")
-            self.ledger.counters["tile_radix_stage_peak"] = max(
-                self.ledger.counters.get("tile_radix_stage_peak", 0),
+            self.ledger.bump(_projection_keys.TILE_RADIX_STAGE_PUBLICATIONS)
+            self.ledger.bump(_projection_keys.TILE_RADIX_BINARY_POWER_OBSERVATIONS)
+            self.ledger.counters[_projection_keys.TILE_RADIX_STAGE_PEAK] = max(
+                self.ledger.counters.get(_projection_keys.TILE_RADIX_STAGE_PEAK, 0),
                 len(self._stages),
             )
             return self._stages[exponent]
@@ -270,7 +274,7 @@ class TileRadixProjection:
         ):
             raise IndexError(index)
         completed = self._stage(index + 1).complete()
-        self.ledger.bump("tile_radix_digit_observations")
+        self.ledger.bump(_projection_keys.TILE_RADIX_DIGIT_OBSERVATIONS)
         return completed.outgoing_ports[1] // 2
 
     @source_reads_only
@@ -388,7 +392,9 @@ class TileRadixObservation:
             raise ValueError("tile radix observation belongs to another application")
         found = self._apps.get(index)
         if found is not None:
-            self.scheduler.ledger.bump("tile_radix_observation_early_hits")
+            self.scheduler.ledger.bump(
+                _projection_keys.TILE_RADIX_OBSERVATION_EARLY_HITS
+            )
             return found
         division = self.adapter.power(self.division, index + 1)
         action = self.adapter.compose(source_application.action, division)
@@ -404,7 +410,7 @@ class TileRadixObservation:
         except BaseException:
             result.close()
             raise
-        self.scheduler.ledger.bump("tile_radix_observation_publications")
+        self.scheduler.ledger.bump(_projection_keys.TILE_RADIX_OBSERVATION_PUBLICATIONS)
         return result
 
     @source_reads_only
@@ -417,7 +423,7 @@ class TileRadixObservation:
         state = payload.outgoing_ports[1]
         if not state:
             raise IndexError(index)
-        self.scheduler.ledger.bump("tile_radix_interface_observations")
+        self.scheduler.ledger.bump(_projection_keys.TILE_RADIX_INTERFACE_OBSERVATIONS)
         return state // 2
 
     def close(self) -> None:

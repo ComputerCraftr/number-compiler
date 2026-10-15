@@ -10,6 +10,9 @@ from typing import TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _MinPlusValue = TypeVar("_MinPlusValue")
@@ -617,7 +620,7 @@ class AssociatedActionArena:
             self.ledger.mark_disposed(owner)
         self.owner = ArenaToken("associated-affine-actions-closed")
         self._closed = True
-        self.ledger.bump("associated_action_arena_closures")
+        self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ARENA_CLOSURES)
 
     def semantic(self, action: AssociatedActionID) -> SaturatingAffineAction:
         record = self.record(action)
@@ -645,7 +648,7 @@ class AssociatedActionArena:
         semantic.__post_init__()
         if type(logical_extent) is not int or logical_extent < 0:
             raise ValueError("associated action extent must be nonnegative")
-        self.ledger.bump("associated_action_admission_requests")
+        self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ADMISSION_REQUESTS)
         semantic_id = self._semantic_keys.get(semantic)
         new_semantic = semantic_id is None
         if semantic_id is None:
@@ -653,7 +656,7 @@ class AssociatedActionArena:
         key = semantic_id, logical_extent, children
         found = self._action_keys.get(key)
         if found is not None:
-            self.ledger.bump("associated_action_admission_hits")
+            self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ADMISSION_HITS)
             return self._handle(found)
         reservations = [
             (self._action_owner, 1, 1),
@@ -706,7 +709,7 @@ class AssociatedActionArena:
             for owner, entries, nodes in reservations:
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             raise
-        self.ledger.bump("associated_action_admissions")
+        self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ADMISSIONS)
         return self._handle(local_id)
 
     def compose(
@@ -719,13 +722,13 @@ class AssociatedActionArena:
             return before
         semantic = self.semantic(before).then(self.semantic(after))
         extent = before_record.logical_extent + after_record.logical_extent
-        self.ledger.bump("associated_action_composition_requests")
+        self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_COMPOSITION_REQUESTS)
         semantic_id = self._semantic_keys.get(semantic)
         children = before, after
         if semantic_id is not None:
             found = self._action_keys.get((semantic_id, extent, children))
             if found is not None:
-                self.ledger.bump("associated_action_composition_hits")
+                self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_COMPOSITION_HITS)
                 return self._handle(found)
         return self._admit(
             semantic,

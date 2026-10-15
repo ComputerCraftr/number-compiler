@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
+from typing import Final
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ZERO,
@@ -21,6 +22,8 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+
+ASSOCIATED_AFFINE_SCALAR_SEMANTIC_VERSION: Final[str] = "associated-affine-scalar-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +65,7 @@ class AssociatedActionSourceAdapter(SourceBoundImageAdapter):
     """Lawful exact adapter executed only through the shared tile scheduler."""
 
     family = "associated-affine-scalar"
-    semantic_version = "associated-affine-scalar-v1"
+    semantic_version = ASSOCIATED_AFFINE_SCALAR_SEMANTIC_VERSION
 
     def __init__(self, arena: AssociatedActionArena) -> None:
         if type(arena) is not AssociatedActionArena:

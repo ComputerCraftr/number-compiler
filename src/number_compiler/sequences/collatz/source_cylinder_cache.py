@@ -8,12 +8,13 @@ proved cylinder coefficients; cache lookup admits the complete source germ.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Self, cast
+from typing import Final, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
@@ -161,11 +162,11 @@ class CollatzDyadicMacros:
 
     LIMIT = 4096
     MAX_INTERIOR_RECORDS = 64
-    VERSION = "collatz-normalized-cylinder-v3-fiber-gain"
-    GAIN_VERSION = "exact-v2-exponent-payload"
+    VERSION: Final[str] = "collatz-normalized-cylinder-v3-fiber-gain"
+    GAIN_VERSION: Final[str] = "exact-v2-exponent-payload"
     GAIN_LIMIT = 4096
     WIDTH_SPINE_LIMIT = 4096
-    WIDTH_SPINE_VERSION = "collatz-exact-source-width-spine-v1"
+    WIDTH_SPINE_VERSION: Final[str] = "collatz-exact-source-width-spine-v1"
 
     def __init__(self, ledger: ResourceLedger, *, shared_cache: bool = False) -> None:
         if type(ledger) is not ResourceLedger or type(shared_cache) is not bool:
@@ -410,7 +411,7 @@ class CollatzDyadicMacros:
         )
         self._bump("occurrence_publications")
         level = occurrence.width.bit_length() - 1
-        previous = self.ledger.counters.get("collatz_hashlife_max_level", 0)
+        previous = self.ledger.counters.get(_collatz_keys.COLLATZ_HASHLIFE_MAX_LEVEL, 0)
         self._bump("max_level", max(0, level - previous))
         return occurrence
 

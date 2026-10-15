@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
 from number_compiler.sequences.collatz.tape_width import CollatzWidthSpineAccumulator
 from number_compiler.sequences.collatz.temporal_f5_observer import (
+    ODD_HALF_F5,
     CollatzF5AffineAction,
     _project_dyadic_fields_f5,
 )
@@ -40,6 +43,57 @@ class TerminalRunProgress:
     run_actions: int
     normalized_f5: CollatzF5AffineAction | None
     physical_f5: CollatzF5AffineAction | None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingOddHalfStepProgress:
+    """Counters and endpoint after the final physical odd tick."""
+
+    endpoint: int
+    odd_ticks: int
+    run_actions: int
+    physical_f5: CollatzF5AffineAction | None
+
+
+def consume_pending_odd_half_step(
+    source: int,
+    *,
+    ledger: ResourceLedger,
+    scratch: RunArithmeticWorkspace,
+    control_bits: int,
+    width_spine: CollatzWidthSpineAccumulator,
+    odd_ticks: int,
+    run_actions: int,
+    physical_f5: CollatzF5AffineAction | None,
+) -> PendingOddHalfStepProgress:
+    """Apply a final physical ``3n+1`` tick without normalizing its even result."""
+    if type(source) is not int or source <= 0 or source % 2 == 0:
+        raise ValueError("pending odd half-step requires a positive odd source")
+    scratch.require_bits(8 * (source.bit_length() + 4 * control_bits + 18))
+    before_bits = source.bit_length()
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
+        source.bit_length() + 2,
+    )
+    endpoint = 3 * source + 1
+    if width_spine.complete:
+        displacement = endpoint.bit_length() - before_bits
+        width_spine.record(
+            BlankLedger(
+                displacement,
+                min(0, displacement),
+                max(0, displacement),
+            )
+        )
+    if physical_f5 is not None:
+        physical_f5 = physical_f5.then(ODD_HALF_F5)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ODD_HALF_STEPS)
+    return PendingOddHalfStepProgress(
+        endpoint,
+        odd_ticks + 1,
+        run_actions + 1,
+        physical_f5,
+    )
 
 
 def consume_terminal_power_two(
@@ -75,7 +129,7 @@ def consume_terminal_power_two(
     if macro is None:
         return None
     if maximum_tail is not None and remaining - macro.physical_ticks > maximum_tail:
-        ledger.bump("collatz_terminal_power2_route_tail_bypasses")
+        ledger.bump(_collatz_keys.COLLATZ_TERMINAL_POWER2_ROUTE_TAIL_BYPASSES)
         return None
     if parity_builder is not None:
         parity_builder.append_terminal_power2_macro(macro)
@@ -93,9 +147,9 @@ def consume_terminal_power_two(
         f5 = _project_dyadic_fields_f5(macro.fields)
         normalized_f5 = normalized_f5.then(f5)
         physical_f5 = physical_f5.then(f5)
-    ledger.bump("collatz_terminal_power2_preimage_actions")
+    ledger.bump(_collatz_keys.COLLATZ_TERMINAL_POWER2_PREIMAGE_ACTIONS)
     ledger.bump(
-        "collatz_physical_temporal_run_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
         source.bit_length()
         + macro.endpoint.bit_length()
         + macro.fields.gain.bit_length()

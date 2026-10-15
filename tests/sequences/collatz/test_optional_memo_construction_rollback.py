@@ -8,6 +8,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.sequences.collatz.border_identity import ENTRY_421
 from number_compiler.sequences.collatz.border_return_grammar import BorderReturnMacro
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
@@ -117,7 +118,7 @@ def test_failed_boundary_template_memo_construction_can_retry(
     memo = BoundaryActionTemplateMemo(ledger)
     monkeypatch.setattr(ledger, "register_container", fail_after_store_creation)
     with pytest.raises(RuntimeError, match="injected template memo"):
-        memo.get("421", 2)
+        memo.get(ENTRY_421, 2)
 
     assert len(registrations) == 1
     assert tuple(registrations.values()) == (2,)
@@ -126,7 +127,7 @@ def test_failed_boundary_template_memo_construction_can_retry(
 
     monkeypatch.setattr(ledger, "register_container", original)
     try:
-        action = memo.get("421", 2)
+        action = memo.get(ENTRY_421, 2)
         assert action[0].steps > 0
     finally:
         memo.dispose()

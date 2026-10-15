@@ -33,6 +33,7 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.cyclotomic_clock import shifted_component_bit
@@ -212,13 +213,13 @@ def _normalize_clock_function(
     key = signature.inputs, signature.output
     mask = mask_cache.get(key)
     if mask is None:
-        arena.ledger.bump("comma_symbolic_valid_mask_cache_misses")
+        arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_VALID_MASK_CACHE_MISSES)
         valid = _full_valid_clock_mask(arena, signature.inputs, cache)
         invalid = arena.invalid(signature)
         mask = valid, invalid
         mask_cache[key] = mask
     else:
-        arena.ledger.bump("comma_symbolic_valid_mask_cache_hits")
+        arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_VALID_MASK_CACHE_HITS)
     valid, invalid = mask
     return arena.ite(valid, function, invalid)
 
@@ -402,7 +403,7 @@ class SymbolicReturnView:
             raise ValueError("comma occurrence shift must be nonnegative")
         core = self.output_template_cache.get(function)
         if core is None:
-            self.arena.ledger.bump("comma_output_template_cache_misses")
+            self.arena.ledger.bump(_comma_keys.COMMA_OUTPUT_TEMPLATE_CACHE_MISSES)
             identifier = self.continuation_by_function.get(function)
             if identifier is None:
                 raise ValueError(
@@ -411,7 +412,7 @@ class SymbolicReturnView:
             core = self._construct_output_template(function, identifier)
             self.output_template_cache[function] = core
         else:
-            self.arena.ledger.bump("comma_output_template_cache_hits")
+            self.arena.ledger.bump(_comma_keys.COMMA_OUTPUT_TEMPLATE_CACHE_HITS)
         return CanonicalOutputTemplateBinding(
             core.function,
             function,
@@ -504,12 +505,13 @@ class SymbolicReturnView:
 
         interned = self.output_template_intern.get(canonical_column_keys)
         if interned is None:
-            self.arena.ledger.bump("comma_output_template_intern_misses")
+            self.arena.ledger.bump(_comma_keys.COMMA_OUTPUT_TEMPLATE_INTERN_MISSES)
             boolean_columns = tuple(
                 self._scope_column(scopes) for scopes in canonical_scopes
             )
             self.arena.ledger.bump(
-                "comma_output_template_relabel_columns", len(boolean_columns)
+                _comma_keys.COMMA_OUTPUT_TEMPLATE_RELABEL_COLUMNS,
+                len(boolean_columns),
             )
             template_signature = FunctionSignature(
                 self._full_clock_inputs(),
@@ -531,7 +533,7 @@ class SymbolicReturnView:
             self.arena.require_total(interned, valid)
             publish_interner_entry = True
         else:
-            self.arena.ledger.bump("comma_output_template_intern_hits")
+            self.arena.ledger.bump(_comma_keys.COMMA_OUTPUT_TEMPLATE_INTERN_HITS)
             publish_interner_entry = False
         template_sort = self.arena.signature(interned).output
         if type(template_sort) is not AtomSort or template_sort.cardinality != len(
@@ -579,7 +581,9 @@ class SymbolicReturnView:
         bits: dict[str, SemanticFunctionID] = {}
         result = false
         for period, residue in scopes:
-            self.arena.ledger.bump("comma_output_template_scope_predicates", 1)
+            self.arena.ledger.bump(
+                _comma_keys.COMMA_OUTPUT_TEMPLATE_SCOPE_PREDICATES, 1
+            )
             condition = true
             factors = (
                 ("r4", 4 if period % 4 == 0 else 2 if period % 2 == 0 else 1),
@@ -694,9 +698,9 @@ class SymbolicReturnView:
         shift_key = function, normalized_shift
         cached = self.shift_cache.get(shift_key)
         if cached is not None:
-            self.arena.ledger.bump("comma_symbolic_return_shift_cache_hits")
+            self.arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_RETURN_SHIFT_CACHE_HITS)
             return cached
-        self.arena.ledger.bump("comma_symbolic_return_shift_cache_misses")
+        self.arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_RETURN_SHIFT_CACHE_MISSES)
         replacements: dict[PortVariable, SemanticFunctionID] = {}
         for port in self.arena.signature(function).inputs:
             component, _ = _clock_component(port.variable.role)
@@ -704,7 +708,9 @@ class SymbolicReturnView:
             primitive_key = port.variable, component_shift
             primitive = self.clock_shift_cache.get(primitive_key)
             if primitive is None:
-                self.arena.ledger.bump("comma_symbolic_clock_shift_cache_misses")
+                self.arena.ledger.bump(
+                    _comma_keys.COMMA_SYMBOLIC_CLOCK_SHIFT_CACHE_MISSES
+                )
                 primitive = shifted_component_bit(
                     self.arena,
                     component,
@@ -714,7 +720,9 @@ class SymbolicReturnView:
                 )
                 self.clock_shift_cache[primitive_key] = primitive
             else:
-                self.arena.ledger.bump("comma_symbolic_clock_shift_cache_hits")
+                self.arena.ledger.bump(
+                    _comma_keys.COMMA_SYMBOLIC_CLOCK_SHIFT_CACHE_HITS
+                )
             replacements[port.variable] = primitive
         shifted_function = self.arena.substitute(function, replacements)
         signature = self.arena.signature(shifted_function)
@@ -723,13 +731,13 @@ class SymbolicReturnView:
         mask_key = signature.inputs, signature.output
         mask = self.valid_mask_cache.get(mask_key)
         if mask is None:
-            self.arena.ledger.bump("comma_symbolic_valid_mask_cache_misses")
+            self.arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_VALID_MASK_CACHE_MISSES)
             valid = _full_valid_clock_mask(self.arena, signature.inputs, {})
             invalid = self.arena.invalid(signature)
             mask = valid, invalid
             self.valid_mask_cache[mask_key] = mask
         else:
-            self.arena.ledger.bump("comma_symbolic_valid_mask_cache_hits")
+            self.arena.ledger.bump(_comma_keys.COMMA_SYMBOLIC_VALID_MASK_CACHE_HITS)
         shifted_function = self.arena.ite(mask[0], shifted_function, mask[1])
         self.shift_cache[shift_key] = shifted_function
         return shifted_function

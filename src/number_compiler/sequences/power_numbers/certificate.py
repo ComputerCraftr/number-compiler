@@ -8,6 +8,7 @@ production package and cannot complete this certificate path.
 
 from __future__ import annotations
 
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.sequence_types import SpecialDepthCertificateSummary
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     PureTwoPrimaryClockShape,
@@ -38,7 +39,7 @@ def _summary_from_terminal_pass(
     """Promote a proved all-local terminal PASS into the closed pure theorem."""
     shape = _proved_pure_clock_shape(probe.family, probe.parameter)
     return SpecialDepthCertificateSummary(
-        probe.family,
+        FamilyId(probe.family),
         probe.parameter,
         shape.modulus_bits,
         "prime",
@@ -66,7 +67,7 @@ def _summary_from_terminal_composite(
     if not probe.proves_composite:
         raise ValueError(probe.status)
     return SpecialDepthCertificateSummary(
-        probe.family,
+        FamilyId(probe.family),
         probe.parameter,
         probe.modulus_bits,
         "composite",
@@ -87,11 +88,15 @@ def _summary_from_terminal_unknown(
     if probe.decided:
         raise ValueError(probe.status)
     return SpecialDepthCertificateSummary(
-        probe.family,
+        FamilyId(probe.family),
         probe.parameter,
         probe.modulus_bits,
         "unknown",
-        f"terminal-threshold:{probe.method}",
+        (
+            f"terminal-threshold:{probe.method}:{probe.source_demand.missing_proofs[0]}"
+            if probe.source_demand is not None
+            else f"terminal-threshold:{probe.method}"
+        ),
         scalable_construction=False,
         carrier_states_enumerated=0,
         character_queries=probe.character_queries,
@@ -137,7 +142,7 @@ def fermat_depth_certificate(
     modulus_bits = width + 1
     if n in (0, 1):
         return SpecialDepthCertificateSummary(
-            "fermat",
+            FamilyId.FERMAT,
             n,
             modulus_bits,
             "prime",
@@ -179,7 +184,7 @@ def mersenne_depth_certificate(
     require_special_candidate_budget("mersenne", p, max_candidate_bits)
     if p == 2:
         return SpecialDepthCertificateSummary(
-            "mersenne",
+            FamilyId.MERSENNE,
             p,
             p,
             "prime",
@@ -193,7 +198,7 @@ def mersenne_depth_certificate(
     if p >= 1 << 64:
         if not (p & 1) or p % 3 == 0:
             return SpecialDepthCertificateSummary(
-                "mersenne",
+                FamilyId.MERSENNE,
                 p,
                 p,
                 "composite",
@@ -201,7 +206,7 @@ def mersenne_depth_certificate(
                 scalable_construction=True,
             )
         return SpecialDepthCertificateSummary(
-            "mersenne",
+            FamilyId.MERSENNE,
             p,
             p,
             "unknown",
@@ -211,7 +216,7 @@ def mersenne_depth_certificate(
 
     if not mersenne_exponent_is_prime(p):
         return SpecialDepthCertificateSummary(
-            "mersenne",
+            FamilyId.MERSENNE,
             p,
             p,
             "composite",

@@ -33,6 +33,7 @@ def source_audit_owners(roots: tuple[object, ...]) -> set[int]:
                 actions._sources,
                 actions._workspace,
                 root.adapter._recursive_occurrences,
+                root._pointed_gt_banks,
             ):
                 add_store(store)
             recursive = root.adapter._recursive

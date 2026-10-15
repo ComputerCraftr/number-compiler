@@ -15,6 +15,7 @@ from itertools import islice
 from math import gcd
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.resources.process_cache import MISSING, CacheLease
 from number_compiler.resources.stores import LedgerList
 
@@ -213,7 +214,9 @@ class CoprimeRankDAG:
         depth = len(parent)
         required = depth + int(successor is not None)
         self.charge_many(required)
-        self.ledger.bump("prime_successor_prefix_validation_factors", required)
+        self.ledger.bump(
+            _prime_keys.PRIME_SUCCESSOR_PREFIX_VALIDATION_FACTORS, required
+        )
         bit_work = 0
         try:
             if len(self._primes) < required:
@@ -257,7 +260,7 @@ class CoprimeRankDAG:
         self.validate_consecutive_prefix(depth)
         q = self._primes[depth - 1]
         parent_depth = depth - 1
-        self.ledger.bump("prime_fresh_successor_partial_queries")
+        self.ledger.bump(_prime_keys.PRIME_FRESH_SUCCESSOR_PARTIAL_QUERIES)
         return self.count(limit, parent_depth) - self.count(limit // q, parent_depth)
 
     def count(self, limit: int, depth: int | None = None) -> int:
@@ -466,7 +469,7 @@ class CoprimeRankDAG:
                                 inverse = pow(p, -1, modulus)
                                 self._progression_inverses[d] = inverse
                                 self.ledger.bump(
-                                    "prime_progression_inverse_evaluations"
+                                    _prime_keys.PRIME_PROGRESSION_INVERSE_EVALUATIONS
                                 )
                             child_residue = r * inverse % modulus
                         self.arithmetic_bit_work += (

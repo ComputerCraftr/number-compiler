@@ -42,6 +42,9 @@ from number_compiler.hashlife.tiles.tile_reverse_bound_output_memo import (
     publish_reverse_bound_output_parent,
 )
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,7 +271,7 @@ def interface_step(
                     _attach_bound_reverse_output(payload, bound_output),
                 )
             )
-            engine.ledger.bump("reverse_exact_output_summary_evaluations")
+            engine.ledger.bump(_execution_keys.REVERSE_EXACT_OUTPUT_SUMMARY_EVALUATIONS)
             return True
         if frame.stage >= 30:
             from number_compiler.hashlife.execution.tile_causal_interface_midpoint import (
@@ -335,7 +338,9 @@ def interface_step(
                     if observed is not None:
                         completed.close()
                         values.append(observed)
-                        engine.ledger.bump("tile_causal_interface_parent_hits")
+                        engine.ledger.bump(
+                            _execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS
+                        )
                         return True
                 causal = result_payload(engine.tiles, completed)
                 if engine._application is None:
@@ -369,7 +374,7 @@ def interface_step(
                     )
                     return True
                 values.append(payload)
-                engine.ledger.bump("tile_causal_interface_parent_hits")
+                engine.ledger.bump(_execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS)
                 return True
             if observation_key is not None:
                 observed = lookup_causal_interface(
@@ -378,7 +383,9 @@ def interface_step(
                 )
                 if observed is not None:
                     values.append(observed)
-                    engine.ledger.bump("tile_causal_interface_parent_hits")
+                    engine.ledger.bump(
+                        _execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS
+                    )
                     return True
             children = engine._children(action)
             if children is not None and not require_output:
@@ -411,7 +418,7 @@ def interface_step(
                         else _publish_interface(engine, observation_key, payload)
                     )
                     engine.ledger.bump(
-                        "tile_causal_interface_primitive_parent_shortcuts"
+                        _execution_keys.TILE_CAUSAL_INTERFACE_PRIMITIVE_PARENT_SHORTCUTS
                     )
                     return True
             frame.saved = (observation_key,)

@@ -6,7 +6,6 @@ flattened into proof-machine Cartesian domains. Evaluation is iterative.
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
@@ -26,8 +25,12 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherFunctionID,
     HigherSemanticMetrics,
     HigherSort,
+    _Rewrite,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
@@ -37,13 +40,6 @@ if TYPE_CHECKING:
 
 
 _MAX_ENUMERATED_PRIMITIVE_STATES = 1 << 12
-
-
-@dataclass(frozen=True, slots=True)
-class _Rewrite:
-    root: int
-    variable: int
-    replacement: int
 
 
 class HigherSemanticArena:
@@ -693,10 +689,10 @@ class HigherSemanticArena:
         if fn_node.kind == "function" and fn_node.function is not None:
             record = self.function_record(fn_node.function)
             if not record.parameter_used:
-                self.ledger.bump("higher_constant_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_CONSTANT_BETA_REDUCTIONS)
                 return record.body
             if record.body == record.parameter:
-                self.ledger.bump("higher_identity_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_IDENTITY_BETA_REDUCTIONS)
                 return argument
             body = self.expression(record.body)
             children = tuple(
@@ -706,17 +702,17 @@ class HigherSemanticArena:
                 for child in body.children
             )
             if body.kind == "anchor" and children[0] == argument:
-                self.ledger.bump("higher_shallow_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_SHALLOW_BETA_REDUCTIONS)
                 return self.anchor(argument)
             if body.kind == "continuation" and children[0] == argument:
-                self.ledger.bump("higher_shallow_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_SHALLOW_BETA_REDUCTIONS)
                 return self.continuation(argument)
             if (
                 body.kind == "primitive-step"
                 and body.action is not None
                 and record.parameter.local_id in body.children
             ):
-                self.ledger.bump("higher_shallow_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_SHALLOW_BETA_REDUCTIONS)
                 return self.primitive_step(
                     body.action,
                     body.side,
@@ -728,7 +724,7 @@ class HigherSemanticArena:
                 and body.action is not None
                 and record.parameter.local_id in body.children
             ):
-                self.ledger.bump("higher_shallow_beta_reductions")
+                self.ledger.bump(_execution_keys.HIGHER_SHALLOW_BETA_REDUCTIONS)
                 return self.primitive_emit(
                     body.action,
                     children[0],
@@ -750,7 +746,7 @@ class HigherSemanticArena:
                         )
                     finally:
                         self._beta_active = False
-                    self.ledger.bump("higher_bounded_beta_reductions")
+                    self.ledger.bump(_execution_keys.HIGHER_BOUNDED_BETA_REDUCTIONS)
                     return result
         return self._intern_expression(
             HigherExpression(
@@ -782,7 +778,7 @@ class HigherSemanticArena:
             symbol_node,
             symbol.local_id,
         ):
-            self.ledger.bump("higher_blank_transfer_idempotent_hits")
+            self.ledger.bump(_execution_keys.HIGHER_BLANK_TRANSFER_IDEMPOTENT_HITS)
             return state
         if symbol_node.kind == "symbol":
             if state_node.kind == "literal":
@@ -848,7 +844,7 @@ class HigherSemanticArena:
             symbol_node,
             symbol.local_id,
         ):
-            self.ledger.bump("higher_blank_tail_output_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_BLANK_TAIL_OUTPUT_ELISIONS)
             return symbol
         if (
             left_node.kind == "literal"

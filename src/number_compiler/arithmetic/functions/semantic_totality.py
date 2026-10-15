@@ -15,6 +15,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.semantic_functions import (
@@ -78,7 +81,7 @@ def require_semantic_total(
                 continue
             checked.add(pair)
             value, condition = (tx.node(identity) for identity in pair)
-            functions.ledger.bump("semantic_totality_pair_visits")
+            functions.ledger.bump(_functions_keys.SEMANTIC_TOTALITY_PAIR_VISITS)
             if condition.terminal is not None and not condition.terminal.value:
                 continue
             terminal = value.terminal

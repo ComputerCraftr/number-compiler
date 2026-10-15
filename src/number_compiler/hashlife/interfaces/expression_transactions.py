@@ -15,6 +15,10 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     observation_inputs,
     substitution_bindings,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
@@ -73,7 +77,7 @@ class _Transaction:
                 )
             )
         self.arena.ledger.bump(
-            "boundary_expression_support_construction_ports",
+            _interfaces_keys.BOUNDARY_EXPRESSION_SUPPORT_CONSTRUCTION_PORTS,
             sum(len(self.node(child).free_ports) for child in node.children),
         )
         self._peak("boundary_expression_support_union_ports_peak", len(ports))
@@ -91,7 +95,8 @@ class _Transaction:
         for child in node.children:
             children_safe &= self.node(child).binding_safe
         self.arena.ledger.bump(
-            "boundary_expression_binding_metadata_child_reads", len(node.children)
+            _interfaces_keys.BOUNDARY_EXPRESSION_BINDING_METADATA_CHILD_READS,
+            len(node.children),
         )
         closure_safe = True
         if node.kind == "call":
@@ -99,8 +104,12 @@ class _Transaction:
                 raise ValueError("opaque call has no closure program")
             body = self.arena.closures.resolve(node.closure).body
             closure_safe = self.arena.node(body).binding_safe
-            self.arena.ledger.bump("boundary_expression_binding_metadata_closure_reads")
-        self.arena.ledger.bump("boundary_expression_binding_metadata_evaluations")
+            self.arena.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_BINDING_METADATA_CLOSURE_READS
+            )
+        self.arena.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_BINDING_METADATA_EVALUATIONS
+        )
         node = replace(
             node,
             scope=scope,
@@ -110,11 +119,13 @@ class _Transaction:
         if all(child >= 0 for child in node.children):
             found = self.arena.keys.get(node)
             if found is not None:
-                self.arena.ledger.bump("boundary_expression_intern_hits")
+                self.arena.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_INTERN_HITS)
                 return found.local_id
         existing = self.keys.get(node)
         if existing is not None:
-            self.arena.ledger.bump("boundary_expression_staged_interner_hits")
+            self.arena.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_STAGED_INTERNER_HITS
+            )
             return existing
         self.staged.append(node)
         result = -len(self.staged)
@@ -133,7 +144,9 @@ class _Transaction:
         while pending:
             self._peak("boundary_expression_bound_scan_frames_peak", len(pending))
             index, depth = pending.pop()
-            self.arena.ledger.bump("boundary_expression_bound_scan_frame_pops")
+            self.arena.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_BOUND_SCAN_FRAME_POPS
+            )
             self._peak("boundary_expression_bound_scan_seen_peak", len(seen))
             self._peak(
                 "boundary_expression_bound_scan_workspace_peak",
@@ -143,10 +156,14 @@ class _Transaction:
                 continue
             seen.add((index, depth))
             self._peak("boundary_expression_bound_scan_seen_peak", len(seen))
-            self.arena.ledger.bump("boundary_expression_bound_scan_visits")
+            self.arena.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_BOUND_SCAN_VISITS
+            )
             node = self.node(index)
             if node.scope <= depth:
-                self.arena.ledger.bump("boundary_expression_bound_scan_early_hits")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_BOUND_SCAN_EARLY_HITS
+                )
                 continue
             if node.kind == "bound" and node.bound == depth:
                 return True
@@ -166,10 +183,14 @@ class _Transaction:
             assert node.closure is not None
             record = self.arena.closures.resolve(node.closure)
             if not record.support:
-                self.arena.ledger.bump("boundary_expression_constant_call_early_hits")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_CALL_EARLY_HITS
+                )
                 return record.body.local_id
             if record.body in record.support:
-                self.arena.ledger.bump("boundary_expression_identity_call_early_hits")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_IDENTITY_CALL_EARLY_HITS
+                )
                 return node.children[record.support.index(record.body)]
             body = self.arena.nodes[record.body.local_id]
             if body.kind in ("anchor", "continuation", "finite_apply", "finite_map"):
@@ -178,7 +199,7 @@ class _Transaction:
                     argument_index = node.children[record.support.index(parameter)]
                     projected = self.intern(replace(body, children=(argument_index,)))
                     self.arena.ledger.bump(
-                        "boundary_expression_projection_call_early_hits"
+                        _interfaces_keys.BOUNDARY_EXPRESSION_PROJECTION_CALL_EARLY_HITS
                     )
                     return _Rewrite("normal", projected)
         if node.kind in ("finite_map", "finite_apply"):
@@ -204,7 +225,7 @@ class _Transaction:
                     node.function, observation_inputs(domain, port, argument.value)
                 )
                 self.arena.ledger.bump(
-                    "boundary_expression_finite_function_observations"
+                    _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_FUNCTION_OBSERVATIONS
                 )
                 return self.intern(BoundaryExprNode("literal", node.sort, value=value))
             if argument.kind in ("finite_apply", "finite_map"):
@@ -228,7 +249,9 @@ class _Transaction:
                     return self.intern(
                         BoundaryExprNode("literal", node.sort, value=constant)
                     )
-                self.arena.ledger.bump("boundary_expression_cross_port_compositions")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_CROSS_PORT_COMPOSITIONS
+                )
                 temporary = self.intern(
                     replace(node, function=combined, children=argument.children)
                 )
@@ -241,7 +264,7 @@ class _Transaction:
                     for bit_number, bit in enumerate(expression.bits)
                 )
                 self.arena.ledger.bump(
-                    "boundary_expression_constant_function_early_hits"
+                    _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_FUNCTION_EARLY_HITS
                 )
                 return self.intern(BoundaryExprNode("literal", node.sort, value=value))
             argument = self.node(node.children[0])
@@ -252,7 +275,7 @@ class _Transaction:
                     observation_inputs(expression.domain, port, argument.value),
                 )
                 self.arena.ledger.bump(
-                    "boundary_expression_finite_function_observations"
+                    _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_FUNCTION_OBSERVATIONS
                 )
                 return self.intern(BoundaryExprNode("literal", node.sort, value=value))
             if argument.kind == "finite_apply" and argument.sort == node.sort:
@@ -288,7 +311,7 @@ class _Transaction:
                 if primitive is not None:
                     values = tuple(argument.value for argument in arguments)
                     self.arena.ledger.bump(
-                        "boundary_expression_constant_kernel_reductions"
+                        _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_KERNEL_REDUCTIONS
                     )
                     if node.kind == "advance":
                         result = primitive.advance(
@@ -304,7 +327,9 @@ class _Transaction:
         if node.kind in ("anchor", "continuation"):
             child = self.node(node.children[0])
             if child.kind == "pair":
-                self.arena.ledger.bump("boundary_expression_projection_reductions")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_PROJECTION_REDUCTIONS
+                )
                 return child.children[int(node.kind == "continuation")]
         elif node.kind == "pair":
             anchor, continuation = (self.node(child) for child in node.children)
@@ -313,12 +338,16 @@ class _Transaction:
                 and continuation.kind == "continuation"
                 and anchor.children == continuation.children
             ):
-                self.arena.ledger.bump("boundary_expression_eta_reductions")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_ETA_REDUCTIONS
+                )
                 return anchor.children[0]
         elif node.kind == "apply":
             function = self.node(node.children[0])
             if function.kind == "lambda":
-                self.arena.ledger.bump("boundary_expression_beta_reductions")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_BETA_REDUCTIONS
+                )
                 return _Rewrite(
                     "beta", function.children[0], parameter=node.children[1]
                 )
@@ -331,7 +360,9 @@ class _Transaction:
                     and argument.bound == 0
                     and not self._uses_bound(body.children[0])
                 ):
-                    self.arena.ledger.bump("boundary_expression_eta_reductions")
+                    self.arena.ledger.bump(
+                        _interfaces_keys.BOUNDARY_EXPRESSION_ETA_REDUCTIONS
+                    )
                     return _Rewrite("shift", body.children[0], parameter=-1)
         return self.intern(node)
 
@@ -356,7 +387,7 @@ class _Transaction:
                 "boundary_expression_rewrite_dependency_slots_peak", dependency_slots
             )
             task, phase = pending.pop()
-            self.arena.ledger.bump("boundary_expression_rewrite_visits")
+            self.arena.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_REWRITE_VISITS)
             if task in results:
                 continue
             node = self.node(task.root)
@@ -389,7 +420,9 @@ class _Transaction:
                     if FormalPort(target.sort, target.role) not in node.free_ports:
                         proof = "absent_binder"
                 if proof:
-                    self.arena.ledger.bump("boundary_expression_rewrite_early_hits")
+                    self.arena.ledger.bump(
+                        _interfaces_keys.BOUNDARY_EXPRESSION_REWRITE_EARLY_HITS
+                    )
                     self.arena.ledger.bump(
                         "boundary_expression_" + proof + "_early_hits"
                     )
@@ -440,7 +473,7 @@ class _Transaction:
             rewritten_children = tuple(results[child] for child in dependency)
             if task.mode != "normal" and rewritten_children == node.children:
                 self.arena.ledger.bump(
-                    "boundary_expression_unchanged_children_late_hits"
+                    _interfaces_keys.BOUNDARY_EXPRESSION_UNCHANGED_CHILDREN_LATE_HITS
                 )
                 results[task] = task.root
                 continue
@@ -463,11 +496,13 @@ class _Transaction:
                 root,
                 tuple(binding.value.local_id for binding in memo.bindings),
             )
-            self.arena.ledger.bump("bound_response_guard_visits", visits)
+            self.arena.ledger.bump(_shared_keys.BOUND_RESPONSE_GUARD_VISITS, visits)
             self._peak("bound_response_guard_workspace_peak", peak)
             if not keep:
                 memo = None
-                self.arena.ledger.bump("boundary_expression_bound_result_memo_drops")
+                self.arena.ledger.bump(
+                    _interfaces_keys.BOUNDARY_EXPRESSION_BOUND_RESULT_MEMO_DROPS
+                )
         reachable: set[int] = set()
         pending = [root]
         while pending:
@@ -501,15 +536,18 @@ class _Transaction:
             published[local] = index
             self._peak("boundary_expression_publication_map_peak", len(published))
             self.arena.ledger.bump(
-                "boundary_expression_retained_free_port_references",
+                _interfaces_keys.BOUNDARY_EXPRESSION_RETAINED_FREE_PORT_REFERENCES,
                 len(actual.free_ports),
             )
             self._peak("boundary_expression_max_free_ports", len(actual.free_ports))
         result = self.arena._handle(root if root >= 0 else published[root])
         if memo is not None:
             self.arena.memo[memo] = result
-        self.arena.ledger.bump("boundary_expression_published_nodes", count)
         self.arena.ledger.bump(
-            "boundary_expression_discarded_nodes", len(self.staged) - count
+            _interfaces_keys.BOUNDARY_EXPRESSION_PUBLISHED_NODES, count
+        )
+        self.arena.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_DISCARDED_NODES,
+            len(self.staged) - count,
         )
         return result

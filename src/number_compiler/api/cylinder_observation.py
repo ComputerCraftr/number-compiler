@@ -11,7 +11,11 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.fields.homogeneous_growth import (
+    GrowthArithmeticEvaluator,
+)
 from number_compiler.arithmetic.fields.mechanical_readout import (
     homogeneous_growth_packet,
 )
@@ -50,6 +54,13 @@ def observe_physical_clock(
     if ticks and term.maximum_width > max_digits:
         raise ValueError("physical clock target exceeds digit budget")
     clock = term.s_arithmetic_clock()
+    with GrowthArithmeticEvaluator(term._ledger) as radial_evaluator:
+        radial = asdict(clock.radial_leading_binary(radial_evaluator))
+        growth = asdict(
+            homogeneous_growth_packet(
+                clock.homogeneous_growth, term._ledger, evaluator=radial_evaluator
+            )
+        )
     workspace = term._workspace
     width_tape = None if workspace is None else workspace.tape_width_summary
     return {
@@ -72,9 +83,8 @@ def observe_physical_clock(
             "real_prime_exponents": clock.real_prime_exponents,
             "two_adic_exponent": clock.two_adic_exponent,
             "three_adic_exponent": clock.three_adic_exponent,
-            "homogeneous_growth": asdict(
-                homogeneous_growth_packet(clock.homogeneous_growth, term._ledger)
-            ),
+            "homogeneous_growth": growth,
+            "radial_sturmian": radial,
         },
         **(
             {
@@ -182,15 +192,23 @@ def observe_collatz(
     value: Any
     if kind == "clock":
         clock = observer.clock(root)
+        with GrowthArithmeticEvaluator(arena._ledger) as radial_evaluator:
+            radial = asdict(clock.radial_leading_binary(radial_evaluator))
+            growth = asdict(
+                homogeneous_growth_packet(
+                    clock.homogeneous_growth,
+                    arena._ledger,
+                    evaluator=radial_evaluator,
+                )
+            )
         value = {
             **asdict(clock),
             "physical_ticks": clock.physical_ticks,
             "real_prime_exponents": clock.real_prime_exponents,
             "two_adic_exponent": clock.two_adic_exponent,
             "three_adic_exponent": clock.three_adic_exponent,
-            "homogeneous_growth": asdict(
-                homogeneous_growth_packet(clock.homogeneous_growth, arena._ledger)
-            ),
+            "homogeneous_growth": growth,
+            "radial_sturmian": radial,
         }
     elif kind == "modular":
         value = asdict(observer.modular(root, modulus))
@@ -326,18 +344,18 @@ def observe_mirror(
 
 
 def observe_etale_root(
-    family: str, parameter: int, defect: int, *, max_digits: int
+    family: FamilyId, parameter: int, defect: int, *, max_digits: int
 ) -> dict[str, Any]:
     parameter = require_integer(parameter, "parameter", 0)
     require_integer(max_digits, "digit budget", 2)
     if (
-        family == "fermat"
+        family is FamilyId.FERMAT
         and parameter >= max_digits.bit_length()
-        or family == "mersenne"
+        or family is FamilyId.MERSENNE
         and parameter > max_digits
     ):
         raise ValueError("root observation width budget exceeded")
-    width = (1 << parameter) if family == "fermat" else parameter
+    width = (1 << parameter) if family is FamilyId.FERMAT else parameter
     if width > max_digits:
         raise ValueError("root observation width budget exceeded")
     spec = ArithmeticTileSpec(family, width)

@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING, Self
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.cache_gc_metrics import CacheEventMetrics
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
@@ -264,32 +267,39 @@ class TileArena:
         lease = TileLease(self, lease_id, _LEASE_SEAL)
         self._next_lease += 1
         old = self._refs[tile.local_id]
-        acquisition_before = self.ledger.counters.get("tile_lease_acquisitions")
-        peak_before = self.ledger.counters.get("tile_root_lease_peak")
+        acquisition_before = self.ledger.counters.get(
+            _tiles_keys.TILE_LEASE_ACQUISITIONS
+        )
+        peak_before = self.ledger.counters.get(_tiles_keys.TILE_ROOT_LEASE_PEAK)
         peak_after = max(peak_before or 0, len(self._leases) + 1)
         try:
             self._leases[lease_id] = tile
-            self._observe_peak("tile_root_lease_peak", len(self._leases))
+            self._observe_peak(_tiles_keys.TILE_ROOT_LEASE_PEAK, len(self._leases))
             self._refs[tile.local_id] = old + 1
-            self.ledger.bump("tile_lease_acquisitions")
+            self.ledger.bump(_tiles_keys.TILE_LEASE_ACQUISITIONS)
         except BaseException:
             self._leases.pop(lease_id, None)
             self._refs[tile.local_id] = old
             if (
                 peak_after != peak_before
-                and self.ledger.counters.get("tile_root_lease_peak") == peak_after
+                and self.ledger.counters.get(_tiles_keys.TILE_ROOT_LEASE_PEAK)
+                == peak_after
             ):
                 if peak_before is None:
-                    self.ledger.counters.pop("tile_root_lease_peak", None)
+                    self.ledger.counters.pop(_tiles_keys.TILE_ROOT_LEASE_PEAK, None)
                 else:
-                    self.ledger.counters["tile_root_lease_peak"] = peak_before
-            acquisition_after = self.ledger.counters.get("tile_lease_acquisitions")
+                    self.ledger.counters[_tiles_keys.TILE_ROOT_LEASE_PEAK] = peak_before
+            acquisition_after = self.ledger.counters.get(
+                _tiles_keys.TILE_LEASE_ACQUISITIONS
+            )
             expected_acquisition = (acquisition_before or 0) + 1
             if acquisition_after == expected_acquisition:
                 if acquisition_before is None:
-                    self.ledger.counters.pop("tile_lease_acquisitions", None)
+                    self.ledger.counters.pop(_tiles_keys.TILE_LEASE_ACQUISITIONS, None)
                 else:
-                    self.ledger.counters["tile_lease_acquisitions"] = acquisition_before
+                    self.ledger.counters[_tiles_keys.TILE_LEASE_ACQUISITIONS] = (
+                        acquisition_before
+                    )
             raise
         return lease
 
@@ -391,15 +401,15 @@ class TileArena:
                 self._keys.pop(key, None)
             self.ledger.release(self._key_owner, entries=len(missing))
             raise
-        self.ledger.bump("tile_mirror_publications", len(missing))
+        self.ledger.bump(_tiles_keys.TILE_MIRROR_PUBLICATIONS, len(missing))
 
     def mirror(self, tile: TileID) -> TileLease:
         """Return the exact reflected content through an iterative cached DAG walk."""
         self.resolve(tile)
-        self.ledger.bump("tile_mirror_requests")
+        self.ledger.bump(_tiles_keys.TILE_MIRROR_REQUESTS)
         found = self._mirror_target(tile)
         if found is not None:
-            self.ledger.bump("tile_mirror_early_hits")
+            self.ledger.bump(_tiles_keys.TILE_MIRROR_EARLY_HITS)
             return self._acquire(found)
         frames: list[tuple[TileID, bool]] = [(tile, False)]
         values: list[TileLease] = []
@@ -443,7 +453,7 @@ class TileArena:
                 values.append(parent)
             if len(values) != 1:
                 raise AssertionError("tile mirror produced another result arity")
-            self.ledger.bump("tile_mirror_evaluations")
+            self.ledger.bump(_tiles_keys.TILE_MIRROR_EVALUATIONS)
             return values.pop()
         except BaseException:
             for value in reversed(values):
@@ -453,13 +463,13 @@ class TileArena:
     def _intern(self, record: TileRecord) -> TileLease:
         self._validate_record(record)
         key = self._key(record)
-        self.ledger.bump("tile_intern_requests")
+        self.ledger.bump(_tiles_keys.TILE_INTERN_REQUESTS)
         found = self._keys.get(key)
         if found is not None:
             tile = TileID(self.owner, "canonical-tile", found)
             self.resolve(tile)
             result = self._acquire(tile)
-            self.ledger.bump("tile_intern_early_hits")
+            self.ledger.bump(_tiles_keys.TILE_INTERN_EARLY_HITS)
             self._cache_metrics.record(
                 "tile",
                 "early_hit",
@@ -469,7 +479,7 @@ class TileArena:
             )
             return result
         if self._retirement_occurred:
-            self.ledger.bump("tile_recreation_attribution_unknown")
+            self.ledger.bump(_tiles_keys.TILE_RECREATION_ATTRIBUTION_UNKNOWN)
         children = tuple(
             child for child in (record.left, record.right) if child is not None
         )
@@ -492,7 +502,7 @@ class TileArena:
             self._keys[key] = local_id
             self._refs[local_id] = 1
             self._leases[lease_id] = tile
-            self._observe_peak("tile_root_lease_peak", len(self._leases))
+            self._observe_peak(_tiles_keys.TILE_ROOT_LEASE_PEAK, len(self._leases))
             for side, child in enumerate(children):
                 self._edges[child.local_id, local_id, side] = None
                 self._refs[child.local_id] += 1
@@ -508,7 +518,7 @@ class TileArena:
             for owner, entries, nodes in reservations:
                 self.ledger.release(owner, entries, nodes)
             raise
-        self.ledger.bump("tile_publications")
+        self.ledger.bump(_tiles_keys.TILE_PUBLICATIONS)
         self._cache_metrics.prepare(
             "tile",
             "early_hit",
@@ -521,7 +531,7 @@ class TileArena:
             spatial_level=record.level,
             temporal_span=None,
         )
-        self.ledger.bump("tile_lease_acquisitions")
+        self.ledger.bump(_tiles_keys.TILE_LEASE_ACQUISITIONS)
         return TileLease(self, lease_id, _LEASE_SEAL)
 
     def _leased(self, lease_id: int) -> TileID:
@@ -616,13 +626,16 @@ class TileArena:
                 self._refs[child.local_id] -= 1
                 if self._refs[child.local_id] == 0:
                     pending.append(child.local_id)
-            self.ledger.bump("tile_retirements")
+            self.ledger.bump(_tiles_keys.TILE_RETIREMENTS)
         if started:
             gc_after = tuple(
                 sum(generation[name] for generation in get_stats())
                 for name in ("collections", "collected", "uncollectable")
             )
-            self.ledger.bump("tile_retirement_work_ns", perf_counter_ns() - started)
+            self.ledger.bump(
+                _tiles_keys.TILE_RETIREMENT_WORK_NS,
+                perf_counter_ns() - started,
+            )
             for name, before, after in zip(
                 (
                     "python_gc_collections_during_tile_retirement",
@@ -635,7 +648,7 @@ class TileArena:
             ):
                 self.ledger.bump(name, after - before)
             self._retirement_occurred = True
-        self.ledger.bump("tile_lease_releases")
+        self.ledger.bump(_tiles_keys.TILE_LEASE_RELEASES)
 
     def point(self, tile: TileID, coordinate: int) -> int:
         record = self.resolve(tile)
@@ -651,7 +664,7 @@ class TileArena:
             if coordinate >= half:
                 coordinate -= half
             record = self.resolve(child)
-            self.ledger.bump("tile_observation_descents")
+            self.ledger.bump(_tiles_keys.TILE_OBSERVATION_DESCENTS)
         if record.symbol is None:
             raise ValueError("malformed canonical leaf")
         return record.symbol
@@ -672,7 +685,7 @@ class TileArena:
         pending = [(root, 0)]
         while pending:
             node, start = pending.pop()
-            self.ledger.bump("tile_width_descents")
+            self.ledger.bump(_tiles_keys.TILE_WIDTH_DESCENTS)
             if start >= stop or node.last_active is None:
                 continue
             last = start + node.last_active

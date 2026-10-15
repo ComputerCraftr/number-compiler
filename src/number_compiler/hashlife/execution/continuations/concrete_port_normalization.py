@@ -10,6 +10,9 @@ from number_compiler.hashlife.execution.continuations.concrete_port_records impo
     PortAtom,
     VirtualBinding,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
@@ -45,7 +48,7 @@ def normalize_binding(
     scheduler._validate_action_state(before, 0, left)
     if left == initial:
         return binding
-    scheduler.ledger.bump("concrete_irrelevant_port_elisions")
+    scheduler.ledger.bump(_execution_keys.CONCRETE_IRRELEVANT_PORT_ELISIONS)
     return (
         replace(binding, anchor=initial)
         if binding.side == 0

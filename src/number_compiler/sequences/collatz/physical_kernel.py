@@ -12,12 +12,16 @@ import zlib
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
+from typing import Final
 
 from number_compiler.arithmetic.contracts.block_effect import (
     _OPERATOR_IDS,
     BoundarySide,
     BoundaryState,
 )
+
+PHYSICAL_COLLATZ_KERNEL_NAME: Final[str] = "physical-collatz-four-50x90-v1"
+PHYSICAL_COLLATZ_VERIFIED_TAG: Final[str] = "verified-physical-collatz-four-v1"
 
 _HEADER = b"PC4KERN1" + bytes((2, 2, 4, 50, 90, 0, 0, 8, 7))
 _RAW_SHA256 = "04f2a30ac31ed5de5542fa096475320bda6a3acdefeda922625795183b324dc3"
@@ -37,7 +41,7 @@ class PhysicalCollatzFourBlockEffect:
     stable_blank_output: bool = field(default=True, init=False)
     supports_predecessor_trace: bool = field(default=False, init=False)
     eager_boundary_quotient: bool = field(default=True, init=False)
-    kernel_name: str = field(default="physical-collatz-four-50x90-v1", init=False)
+    kernel_name: str = field(default=PHYSICAL_COLLATZ_KERNEL_NAME, init=False)
     storage_bytes: int = field(default=866, init=False)
     uncompressed_bytes: int = field(default=13937, init=False)
     node_id: int = field(
@@ -87,7 +91,7 @@ class PhysicalCollatzFourBlockEffect:
             or any(type(value) is not bool for value in flags)
             or flags != (True, False, True)
             or type(self.kernel_name) is not str
-            or self.kernel_name != "physical-collatz-four-50x90-v1"
+            or self.kernel_name != PHYSICAL_COLLATZ_KERNEL_NAME
             or type(self.node_id) is not int
             or self.node_id < 0
         ):
@@ -106,7 +110,7 @@ class PhysicalCollatzFourBlockEffect:
     def canonical_key(self) -> tuple[object, ...]:
         # Exact bytes remain in equality: digest collisions cannot alias kernels.
         return (
-            "verified-physical-collatz-four-v1",
+            PHYSICAL_COLLATZ_VERIFIED_TAG,
             self.base,
             self.blank,
             self.exponent,

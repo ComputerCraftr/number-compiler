@@ -9,8 +9,15 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
+)
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
 )
 
 
@@ -45,7 +52,7 @@ def _validate_key(arena: CompletedResultArena, key: SourceRootMatchKey) -> None:
         2,
         2,
         "unsigned-radix-cell-with-explicit-blank",
-        "canonical-tile-alphabet-v1",
+        CANONICAL_TILE_ALPHABET_VERSION,
     ):
         raise ValueError("source root matching requires a canonical binary tile")
 
@@ -89,15 +96,15 @@ def lookup_source_root_match(
 ) -> RootMatchResult | None:
     """Return one validated summary before any child inspection."""
     _validate_key(arena, key)
-    arena.ledger.bump("collatz_source_root_match_requests")
+    arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_REQUESTS)
     found = arena._memo.get(key)
     if found is None:
-        record_unattributed_post_eviction_miss(arena.ledger, "interface")
+        record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.INTERFACE)
         return None
     if type(found) is not RootMatchResult:
         raise TypeError("source root memo contains another result sort")
     _validate_value(arena, key, found, published=True)
-    arena.ledger.bump("collatz_source_root_match_early_hits")
+    arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_EARLY_HITS)
     return found
 
 
@@ -116,10 +123,10 @@ def _publish(
         _validate_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("source tile already has another root summary")
-        arena.ledger.bump("collatz_source_root_match_late_duplicates")
+        arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_LATE_DUPLICATES)
         return found
     publish_indexed_result(arena, key, value, referenced=(key.input,))
-    arena.ledger.bump("collatz_source_root_match_publications")
+    arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_PUBLICATIONS)
     return value
 
 
@@ -189,7 +196,7 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
                     left.phase0_first_mismatch is not None
                     and left.phase1_first_mismatch is not None
                 ):
-                    arena.ledger.bump("collatz_source_root_match_evaluations")
+                    arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_EVALUATIONS)
                     _publish(
                         arena,
                         key,
@@ -203,7 +210,7 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
                 frame.stage = 2
                 frames.extend((frame, CausalFrame("source_root_match", (node.right,))))
                 continue
-            arena.ledger.bump("collatz_source_root_match_evaluations")
+            arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_EVALUATIONS)
             if node.level:
                 if node.left is None or node.right is None:
                     raise ValueError("source root parent has missing children")

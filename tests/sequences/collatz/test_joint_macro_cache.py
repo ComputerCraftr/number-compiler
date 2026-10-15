@@ -348,10 +348,10 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
     cold = PoweredCollatzTerm(receiving_source, 48, shared_cache=False)
     cold.prepare_joint_cocycle()
     cold.accumulator(257)
-    cold_d8_builds = cold._ledger.counters.get(
-        "collatz_physical_temporal_d8_joint_action_builds", 0
+    assert (
+        cold._ledger.counters.get("collatz_physical_unified_skew_applied_actions", 0)
+        >= 1
     )
-    assert cold_d8_builds > 0
 
     def reject_d8_reconstruction(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("warm paired macro reopened D8 construction")
@@ -362,6 +362,14 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
     monkeypatch.setattr(
         D8TemporalTable, "_action_from_width_row", reject_d8_reconstruction
     )
+
+    def reject_skew_reconstruction(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("warm paired macro fell through to skew selection")
+
+    monkeypatch.setattr(
+        "number_compiler.sequences.collatz.temporal_run_executor.consume_unified_skew_chain",
+        reject_skew_reconstruction,
+    )
     receiving = PoweredCollatzTerm(receiving_source, 48, shared_cache=True)
     receiving.prepare_joint_cocycle()
     observation = receiving.accumulator(257)
@@ -371,6 +379,14 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
             "collatz_physical_temporal_d8_joint_action_builds", 0
         )
         == 0
+    )
+    assert (
+        receiving._ledger.counters.get("collatz_hashlife_occurrence_process_hits", 0)
+        >= 1
+    )
+    assert (
+        receiving._ledger.counters.get("collatz_hashlife_occurrence_applied_hits", 0)
+        >= 1
     )
     assert receiving._ledger.counters["collatz_hashlife_joint_process_hits"] >= 1
     assert receiving._ledger.counters["collatz_hashlife_joint_applied_hits"] >= 1

@@ -7,7 +7,10 @@ from dataclasses import dataclass, fields
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
@@ -48,6 +51,9 @@ from number_compiler.hashlife.execution.tile_absorption import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -362,7 +368,7 @@ class HigherSpatialMacroComposer:
         components = HigherMacroComponents(*values)
         signature = self.interfaces.interface(local.signature)
         identity = SemanticIdentity(
-            "",
+            SemanticIdentityDomain.ANONYMOUS,
             ("source-bound-higher-leaf", signature.kernel.digest),
         )
         interface = self._publish(
@@ -560,7 +566,7 @@ class HigherSpatialMacroComposer:
             arena.component_sort(a("frame")),
         )
         identity = SemanticIdentity(
-            "",
+            SemanticIdentityDomain.ANONYMOUS,
             (
                 "source-bound-higher-parent",
                 self.kernel_digest,
@@ -590,10 +596,10 @@ class HigherSpatialMacroComposer:
             self.semantics.symbol(self.action, self.blank), source_extent=0, source=None
         )
         for _ in range(level):
-            self.ledger.bump("higher_blank_run_square_requests")
+            self.ledger.bump(_execution_keys.HIGHER_BLANK_RUN_SQUARE_REQUESTS)
             result = self._combine(result, result)
-            self.ledger.bump("higher_blank_run_squares")
-        self.ledger.bump("higher_blank_run_publications")
+            self.ledger.bump(_execution_keys.HIGHER_BLANK_RUN_SQUARES)
+        self.ledger.bump(_execution_keys.HIGHER_BLANK_RUN_PUBLICATIONS)
         return result
 
     def _cell(self, source: SourceCellID) -> SourceBoundHigherMacro:
@@ -603,12 +609,12 @@ class HigherSpatialMacroComposer:
         self.sources.resolve(source)
         self.declaration()
         key = _MacroBindingKey(self.action, source)
-        self.ledger.bump("higher_spatial_parent_requests")
-        self.ledger.bump("spatial_parent_requests")
+        self.ledger.bump(_execution_keys.HIGHER_SPATIAL_PARENT_REQUESTS)
+        self.ledger.bump(_execution_keys.SPATIAL_PARENT_REQUESTS)
         found = self._bindings.get(key)
         if found is not None:
-            self.ledger.bump("higher_spatial_parent_early_hits")
-            self.ledger.bump("spatial_parent_cache_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SPATIAL_PARENT_EARLY_HITS)
+            self.ledger.bump(_execution_keys.SPATIAL_PARENT_CACHE_HITS)
             return found
         pending = [(source, False)]
         while pending:
@@ -628,8 +634,8 @@ class HigherSpatialMacroComposer:
                 result = self._blank_run(node.level)
                 self.ledger.reserve(self._binding_owner, entries=1)
                 self._bindings[current_key] = result
-                self.ledger.bump("higher_spatial_parent_evaluations")
-                self.ledger.bump("spatial_parent_evaluations")
+                self.ledger.bump(_execution_keys.HIGHER_SPATIAL_PARENT_EVALUATIONS)
+                self.ledger.bump(_execution_keys.SPATIAL_PARENT_EVALUATIONS)
                 continue
             if node.level and not ready:
                 left, right = self.sources.children(current)
@@ -647,8 +653,8 @@ class HigherSpatialMacroComposer:
             )
             self.ledger.reserve(self._binding_owner, entries=1)
             self._bindings[current_key] = result
-            self.ledger.bump("higher_spatial_parent_evaluations")
-            self.ledger.bump("spatial_parent_evaluations")
+            self.ledger.bump(_execution_keys.HIGHER_SPATIAL_PARENT_EVALUATIONS)
+            self.ledger.bump(_execution_keys.SPATIAL_PARENT_EVALUATIONS)
         return self._bindings[key]
 
     def compile(self, source: SourceBindingID) -> SourceBoundHigherMacro:
@@ -659,12 +665,12 @@ class HigherSpatialMacroComposer:
         forest = self.sources.resolve_forest(source)
         self.declaration()
         key = _MacroBindingKey(self.action, source)
-        self.ledger.bump("higher_spatial_forest_requests")
-        self.ledger.bump("spatial_parent_requests")
+        self.ledger.bump(_execution_keys.HIGHER_SPATIAL_FOREST_REQUESTS)
+        self.ledger.bump(_execution_keys.SPATIAL_PARENT_REQUESTS)
         found = self._bindings.get(key)
         if found is not None:
-            self.ledger.bump("higher_spatial_forest_early_hits")
-            self.ledger.bump("spatial_parent_cache_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SPATIAL_FOREST_EARLY_HITS)
+            self.ledger.bump(_execution_keys.SPATIAL_PARENT_CACHE_HITS)
             return found
         macros = [self._cell(cell) for cell in forest.cells]
         while len(macros) > 1:
@@ -679,8 +685,8 @@ class HigherSpatialMacroComposer:
         result = macros[0]
         self.ledger.reserve(self._binding_owner, entries=1)
         self._bindings[key] = result
-        self.ledger.bump("higher_spatial_forest_evaluations")
-        self.ledger.bump("spatial_parent_evaluations")
+        self.ledger.bump(_execution_keys.HIGHER_SPATIAL_FOREST_EVALUATIONS)
+        self.ledger.bump(_execution_keys.SPATIAL_PARENT_EVALUATIONS)
         return result
 
     def validate_binding(

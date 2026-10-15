@@ -130,7 +130,11 @@ def test_resource_metadata_cannot_alias_string_owner_names(
 ) -> None:
     ledger = ResourceLedger()
     before = ledger.snapshot()
-    arguments = {"name": "valid", "role": "query_memo", "scope": "ENGINE_OWNED"}
+    arguments = {
+        "name": "valid",
+        "role": "query_memo",
+        "scope": ResourceScope.ENGINE_OWNED,
+    }
     arguments[field] = cast(str, value)
     with pytest.raises((TypeError, ValueError)):
         ledger.register(**cast(_OwnerArguments, arguments))

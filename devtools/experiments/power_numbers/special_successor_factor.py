@@ -8,15 +8,15 @@ from typing import TYPE_CHECKING
 from devtools.experiments.power_numbers.special_successor_models import (
     SpecialFactorShortCircuitAudit,
 )
-from number_compiler.arithmetic.fields.radix import bit_width
-from number_compiler.sequences.power_numbers.factor_morphism import (
+from devtools.verification.special_factor_reference import (
     batched_special_factor_witness,
     fermat_factor_witness,
     mersenne_factor_witness,
 )
+from number_compiler.arithmetic.fields.radix import bit_width
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.power_numbers.factor_morphism import (
+    from devtools.verification.special_factor_reference import (
         ModularPowerWitness,
     )
 

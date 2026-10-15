@@ -156,7 +156,7 @@ def test_cli_mirror_and_value_share_completed_output_without_width_replay(
                 "--nth",
                 "20",
                 "--info",
-                "mirror",
+                "spatial.mirror",
                 "--format",
                 "json",
             ]
@@ -167,7 +167,7 @@ def test_cli_mirror_and_value_share_completed_output_without_width_replay(
     assert captured.err == ""
     packet = json.loads(captured.out)
     assert packet["value"] == "70446464506"
-    assert packet["info"]["mirror"]["palindrome"] is False
+    assert packet["info"]["spatial.mirror"]["palindrome"] is False
 
 
 def test_cli_metrics_only_does_not_construct_guarded_temporal_banks(

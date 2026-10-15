@@ -16,6 +16,7 @@ from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_wi
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -35,6 +36,12 @@ D8Prefix = tuple[int, int]
 D8Row = tuple[int, int]
 D8_VISIBLE_ROW = tuple[int, int]
 D8WidthRow = tuple[tuple[D8Prefix, ...], int]
+D8_ROOT_BATCH_MIN_SOURCE_BITS = 131_072
+
+
+def d8_root_batch_admitted(source: int, remaining: int) -> bool:
+    """Keep the bounded D8 frame route on the source's large root fiber."""
+    return source.bit_length() > D8_ROOT_BATCH_MIN_SOURCE_BITS and remaining >= 32
 
 
 def bounded_run_length(residue: int) -> int:
@@ -86,6 +93,51 @@ class D8CylinderFrame:
         # Here the remaining high fiber has at most two bits; this is a
         # bounded cycle probe rather than a full source-lift multiplication.
         return self.origin + self.gain * (self.source >> self.consumed) > 2
+
+
+@dataclass(frozen=True, slots=True)
+class D8TransitionAdmission:
+    """Endpoint demand and cycle admission for one accepted D8 transition."""
+
+    endpoint: int | None
+    survives: bool
+
+
+def admit_d8_transition(
+    source: int,
+    advanced: D8CylinderFrame | None,
+    *,
+    target_origin: int,
+    odd_symbols: int,
+    retain_joint_action: bool,
+    materialize_frame: bool,
+    ledger: ResourceLedger,
+) -> D8TransitionAdmission:
+    """Resolve only the endpoint form required by the active consumer."""
+    if retain_joint_action:
+        if advanced is None:
+            raise ValueError("joint D8 admission needs its receiving cylinder frame")
+        endpoint = None
+        survives = advanced.above_cycle()
+    else:
+        if materialize_frame:
+            if advanced is None:
+                raise ValueError("D8 frame materialization needs its receiving frame")
+            endpoint = advanced.materialize()
+            ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_FRAME_MATERIALIZATIONS
+            )
+        else:
+            endpoint = target_origin + 3**odd_symbols * (source >> 8)
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_ENDPOINT_EVALUATIONS)
+        survives = endpoint > 2
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
+        source.bit_length()
+        + (endpoint.bit_length() if endpoint is not None else 0)
+        + 26,
+    )
+    return D8TransitionAdmission(endpoint, survives)
 
 
 def d8_row(residue: int) -> D8Row:
@@ -239,26 +291,30 @@ class D8TemporalTable:
                 or type(found[1]) is not int
             ):
                 raise ValueError("D8 row is malformed")
-            self.ledger.bump("collatz_physical_temporal_d8_table_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_TABLE_HITS)
             return found
         self.ledger.reserve(self.owner, entries=1, nodes=self.NODES_PER_ROW)
         # Charge the admitted fixed discovery bound even if construction fails;
         # successful publication is a separate event, never a work proxy.
-        self.ledger.bump("collatz_physical_temporal_d8_discovery_requests")
-        self.ledger.bump("collatz_physical_temporal_d8_discovery_symbols", 8)
+        self.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_DISCOVERY_REQUESTS)
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_DISCOVERY_SYMBOLS, 8
+        )
         # The cache owner opts into this diagnostic lane at construction.
         # Record attempts here, including failures and abandoned root probes,
         # without creating a cache lane for callers that disabled shared reuse.
-        if "collatz_hashlife_primitive_steps" in self.ledger.counters:
-            self.ledger.bump("collatz_hashlife_primitive_steps", 8)
+        if _collatz_keys.COLLATZ_HASHLIFE_PRIMITIVE_STEPS in self.ledger.counters:
+            self.ledger.bump(_collatz_keys.COLLATZ_HASHLIFE_PRIMITIVE_STEPS, 8)
         try:
             found = d8_row(residue)
             self.rows[residue] = found
         except BaseException:
-            self.ledger.bump("collatz_physical_temporal_d8_discovery_failures")
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_DISCOVERY_FAILURES
+            )
             self.ledger.release(self.owner, entries=1, nodes=self.NODES_PER_ROW)
             raise
-        self.ledger.bump("collatz_physical_temporal_d8_table_publications")
+        self.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_TABLE_PUBLICATIONS)
         return found
 
     def _select_width_row(self, source: int, endpoint_row: D8Row) -> D8WidthRow:
@@ -276,28 +332,38 @@ class D8TemporalTable:
         found = self.width_prefixes.get(residue)
         if found is not None:
             self._validate_width_row(found, endpoint_row, residue)
-            self.ledger.bump("collatz_physical_temporal_d8_width_prefix_hits")
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_HITS
+            )
             return found
         self.ledger.reserve(
             self.width_owner,
             entries=1,
             nodes=self.WIDTH_PREFIX_NODES_PER_ROW,
         )
-        self.ledger.bump("collatz_physical_temporal_d8_width_prefix_discoveries")
-        self.ledger.bump("collatz_physical_temporal_d8_width_prefix_symbols", 8)
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_DISCOVERIES
+        )
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_SYMBOLS, 8
+        )
         try:
             found = d8_width_row(residue)
             self._validate_width_row(found, endpoint_row, residue)
             self.width_prefixes[residue] = found
         except BaseException:
-            self.ledger.bump("collatz_physical_temporal_d8_width_prefix_failures")
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_FAILURES
+            )
             self.ledger.release(
                 self.width_owner,
                 entries=1,
                 nodes=self.WIDTH_PREFIX_NODES_PER_ROW,
             )
             raise
-        self.ledger.bump("collatz_physical_temporal_d8_width_prefix_publications")
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_PUBLICATIONS
+        )
         return found
 
     @staticmethod
@@ -439,7 +505,9 @@ class D8TemporalTable:
             _D8ParityTransition,
         )
 
-        self.ledger.bump("collatz_physical_temporal_d8_word_validation_steps", 8)
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WORD_VALIDATION_STEPS, 8
+        )
         transition = _D8ParityTransition._issue(
             local, endpoint_local, odd_mask, checked_action, frame, advanced
         )
@@ -510,10 +578,14 @@ class D8TemporalTable:
             target_origin + multiplier * (local >> 8),
             multiplier * frame.gain,
         )
-        self.ledger.bump("collatz_physical_temporal_d8_cylinder_transitions")
-        self.ledger.bump("collatz_physical_temporal_d8_source_window_bits", 8)
         self.ledger.bump(
-            "collatz_physical_temporal_d8_frame_operand_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_CYLINDER_TRANSITIONS
+        )
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_SOURCE_WINDOW_BITS, 8
+        )
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_FRAME_OPERAND_BITS,
             local.bit_length()
             + frame.gain.bit_length()
             + result.origin.bit_length()
@@ -522,7 +594,7 @@ class D8TemporalTable:
         # Include attempted/rejected transitions in the existing arithmetic
         # work account. Both finite D8 row coefficients have a 13-bit bound.
         self.ledger.bump(
-            "collatz_physical_temporal_run_operand_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
             local.bit_length()
             + frame.gain.bit_length()
             + result.origin.bit_length()
@@ -557,9 +629,9 @@ class D8TemporalTable:
             or odd_mask.bit_count() != ones
         ):
             raise ValueError("D8 joint action differs from its endpoint publisher")
-        self.ledger.bump("collatz_physical_temporal_d8_joint_action_builds")
+        self.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_JOINT_ACTION_BUILDS)
         self.ledger.bump(
-            "collatz_physical_temporal_d8_joint_action_operand_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_JOINT_ACTION_OPERAND_BITS,
             sum(max(1, value.bit_length()) for prefix in prefixes for value in prefix),
         )
         return action
@@ -584,7 +656,8 @@ class D8TemporalTable:
             + 512
         )
         self.ledger.bump(
-            "collatz_physical_temporal_d8_width_operand_bits", width_work_bits
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_OPERAND_BITS,
+            width_work_bits,
         )
         nodes = 16 + (width_work_bits + 63) // 64
         # Scratch is reserved on the owner of the width table so inventory
@@ -666,7 +739,9 @@ class D8TemporalTable:
                     max(0, after_width - before_width),
                 )
                 result = compose_width_ledger(self.ledger, result, normalized)
-        self.ledger.bump("collatz_physical_temporal_d8_width_prefix_steps", 8)
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WIDTH_PREFIX_STEPS, 8
+        )
         return CollatzTapeWidthSummary(
             widths[0],
             widths[8],

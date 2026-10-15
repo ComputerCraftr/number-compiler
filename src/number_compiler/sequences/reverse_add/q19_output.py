@@ -12,6 +12,27 @@ from collections.abc import Callable, Generator, Iterator
 from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from functools import cache
+from typing import TYPE_CHECKING
+
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.q19_border_control import (
+        CertifiedBorderGrowth,
+    )
+    from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
+        SourceGuardedGTBankAction,
+    )
+    from number_compiler.sequences.reverse_add.q19_periodic_cone import (
+        CertifiedUniformizingCone,
+    )
+    from number_compiler.sequences.reverse_add.q19_uniform_cone import (
+        CertifiedUniformCone,
+    )
+    from number_compiler.sequences.reverse_add.radix19_cochain import (
+        Radix19CarryBlock,
+    )
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import (
@@ -22,10 +43,18 @@ from number_compiler.arithmetic.automata.transducer import (
     build_pair_step_bimachine,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add._q19_issuance import (
+    Q19IssuanceRegistry,
+)
+from number_compiler.sequences.reverse_add.q19_occurrence import (
+    ReversePairOutputOccurrence,
+    _occurrence_publication_binding,
+)
 from number_compiler.sequences.reverse_add.q19_punctured_producer import (
     PuncturedPairProducer,
 )
@@ -128,15 +157,12 @@ class _Q19:
     def repeat(self, count: int) -> _Q19:
         if type(count) is not int or count < 0:
             raise ValueError("Q19 repetition count must be nonnegative")
-        result = _Q19.identity()
-        power = self
-        while count:
-            if count & 1:
-                result = result.then(power)
-            count >>= 1
-            if count:
-                power = power.then(power)
-        return result
+        return binary_power(
+            self,
+            count,
+            identity=_Q19.identity(),
+            compose=lambda first, second: first.then(second),
+        ).value
 
     def validate_symmetric(self) -> None:
         if self.length < 1:
@@ -158,47 +184,6 @@ class _WordSummary:
     first_symbol: int | None
     last_symbol: int | None
     runs: int
-
-
-@dataclass(frozen=True, slots=True)
-class ReversePairOutputOccurrence:
-    """Exact target pair grammar issued by one request-local output owner."""
-
-    owner: ArenaToken
-    root: int
-    temporal_steps: int
-    pair_width: int
-    output_width: int
-    growth: int
-    q19_domain: int
-    q19_f9: int
-
-    def __post_init__(self) -> None:
-        if type(self.owner) is not ArenaToken:
-            raise TypeError("pair output occurrence needs a scoped owner")
-        if any(
-            type(value) is not int
-            for value in (
-                self.root,
-                self.temporal_steps,
-                self.pair_width,
-                self.output_width,
-                self.growth,
-                self.q19_domain,
-                self.q19_f9,
-            )
-        ):
-            raise TypeError("pair output metadata must use exact integers")
-        if (
-            self.root < 0
-            or self.temporal_steps < 1
-            or self.pair_width < 1
-            or self.output_width < self.pair_width
-            or self.growth < 0
-            or self.q19_domain not in (_LOWER, _NEUTRAL, _UPPER)
-            or not 0 <= self.q19_f9 < 9
-        ):
-            raise ValueError("invalid pair output occurrence metadata")
 
 
 class ReversePairQ19OutputOwner:
@@ -300,6 +285,15 @@ class ReversePairQ19OutputOwner:
             self._issued = OwnedMemo[tuple[int, int], ReversePairOutputOccurrence](
                 ledger, self._issued_owner, nodes_per_entry=1
             )
+            self._issuance_registry = Q19IssuanceRegistry(self, ledger, prefix)
+            self._border_certificates_owner = (
+                self._issuance_registry.border_certificates.owner
+            )
+            self._border_certificates = self._issuance_registry.border_certificates
+            self._controlled_gt_banks_owner = (
+                self._issuance_registry.controlled_gt_banks.owner
+            )
+            self._controlled_gt_banks = self._issuance_registry.controlled_gt_banks
             self._scratch_owner = ledger.register(
                 prefix + "-workspace", "reverse_pair_output_workspace"
             )
@@ -315,6 +309,9 @@ class ReversePairQ19OutputOwner:
                 self.arena,
                 self.projector,
                 self.machine,
+                self._border_certificates,
+                self._controlled_gt_banks,
+                self._issuance_registry,
             )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
@@ -329,6 +326,8 @@ class ReversePairQ19OutputOwner:
         self._audit_repeats = self.arena._rep._data
         self._audit_summaries = self._summaries._data
         self._audit_issued = self._issued._data
+        self._audit_border_certificates = self._border_certificates._data
+        self._audit_controlled_gt_banks = self._controlled_gt_banks._data
         (
             self._audit_projector_forward,
             self._audit_projector_reverse,
@@ -377,6 +376,16 @@ class ReversePairQ19OutputOwner:
                     "_audit_issued",
                     "reverse_pair_output_occurrence",
                 ),
+                PayloadAuditStoreBinding(
+                    self._border_certificates_owner,
+                    "_audit_border_certificates",
+                    "reverse_pair_q19_border_certificate",
+                ),
+                PayloadAuditStoreBinding(
+                    self._controlled_gt_banks_owner,
+                    "_audit_controlled_gt_banks",
+                    "reverse_pair_q19_conditional_gt_bank",
+                ),
                 *(
                     PayloadAuditStoreBinding(
                         owner,
@@ -412,12 +421,19 @@ class ReversePairQ19OutputOwner:
             self.arena,
             self.projector,
             self.machine,
+            self._border_certificates,
+            self._controlled_gt_banks,
+            self._issuance_registry,
         )
         if len(self._binding) != len(current) or any(
             original is not bound
             for original, bound in zip(self._binding, current, strict=True)
         ):
             raise ValueError("Q19 output owner or finite law binding changed")
+        if self._issuance_registry.controlled_gt_bank_next != len(
+            self._controlled_gt_banks
+        ):
+            raise ValueError("Q19 controlled bank registry changed")
 
     def _append_word_symbol(self, blocks: list[tuple[int, int]], symbol: int) -> None:
         node = self.arena.terminal(symbol)
@@ -465,16 +481,16 @@ class ReversePairQ19OutputOwner:
         if found is not None:
             return found
         with self.ledger.reservation(
-            self._scratch_owner, nodes=8 * (self.arena.nodes[root].length + 1)
+            self._scratch_owner, nodes=8 * (len(self.arena.nodes) + 1)
         ):
             return self._build_word_summary(root)
 
     def _build_word_summary(self, root: int) -> _WordSummary:
         found = self._summaries.get(root)
         if found is not None:
-            self.ledger.bump("reverse_pair_q19_summary_cache_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_PAIR_Q19_SUMMARY_CACHE_HITS)
             return found
-        self.ledger.bump("reverse_pair_q19_summary_cache_misses")
+        self.ledger.bump(_reverse_add_keys.REVERSE_PAIR_Q19_SUMMARY_CACHE_MISSES)
         stack: list[tuple[int, bool]] = [(root, False)]
         identity = _Q19.identity()
         while stack:
@@ -611,13 +627,34 @@ class ReversePairQ19OutputOwner:
         self, occurrence: ReversePairOutputOccurrence
     ) -> ReversePairOutputOccurrence:
         self._check_open()
-        self._issued[(occurrence.root, occurrence.temporal_steps)] = occurrence
+        occurrence.__post_init__()
+        key = occurrence.root, occurrence.temporal_steps
+        binding = _occurrence_publication_binding(occurrence)
+        published_binding = occurrence._publication_binding
+        if published_binding is not None and published_binding != binding:
+            raise ValueError("published Q19 occurrence metadata was altered")
+        existing = self._issued.get(key)
+        if existing is not None:
+            # SLP interning can make repeated application of the same source
+            # land on the same (root, temporal_steps) key. Keep the first
+            # owner-issued handle so certificates and downstream records that
+            # retain it remain valid, but validate that record and compare all
+            # exact occurrence metadata before reusing it.
+            self.validate(existing)
+            if _occurrence_publication_binding(existing) != binding:
+                raise ValueError("Q19 occurrence key collides with different metadata")
+            return existing
+        if published_binding is None:
+            object.__setattr__(occurrence, "_publication_binding", binding)
+        self._issued[key] = occurrence
         return occurrence
 
     def _issue(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
         return self._publish(self._candidate(root, temporal_steps))
 
-    def validate(self, occurrence: ReversePairOutputOccurrence) -> None:
+    def _validate_occurrence_handle(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> None:
         self._check_open()
         if type(occurrence) is not ReversePairOutputOccurrence:
             raise TypeError("expected an exact Q19 output occurrence")
@@ -626,8 +663,18 @@ class ReversePairQ19OutputOwner:
             raise ValueError("Q19 output occurrence belongs to another request")
         if not 0 <= occurrence.root < len(self.arena.nodes):
             raise ValueError("Q19 output root is outside its grammar")
-        if self._issued.get((occurrence.root, occurrence.temporal_steps)) != occurrence:
+        if (
+            self._issued.get((occurrence.root, occurrence.temporal_steps))
+            is not occurrence
+        ):
             raise ValueError("Q19 output occurrence was not issued by this owner")
+        if occurrence._publication_binding != _occurrence_publication_binding(
+            occurrence
+        ):
+            raise ValueError("published Q19 occurrence metadata was altered")
+
+    def validate(self, occurrence: ReversePairOutputOccurrence) -> None:
+        self._validate_occurrence_handle(occurrence)
         summary = self._full_summary(occurrence.root)
         if (
             summary.length != occurrence.pair_width
@@ -638,6 +685,12 @@ class ReversePairQ19OutputOwner:
         ):
             raise ValueError("Q19 output metadata disagrees with its grammar")
 
+    def validate_issued_occurrence(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> None:
+        """Check a previously issued immutable handle without re-folding its SLP."""
+        self._validate_occurrence_handle(occurrence)
+
     def apply_pair_step(
         self, occurrence: ReversePairOutputOccurrence
     ) -> ReversePairOutputOccurrence:
@@ -645,7 +698,7 @@ class ReversePairQ19OutputOwner:
         before = self.projector.section_calls
         with self.ledger.reservation(
             self._scratch_owner,
-            nodes=64 * (self.arena.nodes[occurrence.root].length + 1),
+            nodes=64 * (len(self.arena.nodes) + 1),
         ):
             target = self.projector.apply(occurrence.root)
         candidate = self._candidate(target, occurrence.temporal_steps + 1)
@@ -653,9 +706,9 @@ class ReversePairQ19OutputOwner:
         if step_growth not in (0, 1):
             raise AssertionError("one reverse/add step changed width by more than one")
         result = self._publish(candidate)
-        self.ledger.bump("reverse_q19_primitive_pair_applications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_Q19_PRIMITIVE_PAIR_APPLICATIONS)
         self.ledger.bump(
-            "reverse_q19_pair_output_nodes_visited",
+            _reverse_add_keys.REVERSE_Q19_PAIR_OUTPUT_NODES_VISITED,
             self.projector.section_calls - before,
         )
         return result
@@ -663,14 +716,9 @@ class ReversePairQ19OutputOwner:
     def _pair_value_at(
         self, occurrence: ReversePairOutputOccurrence, index: int
     ) -> int:
-        self.validate(occurrence)
-        if type(index) is not int or not 0 <= index < occurrence.pair_width:
-            raise IndexError(index)
-        parity_tag_value = self._symbol_at(occurrence.root, 0)
-        parity = parity_tag_value - (2 * self.base - 1)
-        half_width = (occurrence.pair_width + parity) // 2
-        half_index = index if index < half_width else occurrence.pair_width - 1 - index
-        return self._symbol_at(occurrence.root, half_index + 1)
+        from .q19_source_authority import pair_value_at
+
+        return pair_value_at(self, occurrence, index)
 
     def apply_punctured_pair_block(
         self, occurrence: ReversePairOutputOccurrence, *, steps: int
@@ -683,74 +731,139 @@ class ReversePairQ19OutputOwner:
         """
         return PuncturedPairProducer(self).apply(occurrence, steps=steps)
 
+    def radix19_cochain(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        z: int = 2,
+        modulus: int = 5,
+    ) -> Radix19CarryBlock:
+        """Project an issued Q19 source through decimal normalization."""
+        from .q19_source_authority import radix19_cochain
+
+        return radix19_cochain(self, occurrence, z=z, modulus=modulus)
+
+    def radix19_walsh64_mod5(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        channel: str,
+        start: int = 0,
+    ) -> tuple[int, ...]:
+        """Read 64 source-bound pair ports and transform them over F5."""
+        from .q19_source_authority import radix19_walsh64_mod5
+
+        return radix19_walsh64_mod5(self, occurrence, channel=channel, start=start)
+
+    def authorize_radix19_gt_bank(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        coordinate: int,
+        period_sizes: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8),
+        window_digits: int = 6,
+        max_states: int = 8192,
+    ) -> SourceGuardedGTBankAction:
+        """Join exact border growth with a source-guarded conditional bank."""
+        from .q19_source_authority import authorize_radix19_gt_bank
+
+        return authorize_radix19_gt_bank(
+            self,
+            occurrence,
+            steps=steps,
+            coordinate=coordinate,
+            period_sizes=period_sizes,
+            window_digits=window_digits,
+            max_states=max_states,
+        )
+
+    def authorize_temporal_cell(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        coordinate: int,
+    ) -> CertifiedUniformCone:
+        """Authorize one protected interior coefficient from its source."""
+        from .q19_source_authority import authorize_temporal_cell
+
+        return authorize_temporal_cell(
+            self, occurrence, steps=steps, coordinate=coordinate
+        )
+
+    def authorize_mixed_temporal_cell(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        coordinate: int,
+        period_size: int = 2,
+    ) -> CertifiedUniformizingCone:
+        """Authorize a mixed periodic source core that closes to uniform."""
+        from .q19_source_authority import authorize_mixed_temporal_cell
+
+        return authorize_mixed_temporal_cell(
+            self,
+            occurrence,
+            steps=steps,
+            coordinate=coordinate,
+            period_size=period_size,
+        )
+
+    def certify_border_growth(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        window_digits: int = 2,
+        max_states: int = 8192,
+    ) -> CertifiedBorderGrowth:
+        """Certify a finite growth tape from the exact source root."""
+        from .q19_source_authority import certify_border_growth
+
+        return certify_border_growth(
+            self,
+            occurrence,
+            steps=steps,
+            window_digits=window_digits,
+            max_states=max_states,
+        )
+
+    def authorize_controlled_gt_bank(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        coordinate: int,
+        growth_control: tuple[int, ...] | CertifiedBorderGrowth,
+        period_size: int = 2,
+        max_states: int = 10000,
+    ) -> SourceGuardedGTBankAction:
+        """Authorize a conditional source-protected GT/F5 bank."""
+        from .q19_source_authority import authorize_controlled_gt_bank
+
+        return authorize_controlled_gt_bank(
+            self,
+            occurrence,
+            steps=steps,
+            coordinate=coordinate,
+            growth_control=growth_control,
+            period_size=period_size,
+            max_states=max_states,
+        )
+
     def _range_summary(
         self, root: int, begin: int, end: int, *, reverse: bool = False
     ) -> _Q19:
-        """Fold a pair-symbol interval through cached regions, excluding tags."""
-        result = _Q19.identity()
-        tasks = [(root, begin, end, 1)]
-        while tasks:
-            node_id, lo, hi, copies = tasks.pop()
-            if lo == hi:
-                continue
-            summary = self._summaries[node_id]
-            self.ledger.bump("reverse_q19_point_region_visits")
-            if not 0 <= lo < hi <= summary.symbols:
-                raise ValueError("pair summary interval escaped its region")
-            if lo == 0 and hi == summary.symbols:
-                part = summary.reverse if reverse else summary.forward
-                result = result.then(part.repeat(copies))
-                continue
-            node = self.arena.nodes[node_id]
-            pieces: list[tuple[int, int, int, int]] = []
-            if node.kind == "CONCAT":
-                middle = self._summaries[node.left].symbols
-                if lo < middle:
-                    pieces.append((node.left, lo, min(hi, middle), 1))
-                if hi > middle:
-                    pieces.append((node.right, max(lo - middle, 0), hi - middle, 1))
-            elif node.kind == "REPEAT":
-                width = self._summaries[node.child].symbols
-                first, offset = divmod(lo, width)
-                last, tail = divmod(hi, width)
-                if first == last:
-                    pieces.append((node.child, offset, tail, 1))
-                else:
-                    if offset:
-                        pieces.append((node.child, offset, width, 1))
-                        first += 1
-                    if last > first:
-                        pieces.append((node.child, 0, width, last - first))
-                    if tail:
-                        pieces.append((node.child, 0, tail, 1))
-            else:
-                raise ValueError("partial pair region is not a composite")
-            tasks.extend(pieces if reverse else reversed(pieces))
-        return result
+        from .q19_source_authority import range_summary
+
+        return range_summary(self, root, begin, end, reverse=reverse)
 
     def digit(self, occurrence: ReversePairOutputOccurrence, position: int) -> int:
-        self.validate(occurrence)
-        if type(position) is not int or not 0 <= position < occurrence.output_width:
-            raise IndexError(position)
-        if position == occurrence.pair_width:
-            return 1
-        root = occurrence.root
-        half = self._summaries[root].symbols
-        with self.ledger.reservation(
-            self._scratch_owner, nodes=16 * (self.arena.nodes[root].length + 1)
-        ):
-            prefix = self._range_summary(root, 0, min(position, half))
-            if position > half:
-                prefix = prefix.then(
-                    self._range_summary(
-                        root,
-                        occurrence.pair_width - position,
-                        occurrence.pair_width - half,
-                        reverse=True,
-                    )
-                )
-            value = self._pair_value_at(occurrence, position)
-            return (value + int(prefix.domain == _UPPER)) % self.base
+        from .q19_source_authority import digit
+
+        return digit(self, occurrence, position)
 
     def _iter_symbols(
         self, root: int, *, reverse: bool = False
@@ -763,7 +876,7 @@ class ReversePairQ19OutputOwner:
                     root,
                     reverse=reverse,
                     on_task=lambda _is_node: self.ledger.bump(
-                        "recursive_output_stream_node_visits"
+                        _shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS
                     ),
                     reserve_task=lambda: self.ledger.reserve(
                         self._scratch_owner, nodes=1
@@ -825,11 +938,11 @@ class ReversePairQ19OutputOwner:
                 total = pair + carry
                 carry, digit = divmod(total, self.base)
                 emitted += 1
-                self.ledger.bump("recursive_output_stream_emitted_digits")
+                self.ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_EMITTED_DIGITS)
                 yield digit
         if carry:
             emitted += 1
-            self.ledger.bump("recursive_output_stream_emitted_digits")
+            self.ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_EMITTED_DIGITS)
             yield carry
         if emitted != occurrence.output_width:
             raise AssertionError("Q19 output stream disagrees with exact width")
@@ -842,6 +955,8 @@ class ReversePairQ19OutputOwner:
             cleanup: list[Callable[[], object]] = [
                 self._unregister_payload_audit_contract,
                 self._issued.dispose,
+                self._controlled_gt_banks.dispose,
+                self._border_certificates.dispose,
                 self._summaries.dispose,
                 *(memo.dispose for memo in self._projector_memos),
             ]

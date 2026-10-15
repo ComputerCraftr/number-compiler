@@ -26,6 +26,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ImageBinding,
 )
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
 
 
 def _boundary(result: Result) -> BoundaryStateID:
@@ -156,9 +159,9 @@ class DiamondApplication:
         if source is None or position >= source.length:
             raise IndexError(position)
         cycle = self._cycle()
-        self.ledger.bump("diamond_point_queries")
+        self.ledger.bump(_observation_keys.DIAMOND_POINT_QUERIES)
         if cycle is not None:
-            self.ledger.bump("physical_cycle_point_queries")
+            self.ledger.bump(_observation_keys.PHYSICAL_CYCLE_POINT_QUERIES)
             hooks = self.runtime.family_hooks
             if hooks is None:
                 raise AssertionError("cycle projection lost its family owner")
@@ -174,7 +177,7 @@ class DiamondApplication:
         return ImageBinding(self.runtime.actions.identity, cell, left, right)
 
     def _active(self, provider: ImageBinding, initial: BoundaryStateID) -> bool:
-        self.ledger.bump("width_observer_requests")
+        self.ledger.bump(_observation_keys.WIDTH_OBSERVER_REQUESTS)
         result = _boundary(
             self.runtime.execute(Transfer(provider, self.observer, initial, 1))
         )
@@ -203,9 +206,9 @@ class DiamondApplication:
         ):
             raise ValueError("width bound must fit the retained original source extent")
         cycle = self._cycle()
-        self.ledger.bump("width_queries")
+        self.ledger.bump(_observation_keys.WIDTH_QUERIES)
         if cycle is not None:
-            self.ledger.bump("physical_cycle_width_queries")
+            self.ledger.bump(_observation_keys.PHYSICAL_CYCLE_WIDTH_QUERIES)
             hooks = self.runtime.family_hooks
             if hooks is None:
                 raise AssertionError("cycle projection lost its family owner")
@@ -225,7 +228,7 @@ class DiamondApplication:
         contexts: list[_ChunkContext] = []
         for index, (start, cell) in enumerate(forest):
             contexts.append(_ChunkContext(start, cell, left))
-            self.ledger.bump("width_forest_context_visits")
+            self.ledger.bump(_observation_keys.WIDTH_FOREST_CONTEXT_VISITS)
             if index + 1 < len(forest):
                 left = _boundary(
                     runtime.execute(
@@ -237,8 +240,11 @@ class DiamondApplication:
                         )
                     )
                 )
-        peak = self.ledger.counters.get("width_context_peak_records", 0)
-        self.ledger.bump("width_context_peak_records", max(0, len(contexts) - peak))
+        peak = self.ledger.counters.get(_observation_keys.WIDTH_CONTEXT_PEAK_RECORDS, 0)
+        self.ledger.bump(
+            _observation_keys.WIDTH_CONTEXT_PEAK_RECORDS,
+            max(0, len(contexts) - peak),
+        )
         for _, cell in reversed(
             runtime.cells.source_span(maxwidth, source.length - maxwidth)
         ):
@@ -251,7 +257,7 @@ class DiamondApplication:
             )
         for context in reversed(contexts):
             start, cell, left = context.start, context.cell, context.left
-            self.ledger.bump("width_parent_visits")
+            self.ledger.bump(_observation_keys.WIDTH_PARENT_VISITS)
             if not self._active(ImageBinding(self.root, cell, left, right), activity):
                 right = _boundary(
                     runtime.execute(
@@ -265,7 +271,7 @@ class DiamondApplication:
                 )
                 continue
             while runtime.cells.node(cell).level:
-                self.ledger.bump("width_descent_steps")
+                self.ledger.bump(_observation_keys.WIDTH_DESCENT_STEPS)
                 low, high = runtime.cells.split(cell)
                 middle = start + runtime.cells.node(low).width
                 middle_left = _boundary(

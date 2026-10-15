@@ -74,6 +74,10 @@ from number_compiler.resources.closed_interface_workspace import (
     ClosedInterfaceWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -428,7 +432,7 @@ class DiamondQuotientArena:
         self._validate_interface(interface)
         found = self._signature_keys.get(interface)
         if found is not None:
-            self.ledger.bump("quotient_signature_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_SIGNATURE_HITS)
             return found
         self.ledger.reserve_many(
             ((self._signature_owner, 1, 1), (self._signature_key_owner, 1, 0))
@@ -438,7 +442,7 @@ class DiamondQuotientArena:
         )
         self._signatures.append(interface)
         self._signature_keys[interface] = result
-        self.ledger.bump("quotient_signature_evaluations")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_SIGNATURE_EVALUATIONS)
         return result
 
     def interface(self, reference: PortSignatureID) -> MacroInterface:
@@ -788,7 +792,7 @@ class DiamondQuotientArena:
         )
 
         if atomic_product_is_masked(self, interface, components):
-            self.ledger.bump("quotient_atomic_mask_elisions")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_ATOMIC_MASK_ELISIONS)
             return components
         if has_closed_components(components):
             return components
@@ -796,7 +800,7 @@ class DiamondQuotientArena:
         try:
             prepared.reserve_with()
             prepared.publish_reserved()
-            self.ledger.bump("quotient_complete_normalizations")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_COMPLETE_NORMALIZATIONS)
             return MacroComponents(
                 *prepared.roots,
                 reverse_sectors=components.reverse_sectors,
@@ -853,23 +857,23 @@ class DiamondQuotientArena:
         # probed only with the normalized record produced below.
         found = self._keys.get(request)
         if found is not None:
-            self.ledger.bump("quotient_normal_form_early_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_NORMAL_FORM_EARLY_HITS)
             return found
         from number_compiler.hashlife.interfaces.atomic_quotient_normalization import (
             atomic_product_is_masked,
         )
 
         if atomic_product_is_masked(self, interface, components):
-            self.ledger.bump("quotient_atomic_mask_elisions")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_ATOMIC_MASK_ELISIONS)
             return self._publish(request, None)
         if has_closed_components(components):
             arithmetic = self.normalize(signature, components)
-            self.ledger.bump("quotient_arithmetic_normalizations")
+            self.ledger.bump(_shared_keys.QUOTIENT_ARITHMETIC_NORMALIZATIONS)
             return self._publish(QuotientRecord(signature, arithmetic), None)
         found = self._normalizations.get(request)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("quotient_normalization_memo_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_NORMALIZATION_MEMO_HITS)
             return found
         prepared = self._prepare_normalization(signature, components)
         normalized = QuotientRecord(
@@ -880,7 +884,7 @@ class DiamondQuotientArena:
             ),
         )
         result = self._publish(normalized, None, prepared, alias=request)
-        self.ledger.bump("quotient_complete_normalizations")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_COMPLETE_NORMALIZATIONS)
         return result
 
     def _validate_key(self, key: DiamondKey) -> MacroInterface:
@@ -906,11 +910,11 @@ class DiamondQuotientArena:
 
     def probe(self, key: DiamondKey) -> DiamondQuotientID | None:
         self._validate_key(key)
-        self.ledger.bump("quotient_parent_requests")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_PARENT_REQUESTS)
         found = self._parents.get(key)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("quotient_parent_early_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_PARENT_EARLY_HITS)
         return found
 
     def publish(self, key: DiamondKey, result: DiamondQuotientID) -> DiamondQuotientID:
@@ -932,12 +936,12 @@ class DiamondQuotientArena:
             raise ValueError("compile only after probing an unresolved diamond")
         request = QuotientRecord(key.signature, components)
         if request in self._keys:
-            self.ledger.bump("quotient_normal_form_early_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_NORMAL_FORM_EARLY_HITS)
             return self._publish(request, key)
         found = self._normalizations.get(request)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("quotient_normalization_memo_hits")
+            self.ledger.bump(_interfaces_keys.QUOTIENT_NORMALIZATION_MEMO_HITS)
             return self._publish(self.resolve(found), key)
         if has_closed_components(components):
             return self._publish(request, key)
@@ -950,7 +954,7 @@ class DiamondQuotientArena:
             ),
         )
         result = self._publish(normalized, key, prepared, alias=request)
-        self.ledger.bump("quotient_complete_normalizations")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_COMPLETE_NORMALIZATIONS)
         return result
 
     def _publish(

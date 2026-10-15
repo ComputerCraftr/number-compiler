@@ -10,6 +10,7 @@ from contextlib import suppress
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.stores import LedgerDict
 
 _KINDS = frozenset(("tile", "result", "interface", "behavior", "symmetry"))
@@ -67,15 +68,15 @@ class CacheEventMetrics:
         old = {key: self.buckets.get(key) for key in keys}
         missing = sum(key not in self.buckets for key in keys)
         if missing and not allow_new:
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
             return
         if len(self.buckets) + missing > MAX_CACHE_EVENT_BUCKETS:
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
             return
         try:
             self.ledger.reserve(self.owner, entries=missing)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
             return
         completed = False
         with suppress(Exception):
@@ -89,7 +90,7 @@ class CacheEventMetrics:
                 else:
                     self.buckets[key] = value
             self.ledger.release(self.owner, entries=missing)
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
 
     def prepare(
         self,
@@ -103,12 +104,12 @@ class CacheEventMetrics:
         keys = self._keys(kind, outcome, spatial_level, temporal_span)
         missing = tuple(key for key in keys if key not in self.buckets)
         if len(self.buckets) + len(missing) > MAX_CACHE_EVENT_BUCKETS:
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
             return
         try:
             self.ledger.reserve(self.owner, entries=len(missing))
         except BlockContextBudgetExceeded:
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
             return
         completed = False
         with suppress(Exception):
@@ -119,7 +120,7 @@ class CacheEventMetrics:
             for key in missing:
                 self.buckets.pop(key, None)
             self.ledger.release(self.owner, entries=len(missing))
-            self.ledger.bump("cache_event_histogram_dropped")
+            self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
 
 
 def record_cache_event(

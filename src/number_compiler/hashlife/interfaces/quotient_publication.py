@@ -9,6 +9,10 @@ from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortF
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
@@ -88,7 +92,7 @@ def publish_quotient(
                 raise ValueError("spatial request already has another semantic result")
             if prepared is not None:
                 prepared.cancel()
-            results.ledger.bump("spatial_interface_composition_late_aliases")
+            results.ledger.bump(_shared_keys.SPATIAL_INTERFACE_COMPOSITION_LATE_ALIASES)
             return spatial_found
     if key is not None and key in self._parents:
         existing = self._parents[key]
@@ -156,18 +160,20 @@ def publish_quotient(
         if reserved and (prepared is None or prepared.functions.transaction is None):
             for owner, entries, nodes in reservations:
                 self.ledger.release(owner, entries=entries, nodes=nodes)
-        self.ledger.bump("quotient_publication_failures")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_PUBLICATION_FAILURES)
         raise
     finally:
         if prepared is not None:
             prepared.cancel()
     if new_node:
-        self.ledger.bump("quotient_semantic_interner_evaluations")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_SEMANTIC_INTERNER_EVALUATIONS)
     elif prepared is not None:
-        self.ledger.bump("quotient_semantic_interner_hits")
-        self.ledger.bump("quotient_late_duplicate_reductions")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_SEMANTIC_INTERNER_HITS)
+        self.ledger.bump(_interfaces_keys.QUOTIENT_LATE_DUPLICATE_REDUCTIONS)
     if key is not None:
-        self.ledger.bump("quotient_parent_publications")
+        self.ledger.bump(_interfaces_keys.QUOTIENT_PARENT_PUBLICATIONS)
     if spatial is not None:
-        spatial.results.ledger.bump("spatial_interface_composition_publications")
+        spatial.results.ledger.bump(
+            _shared_keys.SPATIAL_INTERFACE_COMPOSITION_PUBLICATIONS
+        )
     return found

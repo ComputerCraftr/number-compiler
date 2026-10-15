@@ -1,5 +1,5 @@
 theory Collatz_Border_Return_Refinement
-  imports Collatz_Boundary_Macros
+  imports Collatz_Boundary_Macros "Shared_S_Arithmetic.S_Arithmetic_Skew"
 begin
 
 text \<open>The local border return is a source-guarded arithmetic identity.
@@ -178,6 +178,29 @@ proof -
     using clock collatz_border_return_endpoint(2)[OF factor odd_u] by simp
 qed
 
+text \<open>This is the exact one-step radix-6 preimage at the odd source
+boundary.  The factor 3 is not invertible modulo 6: the target residue 2
+pulls back to the smaller source modulus 4, while residue 0 modulo 3 is
+impossible.  This is a finite congruence fact, not authority for a later
+named-family repetition count.\<close>
+
+lemma collatz_odd_step_radix6_preimage:
+  fixes x :: nat
+  assumes odd_x: "odd x"
+  shows "((3*x+1) div 2) mod 6 = 2 \<longleftrightarrow> x mod 4 = 1"
+    and "((3*x+1) div 2) mod 3 \<noteq> 0"
+proof -
+  obtain k where x_eq: "x = 2*k+1" using odd_x by (auto elim: oddE)
+  show "((3*x+1) div 2) mod 6 = 2 \<longleftrightarrow> x mod 4 = 1"
+    using x_eq by presburger
+  have odd_step: "(3*x+1) div 2 = 3*k+2"
+    using x_eq by presburger
+  have odd_step_mod3: "(3*k+2) mod 3 = 2"
+    by (simp only: mod_mult_self4) simp
+  show "((3*x+1) div 2) mod 3 \<noteq> 0"
+    using odd_step odd_step_mod3 by simp
+qed
+
 text \<open>Output alignment: if the selected last odd edge lands in residue
 9 modulo 20, its immediate predecessor is the 8-port residue 18 modulo 20.
 An initial source ending in 9 has no predecessor requirement.\<close>
@@ -205,6 +228,127 @@ proof -
   show ?thesis using even_x x_form by simp
 qed
 
+text \<open>The runtime's joined border action is a finite, admitted word of
+normalized source steps. Its affine transfer composes associatively, while
+source admission supplies each step equation. This theorem refines only the
+given finite word and its exact physical clock; it does not establish a
+selector, a cache protocol, bounded discovery work, or eventual termination.\<close>
+
+definition collatz_skew_atom :: "bool \<Rightarrow> int skew_transfer" where
+  "collatz_skew_atom branch =
+    (if branch then \<lparr>upper=3, offset=1, lower=2\<rparr>
+     else \<lparr>upper=1, offset=0, lower=2\<rparr>)"
+
+fun collatz_skew_word :: "bool list \<Rightarrow> int skew_transfer" where
+  "collatz_skew_word [] = shared_skew_identity"
+| "collatz_skew_word (branch # tail) =
+    shared_skew_then (collatz_skew_atom branch) (collatz_skew_word tail)"
+
+lemma collatz_skew_word_append:
+  "collatz_skew_word (first @ second) =
+    shared_skew_then (collatz_skew_word first) (collatz_skew_word second)"
+  by (induction first)
+    (simp_all add: shared_skew_associative)
+
+lemma collatz_skew_atom_refines_admitted_step:
+  assumes admitted: "branch = odd source"
+  shows "upper (collatz_skew_atom branch) * int source +
+      offset (collatz_skew_atom branch) =
+    lower (collatz_skew_atom branch) *
+      int (collatz_guarded_normalized_source_step branch source)"
+proof (cases branch)
+  case True
+  then have odd_source: "odd source" using admitted by simp
+  have step:
+    "collatz_guarded_normalized_source_step True source =
+      (3*source+1) div 2"
+    by (rule collatz_guarded_true_step_exact[OF odd_source])
+  have even_image: "even (3*source+1)" using odd_source by simp
+  have natural_equation:
+    "3*source+1 = 2*((3*source+1) div 2)"
+    using even_image by presburger
+  have equation:
+    "3 * int source + 1 =
+      2 * int (collatz_guarded_normalized_source_step True source)"
+    using natural_equation step by simp
+  show ?thesis using equation True
+    by (simp add: collatz_skew_atom_def)
+next
+  case False
+  then have even_source: "even source" using admitted by simp
+  have step:
+    "collatz_guarded_normalized_source_step False source = source div 2"
+    by (rule collatz_guarded_false_step_exact[OF even_source])
+  have natural_equation: "source = 2*(source div 2)"
+    using even_source by presburger
+  have equation:
+    "int source =
+      2 * int (collatz_guarded_normalized_source_step False source)"
+    using natural_equation step by simp
+  show ?thesis using equation False
+    by (simp add: collatz_skew_atom_def)
+qed
+
+theorem collatz_guarded_skew_word_finite_refinement:
+  assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
+  shows "upper (collatz_skew_word bits) * int source +
+      offset (collatz_skew_word bits) =
+    lower (collatz_skew_word bits) *
+      int (collatz_guarded_normalized_word_endpoint bits source)"
+    and "collatz_guarded_normalized_word_endpoint bits source =
+      (physical_collatz ^^ (length bits + count_list bits True)) source"
+proof -
+  show affine:
+    "upper (collatz_skew_word bits) * int source +
+      offset (collatz_skew_word bits) =
+      lower (collatz_skew_word bits) *
+        int (collatz_guarded_normalized_word_endpoint bits source)"
+    using admitted
+  proof (induction bits arbitrary: source)
+    case Nil
+    then show ?case by (simp add: shared_skew_identity_def)
+  next
+    case (Cons branch tail)
+    have branch_guard: "branch = odd source"
+      using Cons.prems[unfolded
+        collatz_guarded_normalized_word_admitted.simps] by blast
+    have tail_admitted:
+      "collatz_guarded_normalized_word_admitted tail
+        (collatz_guarded_normalized_source_step branch source)"
+      using Cons.prems[unfolded
+        collatz_guarded_normalized_word_admitted.simps] by blast
+    have head:
+      "upper (collatz_skew_atom branch) * int source +
+        offset (collatz_skew_atom branch) =
+        lower (collatz_skew_atom branch) *
+          int (collatz_guarded_normalized_source_step branch source)"
+      by (rule collatz_skew_atom_refines_admitted_step[OF branch_guard])
+    have tail_exact:
+      "upper (collatz_skew_word tail) *
+          int (collatz_guarded_normalized_source_step branch source) +
+        offset (collatz_skew_word tail) =
+        lower (collatz_skew_word tail) *
+          int (collatz_guarded_normalized_word_endpoint tail
+            (collatz_guarded_normalized_source_step branch source))"
+      by (rule Cons.IH[OF tail_admitted])
+    have composed:
+      "upper (shared_skew_then (collatz_skew_atom branch)
+          (collatz_skew_word tail)) * int source +
+        offset (shared_skew_then (collatz_skew_atom branch)
+          (collatz_skew_word tail)) =
+       lower (shared_skew_then (collatz_skew_atom branch)
+          (collatz_skew_word tail)) *
+        int (collatz_guarded_normalized_word_endpoint (branch # tail) source)"
+      using shared_skew_transport[OF head tail_exact]
+      by (simp add: collatz_guarded_normalized_word_endpoint.simps)
+    show ?case using composed by simp
+  qed
+  show "collatz_guarded_normalized_word_endpoint bits source =
+      (physical_collatz ^^ (length bits + count_list bits True)) source"
+    using collatz_guarded_normalized_word_refines_physical[OF admitted]
+    by blast
+qed
+
 ML \<open>
   val checked = @{thms physical_collatz_two_on_10q3
     physical_collatz_two_on_5_odd collatz_border_return_endpoint
@@ -212,7 +356,9 @@ ML \<open>
     collatz_border_return_3_port collatz_border_return_8_exit_4
     collatz_border_return_8_exit_9 collatz_physical_8_to_4
     collatz_physical_8_to_9_to_8
-    physical_collatz_reached_nine_has_eight_predecessor};
+    physical_collatz_reached_nine_has_eight_predecessor
+    collatz_skew_word_append collatz_skew_atom_refines_admitted_step
+    collatz_guarded_skew_word_finite_refinement};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Collatz border-return refinement depends on an oracle";
 \<close>

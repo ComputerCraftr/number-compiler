@@ -17,6 +17,7 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
     ProjectedNumberTerm,
 )
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import (
     require_integer as _integer,
 )
@@ -27,6 +28,7 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
     extent_json_value,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
@@ -72,7 +74,7 @@ def _metrics_json(
     )
     payload["metrics_scope"] = "construction_and_projection_descriptors"
     payload["prime_scheduler_counters"] = dict(term.metrics.prime_scheduler_counters)
-    if term.family == "prime":
+    if term.family is FamilyId.PRIME:
         payload["prime_scheduler_metrics_scope"] = "query_before_disposal"
     from number_compiler.resources.temporal_diagnostics import (
         collect_temporal_diagnostics_snapshot,
@@ -163,13 +165,13 @@ def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int)
         return _render_value_body(term, output_base=output_base, max_bits=max_bits)
     for name in ("emitted_digits", "failures", "integer_conversion_operand_bits"):
         ledger.bump("cli_render_" + name, 0)
-    ledger.bump("cli_render_requests")
+    ledger.bump(_api_metrics.CLI_RENDER_REQUESTS)
     try:
         result = _render_value_body(term, output_base=output_base, max_bits=max_bits)
     except BaseException:
-        ledger.bump("cli_render_failures")
+        ledger.bump(_api_metrics.CLI_RENDER_FAILURES)
         raise
-    ledger.bump("cli_render_emitted_digits", len(result))
+    ledger.bump(_api_metrics.CLI_RENDER_EMITTED_DIGITS, len(result))
     return result
 
 
@@ -266,5 +268,7 @@ def _render_value_body(
     value = term.materialize(max_bits=max_bits)
     ledger = _term_ledger(term)
     if ledger is not None:
-        ledger.bump("cli_render_integer_conversion_operand_bits", value.bit_length())
+        ledger.bump(
+            _api_metrics.CLI_RENDER_INTEGER_CONVERSION_OPERAND_BITS, value.bit_length()
+        )
     return _radix_string(value, output_base)

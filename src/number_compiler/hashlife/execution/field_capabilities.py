@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_executor import FieldImageApplication
     from number_compiler.hashlife.execution.field_transfer import (
@@ -94,12 +99,12 @@ def register_field_application(ledger: ResourceLedger, application: object) -> N
     ledger.register_execution_root(application)
     for name in (
         *ALGEBRAIC_FIELD_WORK_COUNTERS,
-        "diamond_temporal_composition_requests",
-        "diamond_temporal_composition_hits",
-        "diamond_temporal_composition_evaluations",
+        _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS,
+        _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS,
+        _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS,
     ):
         ledger.bump(name, 0)
-    ledger.bump("algebraic_executor_capability_validated")
+    ledger.bump(_execution_keys.ALGEBRAIC_EXECUTOR_CAPABILITY_VALIDATED)
 
 
 def _application_owner_matches(

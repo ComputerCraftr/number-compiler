@@ -21,6 +21,9 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     result_payload,
 )
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def promotion_step(
@@ -72,7 +75,9 @@ def promotion_step(
                 engine.scheduler.results, before, node.right
             )
         ):
-            engine.ledger.bump("tile_causal_parent_promotion_preflight_misses")
+            engine.ledger.bump(
+                _execution_keys.TILE_CAUSAL_PARENT_PROMOTION_PREFLIGHT_MISSES
+            )
             values.append(False)
             return True
         frame.stage = 1
@@ -106,7 +111,7 @@ def promotion_step(
                 parent_key,
                 completed,
             )
-            engine.ledger.bump("tile_causal_parent_promotion_hits")
+            engine.ledger.bump(_execution_keys.TILE_CAUSAL_PARENT_PROMOTION_HITS)
             values.append(True)
             return True
         frame.stage = 2
@@ -154,7 +159,7 @@ def promotion_step(
             left_result.close()
         if right_result is not None:
             right_result.close()
-        engine.ledger.bump("tile_causal_parent_promotion_misses")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_PARENT_PROMOTION_MISSES)
         values.append(False)
         return True
     try:
@@ -174,7 +179,7 @@ def promotion_step(
     finally:
         left_result.close()
         right_result.close()
-    engine.ledger.bump("tile_causal_parent_promotions")
+    engine.ledger.bump(_execution_keys.TILE_CAUSAL_PARENT_PROMOTIONS)
     values.append(True)
     return True
 

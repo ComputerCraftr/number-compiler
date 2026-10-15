@@ -1,5 +1,14 @@
 # Metrics reference
 
+The CLI observation namespace uses `--info temporal` for a request-context
+snapshot and `temporal.*`, `spatial.*`, `arithmetic.*`, `safety.*` and
+`number-theory.*` for explicit detail demands. `metrics` remains unchanged.
+This spelling migration does not change execution schema 8 or counter values.
+Counter names are declared once in resource-domain modules; reports serialize
+the same keys. Border packets carry a typed cycle/path projection, entry phase
+and derived display label. Labels do not identify cached actions, and an
+8-entry display does not authorize a source admitted only at digit 9.
+
 ## Metrics schema 8
 
 CLI
@@ -35,6 +44,11 @@ probes; its `metrics_schema_version` is also 8.
   valuations and operand-bit work, together with separately named represented
   zero-tail symbols and admitted exit/reentry counts. Candidate work includes
   rejected attempts; represented symbols are not an execution-work estimate.
+- Detailed ledger counters prefixed `collatz_physical_unified_skew_repeat_guard_`
+  measure actual guard checks, operand bits, admissions and refusals.
+  `collatz_physical_unified_skew_powered_actions` counts consumed repeated-word
+  actions; `collatz_physical_unified_skew_additional_repetitions` is represented
+  extent beyond the first word, not performed work or a cache-hit count.
 - `demand` and `stream` distinguish query counts, spatial visits and emitted
   symbols. A stream visit is not a temporal jump.
 - `observations` exposes measured observer work; `resources` reports entries,
@@ -169,7 +183,7 @@ digits and peak logical workspace slots/integer bits; those bits are not a
 Python heap-byte measurement. Reading metrics never constructs a macro or
 verifies a certificate.
 
-For A367620, `--no-value --info certificate` reports evidence availability
+For A367620, `--no-value --info safety.certificate` reports evidence availability
 without checking the current forest. `runtime_verified` describes admission
 already performed by that query; a metadata-only request reports false. Value
 admission remains mandatory and separate until the boundary-quotient cutover
@@ -301,3 +315,21 @@ cannot produce this refusal: the complete source cylinder must match.
 Key, payload and validation operand-bit counts measure their respective work;
 they do not estimate work saved. These fields are snapshot-only and remain
 null when the owner was not instrumented.
+
+## Source-bound radix integration
+
+`double_reverse_binary_shift_primitives` counts executed bounded binary-shift
+primitives. They do not increment `double_reverse_spatial_transducer_applications`;
+that counter continues to count the actual compressed decimal transducer path.
+`double_reverse_periodic_bank_pointed_reuse` counts final pair results consumed
+from an admitted temporal bank. Collatz cross-family guard construction,
+consumed temporal powers, refusals and explicitly demanded radix ports have
+separate counters. A finite residue or spectral observation is not a cache hit
+or a proof-completion flag.
+
+`reverse_radix19_cochain_node_visits` and
+`reverse_radix19_cochain_compositions` charge the source grammar fold itself.
+They are construction/observation work, separate from occurrence validation hits.
+Joint ordinary-power ports resolve one widest source and project all requested
+carry/borrow channels from its tape; the source growth value is not counted again
+as work for each channel.

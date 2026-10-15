@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_types import (
@@ -121,13 +124,13 @@ class HigherPrimitiveTables:
         key = action, side, state, symbol
         found = self._steps.get(key)
         if found is not None:
-            self.ledger.bump("higher_primitive_step_hits")
+            self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_STEP_HITS)
             return found
         result = self.schema.step(action, side, state, symbol)
         self._ordinal(result, left if side == 0 else right, "transition result")
         self._reserve_result(action, (left, right, blank), self._step_owner)
         self._steps[key] = result
-        self.ledger.bump("higher_primitive_step_publications")
+        self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_STEP_PUBLICATIONS)
         return result
 
     def emit(
@@ -144,13 +147,13 @@ class HigherPrimitiveTables:
         key = action, left, symbol, right
         found = self._outputs.get(key)
         if found is not None:
-            self.ledger.bump("higher_primitive_output_hits")
+            self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_OUTPUT_HITS)
             return found
         result = self.schema.emit(action, left, symbol, right)
         self._ordinal(result, blank + 1, "output result")
         self._reserve_result(action, (left_count, right_count, blank), self._emit_owner)
         self._outputs[key] = result
-        self.ledger.bump("higher_primitive_output_publications")
+        self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_OUTPUT_PUBLICATIONS)
         return result
 
 

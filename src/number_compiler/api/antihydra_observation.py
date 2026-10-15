@@ -7,6 +7,7 @@ from dataclasses import asdict
 from typing import Any
 
 from number_compiler.api.json_output import json_integers
+from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.sequences.antihydra.machine import MACHINE, MACHINE_SHA256
 from number_compiler.sequences.antihydra.mahler import tangent
 from number_compiler.sequences.antihydra.observers import (
@@ -61,7 +62,7 @@ def observe_arithmetic_many(
     if "mahler" in requested:
         from number_compiler.sequences.antihydra.mahler_action import associated_action
 
-        action = associated_action(result)
+        action = associated_action(result, include_radix_ports=True)
     packets: dict[str, dict[str, Any]] = {}
     for index, kind in enumerate(requested):
         value = deepcopy(shared) if index + 1 < len(requested) else shared
@@ -161,7 +162,9 @@ def observe_run(
                 associated_action,
             )
 
-            value["associated_action"] = associated_action(result)
+            value["associated_action"] = associated_action(
+                result, include_radix_ports=True
+            )
     elif kind == "modular":
         value = {
             "modulus": modulus,
@@ -181,7 +184,7 @@ def observe_run(
             "coefficients": tape_hasse(result, width, modulus),
             "directional_events": directional_hasse(result, width, modulus),
         }
-        result.ledger.counters["tape_hasse_terms"] = (width + 1) * len(
+        result.ledger.counters[_api_metrics.TAPE_HASSE_TERMS] = (width + 1) * len(
             tape_intervals(result)
         )
     elif kind == "tropical":
@@ -204,7 +207,7 @@ def observe_run(
                 divisor=support.divisor,
                 factor=support.proper_factor,
             )
-            result.ledger.counters["factor_gcd_queries"] = 1
+            result.ledger.counters[_api_metrics.FACTOR_GCD_QUERIES] = 1
     return json_integers(
         {
             "family": "antihydra",

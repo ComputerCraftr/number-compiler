@@ -8,7 +8,7 @@ and converts demanded bounded leaves to the existing guarded roof consumer.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     compose_prefix_safety_values,
@@ -38,6 +38,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
 
@@ -47,9 +48,13 @@ if TYPE_CHECKING:
     )
 
 
+ANTIHYDRA_ARITHMETIC_SEMANTIC_VERSION: Final[str] = (
+    "antihydra-arithmetic-source-image-v2-dyadic"
+)
+
 ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
     family="antihydra-arithmetic-source-image",
-    semantic_version="antihydra-arithmetic-source-image-v2-dyadic",
+    semantic_version=ANTIHYDRA_ARITHMETIC_SEMANTIC_VERSION,
     gains=(3, 3),
     offsets=(0, -1),
     weights=(2, -1),
@@ -174,7 +179,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         extent, offset, cap = wire
         transfer = self.image_node(self.root_payload).summary.transfer
         self.ledger.bump(
-            "mahler_hashlife_root_validation_operand_bits",
+            _antihydra_keys.MAHLER_HASHLIFE_ROOT_VALIDATION_OPERAND_BITS,
             transfer.upper.bit_length()
             + abs(transfer.offset).bit_length()
             + transfer.lower.bit_length(),

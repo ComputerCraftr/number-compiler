@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_actions as _actions_keys,
+)
 from number_compiler.resources.stores import append_indexed_node, make_dense_index
 
 
@@ -110,7 +113,7 @@ class FieldGeometryArena:
         geometry.__post_init__()
         found = self._keys.get(geometry)
         if found is not None:
-            self.ledger.bump("field_geometry_interner_hits")
+            self.ledger.bump(_actions_keys.FIELD_GEOMETRY_INTERNER_HITS)
             return self._handle(found)
         local_id = append_indexed_node(
             self.ledger,
@@ -121,7 +124,7 @@ class FieldGeometryArena:
             geometry,
             geometry,
         )
-        self.ledger.bump("field_geometry_publications")
+        self.ledger.bump(_actions_keys.FIELD_GEOMETRY_PUBLICATIONS)
         return self._handle(local_id)
 
     def child(self, parent: FieldGeometryID, side: int) -> FieldGeometryID:

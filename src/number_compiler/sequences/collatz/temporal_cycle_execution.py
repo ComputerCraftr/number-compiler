@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
@@ -55,8 +56,10 @@ def pump_normalized_one_cycle(
         cycle_blank = BlankLedger(0, 0, 2)
         charge_width_repeat(ledger, cycle_blank, repetitions)
         width_spine.record(cycle_blank.repeat(repetitions))
-    ledger.bump("collatz_physical_temporal_cycle_pump_requests")
-    ledger.bump("collatz_physical_temporal_cycle_pump_repetitions", repetitions)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_CYCLE_PUMP_REQUESTS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_CYCLE_PUMP_REPETITIONS, repetitions
+    )
     return (
         MixedRunExecutorState(
             state.current,

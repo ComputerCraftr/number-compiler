@@ -5,6 +5,11 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    PATH_630,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
     select_boundary_macro,
@@ -66,7 +71,7 @@ def test_observer_budget_refuses_before_constructing_the_clock(
     )
     try:
         with pytest.raises(BlockContextBudgetExceeded):
-            innovation_moore_clock("421", 7, memo=memo)
+            innovation_moore_clock(ENTRY_421, 7, memo=memo)
     finally:
         memo.dispose()
     assert ledger.nodes == 0
@@ -75,7 +80,7 @@ def test_observer_budget_refuses_before_constructing_the_clock(
 
 @pytest.mark.parametrize("bad_phase", (True, 1.0))
 def test_phase_inputs_reject_aliasing_bool_and_float_values(bad_phase: object) -> None:
-    clock = innovation_moore_clock("630", 7)
+    clock = innovation_moore_clock(PATH_630, 7)
     with pytest.raises(TypeError, match="innovation phase"):
         clock.class_id(cast(int, bad_phase))
     with pytest.raises(TypeError, match="innovation phase"):
@@ -85,9 +90,9 @@ def test_phase_inputs_reject_aliasing_bool_and_float_values(bad_phase: object) -
 
     future = innovation_future_moore(7)
     with pytest.raises(TypeError, match="innovation phase"):
-        future.global_id("630", cast(int, bad_phase))
+        future.global_id(PATH_630, cast(int, bad_phase))
     with pytest.raises(TypeError, match="innovation phase"):
-        future.finite_id("630", cast(int, bad_phase), 0)
+        future.finite_id(PATH_630, cast(int, bad_phase), 0)
     with pytest.raises(TypeError, match="finite Moore control ID"):
         future.finite_representative(0, cast(int, bad_phase))
 
@@ -96,9 +101,9 @@ def test_finite_refinement_uses_global_quotient_dimensions() -> None:
     future = innovation_future_moore(49)
     assert future.class_count == len(future.global_outputs)
     assert future.finite_count(8) > 0
-    clock = innovation_moore_clock("421", 49)
-    control = future.global_id("421", 10)
-    finite_id = future.finite_id("421", 10, 3)
+    clock = innovation_moore_clock(ENTRY_421, 49)
+    control = future.global_id(ENTRY_421, 10)
+    finite_id = future.finite_id(ENTRY_421, 10, 3)
     representative = future.finite_representative(3, finite_id)
     assert future.global_outputs[representative] == future.global_outputs[control]
     assert clock.class_id(10) >= 0
@@ -107,7 +112,7 @@ def test_finite_refinement_uses_global_quotient_dimensions() -> None:
 def test_finite_future_horizon_zero_is_the_unobserved_partition() -> None:
     future = innovation_future_moore(7)
     assert future.finite_count(0) == 1
-    assert future.finite_id("421", 0, 0) == future.finite_id("989", 6, 0)
+    assert future.finite_id(ENTRY_421, 0, 0) == future.finite_id(ENTRY_89_AT_NINE, 6, 0)
     assert future.finite_count(1) == len(set(future.global_outputs))
 
 
@@ -122,7 +127,7 @@ def test_unissued_dataclass_copies_cannot_alias_or_poison_memo_keys() -> None:
             forged_future.finite_count(1, memo=memo)
         assert future.finite_count(1, memo=memo) == count
 
-        clock = innovation_moore_clock("630", 7, memo=memo)
+        clock = innovation_moore_clock(PATH_630, 7, memo=memo)
         forged_clock = replace(clock, outputs=((),))
         with pytest.raises(ValueError, match="not issued"):
             forged_clock.class_id(0)
@@ -135,13 +140,13 @@ def test_issued_observer_tables_reject_mutated_cached_roots() -> None:
     ledger = ResourceLedger()
     memo = InnovationObserverMemo(ledger)
     try:
-        clock = innovation_moore_clock("630", 7, memo=memo)
+        clock = innovation_moore_clock(PATH_630, 7, memo=memo)
         original_outputs = clock.outputs
         object.__setattr__(clock, "outputs", tuple(() for _ in original_outputs))
         with pytest.raises(ValueError, match="not issued"):
             clock.class_id(0)
         object.__setattr__(clock, "outputs", original_outputs)
-        assert innovation_moore_clock("630", 7, memo=memo) is clock
+        assert innovation_moore_clock(PATH_630, 7, memo=memo) is clock
         assert clock.class_id(0) >= 0
 
         copied_outputs = tuple(value for value in original_outputs)
@@ -156,10 +161,10 @@ def test_issued_observer_tables_reject_mutated_cached_roots() -> None:
         original_successors = future.global_successors
         object.__setattr__(future, "global_successors", (*original_successors, 0))
         with pytest.raises(ValueError, match="not issued"):
-            future.global_id("630", 0, memo=memo)
+            future.global_id(PATH_630, 0, memo=memo)
         object.__setattr__(future, "global_successors", original_successors)
         assert innovation_future_moore(7, memo=memo) is future
-        assert future.global_id("630", 0, memo=memo) >= 0
+        assert future.global_id(PATH_630, 0, memo=memo) >= 0
 
         original_outputs = future.global_outputs
         copied_outputs = tuple(value for value in original_outputs)
@@ -167,7 +172,7 @@ def test_issued_observer_tables_reject_mutated_cached_roots() -> None:
         assert copied_outputs is not original_outputs
         object.__setattr__(future, "global_outputs", copied_outputs)
         with pytest.raises(ValueError, match="not issued"):
-            future.global_id("630", 0, memo=memo)
+            future.global_id(PATH_630, 0, memo=memo)
         object.__setattr__(future, "global_outputs", original_outputs)
     finally:
         memo.dispose()

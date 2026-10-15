@@ -5,11 +5,17 @@ from __future__ import annotations
 from typing import TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     PowerTwoCyclotomicRadialQuotient,
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.sequences.reverse_add.semantic_tags import (
+    REVERSE_CENTERED_RADIAL_ACTION_TAG,
+)
 
 SemanticIdentityMemoRecord: TypeAlias = tuple[
     FieldCellActionID,
@@ -29,9 +35,9 @@ def build_radial_identity(
     if type(radial.no_growth) is not int or type(radial.growth) is not int:
         raise TypeError("reverse radial identity coordinates require exact integers")
     return SemanticIdentity(
-        "reverse-centered-radial-action-v1",
+        SemanticIdentityDomain.REVERSE_CENTERED_RADIAL_ACTION,
         (
-            "reverse-centered-radial-action-v1",
+            REVERSE_CENTERED_RADIAL_ACTION_TAG,
             f"no-growth:{radial.no_growth}",
             f"growth:{radial.growth}",
         ),
@@ -75,7 +81,7 @@ def valid_radial_memo(
         and identity.digest == digest
         and identity.behavior is behavior
         and len(behavior) == 3
-        and behavior[0] == "reverse-centered-radial-action-v1"
+        and behavior[0] == REVERSE_CENTERED_RADIAL_ACTION_TAG
         and type(behavior[1]) is str
         and behavior[1].startswith("no-growth:")
         and type(behavior[2]) is str

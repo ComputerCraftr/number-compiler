@@ -23,6 +23,9 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _RelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @runtime_checkable
@@ -71,7 +74,7 @@ def apply_source_image(
     self._validate_key(source, "source image source")
     self._validate_key(action, "source image action")
     adapter.validate_action(action)
-    self.ledger.bump("source_image_application_requests")
+    self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_REQUESTS)
     split = adapter if isinstance(adapter, SourceBoundSplitContextAdapter) else None
     transaction_factory = (
         adapter.composite_transaction
@@ -118,16 +121,21 @@ def apply_source_image(
         push_frame(_ApplyFrame(origin, action))
         while workspace.has_frames():
             peak = len(workspace)
-            previous = self.ledger.counters.get("source_image_workspace_peak", 0)
+            previous = self.ledger.counters.get(
+                _execution_keys.SOURCE_IMAGE_WORKSPACE_PEAK, 0
+            )
             if peak > previous:
-                self.ledger.bump("source_image_workspace_peak", peak - previous)
-            self.ledger.bump("source_image_postorder_frames")
+                self.ledger.bump(
+                    _execution_keys.SOURCE_IMAGE_WORKSPACE_PEAK,
+                    peak - previous,
+                )
+            self.ledger.bump(_execution_keys.SOURCE_IMAGE_POSTORDER_FRAMES)
             frame = workspace.pop_frame()
             release_workspace()
             apply_key = _ApplyKey(adapter_key, frame.source, frame.action)
             action_key = adapter_key[0], adapter_key[1], frame.action
             if frame.stage == 0:
-                self.ledger.bump("source_image_application_attempts")
+                self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_ATTEMPTS)
                 if (
                     split is not None
                     and self.view(frame.source).failure_prefix is not None
@@ -144,7 +152,7 @@ def apply_source_image(
                             "split contexts cannot transport guarded failure"
                         )
                     push_value(found)
-                    self.ledger.bump("source_image_application_hits")
+                    self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_HITS)
                     continue
                 source_view = self.view(frame.source)
                 admitted_input = adapter.admitted_input_key(frame.action, source_view)
@@ -188,9 +196,11 @@ def apply_source_image(
                                 split is not None,
                             )
                         push_value(result)
-                        self.ledger.bump("source_image_relative_transfer_hits")
+                        self.ledger.bump(
+                            _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_HITS
+                        )
                         continue
-                self.ledger.bump("source_image_application_misses")
+                self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_MISSES)
                 children = adapter.action_children(frame.action)
                 if children is None:
                     with candidate_transaction():
@@ -206,7 +216,9 @@ def apply_source_image(
                             split is not None,
                         )
                     push_value(result)
-                    self.ledger.bump("source_image_primitive_applications")
+                    self.ledger.bump(
+                        _execution_keys.SOURCE_IMAGE_PRIMITIVE_APPLICATIONS
+                    )
                     continue
                 if type(children) is not tuple or len(children) != 2:
                     raise TypeError(
@@ -274,7 +286,7 @@ def apply_source_image(
                     )
                 )
                 if split is not None:
-                    self.ledger.bump("source_image_first_child_contexts")
+                    self.ledger.bump(_execution_keys.SOURCE_IMAGE_FIRST_CHILD_CONTEXTS)
                 push_frame(frame)
                 push_frame(_ApplyFrame(frame.before_source, before))
                 continue
@@ -308,7 +320,7 @@ def apply_source_image(
                     )
                 )
                 if split is not None:
-                    self.ledger.bump("source_image_second_child_contexts")
+                    self.ledger.bump(_execution_keys.SOURCE_IMAGE_SECOND_CHILD_CONTEXTS)
                 push_frame(frame)
                 push_frame(_ApplyFrame(frame.after_source, frame.children[1]))
                 continue
@@ -361,7 +373,7 @@ def apply_source_image(
             workspace.remove_active(action_key)
             release_workspace()
             push_value(result)
-            self.ledger.bump("source_image_chronological_compositions")
+            self.ledger.bump(_execution_keys.SOURCE_IMAGE_CHRONOLOGICAL_COMPOSITIONS)
         if workspace.value_count() != 1:
             raise AssertionError("source image scheduler produced multiple results")
         result = workspace.pop_value()

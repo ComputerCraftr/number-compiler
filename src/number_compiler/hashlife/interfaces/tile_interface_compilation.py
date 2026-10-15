@@ -10,7 +10,10 @@ from number_compiler.arithmetic.contracts.block_effect import (
     _effect_key,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -48,6 +51,9 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tiles import (
     TileID,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
 )
 
 if TYPE_CHECKING:
@@ -202,7 +208,7 @@ def _leaf_components(
             right_port,
             symbol_sort,
         )
-        self.ledger.bump("decimal_tile_factored_output_compilations")
+        self.ledger.bump(_interfaces_keys.DECIMAL_TILE_FACTORED_OUTPUT_COMPILATIONS)
     else:
         output = self._tabulated(
             ports,
@@ -275,7 +281,7 @@ def _parent_components(
     ) or self.bits.resolve(bb0[1]).signature != FunctionSignature(ports, right_sort):
         raise ValueError("spatial midpoint function has another port signature")
     left_mid, right_mid = aa0[0], bb0[1]
-    self.ledger.bump("tile_spatial_identity_substitutions_elided", 2)
+    self.ledger.bump(_interfaces_keys.TILE_SPATIAL_IDENTITY_SUBSTITUTIONS_ELIDED, 2)
     # Only seven child channels survive the parent projection.  Rewriting
     # all thirteen channels used to perform nineteen discarded decision-
     # DAG substitutions per new spatial effect.
@@ -369,7 +375,7 @@ def _compile_interface(
             interface = _leaf_product(self, action, node.symbol, wiring)
         published = results.publish_interface(key, interface)
         built[current] = published
-        self.ledger.bump("primitive_tile_interface_publications")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_TILE_INTERFACE_PUBLICATIONS)
     return built[source]
 
 
@@ -391,7 +397,7 @@ def _signature(
         if division_radix is not None
         else _effect_key(effect),
     )
-    identity = SemanticIdentity("tile-interface", behavior)
+    identity = SemanticIdentity(SemanticIdentityDomain.TILE_INTERFACE, behavior)
     admissible = self.quotients.functions.atom(
         FunctionSignature(ports, BOOL),
         1,

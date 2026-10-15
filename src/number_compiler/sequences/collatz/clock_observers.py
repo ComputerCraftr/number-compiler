@@ -12,8 +12,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
+from number_compiler.arithmetic.fields.homogeneous_growth import (
+    GrowthArithmeticEvaluator,
+    HomogeneousGrowthScale,
+)
 from number_compiler.arithmetic.fields.morphism_core import modular_power
+from number_compiler.arithmetic.fields.radial_sturmian import (
+    RadialSturmianClock,
+    RadialSturmianPacket,
+)
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.tropical import TropicalMatrix
 from number_compiler.arithmetic.fields.tropical_divisor import TropicalDivisorState
@@ -49,6 +56,17 @@ class SArithmeticClock:
     def homogeneous_growth(self) -> HomogeneousGrowthScale:
         """Project the admitted odd/division counts without rediscovering events."""
         return HomogeneousGrowthScale(self.events, self.divisions)
+
+    @property
+    def radial_sturmian_clock(self) -> RadialSturmianClock:
+        """Same admitted event/division counts, now with their circle phase."""
+        return RadialSturmianClock(self.homogeneous_growth)
+
+    def radial_leading_binary(
+        self, evaluator: GrowthArithmeticEvaluator, width: int = 8
+    ) -> RadialSturmianPacket:
+        """The multiplier's high bits, not an affine Collatz endpoint."""
+        return self.radial_sturmian_clock.leading_binary(evaluator, width)
 
     @property
     def real_prime_exponents(self) -> tuple[int, int]:
@@ -237,6 +255,15 @@ class CollatzClockObservers:
     def clock(self, root: CollatzEventNode) -> SArithmeticClock:
         self.arena.validate_node(root)
         return SArithmeticClock(root.effect.events, root.effect.shift)
+
+    def radial_leading_binary(
+        self,
+        root: CollatzEventNode,
+        evaluator: GrowthArithmeticEvaluator,
+        width: int = 8,
+    ) -> RadialSturmianPacket:
+        """Read the exact radial factor from the certified event DAG root."""
+        return self.clock(root).radial_leading_binary(evaluator, width)
 
     def factor_observation(
         self, root: CollatzEventNode, modulus: int

@@ -71,6 +71,8 @@ P0 = (
     "tests/validation/proofs/test_reverse_generic_range_constructor.py",
     "tests/validation/proofs/test_reverse_temporal_publisher_cutover.py",
     "tests/validation/proofs/test_shadow_jet_primality_release.py",
+    "tests/validation/proofs/reverse_add/test_symbolic_primitive_alphabet.py",
+    "tests/validation/research/collatz/test_harmonic_ports.py",
 )
 ACCEPTANCE_ROOT_ENV = "NUMBER_COMPILER_ACCEPTANCE_ROOT"
 _SESSION_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")

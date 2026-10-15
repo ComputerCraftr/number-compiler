@@ -11,6 +11,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
         CompleteFiniteTransform,
@@ -38,6 +42,9 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.interfaces.boolean_composition import (
     _CompositionKey,
+)
+from number_compiler.hashlife.interfaces.boolean_substitution import (
+    substitute_boolean,
 )
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -127,11 +134,11 @@ class BitFunctionArena:
         _signature(node.signature)
         if type(node.signature.output) is not AtomSort:
             raise ValueError("factored conversion requires a scalar semantic output")
-        self.ledger.bump("semantic_bit_from_scalar_requests")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_REQUESTS)
         cached = self._scalar_sources.get(function)
         if cached is not None:
             self.resolve(cached)
-            self.ledger.bump("semantic_bit_from_scalar_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_HITS)
             return cached
         # Every new association needs one entry even if its canonical function
         # already exists. Reject a full budget before traversing primitive data.
@@ -153,7 +160,7 @@ class BitFunctionArena:
         done: dict[int, tuple[int, ...]] = {}
         while pending:
             identity, ready = pending.pop()
-            self.ledger.bump("semantic_bit_from_scalar_frames")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_FRAMES)
             if identity in done:
                 continue
             current = tx.node(identity)
@@ -183,7 +190,7 @@ class BitFunctionArena:
                 )
         roots = done[function.local_id]
         result = circuit.normalized(node.signature, roots[:-1], roots[-1])
-        self.ledger.bump("semantic_bit_from_scalar_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_EVALUATIONS)
         return self._publish(circuit, (result,), scalar_source=function)[0]
 
     def variable(
@@ -439,11 +446,11 @@ class BitFunctionArena:
             *(value.signature.inputs for _, value in items),
         )
         key = BitSubstitutionKey(function, tuple(sorted(references)))
-        self.ledger.bump("semantic_bit_composition_requests")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_REQUESTS)
         cached = self._compositions.get(key)
         if cached is not None:
             self.resolve(cached)
-            self.ledger.bump("semantic_bit_composition_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_HITS)
             return cached
         if not items:
             return function
@@ -469,7 +476,7 @@ class BitFunctionArena:
             result_bits,
             circuit.conjunction(validity, valid),
         )
-        self.ledger.bump("semantic_bit_composition_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_EVALUATIONS)
         return self._publish(circuit, (result,), substitution=key)[0]
 
     def substitute_many(
@@ -590,7 +597,7 @@ class BitFunctionArena:
         )
         quot = circuit.normalized(FunctionSignature(bundle, BOOL), (quotient,), valid)
         result = self._publish(circuit, (remain, quot))
-        self.ledger.bump("semantic_binary_division_compilations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_BINARY_DIVISION_COMPILATIONS)
         return BinaryDivision(result[0], result[1])
 
     def evaluate(
@@ -710,8 +717,13 @@ class BitFunctionArena:
             if substitutions:
                 for key, identity in zip(substitutions, identities, strict=True):
                     self._compositions._data[key] = self._handle(identity)
-            self.ledger.bump("semantic_bit_boolean_nodes_published", count)
-            self.ledger.bump("semantic_factored_nodes_published", len(fresh))
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_NODES_PUBLISHED, count
+            )
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_FACTORED_NODES_PUBLISHED,
+                len(fresh),
+            )
             return tuple(self._handle(identity) for identity in identities)
         finally:
             if prepared is None:
@@ -752,28 +764,42 @@ class _Circuit:
         # Circuit predicates are total Boolean functions: invalid numeric
         # inputs live in a separate validity bit, never an invalid terminal.
         if condition == self.one:
-            self.tx.arena.ledger.bump("semantic_bit_constant_choice_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_CONSTANT_CHOICE_REDUCTIONS
+            )
             return yes
         if condition == self.zero:
-            self.tx.arena.ledger.bump("semantic_bit_constant_choice_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_CONSTANT_CHOICE_REDUCTIONS
+            )
             return no
         if yes == no:
-            self.tx.arena.ledger.bump("semantic_bit_equal_branch_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_EQUAL_BRANCH_REDUCTIONS
+            )
             return yes
         # These identities apply to the circuit's total Boolean predicates.
         # Apply them before the general Shannon scheduler, whose partial
         # functions must retain their separate invalid-terminal semantics.
         if (yes == self.one or yes == condition) and no == self.zero:
-            self.tx.arena.ledger.bump("semantic_bit_boolean_identity_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_IDENTITY_REDUCTIONS
+            )
             return condition
         if yes == self.one and no == condition:
-            self.tx.arena.ledger.bump("semantic_bit_boolean_identity_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_IDENTITY_REDUCTIONS
+            )
             return condition
         if yes == self.zero and no == condition:
-            self.tx.arena.ledger.bump("semantic_bit_boolean_absorption_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_ABSORPTION_REDUCTIONS
+            )
             return self.zero
         if yes == condition and no == self.one:
-            self.tx.arena.ledger.bump("semantic_bit_boolean_absorption_reductions")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_ABSORPTION_REDUCTIONS
+            )
             return self.one
         return self.tx.choose(condition, yes, no)
 
@@ -820,20 +846,22 @@ class _Circuit:
 
     def admitted(self) -> int:
         if self._admitted is not None:
-            self.tx.arena.ledger.bump("semantic_bit_admissibility_reuses")
+            self.tx.arena.ledger.bump(
+                _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_REUSES
+            )
             return self._admitted
         arena = self.tx.arena
         request = SemanticRequest("bit-admissibility", (), self.inputs)
-        arena.ledger.bump("semantic_bit_admissibility_requests")
+        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_REQUESTS)
         cached = arena.memo.get(request)
         if cached is not None:
             node = arena.resolve(cached)
             if node.signature != self.signature:
                 raise ValueError("cached port admission has another signature")
             self._admitted = cached.local_id
-            arena.ledger.bump("semantic_bit_admissibility_early_hits")
+            arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_EARLY_HITS)
             return self._admitted
-        arena.ledger.bump("semantic_bit_admissibility_evaluations")
+        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_EVALUATIONS)
         valid = self.one
         # Build the total padding predicate directly in variable order.  A
         # numeric subtraction also constructs all difference bits, although
@@ -864,14 +892,18 @@ class _Circuit:
                 ceiling = (port.cardinality + (1 << bit) - 1) >> bit
                 next_lower, next_upper = lower, upper
                 for role, limit in ((0, floor), (1, ceiling)):
-                    ledger.bump("semantic_bit_admissibility_threshold_frames")
+                    ledger.bump(
+                        _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_FRAMES
+                    )
                     if limit <= 0:
                         value = self.zero
                     elif limit >= 1 << (port.bits - bit):
                         value = success
                     elif role and floor == ceiling:
                         value = next_lower
-                        ledger.bump("semantic_bit_admissibility_threshold_shared_hits")
+                        ledger.bump(
+                            _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_SHARED_HITS
+                        )
                     else:
                         variable = PortVariable(
                             port.variable.time,
@@ -879,7 +911,9 @@ class _Circuit:
                             port.variable.role,
                             bit,
                         )
-                        ledger.bump("semantic_bit_admissibility_threshold_decisions")
+                        ledger.bump(
+                            _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_DECISIONS
+                        )
                         value = self.tx.decision(
                             self.signature,
                             variable,
@@ -916,74 +950,4 @@ class _Circuit:
         )
 
 
-def substitute_boolean(
-    circuit: _Circuit, root: int, replacements: Mapping[PortVariable, int]
-) -> int:
-    """Simultaneous substitution shared across all roots in this circuit.
-
-    The memo is transient, scoped to one immutable semantic transaction and
-    complete substitution environment. It contains no source/coordinate keys.
-    """
-    transaction = circuit.tx
-    ledger = transaction.arena.ledger
-    key = tuple(sorted(replacements.items()))
-    done = circuit._substitutions.setdefault(key, {})
-
-    def retain(identity: int, value: int) -> None:
-        done[identity] = value
-        circuit._substitution_entries += 1
-
-    pending = [(root, False)]
-    changed = frozenset(replacements)
-    while pending:
-        ledger.bump(
-            "semantic_bit_substitution_workspace_peak",
-            max(
-                0,
-                len(pending)
-                + circuit._substitution_entries
-                - ledger.counters.get("semantic_bit_substitution_workspace_peak", 0),
-            ),
-        )
-        current, ready = pending.pop()
-        ledger.bump("semantic_bit_substitution_frames")
-        if current in done:
-            ledger.bump("semantic_bit_substitution_shared_hits")
-            continue
-        node = transaction.node(current)
-        if node.signature == circuit.signature and not changed.intersection(
-            node.support
-        ):
-            retain(current, current)
-            ledger.bump("semantic_bit_substitution_unchanged_roots")
-        elif node.terminal is not None:
-            retain(current, transaction.terminal(circuit.signature, node.terminal))
-        else:
-            assert node.variable is not None
-            condition = replacements.get(node.variable)
-            if condition in (circuit.zero, circuit.one):
-                child = node.high if condition == circuit.one else node.low
-                if child in done:
-                    retain(current, done[child])
-                else:
-                    ledger.bump("semantic_bit_substitution_cofactor_prunes")
-                    pending.extend(((current, True), (child, False)))
-            elif ready:
-                if condition is None:
-                    retain(
-                        current,
-                        transaction.rebuilt_decision(
-                            circuit.signature,
-                            node.variable,
-                            done[node.low],
-                            done[node.high],
-                        ),
-                    )
-                else:
-                    retain(
-                        current,
-                        circuit.choose(condition, done[node.high], done[node.low]),
-                    )
-            else:
-                pending.extend(((current, True), (node.high, False), (node.low, False)))
-    return done[root]
+__all__ = ["substitute_boolean"]

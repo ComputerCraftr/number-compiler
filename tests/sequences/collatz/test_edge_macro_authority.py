@@ -4,6 +4,11 @@ import pytest
 
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    ENTRY_421,
+    ENTRY_26847_PHASES,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     admit_routed_boundary_macro_plan,
@@ -43,7 +48,7 @@ def test_invalid_plan_is_rejected_before_reservation(
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
     width_spine = CollatzWidthSpineAccumulator(ledger, requested=False)
     plan = admit_routed_boundary_macro_plan(164, 100)
-    assert plan is not None and plan.family == "421"
+    assert plan is not None and plan.identity == ENTRY_421
 
     # Preserve the genuine source and clock while changing an action exponent.
     # The sealed issue tuple must reject this before normalized_symbols can
@@ -91,8 +96,8 @@ def test_optional_border_preflight_preserves_scratch_for_exact_fallback() -> Non
     state = MixedRunExecutorState(190, 13, 0, 0, 0, 0, 0, 0, None, None)
     fallback = admit_routed_boundary_macro_plan(state.current, state.remaining)
     assert fallback is not None
-    assert (fallback.family, fallback.repetitions, fallback.physical_ticks) == (
-        "0563",
+    assert (fallback.identity, fallback.repetitions, fallback.physical_ticks) == (
+        ENTRY_0563,
         2,
         9,
     )
@@ -146,18 +151,18 @@ def test_optional_border_preflight_preserves_scratch_for_exact_fallback() -> Non
 
 
 @pytest.mark.parametrize(
-    "phase,family",
+    "phase,identity",
     (
-        (0, "26847"),
-        (1, "26847P1"),
-        (2, "26847P2"),
-        (3, "26847P3"),
-        (4, "26847P4"),
+        (0, ENTRY_26847_PHASES[0]),
+        (1, ENTRY_26847_PHASES[1]),
+        (2, ENTRY_26847_PHASES[2]),
+        (3, ENTRY_26847_PHASES[3]),
+        (4, ENTRY_26847_PHASES[4]),
     ),
 )
 @pytest.mark.parametrize("repetitions", (1, 2))
 def test_rotated_edge_macro_innovation_accepts_short_and_powered_factors(
-    phase: int, family: str, repetitions: int
+    phase: int, identity: object, repetitions: int
 ) -> None:
     source = 592 >> phase
     physical_ticks = 5 * repetitions + 1 - phase
@@ -176,7 +181,7 @@ def test_rotated_edge_macro_innovation_accepts_short_and_powered_factors(
 
     assert result.endpoint == expected
     assert result.first_boundary_macro is not None
-    assert result.first_boundary_macro.family == family
+    assert result.first_boundary_macro.identity == identity
     assert result.first_boundary_macro.repetitions == repetitions
     assert result.innovation_observation is not None
     assert result.innovation_observation.physical_ticks == physical_ticks

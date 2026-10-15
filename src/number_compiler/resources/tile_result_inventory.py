@@ -67,6 +67,10 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 from number_compiler.resources.tile_reverse_output_inventory import (
     reverse_bound_output_scalar_slots,
     valid_reverse_bound_output,
@@ -174,7 +178,7 @@ def audit_tile_results(
         and tile_lease_inventory.observed_entries == len(arena.tiles._leases)
         and type(arena._boundary_lease_count) is int
         and 0 <= arena._boundary_lease_count <= len(arena.tiles._leases)
-        and arena.ledger.counters.get("boundary_tile_lease_peak", 0)
+        and arena.ledger.counters.get(_shared_keys.BOUNDARY_TILE_LEASE_PEAK, 0)
         >= arena._boundary_lease_count
     )
     expected: dict[
@@ -460,7 +464,7 @@ def audit_tile_results(
                     and alphabet.symbol_count == 2 * key.base
                     and alphabet.interpretation
                     == "unsigned-radix-cell-with-explicit-blank"
-                    and alphabet.version == "canonical-tile-alphabet-v1"
+                    and alphabet.version == CANONICAL_TILE_ALPHABET_VERSION
                     and result.length == node.extent
                 )
                 if valid:

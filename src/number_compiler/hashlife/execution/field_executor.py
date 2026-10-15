@@ -34,6 +34,9 @@ from number_compiler.hashlife.execution.field_transfer import (
     FieldTransferExecutor,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_provider import (
@@ -199,9 +202,9 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
     ) -> FieldImageID:
         root_key = ImageRequestKey(action, source, geometry, signature)
         found = self._probe_root(root_key)
-        self.ledger.bump("recursive_field_image_requests")
+        self.ledger.bump(_execution_keys.RECURSIVE_FIELD_IMAGE_REQUESTS)
         if found is not None:
-            self.ledger.bump("recursive_field_image_early_hits")
+            self.ledger.bump(_execution_keys.RECURSIVE_FIELD_IMAGE_EARLY_HITS)
             return found
         # One trampoline handles temporal and spatial dependencies.
         stack: list[
@@ -232,9 +235,9 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
             else:
                 cached = self.images.probe(key)
             if not known_miss:
-                self.ledger.bump("recursive_field_image_requests")
+                self.ledger.bump(_execution_keys.RECURSIVE_FIELD_IMAGE_REQUESTS)
             if cached is not None:
-                self.ledger.bump("recursive_field_image_early_hits")
+                self.ledger.bump(_execution_keys.RECURSIVE_FIELD_IMAGE_EARLY_HITS)
                 built[built_key] = cached
                 active.discard(built_key)
                 continue
@@ -363,13 +366,19 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
             built[built_key] = self.images.publish(key, record)
             active.discard(built_key)
             if action_children is not None:
-                self.ledger.bump("recursive_field_image_temporal_compositions")
+                self.ledger.bump(
+                    _execution_keys.RECURSIVE_FIELD_IMAGE_TEMPORAL_COMPOSITIONS
+                )
             elif node.level:
-                self.ledger.bump("recursive_field_image_spatial_compositions")
+                self.ledger.bump(
+                    _execution_keys.RECURSIVE_FIELD_IMAGE_SPATIAL_COMPOSITIONS
+                )
             else:
-                self.ledger.bump("recursive_field_image_primitive_evaluations")
+                self.ledger.bump(
+                    _execution_keys.RECURSIVE_FIELD_IMAGE_PRIMITIVE_EVALUATIONS
+                )
         result = built[(action.local_id, source.local_id, geometry.local_id)]
-        self.ledger.bump("field_image_parent_evaluations")
+        self.ledger.bump(_execution_keys.FIELD_IMAGE_PARENT_EVALUATIONS)
         return result
 
     def _geometry_at_level(
@@ -401,9 +410,9 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
         """Build a balanced recursive image over a canonical dyadic cover."""
         root_key = ImageRequestKey(action, source, geometry, signature)
         found = self._probe_root(root_key)
-        self.ledger.bump("recursive_field_forest_requests")
+        self.ledger.bump(_execution_keys.RECURSIVE_FIELD_FOREST_REQUESTS)
         if found is not None:
-            self.ledger.bump("recursive_field_forest_early_hits")
+            self.ledger.bump(_execution_keys.RECURSIVE_FIELD_FOREST_EARLY_HITS)
             return found
         forest = self.sources.resolve_forest(source)
         cells = forest.cells
@@ -459,11 +468,11 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
             if is_known_root_miss:
                 cached = None
             else:
-                self.ledger.bump("recursive_field_forest_requests")
+                self.ledger.bump(_execution_keys.RECURSIVE_FIELD_FOREST_REQUESTS)
                 cached = self.images.probe(key)
             if cached is not None:
                 built[(low, high)] = cached
-                self.ledger.bump("recursive_field_forest_early_hits")
+                self.ledger.bump(_execution_keys.RECURSIVE_FIELD_FOREST_EARLY_HITS)
                 continue
             forest_join = getattr(self.adapter, "forest_join", None)
             candidate = (
@@ -487,8 +496,10 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
                     candidate.summary,
                 ),
             )
-            self.ledger.bump("recursive_field_forest_spatial_compositions")
-            self.ledger.bump("source_forest_image_compositions")
+            self.ledger.bump(
+                _execution_keys.RECURSIVE_FIELD_FOREST_SPATIAL_COMPOSITIONS
+            )
+            self.ledger.bump(_execution_keys.SOURCE_FOREST_IMAGE_COMPOSITIONS)
         result = built[(0, len(cells))]
         # A single-cell forest still needs its own validated occurrence binding.
         if len(cells) == 1:
@@ -504,9 +515,11 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
                 candidate.summary,
             )
             result = self.images.publish(root_key, record)
-            self.ledger.bump("recursive_field_forest_primitive_evaluations")
-        self.ledger.bump("source_forest_image_compilations")
-        self.ledger.bump("field_image_parent_evaluations")
+            self.ledger.bump(
+                _execution_keys.RECURSIVE_FIELD_FOREST_PRIMITIVE_EVALUATIONS
+            )
+        self.ledger.bump(_execution_keys.SOURCE_FOREST_IMAGE_COMPILATIONS)
+        self.ledger.bump(_execution_keys.FIELD_IMAGE_PARENT_EVALUATIONS)
         return result
 
     def point(self, image: FieldImageID, coordinate: int) -> int:
@@ -524,7 +537,7 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
         )
         if not 0 <= coordinate < limit:
             raise IndexError(coordinate)
-        self.ledger.bump("point_observations")
+        self.ledger.bump(_execution_keys.POINT_OBSERVATIONS)
         return self.adapter.point(image, coordinate)
 
     def width(self, image: FieldImageID) -> int:
@@ -533,7 +546,7 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
         )
 
         record = self.images.resolve(image)
-        self.ledger.bump("width_observations")
+        self.ledger.bump(_execution_keys.WIDTH_OBSERVATIONS)
         if isinstance(record.summary, ParametricFieldImageSummary):
             observe = getattr(self.adapter, "width", None)
             if not callable(observe):
@@ -678,7 +691,7 @@ class FieldImageApplication:
         self._validate_observation()
         observe = getattr(self.executor.adapter, "observe_parent_point", None)
         if callable(observe):
-            self.ledger.bump("field_image_parent_observation_requests")
+            self.ledger.bump(_execution_keys.FIELD_IMAGE_PARENT_OBSERVATION_REQUESTS)
             result = observe(
                 self.action,
                 self.source,
@@ -708,7 +721,7 @@ class FieldImageApplication:
         self._validate_observation()
         observe = getattr(self.executor.adapter, "observe_parent_width", None)
         if callable(observe):
-            self.ledger.bump("field_image_parent_observation_requests")
+            self.ledger.bump(_execution_keys.FIELD_IMAGE_PARENT_OBSERVATION_REQUESTS)
             result = observe(
                 self.action,
                 self.source,

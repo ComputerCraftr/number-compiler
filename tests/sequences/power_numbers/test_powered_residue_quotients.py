@@ -12,6 +12,11 @@ from devtools.verification.oracles.special_primality import (
     lucas_lehmer_test,
     pepin_test,
 )
+from devtools.verification.special_factor_reference import (
+    batched_special_factor_witness,
+    fermat_factor_witness,
+    mersenne_factor_witness,
+)
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -45,11 +50,6 @@ from number_compiler.sequences.collatz.parity import (
     collatz_parity_slab,
     collatz_parity_word,
     collatz_slab_padic3,
-)
-from number_compiler.sequences.power_numbers.factor_morphism import (
-    batched_special_factor_witness,
-    fermat_factor_witness,
-    mersenne_factor_witness,
 )
 from number_compiler.sequences.prime.lane_quotient import canonical_prime_base_period
 from tests.support.special_theorem_assertions import assert_unknown_resolution

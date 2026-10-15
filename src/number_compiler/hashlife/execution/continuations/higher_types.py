@@ -122,3 +122,10 @@ class HigherSemanticMetrics:
     substitutions: int
     evaluations: int
     evaluation_workspace_peak: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Rewrite:
+    root: int
+    variable: int
+    replacement: int

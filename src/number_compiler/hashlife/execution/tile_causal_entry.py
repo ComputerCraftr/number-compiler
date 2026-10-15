@@ -9,6 +9,10 @@ from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceE
 from number_compiler.hashlife.tiles.tile_boundaries import EMPTY_BOUNDARY_TILES
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -54,8 +58,8 @@ def causal_point(
         raise UnsupportedInterfaceError(
             "deep causal output requires an executable explicit edge assignment"
         )
-    scheduler.ledger.bump("powered_absorption_requests")
-    scheduler.ledger.bump("powered_absorption_evaluations")
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_REQUESTS)
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_EVALUATIONS)
     engine = CausalTileEngine(scheduler)
     hooks = adapter.family_hooks
     root_shift = None if hooks is None else hooks.shifted_event(scheduler, key)
@@ -68,8 +72,8 @@ def causal_point(
             if mapped >= node.width
             else engine.point(primitive, key.input, mapped, application=application)
         )
-        scheduler.ledger.bump("collatz_initial_root_point_skips")
-        scheduler.ledger.bump("collatz_initial_root_skipped_ticks", shift)
+        scheduler.ledger.bump(_execution_keys.COLLATZ_INITIAL_ROOT_POINT_SKIPS)
+        scheduler.ledger.bump(_shared_keys.COLLATZ_INITIAL_ROOT_SKIPPED_TICKS, shift)
     else:
         result = (
             engine.point(key.action, key.input, coordinate, application=application)
@@ -109,8 +113,8 @@ def causal_complete(
         raise UnsupportedInterfaceError(
             "explicit causal completion requires its bound edge executor"
         )
-    scheduler.ledger.bump("tile_scheduler_temporal_complete_requests")
-    scheduler.ledger.bump("tile_causal_complete_requests")
+    scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_TEMPORAL_COMPLETE_REQUESTS)
+    scheduler.ledger.bump(_execution_keys.TILE_CAUSAL_COMPLETE_REQUESTS)
     engine = CausalTileEngine(scheduler)
     output = (
         engine.output(key.action, key.input)
@@ -172,7 +176,7 @@ def causal_width_query(
                 limit,
             )
             if width is not None:
-                scheduler.ledger.bump("tile_causal_interface_parent_hits")
+                scheduler.ledger.bump(_execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS)
                 return width
 
     children = adapter.action_children(key.action)
@@ -201,8 +205,8 @@ def causal_width_query(
         raise UnsupportedInterfaceError(
             "deep causal width requires an explicit edge assignment"
         )
-    scheduler.ledger.bump("powered_absorption_requests")
-    scheduler.ledger.bump("powered_absorption_evaluations")
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_REQUESTS)
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_EVALUATIONS)
     hooks = adapter.family_hooks
     root_shift = None if hooks is None else hooks.shifted_event(scheduler, key)
     if root_shift is not None:
@@ -218,8 +222,8 @@ def causal_width_query(
             )
             - shift,
         )
-        scheduler.ledger.bump("collatz_initial_root_width_skips")
-        scheduler.ledger.bump("collatz_initial_root_skipped_ticks", shift)
+        scheduler.ledger.bump(_execution_keys.COLLATZ_INITIAL_ROOT_WIDTH_SKIPS)
+        scheduler.ledger.bump(_shared_keys.COLLATZ_INITIAL_ROOT_SKIPPED_TICKS, shift)
     else:
         width = CausalTileEngine(scheduler).width(
             key.action,
@@ -240,8 +244,12 @@ def _record_absorption(
     action: FieldCellActionID,
     adapter: PrimitiveTileKernelAdapter,
 ) -> None:
-    scheduler.ledger.bump("powered_absorption_successes")
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_SUCCESSES)
     span = adapter.action_cocycle(action).physical_ticks
-    previous = scheduler.ledger.counters.get("powered_absorption_max_span", 0)
+    previous = scheduler.ledger.counters.get(
+        _execution_keys.POWERED_ABSORPTION_MAX_SPAN, 0
+    )
     if span > previous:
-        scheduler.ledger.bump("powered_absorption_max_span", span - previous)
+        scheduler.ledger.bump(
+            _execution_keys.POWERED_ABSORPTION_MAX_SPAN, span - previous
+        )

@@ -70,6 +70,9 @@ from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -282,12 +285,17 @@ class CausalTileEngine(CausalTileAPI):
             frames.append(root)
             while frames:
                 peak = len(frames) + len(values) + len(memo) + len(active)
-                old = self.ledger.counters.get("tile_causal_workspace_peak", 0)
+                old = self.ledger.counters.get(
+                    _execution_keys.TILE_CAUSAL_WORKSPACE_PEAK, 0
+                )
                 if peak > old:
-                    self.ledger.bump("tile_causal_workspace_peak", peak - old)
+                    self.ledger.bump(
+                        _execution_keys.TILE_CAUSAL_WORKSPACE_PEAK,
+                        peak - old,
+                    )
                 frame = frames.pop()
                 op, a = frame.op, frame.args
-                self.ledger.bump("tile_causal_frames")
+                self.ledger.bump(_execution_keys.TILE_CAUSAL_FRAMES)
                 if op == "memo_done":
                     key = a[0]
                     if key not in active or not values:
@@ -297,7 +305,7 @@ class CausalTileEngine(CausalTileAPI):
                     value = values.pop()
                     self.scheduler._causal_tasks.finish(key, value)
                     values.append(value)
-                    self.ledger.bump("tile_causal_task_memo_publications")
+                    self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_PUBLICATIONS)
                     continue
                 if op in primary and frame.stage == 0 and not frame.memoized:
                     if op == "output_boundary":
@@ -342,7 +350,7 @@ class CausalTileEngine(CausalTileAPI):
                     found = memo.get(key)
                     if found is not None:
                         values.append(found)
-                        self.ledger.bump("tile_causal_task_memo_hits")
+                        self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_HITS)
                         self.ledger.bump(counter + "_hits")
                         if op == "output_boundary":
                             self.ledger.bump(
@@ -368,7 +376,7 @@ class CausalTileEngine(CausalTileAPI):
                         raise
                     frame.memoized = True
                     frames.extend((_Frame("memo_done", (key,)), frame))
-                    self.ledger.bump("tile_causal_task_memo_evaluations")
+                    self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_EVALUATIONS)
                     continue
                 if interface_step(self, frame, frames, values):
                     continue
@@ -420,7 +428,7 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         if completed is not None:
                             payload = retain_completed(self, key, completed)
-                            self.ledger.bump("tile_causal_result_hits")
+                            self.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_HITS)
                             values.append(payload)
                             continue
                         output_symbol = self._law(action).emit(
@@ -484,7 +492,7 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         payload = retain_completed(self, key, completed)
                         values.append(payload)
-                        self.ledger.bump("tile_causal_primitive_emits")
+                        self.ledger.bump(_execution_keys.TILE_CAUSAL_PRIMITIVE_EMITS)
                         continue
                     before, after = children
                     if frame.stage == 4:
@@ -581,7 +589,9 @@ class CausalTileEngine(CausalTileAPI):
                         values.append(
                             self._law(action).advance(BoundarySide(side), state, symbol)
                         )
-                        self.ledger.bump("tile_causal_direct_symbol_transfers")
+                        self.ledger.bump(
+                            _execution_keys.TILE_CAUSAL_DIRECT_SYMBOL_TRANSFERS
+                        )
                     else:
                         with self.tiles.leaf(
                             self.adapter.alphabet(action), symbol
@@ -744,7 +754,7 @@ class CausalTileEngine(CausalTileAPI):
                                 "admitted reverse boundary lost its consumer"
                             )
                         self.ledger.bump(
-                            "reverse_boundary_extent_discharged",
+                            _execution_keys.REVERSE_BOUNDARY_EXTENT_DISCHARGED,
                             prefix.view.relative_extent,
                         )
                         values.append(consumed)
@@ -783,9 +793,11 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         if completed is None:
                             completed = self.scheduler._complete_direct(key)
-                            self.ledger.bump("tile_causal_result_evaluations")
+                            self.ledger.bump(
+                                _execution_keys.TILE_CAUSAL_RESULT_EVALUATIONS
+                            )
                         else:
-                            self.ledger.bump("tile_causal_result_hits")
+                            self.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_HITS)
                         payload = retain_completed(self, key, completed)
                         values.append(payload)
                         continue
@@ -799,7 +811,9 @@ class CausalTileEngine(CausalTileAPI):
                             )
                             if completed is not None:
                                 payload = retain_completed(self, key, completed)
-                                self.ledger.bump("tile_causal_result_hits")
+                                self.ledger.bump(
+                                    _execution_keys.TILE_CAUSAL_RESULT_HITS
+                                )
                                 values.append(payload)
                                 continue
                     if children is not None and cached_midpoint_step(

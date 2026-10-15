@@ -88,6 +88,9 @@ from number_compiler.resources.fused_traversal_inventory import (
 from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 from number_compiler.resources.reverse_morphism_inventory import audit_reverse_morphisms
 from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 from number_compiler.resources.tile_reverse_output_inventory import (
     valid_reverse_bound_output,
 )
@@ -485,7 +488,7 @@ def audit_tile_runtime(
                             and alphabet.symbol_count == 2 * key.base
                             and alphabet.interpretation
                             == "unsigned-radix-cell-with-explicit-blank"
-                            and alphabet.version == "canonical-tile-alphabet-v1"
+                            and alphabet.version == CANONICAL_TILE_ALPHABET_VERSION
                             and result.length == node.extent
                         )
                     except (
@@ -531,7 +534,7 @@ def audit_tile_runtime(
                         kernel.base,
                         max(1, kernel.blank.bit_length()),
                         "unsigned-radix-cell-with-explicit-blank",
-                        "canonical-tile-alphabet-v1",
+                        CANONICAL_TILE_ALPHABET_VERSION,
                     )
 
                     valid &= _matches_alphabet(adapter, expected, execution_key.input)

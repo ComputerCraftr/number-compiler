@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.metric_keys import shared as _shared_keys
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
         BoundaryExpressionArena,
@@ -89,7 +91,7 @@ def retain_expression_response(
     root = arena._resolve(result)
     arguments = tuple(arena._resolve(argument) for argument in inputs)
     keep, visits, peak = retain_response(arena.nodes.__getitem__, root, arguments)
-    arena.ledger.bump("bound_response_guard_visits", visits)
+    arena.ledger.bump(_shared_keys.BOUND_RESPONSE_GUARD_VISITS, visits)
     name = "bound_response_guard_workspace_peak"
     arena.ledger.bump(name, max(0, peak - arena.ledger.counters.get(name, 0)))
     return keep

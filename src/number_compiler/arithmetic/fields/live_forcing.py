@@ -34,6 +34,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     _Interval,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +114,10 @@ class LiveForcingProjection:
     def _add_weight(self, state: _Context, value: int) -> None:
         work = self._work
         work.reserve(_context_units(state) + 2)
-        work.ledger.bump("live_forcing_modular_integer_bits", self.bits * 2 + 1)
+        work.ledger.bump(
+            _fields_keys.LIVE_FORCING_MODULAR_INTEGER_BITS,
+            self.bits * 2 + 1,
+        )
         work.weights[state] = (work.weights.get(state, 0) + value) % self.modulus
 
     def _construct(self, expression: InnovationID) -> None:
@@ -121,10 +127,10 @@ class LiveForcingProjection:
         while work.stack:
             state = work.stack.pop()
             work.ledger.release(work.stack_owner, entries=1, nodes=1)
-            work.ledger.bump("live_forcing_contexts")
+            work.ledger.bump(_fields_keys.LIVE_FORCING_CONTEXTS)
             # Do not resolve the child, its atom, its chart or its coefficients.
             if state.radial.no_growth >= self.bits:
-                work.ledger.bump("live_forcing_dead_contexts")
+                work.ledger.bump(_fields_keys.LIVE_FORCING_DEAD_CONTEXTS)
                 continue
             children = _children(arena, state)
             edges = []
@@ -132,12 +138,12 @@ class LiveForcingProjection:
             for coefficient, child in children:
                 work.reserve(max(1, (abs(coefficient).bit_length() + 63) // 64))
                 work.ledger.bump(
-                    "live_forcing_input_coefficient_bits",
+                    _fields_keys.LIVE_FORCING_INPUT_COEFFICIENT_BITS,
                     max(1, abs(coefficient).bit_length()),
                 )
                 reduced = coefficient % self.modulus
                 if not reduced:
-                    work.ledger.bump("live_forcing_zero_scale_edges")
+                    work.ledger.bump(_fields_keys.LIVE_FORCING_ZERO_SCALE_EDGES)
                     continue
                 edges.append((reduced, child))
                 work.enqueue(child)
@@ -161,7 +167,10 @@ class LiveForcingProjection:
             if not isinstance(node, (_Interval, _Atom)):
                 continue
             q = state.radial.no_growth
-            work.ledger.bump("live_forcing_modular_integer_bits", self.bits * 2 + 1)
+            work.ledger.bump(
+                _fields_keys.LIVE_FORCING_MODULAR_INTEGER_BITS,
+                self.bits * 2 + 1,
+            )
             scale = (weight << q) % self.modulus
             live = _Context(
                 state.reference, state.chart, RadialMultiplier(0, state.radial.growth)
@@ -178,7 +187,7 @@ class LiveForcingProjection:
                 raise ValueError("live forcing exceeds the query growth bound")
             else:
                 work.terms[state] = value
-        work.ledger.bump("live_forcing_packets", len(work.terms))
+        work.ledger.bump(_fields_keys.LIVE_FORCING_PACKETS, len(work.terms))
         work.graph.clear()
         work.weights.clear()
         retained_units = sum(
@@ -222,7 +231,7 @@ class LiveForcingProjection:
         if capacity:
             for packet in self.packets():
                 capacity += 2 * (packet.growth + 1)
-                ledger.bump("live_forcing_run_admission_packets")
+                ledger.bump(_fields_keys.LIVE_FORCING_RUN_ADMISSION_PACKETS)
         limbs = max(
             1, (max(abs(start).bit_length(), abs(stop).bit_length()) + 63) // 64
         )
@@ -277,9 +286,9 @@ class LiveForcingProjection:
                 choose = 1
                 for j in range(packet.growth + 1):
                     work.reserve(4)
-                    work.ledger.bump("live_forcing_stencil_terms")
+                    work.ledger.bump(_fields_keys.LIVE_FORCING_STENCIL_TERMS)
                     work.ledger.bump(
-                        "live_forcing_modular_integer_bits",
+                        _fields_keys.LIVE_FORCING_MODULAR_INTEGER_BITS,
                         self.bits + packet.growth + 2,
                     )
                     value = packet.coefficient * choose % self.modulus

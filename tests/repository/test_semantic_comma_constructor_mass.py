@@ -5,14 +5,14 @@ remain the authority for theorem validity; the tests catch accidental removal
 of the registered bridge, multiplicity, guards, or lazy legacy setup.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
 
-from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.isabelle_source_analysis import (
     IsabelleDeclaration,
     extract_isabelle_declarations,
 )
-from devtools.checks.isabelle_syntax import parse_theory_header
+from devtools.checks.isabelle_syntax import Session, parse_theory_header
 from devtools.paths import isabelle_root, repository_root
 
 ISABELLE = isabelle_root(repository_root())
@@ -39,11 +39,10 @@ def _declarations(path: Path) -> dict[str, IsabelleDeclaration]:
     }
 
 
-def test_mass_bridge_is_registered_in_dependency_order_and_audited() -> None:
-    sessions = discover_sessions(ISABELLE)
-    generic = next(
-        session for session in sessions if session.name == "Comma_Semantic_B1"
-    )
+def test_mass_bridge_is_registered_in_dependency_order_and_audited(
+    repository_sessions: Mapping[str, Session],
+) -> None:
+    generic = repository_sessions["Comma_Semantic_B1"]
     assert generic.theories.index(
         "Comma_Semantic_B1_CRT_Cardinality"
     ) < generic.theories.index("Comma_Semantic_B1_CRT_Constructor_Mass")

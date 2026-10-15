@@ -19,6 +19,9 @@ from number_compiler.hashlife.tiles.tile_context import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -57,7 +60,7 @@ def complete_temporal(
             frame = frames.pop()
             key = frame.key
             found = scheduler._lookup_execution_key(key)
-            scheduler.ledger.bump("tile_temporal_complete_frames")
+            scheduler.ledger.bump(_execution_keys.TILE_TEMPORAL_COMPLETE_FRAMES)
             if found is not None:
                 values.append(own(found))
                 continue
@@ -127,7 +130,9 @@ def complete_temporal(
                     ),
                 )
                 values.append(own(result))
-                scheduler.ledger.bump("tile_temporal_complete_compositions")
+                scheduler.ledger.bump(
+                    _execution_keys.TILE_TEMPORAL_COMPLETE_COMPOSITIONS
+                )
             finally:
                 close(parent_before)
                 close(after_result)

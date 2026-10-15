@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
@@ -121,7 +122,7 @@ def try_consume_cached_dyadic_action(
             width_spine.record(macro_width.blank)
     macros.applied()
     ledger.bump(
-        "collatz_physical_temporal_run_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
         cell.multiplier.bit_length()
         + endpoint.bit_length()
         + cell.residue.bit_length(),

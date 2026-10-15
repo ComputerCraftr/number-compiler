@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Generic, Literal, TypeVar, cast
+from enum import StrEnum
+from typing import Generic, TypeVar, cast
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.lifecycle import clear_accounted_store
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContractAudit,
     PayloadAuditContribution,
@@ -30,7 +32,11 @@ _StoreK = TypeVar("_StoreK")
 _StoreV = TypeVar("_StoreV")
 _StoreT = TypeVar("_StoreT")
 
-ResourceScope = Literal["ENGINE_OWNED", "INDEX_OWNED", "SHARED_GLOBAL"]
+
+class ResourceScope(StrEnum):
+    ENGINE_OWNED = "ENGINE_OWNED"
+    INDEX_OWNED = "INDEX_OWNED"
+    SHARED_GLOBAL = "SHARED_GLOBAL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +180,7 @@ class ResourceLedger:
             for name, value in attributes.items():
                 try:
                     size = len(value) if isinstance(value, Sized) else None
-                except (TypeError, ValueError):
+                except (RuntimeError, TypeError, ValueError):
                     size = None
                 fields.append((name, id(value), size))
             rows.append((id(root), tuple(sorted(fields))))
@@ -357,14 +363,14 @@ class ResourceLedger:
         yield from roots
 
     def register(
-        self, name: str, role: str, scope: ResourceScope = "ENGINE_OWNED"
+        self, name: str, role: str, scope: ResourceScope = ResourceScope.ENGINE_OWNED
     ) -> int:
-        if type(name) is not str or type(role) is not str or type(scope) is not str:
-            raise TypeError("resource name, role, and scope must be strings")
+        if type(name) is not str or type(role) is not str:
+            raise TypeError("resource name and role must be strings")
         if not name or not role:
             raise ValueError("resource name and role must be nonempty")
-        if scope not in ("ENGINE_OWNED", "INDEX_OWNED", "SHARED_GLOBAL"):
-            raise ValueError("unknown resource scope")
+        if type(scope) is not ResourceScope:
+            raise TypeError("resource scope must be a ResourceScope")
         found = self._names.get(name)
         if found is not None:
             previous = self._accounts[found]
@@ -719,15 +725,15 @@ class ResourceLedger:
         if type(value) is not int:
             raise TypeError("local arithmetic requires an integer")
         bits = value.bit_length()
-        self.counters["maximum_arithmetic_bits"] = max(
-            self.counters.get("maximum_arithmetic_bits", 0), bits
+        self.counters[_resources_keys.MAXIMUM_ARITHMETIC_BITS] = max(
+            self.counters.get(_resources_keys.MAXIMUM_ARITHMETIC_BITS, 0), bits
         )
         if bits > 64:
-            self.bump("unbounded_arithmetic_observations")
+            self.bump(_resources_keys.UNBOUNDED_ARITHMETIC_OBSERVATIONS)
             raise ArithmeticError(
                 "local arithmetic result exceeds the 64-bit limb contract"
             )
-        self.bump("bounded_limb_operations")
+        self.bump(_resources_keys.BOUNDED_LIMB_OPERATIONS)
         return value
 
     def inventory(self) -> tuple[ResourceInventory, ...]:

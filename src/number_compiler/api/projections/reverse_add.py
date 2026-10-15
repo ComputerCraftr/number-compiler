@@ -8,6 +8,7 @@ from number_compiler.api.number_api import (
     ProjectedNumberTerm,
     ProjectionMetrics,
 )
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.reverse_payloads import PoweredReverseAddTermPayload
 from number_compiler.api.symbolic_terms import SymbolicExpression
 from number_compiler.arithmetic.fields.radix import bit_width
@@ -50,14 +51,14 @@ def project(
     node_bits = bit_width(max(1, term.operator_nodes))
     descriptor_bits = term.descriptor_bits + term.operator_nodes * max(1, node_bits + 2)
     return ProjectedNumberTerm(
-        "reverse-add",
+        FamilyId.REVERSE_ADD,
         query.index,
         query.seed,
         query.base,
-        SymbolicExpression("reverse-add", query.index, query.seed, query.base),
+        SymbolicExpression(FamilyId.REVERSE_ADD, query.index, query.seed, query.base),
         PoweredReverseAddTermPayload(term),
         ProjectionMetrics(
-            "reverse-add",
+            FamilyId.REVERSE_ADD,
             query.index,
             term.compose_operations,
             0,

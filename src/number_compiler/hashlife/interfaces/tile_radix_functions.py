@@ -14,6 +14,9 @@ from number_compiler.arithmetic.radix_port_functions import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import MacroComponents
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 def _constant(
@@ -138,7 +141,7 @@ def division_parent_components(
             "active",
             threshold=transfer.carry.threshold if transfer.carry is not None else None,
         )
-    ledger.bump("tile_radix_arithmetic_parent_interfaces")
+    ledger.bump(_interfaces_keys.TILE_RADIX_ARITHMETIC_PARENT_INTERFACES)
     return _finish(
         transfer, output, active, a[7].through(before, ledger), b[8], first, last
     )

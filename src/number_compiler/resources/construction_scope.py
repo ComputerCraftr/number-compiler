@@ -10,6 +10,7 @@ from weakref import ReferenceType
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _ACTIVE_CONSTRUCTIONS: ContextVar[tuple[RuntimeConstruction, ...]] = ContextVar(
@@ -129,7 +130,7 @@ class RuntimeConstruction:
 
     def _abort(self) -> None:
         ledger = self.ledger
-        ledger.bump("runtime_construction_aborts")
+        ledger.bump(_resources_keys.RUNTIME_CONSTRUCTION_ABORTS)
         try:
             cleanup_all(
                 (
@@ -157,8 +158,8 @@ class RuntimeConstruction:
             # IDs are never recycled, including after a partial rollback.
             account.container._data.clear()
         ledger.release(owner, entries, nodes)
-        ledger.bump("runtime_construction_released_entries", entries)
-        ledger.bump("runtime_construction_released_nodes", nodes)
+        ledger.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_ENTRIES, entries)
+        ledger.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_NODES, nodes)
         if account.container is not None:
             ledger._factory_containers.discard(id(account.container))
         # Drop owning references and callbacks retained by failed factory frames.

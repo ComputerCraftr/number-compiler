@@ -18,6 +18,9 @@ from number_compiler.hashlife.execution.continuations.higher_summaries import (
     UnarySpatial,
     UnaryTemporal,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def _pair(
@@ -52,16 +55,16 @@ def _publish(
         local_id = len(arena._nodes)
         arena._nodes.append(context)
         arena._keys[context] = local_id
-        arena.ledger.bump("higher_summary_semantic_publications")
+        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
     elif context is not None:
-        arena.ledger.bump("higher_summary_semantic_hits")
+        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
     if found is None:
         found = len(arena._nodes)
         arena._nodes.append(record)
         arena._keys[record] = found
-        arena.ledger.bump("higher_summary_semantic_publications")
+        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
     else:
-        arena.ledger.bump("higher_summary_semantic_hits")
+        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
     result = arena._handle(found, record)
     arena._runtime_compositions[key] = result
     return result
@@ -75,22 +78,22 @@ def compose_runtime_pair(
     """Apply first, then second; normalize before semantic publication."""
     a, b = _pair(arena, first, second)
     if type(a.recipe) is UnaryIdentity or type(b.recipe) is UnaryIdentity:
-        arena.ledger.bump("higher_identity_transfer_elisions")
+        arena.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
         return second if type(a.recipe) is UnaryIdentity else first
     root = first, second
     stack = [(root, False)]
     while stack:
         key, ready = stack.pop()
-        arena.ledger.bump("higher_runtime_composition_requests")
+        arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_COMPOSITION_REQUESTS)
         if key in arena._runtime_compositions:
-            arena.ledger.bump("higher_runtime_composition_hits")
+            arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_COMPOSITION_HITS)
             continue
         a, b = _pair(arena, *key)
         x, y = a.recipe, b.recipe
         if type(x) is UnaryIdentity or type(y) is UnaryIdentity:
             chosen = b if type(x) is UnaryIdentity else a
             _publish(arena, key, chosen)
-            arena.ledger.bump("higher_identity_transfer_elisions")
+            arena.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
             continue
         if type(x) is UnaryAffine and type(y) is UnaryAffine:
             transfer = x.transfer.then(y.transfer, arena.ledger)
@@ -100,8 +103,11 @@ def compose_runtime_pair(
             continue
         if type(x) is UnaryFinite and type(y) is UnaryFinite:
             outputs = tuple(y.outputs[state] for state in x.outputs)
-            arena.ledger.bump("higher_finite_transfer_compositions")
-            arena.ledger.bump("higher_finite_transfer_state_visits", len(outputs))
+            arena.ledger.bump(_execution_keys.HIGHER_FINITE_TRANSFER_COMPOSITIONS)
+            arena.ledger.bump(
+                _execution_keys.HIGHER_FINITE_TRANSFER_STATE_VISITS,
+                len(outputs),
+            )
             _publish(
                 arena,
                 key,
@@ -156,5 +162,5 @@ def compose_runtime_pair(
             ),
             context=context_record,
         )
-        arena.ledger.bump("higher_runtime_interchange_compositions")
+        arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_INTERCHANGE_COMPOSITIONS)
     return arena._runtime_compositions[root]

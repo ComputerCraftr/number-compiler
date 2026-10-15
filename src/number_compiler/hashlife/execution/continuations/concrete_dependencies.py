@@ -46,6 +46,9 @@ from number_compiler.hashlife.execution.continuations.virtual_port_transfers imp
 from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
@@ -56,26 +59,26 @@ if TYPE_CHECKING:
 def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
     cached = self._memo.get(root)
     if cached is not None:
-        self.ledger.bump("concrete_port_task_early_hits")
+        self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
         return cached
-    self.ledger.bump("concrete_port_task_requests")
+    self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_REQUESTS)
     tasks: list[tuple[object, ...]] = [root]
     results: list[PortAtom] = []
     while tasks:
-        self.ledger.bump("concrete_port_task_frames")
+        self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_FRAMES)
         frame = normalize_request(self, tasks.pop())
         tag = cast(str, frame[0])
         if tag in ("ADV", "RES"):
             hit = self._memo.get(frame)
             if hit is not None:
-                self.ledger.bump("concrete_port_task_early_hits")
+                self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
                 results.append(hit)
                 continue
         if tag == "INIT":
             action, side = cast(FieldCellActionID, frame[1]), cast(int, frame[2])
             hit = self._memo.get(frame)
             if hit is not None:
-                self.ledger.bump("concrete_port_task_early_hits")
+                self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
                 results.append(hit)
                 continue
             canonical_initial = getattr(
@@ -169,7 +172,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 and self.adapter.blank_initial_is_stable(action, side)
             ):
                 self._store(key, state)
-                self.ledger.bump("concrete_port_blank_parent_skips")
+                self.ledger.bump(_execution_keys.CONCRETE_PORT_BLANK_PARENT_SKIPS)
                 results.append(state)
                 continue
             children = self.adapter.children(action)
@@ -526,7 +529,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 )
                 self._store(key, residual_record.constant_result)
                 results.append(residual_record.constant_result)
-                self.ledger.bump("concrete_constant_residual_hits")
+                self.ledger.bump(_execution_keys.CONCRETE_CONSTANT_RESIDUAL_HITS)
                 continue
             if residual_record.previous is None:
                 tasks.append(("RES_STORE", key))
@@ -539,7 +542,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     ("RES_PREVIOUS", key, action, side, residual_record, argument)
                 )
                 tasks.append(("RES", action, side, residual_record.previous, argument))
-                self.ledger.bump("concrete_irrelevant_port_elisions")
+                self.ledger.bump(_execution_keys.CONCRETE_IRRELEVANT_PORT_ELISIONS)
                 continue
             tasks.append(("RES_ARGUMENT", key, action, side, residual_record, argument))
             tasks.append(
@@ -618,11 +621,11 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             )
             self._validate_action_state(after, side, incoming)
             second_key = frame
-            self.ledger.bump("concrete_port_second_requests")
+            self.ledger.bump(_execution_keys.CONCRETE_PORT_SECOND_REQUESTS)
             second_hit = self._memo.get(second_key)
             if second_hit is not None:
-                self.ledger.bump("concrete_port_task_early_hits")
-                self.ledger.bump("concrete_port_second_early_hits")
+                self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
+                self.ledger.bump(_execution_keys.CONCRETE_PORT_SECOND_EARLY_HITS)
                 results.append(second_hit)
                 continue
             if self.adapter.children(after) is None:
@@ -693,10 +696,10 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             interface_id = self._virtual_bindings.get(binding)
             if interface_id is not None:
                 self.resolve_virtual(interface_id)
-                self.ledger.bump("concrete_virtual_interface_early_hits")
+                self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_EARLY_HITS)
                 results.append(0)
                 continue
-            self.ledger.bump("concrete_virtual_interface_requests")
+            self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_REQUESTS)
             before, after = cast(
                 tuple[FieldCellActionID, FieldCellActionID],
                 self.adapter.children(binding.parent),
@@ -773,7 +776,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 binding,
                 _VirtualInterface(consumer, binding.side, outputs),
             )
-            self.ledger.bump("concrete_virtual_interface_evaluations")
+            self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_EVALUATIONS)
             results.append(0)
             continue
         if tag == "VIRTUAL_MIDDLE":
@@ -838,7 +841,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 binding,
                 _VirtualInterface(consumer, binding.side, outputs),
             )
-            self.ledger.bump("concrete_virtual_interface_evaluations")
+            self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_EVALUATIONS)
             results.append(0)
             continue
         if tag == "VIRTUAL_APPLY":

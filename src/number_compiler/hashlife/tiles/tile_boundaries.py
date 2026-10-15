@@ -10,6 +10,9 @@ from number_compiler.hashlife.tiles.tiles import (
     TileID,
     TileLease,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +95,7 @@ def boundary_dyadic_pieces(
         current, origin = pending.pop()
         node = tiles.resolve(current)
         end = origin + node.width
-        tiles.ledger.bump("tile_boundary_cover_frames")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_COVER_FRAMES)
         if end <= start or origin >= stop:
             continue
         if start <= origin and end <= stop:
@@ -140,9 +143,9 @@ def normalize_boundary_view(
             view.relative_origin,
             view.relative_extent,
         )
-        tiles.ledger.bump("tile_boundary_region_normalization_requests")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_REGION_NORMALIZATION_REQUESTS)
         if normalized != view:
-            tiles.ledger.bump("tile_boundary_region_normalization_aliases")
+            tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_REGION_NORMALIZATION_ALIASES)
         return normalized, result
     pieces = boundary_dyadic_pieces(tiles, view)
     if not pieces:
@@ -182,9 +185,9 @@ def normalize_boundary_view(
         )
         result = current_lease
         current_lease = None
-        tiles.ledger.bump("tile_boundary_region_normalization_requests")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_REGION_NORMALIZATION_REQUESTS)
         if normalized != view:
-            tiles.ledger.bump("tile_boundary_region_normalization_aliases")
+            tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_REGION_NORMALIZATION_ALIASES)
         return normalized, result
     finally:
         if current_lease is not None:
@@ -227,7 +230,7 @@ def _extend_in_backing(
         if offset >= half:
             offset -= half
         parent = tiles.resolve(current)
-        tiles.ledger.bump("tile_boundary_concat_child_visits")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CHILD_VISITS)
     if current != second.tile:
         return None
     return BoundaryTileView(
@@ -261,7 +264,7 @@ def concat_boundary_views(
     )
     if not views:
         return None, None
-    tiles.ledger.bump("tile_boundary_concat_requests")
+    tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_REQUESTS)
     if len(views) == 1:
         view = views[0]
         return view, tiles.retain(view.tile)
@@ -280,7 +283,7 @@ def concat_boundary_views(
             )
         )
     ):
-        tiles.ledger.bump("tile_boundary_concat_view_hits")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_VIEW_HITS)
         return BoundaryTileView(
             a.tile,
             0,
@@ -291,7 +294,7 @@ def concat_boundary_views(
 
     extended = _extend_in_backing(tiles, a, b)
     if extended is not None:
-        tiles.ledger.bump("tile_boundary_concat_backing_hits")
+        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_BACKING_HITS)
         return extended, tiles.retain(extended.tile)
 
     pending = [(0, (total - 1).bit_length(), False)]
@@ -301,7 +304,7 @@ def concat_boundary_views(
     try:
         while pending:
             origin, level, ready = pending.pop()
-            tiles.ledger.bump("tile_boundary_concat_frames")
+            tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_FRAMES)
             if ready:
                 right, left = values.pop(), values.pop()
                 try:
@@ -341,7 +344,7 @@ def concat_boundary_views(
                         if cursor >= half:
                             cursor -= half
                         node = tiles.resolve(current)
-                        tiles.ledger.bump("tile_boundary_concat_child_visits")
+                        tiles.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CHILD_VISITS)
                     values.append(
                         tiles.mirror(current)
                         if view.orientation
@@ -360,11 +363,12 @@ def concat_boundary_views(
             )
             peak = len(pending) + len(values) + len(padding)
             previous = tiles.ledger.counters.get(
-                "tile_boundary_concat_workspace_peak", 0
+                _tiles_keys.TILE_BOUNDARY_CONCAT_WORKSPACE_PEAK, 0
             )
             if peak > previous:
                 tiles.ledger.bump(
-                    "tile_boundary_concat_workspace_peak", peak - previous
+                    _tiles_keys.TILE_BOUNDARY_CONCAT_WORKSPACE_PEAK,
+                    peak - previous,
                 )
         if len(values) != 1:
             raise AssertionError("causal concatenation produced another result arity")

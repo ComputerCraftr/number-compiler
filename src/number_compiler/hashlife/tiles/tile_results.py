@@ -78,7 +78,13 @@ from number_compiler.resources.cache_gc_metrics import (
     record_execution_cache_event,
 )
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.result_cache_kinds import (
+    RemovalCause,
+    ResultCacheKind,
     record_cache_removal,
     record_unattributed_post_eviction_miss,
     retained_result_memo_nodes,
@@ -484,8 +490,8 @@ class CompletedResultArena:
         )
         boundary_count = len(leases) - 1
         self._boundary_lease_count += boundary_count
-        self.ledger.counters["boundary_tile_lease_peak"] = max(
-            self.ledger.counters.get("boundary_tile_lease_peak", 0),
+        self.ledger.counters[_shared_keys.BOUNDARY_TILE_LEASE_PEAK] = max(
+            self.ledger.counters.get(_shared_keys.BOUNDARY_TILE_LEASE_PEAK, 0),
             self._boundary_lease_count,
         )
         return leases[0], tuple(leases[1:])
@@ -565,7 +571,7 @@ class CompletedResultArena:
             validate_context(key)
         key = normalize_output_region(self.tiles, key)
         found = self._memo.get(key)
-        self.ledger.bump("completed_result_requests")
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_REQUESTS)
         if found is None:
             record_execution_cache_event(
                 self,
@@ -575,7 +581,7 @@ class CompletedResultArena:
                 key.input,
                 action_admission=_action_admission,
             )
-            record_unattributed_post_eviction_miss(self.ledger, "result")
+            record_unattributed_post_eviction_miss(self.ledger, ResultCacheKind.RESULT)
             return None
         if type(found) is not CompletedResult:
             raise TypeError("completed result memo has another value sort")
@@ -584,7 +590,7 @@ class CompletedResultArena:
         else:
             self._validate_result(key, found, action_admission=_action_admission)
         lease = self._lease(key, found)
-        self.ledger.bump("completed_result_early_hits")
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_EARLY_HITS)
         record_execution_cache_event(
             self,
             "result",
@@ -653,12 +659,12 @@ class CompletedResultArena:
         self._validate_result(key, result)
         key = normalize_output_region(self.tiles, key)
         found = self._memo.get(key)
-        self.ledger.bump("completed_result_publication_requests")
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PUBLICATION_REQUESTS)
         if found is not None:
             if found != result:
                 raise ValueError("powered result already has another complete value")
             lease = self._lease(key, found)
-            self.ledger.bump("completed_result_late_duplicate_reductions")
+            self.ledger.bump(_tiles_keys.COMPLETED_RESULT_LATE_DUPLICATE_REDUCTIONS)
             record_execution_cache_event(
                 self, "result", "late_duplicate", key.action, key.input
             )
@@ -711,15 +717,17 @@ class CompletedResultArena:
             for owner, entries, nodes in reservations[:-1]:
                 self.ledger.release(owner, entries, nodes)
             raise
-        self.ledger.bump("completed_result_publications")
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PUBLICATIONS)
         prepare_execution_cache_event(
             self, "result", "early_hit", key.action, key.input
         )
         record_execution_cache_event(
             self, "result", "publication", key.action, key.input
         )
-        self.ledger.counters["completed_result_port_variants_peak"] = max(
-            self.ledger.counters.get("completed_result_port_variants_peak", 0),
+        self.ledger.counters[_tiles_keys.COMPLETED_RESULT_PORT_VARIANTS_PEAK] = max(
+            self.ledger.counters.get(
+                _tiles_keys.COMPLETED_RESULT_PORT_VARIANTS_PEAK, 0
+            ),
             old_variants + 1,
         )
         return lease
@@ -839,7 +847,7 @@ class CompletedResultArena:
                 self._variants[fused_variant] = count - 1
         retained_nodes = retained_result_memo_nodes((result,))
         self.ledger.release(self._memo_owner, entries=1, nodes=retained_nodes)
-        record_cache_removal(self.ledger, key, "retirement")
+        record_cache_removal(self.ledger, key, RemovalCause.RETIREMENT)
 
     def retire_tile(self, tile: TileID) -> None:
         if type(tile) is not TileID:
@@ -848,14 +856,15 @@ class CompletedResultArena:
         before = len(self._memo)
         head = self._reverse.get(_ReverseHead(tile))
         while is_execution_key(head):
-            self.ledger.bump("completed_result_retirement_traversal_steps")
+            self.ledger.bump(_tiles_keys.COMPLETED_RESULT_RETIREMENT_TRAVERSAL_STEPS)
             member = self._reverse.get(_ReverseMember(tile, head))
             following = member.following if type(member) is _ReverseLinks else None
             self._remove_key(head)
             head = following
-        self.ledger.bump("completed_result_tile_retirements")
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_TILE_RETIREMENTS)
         self.ledger.bump(
-            "completed_result_retirement_memo_removals", before - len(self._memo)
+            _tiles_keys.COMPLETED_RESULT_RETIREMENT_MEMO_REMOVALS,
+            before - len(self._memo),
         )
 
     def clear(self) -> None:
@@ -866,15 +875,16 @@ class CompletedResultArena:
         retained_nodes = retained_result_memo_nodes(self._memo.values())
         variant_entries = len(self._variants)
         for key in self._memo:
-            record_cache_removal(self.ledger, key, "eviction")
+            record_cache_removal(self.ledger, key, RemovalCause.EVICTION)
         self._memo.clear()
         self._reverse.clear()
         self._variants.clear()
         if entries:
-            self.ledger.bump("completed_result_evictions")
-            self.ledger.bump("completed_result_evicted_entries", entries)
+            self.ledger.bump(_tiles_keys.COMPLETED_RESULT_EVICTIONS)
+            self.ledger.bump(_tiles_keys.COMPLETED_RESULT_EVICTED_ENTRIES, entries)
             self.ledger.bump(
-                "completed_result_eviction_reverse_index_entries", reverse_entries
+                _tiles_keys.COMPLETED_RESULT_EVICTION_REVERSE_INDEX_ENTRIES,
+                reverse_entries,
             )
         self.ledger.release(self._memo_owner, entries=entries, nodes=retained_nodes)
         self.ledger.release(self._reverse_owner, entries=reverse_entries)

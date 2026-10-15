@@ -28,6 +28,9 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
     _Transaction,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -88,10 +91,10 @@ class SemanticFunctionArena:
         self.ledger.release(self.memo_owner, entries=size)
 
     def _cached(self, request: SemanticRequest) -> SemanticFunctionID | None:
-        self.ledger.bump("semantic_function_requests")
+        self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_REQUESTS)
         found = self.memo.get(request)
         if found is not None:
-            self.ledger.bump("semantic_function_request_hits")
+            self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_REQUEST_HITS)
         return found
 
     def signature(self, function: SemanticFunctionID) -> FunctionSignature:
@@ -439,12 +442,12 @@ class SemanticFunctionArena:
                 raise ValueError("evaluation inputs must be exact finite integers")
             if not 0 <= values[port.variable] < (1 << port.bits):
                 raise ValueError("evaluation input exceeds its encoded width")
-        self.ledger.bump("semantic_function_evaluations")
+        self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_EVALUATIONS)
         while node.variable is not None:
             variable = node.variable
             bit = (values[_base(variable)] >> variable.bit) & 1
             node = self.nodes[node.high if bit else node.low]
-            self.ledger.bump("semantic_function_decision_visits")
+            self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_DECISION_VISITS)
         if node.terminal is None:
             raise AssertionError("semantic leaf has no terminal")
         return node.terminal

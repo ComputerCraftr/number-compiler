@@ -208,6 +208,13 @@ class SpecialGermConstraintState:
         )
 
     def result(self, spec: SpecialFrobeniusChunkSpec) -> SpecialFrobeniusChunkResult:
+        """Describe algebraic constraint state without authenticating it.
+
+        Masks and defect fields are caller-constructible observations.  Their
+        abstract classification is useful for checking the support algebra,
+        but the candidate-derived bit is reserved for a separate source-bound
+        verification at the plan probe boundary.
+        """
         if not isinstance(spec, SpecialFrobeniusChunkSpec):
             raise TypeError(type(spec))
         method = (
@@ -242,7 +249,7 @@ class SpecialGermConstraintState:
                 "SPLIT",
                 method,
                 gcd_packet=support,
-                candidate_derived=self.candidate_derived,
+                candidate_derived=False,
             )
         if support_status == "ALL_PASS" or bit is False:
             return SpecialFrobeniusChunkResult(
@@ -250,7 +257,7 @@ class SpecialGermConstraintState:
                 "ALL_PASS",
                 method,
                 True,
-                candidate_derived=self.candidate_derived,
+                candidate_derived=False,
             )
         if support_status == "ALL_FAIL" or bit is True:
             return SpecialFrobeniusChunkResult(
@@ -258,13 +265,13 @@ class SpecialGermConstraintState:
                 "ALL_FAIL",
                 method,
                 False,
-                candidate_derived=self.candidate_derived,
+                candidate_derived=False,
             )
         return SpecialFrobeniusChunkResult(
             spec,
             "UNKNOWN",
             method,
-            candidate_derived=self.candidate_derived,
+            candidate_derived=False,
         )
 
 
@@ -375,8 +382,52 @@ class SpecialGermPlan:
         )
 
     def probe(self) -> SpecialFrobeniusChunkResult:
-        """Classify only accumulated constraints; never launch a support scan."""
-        return self.constraints.result(self.spec)
+        """Accept only a proper divisor verified against this exact source.
+
+        Caller-supplied masks and the ``candidate_derived`` metadata are
+        retained as algebraic constraints, but cannot decide a prime sheet.
+        A proper divisor is independently sufficient evidence of
+        compositeness, provided its modulus matches the plan's Fermat or
+        Mersenne candidate exactly.
+        """
+        from number_compiler.sequences.power_numbers.numbers import (
+            verified_special_divisor,
+        )
+
+        spec = self.spec
+        support = self.constraints.support_gcd
+        modulus = self.constraints.support_modulus
+        if (
+            type(spec.family) is str
+            and spec.family in ("fermat", "mersenne")
+            and type(spec.parameter) is int
+            and type(modulus) is int
+            and type(support) is int
+        ):
+            try:
+                verified = verified_special_divisor(
+                    spec.family, spec.parameter, modulus, support
+                )
+            except (TypeError, ValueError):
+                pass
+            else:
+                return SpecialFrobeniusChunkResult(
+                    spec,
+                    "SPLIT",
+                    "verified-source-bound-proper-divisor",
+                    gcd_packet=verified,
+                    candidate_derived=True,
+                )
+        return SpecialFrobeniusChunkResult(
+            spec,
+            "UNKNOWN",
+            (
+                "constraint-pullback-unresolved"
+                if self.constraints.checks == 0
+                else "constraint-pullback-unverified-evidence"
+            ),
+            candidate_derived=False,
+        )
 
     def classify_defect(
         self,

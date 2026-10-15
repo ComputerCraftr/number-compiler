@@ -14,6 +14,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
 )
 from number_compiler.arithmetic.polynomials.f5_transport import F5AffineTransport
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 def composition_cache(
@@ -31,7 +34,7 @@ def composition_cache(
     if memo is not None and memo.nodes_per_entry < minimum_nodes:
         memo.dispose()
         arena._f5_compositions = memo = None
-        arena.ledger.bump("symbolic_innovation_f5_memo_resizes")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_MEMO_RESIZES)
     if memo is None:
         memo = OwnedMemo(
             arena.ledger,
@@ -68,7 +71,7 @@ def compose_f5_forcing(
     arena.resolve(before.forcing)
     arena.resolve(after.forcing)
     combined = before.linear.then(after.linear)
-    arena.ledger.bump("symbolic_innovation_f5_composition_requests")
+    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_COMPOSITION_REQUESTS)
     metadata_bits = max(1, after.linear.no_growths.bit_length()) + max(
         1, after.linear.growths.bit_length()
     )
@@ -82,11 +85,11 @@ def compose_f5_forcing(
     found = memo.get(key)
     if found is not None:
         arena.resolve(found)
-        arena.ledger.bump("symbolic_innovation_f5_composition_hits")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_COMPOSITION_HITS)
         return F5AffineTransport(combined, arena._copy_ref(found))
 
     def shift(value: InnovationID, distance: int) -> InnovationID:
-        arena.ledger.bump("symbolic_innovation_f5_shift_requests")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_SHIFT_REQUESTS)
         return arena.chart(value, CylinderChart(1, -distance))
 
     def scale(value: InnovationID, scalar: int) -> InnovationID:
@@ -98,7 +101,7 @@ def compose_f5_forcing(
     except BaseException:
         # Successfully interned subexpressions remain accounted reusable
         # arithmetic; no complete action or source image is published.
-        arena.ledger.bump("symbolic_innovation_f5_composition_failures")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_COMPOSITION_FAILURES)
         raise
-    arena.ledger.bump("symbolic_innovation_f5_compositions")
+    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_COMPOSITIONS)
     return result

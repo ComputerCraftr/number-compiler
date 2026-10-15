@@ -14,6 +14,7 @@ from number_compiler.resources.dyadic_return_balanced_audit import (
     audit_collatz_d8_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
@@ -134,7 +135,7 @@ def audit_dyadic_return_payloads(
                         reconstructed.upper * exact_source + reconstructed.offset
                     )
                     ledger.bump(
-                        "dyadic_payload_audit_operand_bits",
+                        _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                         exact_source.bit_length()
                         + abs(numerator).bit_length()
                         + reconstructed.lower.bit_length()
@@ -468,9 +469,9 @@ def audit_dyadic_return_payloads(
                         odd_steps += bit
                         gain = root.law.gains[bit]
                         shift = root.law.offsets[bit]
-                        ledger.bump("dyadic_payload_audit_branch_steps")
+                        ledger.bump(_resources_keys.DYADIC_PAYLOAD_AUDIT_BRANCH_STEPS)
                         ledger.bump(
-                            "dyadic_payload_audit_operand_bits",
+                            _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                             state.bit_length()
                             + gain.bit_length()
                             + shift.bit_length()
@@ -520,9 +521,9 @@ def audit_dyadic_return_payloads(
                     )
                     if bound:
                         assert law_cycle is not None
-                        ledger.bump("dyadic_payload_audit_cycle_checks")
+                        ledger.bump(_resources_keys.DYADIC_PAYLOAD_AUDIT_CYCLE_CHECKS)
                         ledger.bump(
-                            "dyadic_payload_audit_operand_bits",
+                            _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                             sum(
                                 value.bit_length()
                                 for value in (
@@ -565,10 +566,11 @@ def audit_dyadic_return_payloads(
                         )
                         prefixes = tuple(accumulate(weights, initial=0))
                         ledger.bump(
-                            "dyadic_payload_audit_prefix_additions", len(weights)
+                            _resources_keys.DYADIC_PAYLOAD_AUDIT_PREFIX_ADDITIONS,
+                            len(weights),
                         )
                         ledger.bump(
-                            "dyadic_payload_audit_operand_bits",
+                            _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                             sum(value.bit_length() for value in prefixes),
                         )
                         cycle_delta = prefixes[-1]
@@ -607,9 +609,9 @@ def audit_dyadic_return_payloads(
                     if bound:
                         left = support_node(left_id)
                         right = support_node(right_id)
-                        ledger.bump("dyadic_payload_audit_compositions")
+                        ledger.bump(_resources_keys.DYADIC_PAYLOAD_AUDIT_COMPOSITIONS)
                         ledger.bump(
-                            "dyadic_payload_audit_operand_bits",
+                            _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
                             sum(
                                 value.bit_length()
                                 for value in (
@@ -759,7 +761,7 @@ def audit_dyadic_return_payloads(
                                         expanded.minimum,
                                     )
                                     ledger.bump(
-                                        "dyadic_payload_audit_reconstruction_hits"
+                                        _resources_keys.DYADIC_PAYLOAD_AUDIT_RECONSTRUCTION_HITS
                                     )
                                 else:
                                     expected = _balanced_saturated_audit(

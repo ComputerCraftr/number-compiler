@@ -1,5 +1,5 @@
 theory Physical_Collatz_Clock
-  imports Skew_Cylinder_Observers
+  imports Skew_Cylinder_Observers "Shared_Growth_Arithmetic.Radial_Sturmian"
 begin
 
 text \<open>The clock in this theory is bound to the physical Collatz source.
@@ -177,6 +177,23 @@ lemma physical_slope_S_arithmetic:
       2^(n - physical_odd_count n x)"
   by (simp add: physical_slope_def physical_matrix_diagonals)
 
+corollary physical_clock_radial_phase:
+  "frac (ln (of_rat (physical_slope n x)) / ln 2) =
+    radial_phase (physical_odd_count n x)"
+proof -
+  have scale:
+    "of_rat (physical_slope n x) =
+      (3::real)^physical_odd_count n x /
+        2^(n - physical_odd_count n x)"
+    by (simp add: physical_slope_S_arithmetic of_rat_divide of_rat_power)
+  have phase:
+    "frac (ln ((3::real)^physical_odd_count n x /
+        2^(n - physical_odd_count n x)) / ln 2) =
+      radial_phase (physical_odd_count n x)"
+    by (rule radial_phase_dyadic_transport)
+  show ?thesis using scale phase by simp
+qed
+
 theorem physical_slope_append:
   "physical_slope (m+n) x =
     physical_slope m x *
@@ -202,7 +219,8 @@ ML \<open>
    physical_matrix_transport physical_matrix_upper physical_matrix_lower
    physical_odd_count_append physical_matrix_append
    physical_odd_count_double physical_matrix_double
-   physical_slope_S_arithmetic physical_slope_append physical_slope_double})
+   physical_slope_S_arithmetic physical_clock_radial_phase
+   physical_slope_append physical_slope_double})
    then () else error "Physical Collatz clock oracle dependency";
 \<close>
 

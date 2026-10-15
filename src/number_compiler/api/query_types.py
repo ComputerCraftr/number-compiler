@@ -8,8 +8,9 @@ mathematical family request.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import ClassVar, Literal, TypeAlias
+from typing import ClassVar, TypeAlias
 
+from number_compiler.api.observation_types import FamilyId, SelectorId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 
 
@@ -44,8 +45,8 @@ class ReverseAddTermQuery:
     seed: int = field(kw_only=True)
     base: int = 10
 
-    family: ClassVar[Literal["reverse-add"]] = "reverse-add"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.REVERSE_ADD
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="term index")
@@ -60,8 +61,8 @@ class DoubleReverseTermQuery:
     max_steps: int = 4096
     max_state_bits: int = 4096
 
-    family: ClassVar[Literal["2rev10"]] = "2rev10"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.DOUBLE_REVERSE
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="term index")
@@ -83,8 +84,8 @@ class CollatzTermQuery:
     seed: int = field(kw_only=True)
     radix: int = 2
 
-    family: ClassVar[Literal["collatz"]] = "collatz"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.COLLATZ
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="term index")
@@ -102,8 +103,8 @@ class AntihydraTermQuery:
     max_steps: int = 4096
     max_state_bits: int = 4096
 
-    family: ClassVar[Literal["antihydra"]] = "antihydra"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.ANTIHYDRA
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="term index")
@@ -124,8 +125,8 @@ class CommaTermQuery:
     max_comma_states: int = 131_072
     max_comma_work: int = 1_000_000
 
-    family: ClassVar[Literal["a367620"]] = "a367620"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.A367620
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 1, name="A367620 index")
@@ -145,8 +146,8 @@ class PrimeTermQuery:
     max_prime_work: int = 1_000_000
     max_prime_stages: int = 4096
 
-    family: ClassVar[Literal["prime"]] = "prime"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.PRIME
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="prime index")
@@ -166,8 +167,8 @@ class PrimeTermQuery:
 class FermatTermQuery:
     index: int
 
-    family: ClassVar[Literal["fermat"]] = "fermat"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.FERMAT
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 0, name="Fermat index")
@@ -177,8 +178,8 @@ class FermatTermQuery:
 class MersenneTermQuery:
     index: int
 
-    family: ClassVar[Literal["mersenne"]] = "mersenne"
-    selector: ClassVar[Literal["nth"]] = "nth"
+    family: ClassVar[FamilyId] = FamilyId.MERSENNE
+    selector: ClassVar[SelectorId] = SelectorId.NTH
 
     def __post_init__(self) -> None:
         require_query_integer(self.index, "index", 1, name="Mersenne exponent/index")
@@ -203,8 +204,8 @@ class CollatzEventQuery:
     max_events: int = 4096
     max_digits: int = 4096
 
-    family: ClassVar[Literal["collatz"]] = "collatz"
-    selector: ClassVar[Literal["events"]] = "events"
+    family: ClassVar[FamilyId] = FamilyId.COLLATZ
+    selector: ClassVar[SelectorId] = SelectorId.EVENTS
 
     @property
     def index(self) -> int:
@@ -228,8 +229,8 @@ class CollatzEventQuery:
 class AntihydraVerifyQuery:
     certificate: str
 
-    family: ClassVar[Literal["antihydra"]] = "antihydra"
-    selector: ClassVar[Literal["verify"]] = "verify"
+    family: ClassVar[FamilyId] = FamilyId.ANTIHYDRA
+    selector: ClassVar[SelectorId] = SelectorId.VERIFY
 
     @property
     def index(self) -> int:

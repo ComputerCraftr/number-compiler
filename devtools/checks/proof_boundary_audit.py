@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from pathlib import Path
 
 from devtools.checks.package_contracts import DEVELOPER_ROOTS
@@ -23,8 +24,12 @@ EXPLICIT_PROOF_BOUNDARIES: frozenset[str] = frozenset()
 
 def proof_import_violations(source: str, module: str) -> tuple[str, ...]:
     """Inspect imports, including local imports and literal dynamic imports."""
+    return proof_import_tree_violations(ast.parse(source), module)
+
+
+def proof_import_tree_violations(tree: ast.Module, module: str) -> tuple[str, ...]:
+    """Inspect one already-parsed module with the same proof import rules."""
     violations: list[str] = []
-    tree = ast.parse(source)
     for node in ast.walk(tree):
         targets: list[str] = []
         if isinstance(node, ast.Import):
@@ -69,7 +74,12 @@ def proof_import_violations(source: str, module: str) -> tuple[str, ...]:
     return tuple(violations)
 
 
-def production_proof_import_violations(package: Path) -> tuple[str, ...]:
+def production_proof_import_violations(
+    package: Path,
+    *,
+    parsed_sources: Mapping[Path, ast.Module] | None = None,
+) -> tuple[str, ...]:
+    """Audit production modules, optionally reusing a caller-owned AST snapshot."""
     package = package.resolve()
     violations: list[str] = []
     for path in authored_files(package):
@@ -81,5 +91,10 @@ def production_proof_import_violations(package: Path) -> tuple[str, ...]:
         module = "number_compiler." + ".".join(relative.with_suffix("").parts)
         if module in EXPLICIT_PROOF_BOUNDARIES:
             continue
-        violations.extend(proof_import_violations(path.read_text(), module))
+        if parsed_sources is None:
+            violations.extend(proof_import_violations(path.read_text(), module))
+        else:
+            violations.extend(
+                proof_import_tree_violations(parsed_sources[path], module)
+            )
     return tuple(violations)

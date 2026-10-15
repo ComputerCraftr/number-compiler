@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
@@ -35,6 +39,7 @@ from number_compiler.resources.cache_gc_metrics import (
     temporal_span,
 )
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -236,7 +241,7 @@ def _validate_blank_proof(
     This cold-only check uses immutable root summaries and finite port tables.
     Warm lookup deliberately uses only the sealed snapshot and live handles.
     """
-    arena.ledger.bump("future_behavior_classification_evaluations")
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_CLASSIFICATION_EVALUATIONS)
     profile = arena.interfaces.resolve_future_profile(key.profile)
     behavior_class = arena.interfaces.resolve_future_behavior(behavior_id)
     certificate = arena.interfaces.future_certificate(key.profile)
@@ -265,7 +270,7 @@ def _validate_blank_proof(
     def safe(raw: int) -> bool:
         if type(raw) is not int or not 0 <= raw < len(quotient.left_classes):
             raise ValueError("blank behavior requires a finite exact left state")
-        arena.ledger.bump("behavior_classification_port_checks")
+        arena.ledger.bump(_tiles_keys.BEHAVIOR_CLASSIFICATION_PORT_CHECKS)
         return quotient.left_classes[raw] in certificate.safe_blank_left_states
 
     initial = authority.initial_ports(key.action)[0]
@@ -302,10 +307,10 @@ def lookup_behavior_classification(
 ) -> CompletedBehaviorClassification | None:
     _validate_key(arena, key)
     found = arena._memo.get(key)
-    arena.ledger.bump("future_behavior_requests")
-    arena.ledger.bump("future_behavior_binding_requests")
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_REQUESTS)
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_REQUESTS)
     if found is None:
-        record_unattributed_post_eviction_miss(arena.ledger, "behavior")
+        record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.BEHAVIOR)
         record_execution_cache_event(
             arena,
             "behavior",
@@ -317,8 +322,8 @@ def lookup_behavior_classification(
     if type(found) is not CompletedBehaviorClassification:
         raise TypeError("behavior memo contains another value sort")
     _validate_published(arena, key, found)
-    arena.ledger.bump("future_behavior_early_hits")
-    arena.ledger.bump("future_behavior_binding_early_hits")
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_EARLY_HITS)
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_EARLY_HITS)
     record_execution_cache_event(
         arena,
         "behavior",
@@ -341,11 +346,11 @@ def publish_behavior_classification(
     if type(behavior) is not FutureBehaviorClassID:
         raise TypeError("behavior publication requires a scoped class")
     arena.interfaces.resolve_future_behavior(behavior)
-    arena.ledger.bump("future_behavior_publication_requests")
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_REQUESTS)
     try:
         _validate_blank_proof(arena, key, behavior)
     except BaseException:
-        arena.ledger.bump("future_behavior_publication_failures")
+        arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
         raise
     value = CompletedBehaviorClassification(behavior)
     value = CompletedBehaviorClassification(
@@ -359,9 +364,9 @@ def publish_behavior_classification(
         if reservation is not None:
             reservation.close()
         if type(found) is not CompletedBehaviorClassification or found != value:
-            arena.ledger.bump("future_behavior_publication_failures")
+            arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
             raise ValueError("behavior binding already has another class")
-        arena.ledger.bump("future_behavior_aliases")
+        arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_ALIASES)
         record_execution_cache_event(
             arena,
             "behavior",
@@ -386,7 +391,7 @@ def publish_behavior_classification(
         try:
             arena.ledger.reserve_many(reservations)
         except BaseException:
-            arena.ledger.bump("future_behavior_publication_failures")
+            arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
             raise
     elif (
         type(reservation) is not BehaviorPublicationReservation
@@ -411,11 +416,11 @@ def publish_behavior_classification(
             arena.ledger.release(owner, entries, nodes)
         if reservation is not None:
             reservation._open = False
-        arena.ledger.bump("future_behavior_publication_failures")
+        arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
         raise
     if reservation is not None:
         reservation._open = False
-    arena.ledger.bump("future_behavior_binding_publications")
+    arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_PUBLICATIONS)
     level = arena.tiles.resolve(key.input).level
     arena.tiles._cache_metrics.prepare(
         "behavior",

@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from sys import getsizeof
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import resources as _resources_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerList
 
 
@@ -71,16 +73,17 @@ class FusedTraversalWorkspace:
             self.ledger.release(owner, entries=1)
             raise
         count = len(self.frames) + len(self.values)
-        peak = self.ledger.counters.get("tile_fused_workspace_peak", 0)
+        peak = self.ledger.counters.get(_shared_keys.TILE_FUSED_WORKSPACE_PEAK, 0)
         if count > peak:
-            self.ledger.bump("tile_fused_workspace_peak", count - peak)
+            self.ledger.bump(_shared_keys.TILE_FUSED_WORKSPACE_PEAK, count - peak)
         backing = getsizeof(self.frames._data) + getsizeof(self.values._data)
         old_backing = self.ledger.counters.get(
-            "tile_fused_workspace_backing_peak_bytes", 0
+            _resources_keys.TILE_FUSED_WORKSPACE_BACKING_PEAK_BYTES, 0
         )
         if backing > old_backing:
             self.ledger.bump(
-                "tile_fused_workspace_backing_peak_bytes", backing - old_backing
+                _resources_keys.TILE_FUSED_WORKSPACE_BACKING_PEAK_BYTES,
+                backing - old_backing,
             )
 
     def append_frame(self, value: object) -> None:
@@ -141,11 +144,12 @@ class FusedTraversalWorkspace:
             self.nodes, self.active = nodes, True
             self.max_frames, self.max_values = 2 * level + 1, level + 1
             peak = self.ledger.counters.get(
-                "tile_fused_workspace_reserved_reference_peak", 0
+                _resources_keys.TILE_FUSED_WORKSPACE_RESERVED_REFERENCE_PEAK, 0
             )
             if nodes > peak:
                 self.ledger.bump(
-                    "tile_fused_workspace_reserved_reference_peak", nodes - peak
+                    _resources_keys.TILE_FUSED_WORKSPACE_RESERVED_REFERENCE_PEAK,
+                    nodes - peak,
                 )
             yield
         finally:

@@ -8,7 +8,7 @@ an action is returned. The index itself is never semantic authority.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -31,7 +31,7 @@ from number_compiler.sequences.collatz.mixed_clock_macros import (
 )
 
 _ISSUER = _MIXED_ACTION_CACHE_ISSUER
-_VERSION = "collatz-complete-mixed-action-v2"
+_VERSION: Final[str] = "collatz-complete-mixed-action-v2"
 _INDEX_BITS = 16
 _MAX_RECORDS_PER_PREFIX = 8
 _MIXED_RECORD_SIZE = 17

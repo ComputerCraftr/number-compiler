@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import Literal
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import resources as _resources_keys
 
 # Leaf construction retains at most 24 closed-function slots, a 76-slot sector
 # summary, two MacroComponents records, and bounded codec/signature scratch.
@@ -49,11 +50,12 @@ class ClosedInterfaceWorkspace:
         try:
             self.nodes = nodes
             peak = self.ledger.counters.get(
-                "reverse_port_construction_workspace_peak", 0
+                _resources_keys.REVERSE_PORT_CONSTRUCTION_WORKSPACE_PEAK, 0
             )
             if nodes > peak:
                 self.ledger.bump(
-                    "reverse_port_construction_workspace_peak", nodes - peak
+                    _resources_keys.REVERSE_PORT_CONSTRUCTION_WORKSPACE_PEAK,
+                    nodes - peak,
                 )
             yield
         finally:

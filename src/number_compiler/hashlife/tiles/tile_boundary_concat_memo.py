@@ -21,7 +21,11 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileID, TileLease
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -154,16 +158,16 @@ def _lookup_canonical(
     arena: CompletedResultArena,
     canonical: BoundaryConcatKey,
 ) -> BoundaryConcatResult | None:
-    arena.ledger.bump("tile_boundary_concat_cache_requests")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_REQUESTS)
     found = arena._memo.get(canonical)
     if found is None:
-        arena.ledger.bump("tile_boundary_concat_cache_misses")
-        record_unattributed_post_eviction_miss(arena.ledger, "region")
+        arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_MISSES)
+        record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.REGION)
         return None
     if type(found) is not BoundaryConcatResult:
         raise TypeError("boundary concat memo contains another value sort")
     _validate_value(arena, canonical, found, published=True)
-    arena.ledger.bump("tile_boundary_concat_cache_early_hits")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_EARLY_HITS)
     return found
 
 
@@ -175,17 +179,17 @@ def _publish(
     _validate_key(arena, key)
     _validate_value(arena, key, value, published=True)
     found = arena._memo.get(key)
-    arena.ledger.bump("tile_boundary_concat_cache_publication_requests")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not BoundaryConcatResult:
             raise TypeError("boundary concat memo contains another value sort")
         _validate_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("boundary concat already has another canonical result")
-        arena.ledger.bump("tile_boundary_concat_cache_late_duplicates")
+        arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_LATE_DUPLICATES)
         return found, False
     publish_indexed_result(arena, key, value)
-    arena.ledger.bump("tile_boundary_concat_cache_publications")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_PUBLICATIONS)
     return value, True
 
 
@@ -215,7 +219,7 @@ def _validate_application(
         arena.tiles,
         application,
     )
-    arena.ledger.bump("tile_boundary_concat_application_validation_visits")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_APPLICATION_VALIDATION_VISITS)
     if live.scheduler.results is not arena:
         raise ValueError("concat dependency pin requires one live application")
 
@@ -289,7 +293,7 @@ def concat_cached_boundary_views(
             finally:
                 hit_lease.close()
             raise
-    arena.ledger.bump("tile_boundary_concat_cache_evaluations")
+    arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_EVALUATIONS)
     try:
         merged, miss_lease = concat_boundary_views(
             arena.tiles,
@@ -298,7 +302,7 @@ def concat_cached_boundary_views(
             key.second,
         )
     except BaseException:
-        arena.ledger.bump("tile_boundary_concat_cache_failures")
+        arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_FAILURES)
         raise
     if merged is None or miss_lease is None:
         raise AssertionError("boundary concatenation produced no exact content")
@@ -329,7 +333,7 @@ def concat_cached_boundary_views(
         finally:
             if result_lease is not None:
                 result_lease.close()
-        arena.ledger.bump("tile_boundary_concat_cache_failures")
+        arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_FAILURES)
         raise
     finally:
         if raw_lease is not None:

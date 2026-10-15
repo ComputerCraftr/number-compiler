@@ -4,6 +4,7 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import ENTRY_421
 from number_compiler.sequences.collatz.boundary_macro_prefixes import (
     _publish_boundary_macro_prefixes,
     _root_prefix_widths,
@@ -78,7 +79,7 @@ def test_boundary_macro_chunks_join_a_prior_root_prefix() -> None:
     anchor = odd_predecessor << 7
     ticks = 3 * 65 + 1
     macro = select_boundary_macro(macro_source, ticks)
-    assert macro is not None and macro.family == "421"
+    assert macro is not None and macro.identity == ENTRY_421
     assert macro.normalized_symbols >= 128
 
     ledger = ResourceLedger()
@@ -109,7 +110,7 @@ def test_short_unobserved_macro_prefix_breaks_frontier_adjacency() -> None:
     macro_source = 4 + 40 * (1 << 40)
     anchor = macro_source << 11
     macro = select_boundary_macro(macro_source, 31)
-    assert macro is not None and macro.family == "421"
+    assert macro is not None and macro.identity == ENTRY_421
 
     ledger = ResourceLedger()
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
@@ -145,7 +146,7 @@ def test_global_checkpoint_includes_width_eight_after_short_prefix() -> None:
     macro_source = 4 + 40 * (1 << 40)
     anchor = macro_source << 1
     macro = select_boundary_macro(macro_source, 31)
-    assert macro is not None and macro.family == "421"
+    assert macro is not None and macro.identity == ENTRY_421
 
     ledger = ResourceLedger()
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")

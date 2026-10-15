@@ -37,7 +37,7 @@ from number_compiler.sequences.power_numbers.numbers import (
     MersenneNumberSpec,
     fermat_radix_reinterpretation,
     mersenne_radix_reinterpretation,
-    special_modulus_matches,
+    verified_special_divisor,
 )
 
 if TYPE_CHECKING:
@@ -328,7 +328,7 @@ class CanonicalSequenceCompiler:
         state = self._refine_special_constraint_state(
             family,
             parameter,
-            SpecialGermConstraintState.from_mask(mask, method="source-output-mask"),
+            SpecialGermConstraintState.from_mask(mask, method="checked-theorem-mask"),
         )
         return state.mask
 
@@ -346,11 +346,11 @@ class CanonicalSequenceCompiler:
         *,
         method: str,
     ) -> SpecialGermConstraintState:
-        """Persist a candidate-derived theorem defect without enumerating support slots.
+        """Persist a checked proper-divisor witness from a supplied defect.
 
-        ``gcd(modulus, defect)`` is accumulated as one support ideal.  Adjacent
-        powered blocks may call this repeatedly; composition retains one gcd and
-        one two-bit sheet mask regardless of the number of checkpoints.
+        Raw integers do not authenticate a theorem recurrence. Only a proper
+        gcd divisor proves compositeness here; a unit or zero residue cannot
+        authorize either theorem branch without independently issued evidence.
         """
         from number_compiler.sequences.power_numbers.germ import (
             SpecialGermConstraintState,
@@ -361,16 +361,14 @@ class CanonicalSequenceCompiler:
         parameter = require_integer(parameter, "special parameter", 0)
         modulus = require_integer(modulus, "defect modulus", 1)
         defect = require_integer(defect, "defect", 0)
-        if not special_modulus_matches(family, parameter, modulus):
-            raise ValueError(
-                "defect modulus does not match the requested special source"
-            )
+        support = verified_special_divisor(family, parameter, modulus, defect)
         return self._refine_special_constraint_state(
             family,
             parameter,
-            SpecialGermConstraintState.from_defect(
-                modulus,
-                defect,
+            SpecialGermConstraintState(
+                support_modulus=modulus,
+                support_gcd=support,
+                checks=1,
                 method=method,
                 candidate_derived=True,
             ),
@@ -574,7 +572,7 @@ class CanonicalSequenceCompiler:
             method = (
                 "pulled-back-support-defect"
                 if support is not None
-                else "pulled-back-output-constraint"
+                else "checked-theorem-mask"
             )
             guard = SpecialSourceGuard(family, parameter, pulled_bit, method)
             result = SpecialTheoremResolution(
@@ -663,14 +661,12 @@ class CanonicalSequenceCompiler:
         mask: SpecialBranchMask | None = None,
         require_concrete: bool = False,
     ) -> BinaryOutputCoordinate:
-        """Apply cheap branch constraints before optionally asking the theorem.
+        """Project an output without promoting its local labels to theorem evidence.
 
-        ``mask`` is normally produced by :class:`SpecialSourceShape` from known
-        source length/digit/oddness/boundary facts.  It is intersected into the
-        source's persistent two-bit survivor mask, so a sheet killed by one
-        coordinate stays dead for later coordinates.  Only an unresolved
-        separating output with ``require_concrete=True`` reaches arithmetic
-        theorem work.
+        A supplied mask describes only this output's alternatives. Source digit,
+        length and carry geometry does not authenticate a primality branch.
+        Only checked theorem results and proper candidate factors persist across
+        outputs; an unresolved theorem coordinate can request concrete resolution.
         """
         from number_compiler.projection.output_quotient import (
             SpecialBranchMask,
@@ -689,7 +685,7 @@ class CanonicalSequenceCompiler:
         if mask is not None:
             if type(mask) is not SpecialBranchMask:
                 raise TypeError(type(mask))
-            self._refine_special_constraint_mask(family, parameter, mask)
+            return coordinate.restrict(mask.require_possible())
         state = self._special_constraint_state(family, parameter)
         pulled_bit = self._special_constraint_failure_bit(state)
         coordinate = (

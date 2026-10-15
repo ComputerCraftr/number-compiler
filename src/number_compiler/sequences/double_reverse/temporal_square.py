@@ -7,6 +7,9 @@ from typing import cast
 
 from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.sequences.double_reverse.stencil_moore import (
+    stencil_from_ports,
+)
 
 
 class _TwoStepLeftDFA:
@@ -38,10 +41,6 @@ class DoubleReverseTwoStepMachine:
         self.left = _TwoStepLeftDFA()
         self.right = _TwoStepRightDFA()
 
-    @staticmethod
-    def _phi(residue: int, high: int) -> int:
-        return int(residue >= 3 or (residue == 2 and high == 1))
-
     @classmethod
     def emit(
         cls, high_left: int, symbol: int, residue_right: int
@@ -52,13 +51,8 @@ class DoubleReverseTwoStepMachine:
             or residue_right not in (0, 1, 2, 3, 4, 10)
         ):
             return None
-        high = int(symbol >= 5)
-        residue = symbol % 5
-        carry_in = 0 if residue_right == 10 else cls._phi(residue_right, high)
-        next_residue = (2 * residue + high_left) % 5
-        next_high = cls._phi(next_residue, carry_in)
-        output_residue = (2 * next_residue + carry_in) % 5
-        return (5 * next_high + output_residue,)
+        right_f5 = 0 if residue_right == 10 else residue_right
+        return (stencil_from_ports(high_left, symbol, right_f5),)
 
 
 def attach_projector_memos(

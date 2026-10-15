@@ -60,8 +60,51 @@ the transverse unit/annihilator information, a proof that it equals the indexed
 criterion, and a construction/demand bound that does not enumerate the whole
 progression window. When unavailable, primality remains `unknown`. A separately
 checked proper divisor may prove composite, but failure to find one does not
-prove prime. Pépin and Lucas–Lehmer remain research oracles rather than hidden
-fallbacks.
+prove prime. Classical modular Pépin and Lucas–Lehmer loops remain research
+oracles rather than hidden fallbacks.
+
+The reconstructive [integral witness reference](../../devtools/verification/fermat_integral_ideal_reference.py)
+lives in development tooling. Its bounded binomial fold and signed carry
+cochain are useful independent research checks, but are no longer a production
+`FermatNumberSpec` method. The reference's 65,536-term budget admits F4's 32,769
+coefficients and rejects F5 before constructing its source. It does not establish
+a compact arbitrary-index constructor or close the production gate above.
+
+The explicit [factor-search reference](../../devtools/verification/special_factor_reference.py)
+also lives in development tooling. Its modular divisibility witnesses and finite
+factor-slot searches are not production primality fallbacks. Bounded radix
+observations remain available as explicitly demanded source information.
+
+The NC12 source/fold audits distinguish a compressed source from a compressed
+primality computation. A four-node ternary grammar for `3^(2^t)` still needs
+`t` candidate-modulus action squares when its repeat is evaluated by generic
+modular composition. That reference is not a production fallback. Likewise,
+fixed low-radix ports at levels 15 and 75 can coincide while their remainders
+modulo 65,537 are respectively -1 and 1. A local pivot, Walsh or radial observer
+cannot supply the missing global signed-order character by itself.
+
+`GuardedBinarySource` admits and copies a supplied binary SLP once. Guarded
+uniform interval toggles update its Fermat fold with signed endpoint terms;
+the fold and tripling observation use the shared iterative SLP traversal.
+Neither the input grammar nor a caller-supplied pivot label certifies that the
+word is `3^(2^t)`. The tripling residue is a separate observation, not an SLP
+action with the original word's length.
+
+`FermatNumberSpec.demand_dyadic_pivot_moore` exposes bounded fixed-offset
+ports of the normalized unit `u_t=(3^(2^t)-1)/2^(t+2)`, for `t>=1`.
+The exact recurrence `u_(t+1)=u_t+2^(t+1)*u_t^2` makes low fixed windows
+stationary; large occurrence levels therefore do not require a level-sized
+loop. Moving windows retain an explicit precision bound. Observer identities
+include the selected offsets, and the external level remains occurrence data.
+These ports do not replace the unresolved global source-to-fold producer.
+
+The checked [binomial source theory](../../proofs/isabelle/integration/etale/etale/Fermat_Binomial_Negacyclic_Source.thy)
+proves the finite negacyclic source identity. The [integral ideal bridge](../../proofs/isabelle/integration/etale/etale/Fermat_Integral_Ideal_Pepin_Bridge.thy)
+proves signed-carry telescoping and the sufficient Pépin implication for Fermat
+indices at least one. The final theorem assumes that the coefficient vector
+equals that exact fold and satisfies the signed carry chain. A refinement of
+the Python streamed coefficient recurrence and certificate encoding remains
+separate; the theorem is not an unconditional production-checker refinement.
 
 ## Production and reproduction
 
@@ -73,5 +116,5 @@ fallbacks.
 Run the exact executable checks (including validation-marked assertions):
 
 ```console
-python -m pytest -o addopts='' tests/validation/proofs/test_shadow_jet_primality_release.py
+.venv/bin/python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_shadow_jet_primality_release.py
 ```

@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
@@ -500,7 +503,7 @@ class RuntimeValueArena:
                 raise ValueError("step continuation does not reference a function")
             expected = children[0]
         self._validate_action_atom(expected, side, anchor)
-        self.ledger.bump("higher_action_continuation_requests")
+        self.ledger.bump(_execution_keys.HIGHER_ACTION_CONTINUATION_REQUESTS)
         return self._intern(
             RuntimeActionFunction(
                 kind,
@@ -648,7 +651,7 @@ class RuntimeValueArena:
             resolved = self.operations.get(("force", value))
             if resolved is not None:
                 self.validate_atom(resolved)
-                self.ledger.bump("higher_boundary_resolution_hits")
+                self.ledger.bump(_execution_keys.HIGHER_BOUNDARY_RESOLUTION_HITS)
                 return resolved
         return value
 

@@ -88,6 +88,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureID,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -255,8 +258,8 @@ class SemanticExpressionCompiler:
         if proof is not None:
             if type(proof) is not ExpressionDomainProof or proof.key != key:
                 raise ValueError("stored domain proof has another expression or mode")
-            self.ledger.bump("semantic_expression_admission_requests")
-            self.ledger.bump("semantic_expression_admission_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_REQUESTS)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_HITS)
             return tuple(sorts)
         # The proof is bound to this expression's exact formal ports, mode,
         # and profile.  Validate their finite encodings only on the miss;
@@ -272,20 +275,21 @@ class SemanticExpressionCompiler:
             else:
                 self._atom_sort(sort)
         visits, frames, peak = self._validate_domains(expression, structured, profile)
-        self.ledger.bump("semantic_expression_admission_requests")
-        self.ledger.bump("semantic_expression_admission_nodes", visits)
-        self.ledger.bump("semantic_expression_admission_frames", frames)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_REQUESTS)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_NODES, visits)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_FRAMES, frames)
         self.ledger.bump(
-            "semantic_expression_admission_workspace_peak",
+            _interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_WORKSPACE_PEAK,
             max(
                 0,
                 peak
                 - self.ledger.counters.get(
-                    "semantic_expression_admission_workspace_peak", 0
+                    _interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_WORKSPACE_PEAK,
+                    0,
                 ),
             ),
         )
-        self.ledger.bump("semantic_expression_admission_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_EVALUATIONS)
         self.admissions[key] = ExpressionDomainProof(key)
         return tuple(sorts)
 
@@ -340,7 +344,7 @@ class SemanticExpressionCompiler:
                 computation = self._program(pending)
                 stack.append(computation)
                 peak = max(peak, len(stack))
-                self.ledger.bump("semantic_expression_tasks")
+                self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_TASKS)
                 try:
                     pending = next(computation)
                     continue
@@ -360,9 +364,13 @@ class SemanticExpressionCompiler:
                 pending = None
         result = self._declare(result, ports)
         self.ledger.bump(
-            "semantic_expression_stack_peak",
+            _interfaces_keys.SEMANTIC_EXPRESSION_STACK_PEAK,
             max(
-                0, peak - self.ledger.counters.get("semantic_expression_stack_peak", 0)
+                0,
+                peak
+                - self.ledger.counters.get(
+                    _interfaces_keys.SEMANTIC_EXPRESSION_STACK_PEAK, 0
+                ),
             ),
         )
         return CompiledSemanticExpression(
@@ -482,7 +490,9 @@ class SemanticExpressionCompiler:
         if profile is not None and not parameters and not root.free_ports:
             self._profile(profile)  # validate ownership before the fast path
             effective_profile = None
-            self.ledger.bump("semantic_reachable_closed_universal_compilations")
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_REACHABLE_CLOSED_UNIVERSAL_COMPILATIONS
+            )
         result = self.runtime.execute(
             CompileStructuredExpression(expression, parameters, effective_profile)
         )
@@ -677,7 +687,7 @@ class SemanticExpressionCompiler:
                 )
             )
         assert isinstance(task, StructuredExpressionTask)
-        self.ledger.bump("semantic_structured_expression_tasks")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURED_EXPRESSION_TASKS)
         return (yield from self._structured_program(task, self.structures))
 
     def _factored(
@@ -838,7 +848,7 @@ class SemanticExpressionCompiler:
         port = FinitePort(PortVariable(0, 0, "semantic-finite-map-input", 0), domain)
         signature = FunctionSignature((port,), self._atom_sort(target))
         key = _FiniteLiftKey(reference, source, target)
-        self.ledger.bump("semantic_expression_finite_lift_requests")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_REQUESTS)
         cached = self._finite_lifts.get(key)
         if cached is not None:
             function, cached_port = cached
@@ -849,7 +859,7 @@ class SemanticExpressionCompiler:
                 or self.functions.resolve(function).signature != signature
             ):
                 raise ValueError("cached finite lift has another complete interface")
-            self.ledger.bump("semantic_expression_finite_lift_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_HITS)
             return cached
         original = LEFT_A if source.side == 0 else RIGHT_A
         transaction = _Transaction(self.functions)
@@ -857,7 +867,7 @@ class SemanticExpressionCompiler:
         results: list[int] = []
         while pending:
             bit, value, ready = pending.pop()
-            self.ledger.bump("semantic_expression_finite_lift_frames")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_FRAMES)
             if ready:
                 high, low = results.pop(), results.pop()
                 variable = PortVariable(0, 0, port.variable.role, bit)
@@ -891,7 +901,9 @@ class SemanticExpressionCompiler:
             prepared.publish_reserved()
             result = prepared.roots[0], port
             self._finite_lifts._data[key] = result
-            self.ledger.bump("semantic_expression_finite_lift_evaluations")
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_EVALUATIONS
+            )
             return result
         finally:
             if prepared is None:

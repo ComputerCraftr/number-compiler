@@ -27,6 +27,9 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeTransferredState,
     RuntimeValueID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_operations import (
@@ -70,10 +73,10 @@ def advance_operation(
         if tag in ("initial", "step", "emit", "apply", "force"):
             cached = values.operations.get(task)
             if cached is not None:
-                arena.ledger.bump("higher_concrete_operation_hits")
+                arena.ledger.bump(_execution_keys.HIGHER_CONCRETE_OPERATION_HITS)
                 results.append(cached)
                 continue
-            arena.ledger.bump("higher_concrete_operation_evaluations")
+            arena.ledger.bump(_execution_keys.HIGHER_CONCRETE_OPERATION_EVALUATIONS)
             arena.ledger.bump(f"higher_concrete_{tag}_evaluations")
             tasks.extend((("cache-operation", task), (tag + "-run", *task[1:])))
             continue
@@ -123,7 +126,7 @@ def advance_operation(
                     current_side,
                     (after_value,) * domain,
                 )
-                arena.ledger.bump("higher_extensional_table_publications")
+                arena.ledger.bump(_execution_keys.HIGHER_EXTENSIONAL_TABLE_PUBLICATIONS)
             else:
                 continuation = values.action_function(
                     "constant",
@@ -224,7 +227,7 @@ def advance_operation(
                     current_side,
                     tuple(direct_outputs),
                 )
-                arena.ledger.bump("bounded_local_interface_applications")
+                arena.ledger.bump(_execution_keys.BOUNDED_LOCAL_INTERFACE_APPLICATIONS)
                 results.append(values.pair(direct_same, continuation))
                 continue
             tasks.extend(
@@ -282,7 +285,7 @@ def advance_operation(
                 None,
                 -1,
             )
-            arena.ledger.bump("higher_singleton_continuation_elisions")
+            arena.ledger.bump(_execution_keys.HIGHER_SINGLETON_CONTINUATION_ELISIONS)
             results.append(values.pair(same, continuation))
             continue
         if tag == "emit-run":
@@ -377,7 +380,7 @@ def advance_operation(
                         direct_right_after,
                     )
                 )
-                arena.ledger.bump("bounded_local_interface_applications")
+                arena.ledger.bump(_execution_keys.BOUNDED_LOCAL_INTERFACE_APPLICATIONS)
                 continue
             tasks.extend(
                 (
@@ -448,7 +451,7 @@ def advance_operation(
                 )
             )
             arena.ledger.bump(
-                "higher_constant_argument_elisions",
+                _execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS,
                 int(
                     left_constant is not None
                     or _is_constant_function(arena, left_pair.continuation)
@@ -507,7 +510,7 @@ def advance_operation(
                 )
                 if constant_input is not None:
                     tasks.append(("push", constant_input))
-                    arena.ledger.bump("higher_constant_argument_elisions")
+                    arena.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
                 else:
                     opposite_value = summaries.transfer_value(
                         function.opposite,
@@ -540,7 +543,7 @@ def advance_operation(
                         ("push", incoming_constant),
                     )
                 )
-                arena.ledger.bump("higher_constant_argument_elisions")
+                arena.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
                 continue
             if _is_constant_function(arena, function.continuation):
                 left, right = (
@@ -555,7 +558,7 @@ def advance_operation(
                         ("apply", function.continuation, argument),
                     )
                 )
-                arena.ledger.bump("higher_constant_argument_elisions")
+                arena.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
                 continue
             opposite = 1 - function.side
             tasks.extend(
@@ -813,7 +816,10 @@ def advance_operation(
                     ("apply", continuation, state) for state in reversed(range(domain))
                 )
                 tasks.append(("force", anchor))
-                arena.ledger.bump("higher_finite_transfer_state_visits", domain)
+                arena.ledger.bump(
+                    _execution_keys.HIGHER_FINITE_TRANSFER_STATE_VISITS,
+                    domain,
+                )
             else:
                 results.append(values.pair(anchor, continuation))
             continue

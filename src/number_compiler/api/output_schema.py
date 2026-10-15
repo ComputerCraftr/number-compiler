@@ -35,6 +35,24 @@ class ObservationPacket(TypedDict):
     status: str
 
 
+def observation_packet(
+    *,
+    family: str,
+    kind: str,
+    index: IndexValue,
+    index_unit: str,
+    status: str,
+) -> ObservationPacket:
+    """Create the shared typed envelope for one demanded observation."""
+    return {
+        "family": family,
+        "kind": kind,
+        "index": index,
+        "index_unit": index_unit,
+        "status": status,
+    }
+
+
 class UnresolvedErrorPacket(TypedDict):
     code: Literal["unresolved_sequence_boundary"]
     requested_index: IndexValue

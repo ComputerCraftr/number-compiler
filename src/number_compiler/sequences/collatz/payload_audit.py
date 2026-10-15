@@ -397,6 +397,8 @@ def audit_collatz_runtime_programs(
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.runtime_programs import (
+        COLLATZ_RUNTIME_PROGRAM_TAG,
+        EXACT_EXPONENT_LIMBS_TAG,
         CollatzRuntimeProgram,
         CollatzRuntimeProgramArena,
     )
@@ -459,9 +461,9 @@ def audit_collatz_runtime_programs(
                 and identity.behavior is behavior
                 and type(exponent) is int
                 and exponent == identity_key[1]
-                and behavior[0] == "collatz-runtime-program-v2-binary-exponent"
+                and behavior[0] == COLLATZ_RUNTIME_PROGRAM_TAG
                 and behavior[1] == identity_key[0]
-                and descriptor[0] == "exact-exponent-u64-v1"
+                and descriptor[0] == EXACT_EXPONENT_LIMBS_TAG
                 and descriptor[1] == exponent.bit_length()
                 and type(limbs) is tuple
                 and all(type(limb) is int and 0 <= limb < 1 << 64 for limb in limbs)

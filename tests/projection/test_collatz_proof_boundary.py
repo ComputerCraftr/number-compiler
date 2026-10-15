@@ -10,11 +10,14 @@ import pytest
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.api.query_types import CollatzTermQuery
+from tests.support.production_ast import ProductionASTGraph
 
 PACKAGE = repository_root() / "src" / "number_compiler"
 
 
-def test_sequential_collatz_orbit_builders_have_one_explicit_output_owner() -> None:
+def test_sequential_collatz_orbit_builders_have_one_explicit_output_owner(
+    production_ast_graph: ProductionASTGraph,
+) -> None:
     owners = {
         "collatz_orbit_formulas": "projection/collatz_orbits/binary.py",
         "collatz_orbit_formulas_ternary": "projection/collatz_orbits/radix.py",
@@ -25,8 +28,7 @@ def test_sequential_collatz_orbit_builders_have_one_explicit_output_owner() -> N
         "collatz_orbit_formulas_sentinel_power4": "projection/collatz_orbits/sentinel.py",
     }
     loop_owners: dict[str, list[str]] = {name: [] for name in owners}
-    for path in PACKAGE.rglob("*.py"):
-        tree = ast.parse(path.read_text(), filename=str(path))
+    for path, tree in production_ast_graph.under(PACKAGE).items():
         for node in tree.body:
             if (
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

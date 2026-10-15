@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence, Sized
+from itertools import chain
 
 from number_compiler.arithmetic.automata.slp import SLPNode
 from number_compiler.resources.ledger import (
@@ -10,6 +11,7 @@ from number_compiler.resources.ledger import (
     ResourceInventory,
     ResourceLedger,
 )
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
@@ -57,7 +59,25 @@ def _store_shape(
         return False
     item = inventory.get(owner)
     container = store._data if type(store) is OwnedMemo else store
-    nodes = 0 if role == "reverse_pair_output_interner" else len(store)
+    if role == "reverse_pair_output_interner":
+        nodes = 0
+    elif type(store) is OwnedMemo and store.node_cost is not None:
+        nodes = 0
+        try:
+            for key, wrapped in store._data.items():
+                payload = wrapped.value
+                retained = wrapped.nodes
+                if type(retained) is not int or retained != store._entry_nodes(
+                    key, payload
+                ):
+                    return False
+                nodes += retained
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return False
+    elif type(store) is OwnedMemo:
+        nodes = len(store) * store.nodes_per_entry
+    else:
+        nodes = len(store)
     return (
         type(item) is ResourceInventory
         and containers.get(owner) is container
@@ -165,6 +185,15 @@ def audit_reverse_pair_output_roots(
     containers: Mapping[int, object],
 ) -> tuple[set[int], set[int], set[tuple[int, int]]]:
     """Inspect completed records without invoking a projector or point evaluator."""
+    from number_compiler.sequences.reverse_add.q19_border_control import (
+        CertifiedBorderGrowth,
+    )
+    from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
+        SourceGuardedGTBankAction,
+    )
+    from number_compiler.sequences.reverse_add.q19_occurrence import (
+        _occurrence_publication_binding,
+    )
     from number_compiler.sequences.reverse_add.q19_output import (
         _Q19,
         ReversePairOutputOccurrence,
@@ -194,7 +223,7 @@ def audit_reverse_pair_output_roots(
             and root.machine.base == 10
             and type(root.machine) is _FrozenPairStepLaw
             and type(root._binding) is tuple
-            and len(root._binding) == 7
+            and len(root._binding) == 10
             and root._binding[0] is ledger
             and root._binding[1] is root._digits
             and root._binding[2] == 10
@@ -202,6 +231,9 @@ def audit_reverse_pair_output_roots(
             and root._binding[4] is arena
             and root._binding[5] is root.projector
             and root._binding[6] is root.machine
+            and root._binding[7] is root._border_certificates
+            and root._binding[8] is root._controlled_gt_banks
+            and root._binding[9] is root._issuance_registry
         )
         stores = (
             (arena.nodes, arena.owners[0], "reverse_pair_output_grammar"),
@@ -210,6 +242,16 @@ def audit_reverse_pair_output_roots(
             (arena._rep, arena.owners[3], "reverse_pair_output_interner"),
             (root._summaries, root._summary_owner, "reverse_pair_q19_summary"),
             (root._issued, owner, "reverse_pair_output_occurrence"),
+            (
+                root._border_certificates,
+                root._border_certificates_owner,
+                "reverse_pair_q19_border_certificate",
+            ),
+            (
+                root._controlled_gt_banks,
+                root._controlled_gt_banks_owner,
+                "reverse_pair_q19_conditional_gt_bank",
+            ),
             *(
                 (store, store_owner, "reverse_pair_projector_memo")
                 for store, store_owner in zip(
@@ -236,7 +278,7 @@ def audit_reverse_pair_output_roots(
             store_owner: containers.get(store_owner) for store_owner in owners
         }
         ledger.bump(
-            "reverse_pair_output_audit_entries",
+            _reverse_add_keys.REVERSE_PAIR_OUTPUT_AUDIT_ENTRIES,
             sum(len(store) for store, _, _ in stores if isinstance(store, Sized)),
         )
         valid &= all(
@@ -310,6 +352,9 @@ def audit_reverse_pair_output_roots(
             except (TypeError, ValueError):
                 valid = False
                 continue
+            valid &= occurrence._publication_binding == (
+                _occurrence_publication_binding(occurrence)
+            )
             try:
                 valid &= _occurrence_summary_matches(root, occurrence.root) == (
                     occurrence.pair_width,
@@ -330,6 +375,95 @@ def audit_reverse_pair_output_roots(
                 and occurrence.growth == occurrence.output_width - len(root._digits)
                 and 0 <= occurrence.growth <= occurrence.temporal_steps
             )
+        for certificate_key, border_issued in root._border_certificates.items():
+            recognized.update((id(certificate_key), id(border_issued)))
+            if type(border_issued) is not tuple or len(border_issued) != 2:
+                valid = False
+                invalid.add((root._border_certificates_owner, id(border_issued)))
+                continue
+            certificate, certificate_binding = border_issued
+            recognized.update((id(certificate), id(certificate_binding)))
+            if type(certificate) is not CertifiedBorderGrowth:
+                valid = False
+                invalid.add((root._border_certificates_owner, id(certificate)))
+                continue
+            certificate_valid = (
+                type(certificate_binding) is tuple
+                and certificate_binding == certificate._snapshot()
+                and type(certificate_key) is tuple
+                and certificate_key
+                == (
+                    certificate.source.root,
+                    certificate.source.temporal_steps,
+                    len(certificate.growth_word),
+                    certificate.window_digits,
+                )
+                and certificate.owner is root
+                and certificate.source.owner is root._authority
+                and root._issued.get(
+                    (certificate.source.root, certificate.source.temporal_steps)
+                )
+                is certificate.source
+                and type(certificate.growth_word) is tuple
+                and all(
+                    type(bit) is int and bit in (0, 1)
+                    for bit in certificate.growth_word
+                )
+                and type(certificate.max_visited_states) is int
+                and certificate.max_visited_states >= 1
+                and type(certificate.source_pair_inspections) is int
+                and certificate.source_pair_inspections >= 0
+            )
+            if certificate_valid:
+                try:
+                    certificate.validate(root, certificate.source)
+                except (AttributeError, TypeError, ValueError):
+                    certificate_valid = False
+            valid &= certificate_valid
+            if not certificate_valid:
+                invalid.add((root._border_certificates_owner, id(certificate)))
+        for action_key, bank_issued in root._controlled_gt_banks.items():
+            recognized.update((id(action_key), id(bank_issued)))
+            if type(bank_issued) is not tuple or len(bank_issued) != 2:
+                valid = False
+                invalid.add((root._controlled_gt_banks_owner, id(bank_issued)))
+                continue
+            bank_action, action_binding = bank_issued
+            recognized.update((id(bank_action), id(action_binding)))
+            if type(bank_action) is not SourceGuardedGTBankAction:
+                valid = False
+                invalid.add((root._controlled_gt_banks_owner, id(bank_action)))
+                continue
+            action_valid = (
+                type(action_binding) is tuple
+                and action_binding == bank_action._snapshot()
+                and type(action_key) is int
+                and action_key == bank_action._registry_key
+                and bank_action.owner is root
+                and bank_action.source.owner is root._authority
+                and root._issued.get(
+                    (bank_action.source.root, bank_action.source.temporal_steps)
+                )
+                is bank_action.source
+                and type(bank_action.period) is tuple
+                and bool(bank_action.period)
+                and all(
+                    type(value) is int and 0 <= value <= 18
+                    for value in bank_action.period
+                )
+                and type(bank_action.growth_control) is tuple
+                and type(bank_action.steps) is int
+                and bank_action.steps >= 1
+                and bank_action.coordinate >= 0
+            )
+            if action_valid:
+                try:
+                    bank_action._validate()
+                except (AttributeError, TypeError, ValueError):
+                    action_valid = False
+            valid &= action_valid
+            if not action_valid:
+                invalid.add((root._controlled_gt_banks_owner, id(bank_action)))
         left_states, right_states = root.machine.left.states, root.machine.right.states
         for store, states, arity in (
             (root.projector._fwd, left_states, 2),
@@ -359,7 +493,9 @@ def audit_reverse_pair_output_roots(
                 and 0 <= result < size
             )
         if valid:
-            approved.update((id(root), id(arena), id(root.projector)))
+            approved.update(
+                (id(root), id(arena), id(root.projector), id(root._issuance_registry))
+            )
             approved.update(id(node) for node in arena.nodes)
             approved.update(id(store) for store, _, _ in stores)
             approved.update(
@@ -375,6 +511,15 @@ def audit_reverse_pair_output_roots(
                     )
             approved.update(id(summary) for summary in root._summaries.values())
             approved.update(id(occurrence) for occurrence in root._issued.values())
+            for retained_issue in chain(
+                root._border_certificates.values(), root._controlled_gt_banks.values()
+            ):
+                if type(retained_issue) is tuple and len(retained_issue) == 2:
+                    retained_record, retained_binding = retained_issue
+                    approved.update(
+                        (id(retained_issue), id(retained_record), id(retained_binding))
+                    )
+                    approved.update(id(value) for value in retained_binding)
         else:
             invalid.add((owner, id(root)))
     return approved, recognized, invalid
@@ -396,6 +541,8 @@ def audit_reverse_pair_output_owner(
         *root.arena.owners,
         root._summary_owner,
         root._issued_owner,
+        root._border_certificates_owner,
+        root._controlled_gt_banks_owner,
         *root._projector_owners,
     )
     containers: dict[int, object] = {}
@@ -418,6 +565,16 @@ def audit_reverse_pair_output_owner(
             "reverse_pair_output_occurrence",
             root._issued_owner,
         ),
+        (
+            "_audit_border_certificates",
+            "reverse_pair_q19_border_certificate",
+            root._border_certificates_owner,
+        ),
+        (
+            "_audit_controlled_gt_banks",
+            "reverse_pair_q19_conditional_gt_bank",
+            root._controlled_gt_banks_owner,
+        ),
         *(
             (attribute, "reverse_pair_projector_memo", owner)
             for attribute, owner in zip(
@@ -437,6 +594,19 @@ def audit_reverse_pair_output_owner(
     invalid: list[PayloadAuditEntry] = []
     for attribute, _role, owner in bindings:
         store = getattr(root, attribute)
+        memo_attribute = {
+            "_audit_border_certificates": "_border_certificates",
+            "_audit_controlled_gt_banks": "_controlled_gt_banks",
+        }.get(attribute)
+        if memo_attribute is not None:
+            memo = getattr(root, memo_attribute)
+            if type(memo) is OwnedMemo and memo._data is store:
+                # The contract binds the exact backing map, but OwnedMemo's
+                # public items view unwraps its accounting envelope. The
+                # contract index explicitly recognizes that semantic value as
+                # the memo's retained payload after this family audit validates
+                # its exact certificate/action and the wrapper's node cost.
+                store = memo
         values: tuple[object, ...]
         if isinstance(store, Mapping):
             values = tuple(item for pair in store.items() for item in pair)

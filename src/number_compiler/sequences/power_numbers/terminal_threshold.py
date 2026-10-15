@@ -42,6 +42,9 @@ from number_compiler.sequences.power_numbers.admission import (
 from number_compiler.sequences.power_numbers.frobenius_chunk import (
     SpecialFrobeniusChunkSpec,
 )
+from number_compiler.sequences.power_numbers.terminal_source_demand import (
+    SourceTerminalDemand,
+)
 from number_compiler.sequences.power_numbers.transverse_pullback import (
     SpecialTransverseWindow,
     build_compact_transverse_pullback,
@@ -114,6 +117,7 @@ class SpecialTerminalThresholdResult:
     transverse_pullbacks: int = 0
     transverse_atom_evaluations: int = 0
     transverse_product_multiplications: int = 0
+    source_demand: SourceTerminalDemand | None = None
 
     def __post_init__(self) -> None:
         if self.family not in ("fermat", "mersenne"):
@@ -133,6 +137,15 @@ class SpecialTerminalThresholdResult:
             < 0
         ):
             raise ValueError("transverse work counters cannot be negative")
+        if self.source_demand is not None and (
+            type(self.source_demand) is not SourceTerminalDemand
+            or self.source_demand.family != self.family
+            or self.source_demand.parameter != self.parameter
+            or self.status != "UNKNOWN"
+        ):
+            raise ValueError(
+                "terminal source demand must stay candidate-bound and fail-closed"
+            )
         if self.transverse_window is not None and (
             self.transverse_window.family != self.family
             or self.transverse_window.parameter != self.parameter
@@ -422,6 +435,7 @@ def terminal_threshold_probe(
         transverse_pullbacks=1,
         transverse_atom_evaluations=pullback.atom_evaluations,
         transverse_product_multiplications=pullback.product_multiplications,
+        source_demand=SourceTerminalDemand.for_candidate(spec.family, spec.parameter),
     )
 
 

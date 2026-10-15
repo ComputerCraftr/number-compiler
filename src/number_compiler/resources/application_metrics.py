@@ -4,6 +4,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.metric_keys import (
+    arithmetic_contracts as _contracts_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.observation.hashlife_projection import (
         HashLifeBlockIndex,
@@ -50,15 +63,16 @@ def tile_application_compatibility_values(
         "bounded_application_primitive_step_evaluations": ledger.sequential_generation_advances,
         "bounded_application_action_compositions": ledger.temporal_parent_compositions,
         "bounded_application_action_applications": work.get(
-            "tile_scheduler_leaf_function_applications", 0
+            _execution_keys.TILE_SCHEDULER_LEAF_FUNCTION_APPLICATIONS, 0
         ),
         "bounded_application_nonlinear_branch_evaluations": ledger.primitive_transition_evaluations,
         "bounded_application_exact_endpoint_entries": ledger.exact_endpoint_nodes,
         "bounded_application_query_requests": (
-            index._point_queries + work.get("tile_projection_width_observations", 0)
+            index._point_queries
+            + work.get(_observation_keys.TILE_PROJECTION_WIDTH_OBSERVATIONS, 0)
         ),
         "bounded_application_quotient_builds": (
-            work.get("primitive_tile_interface_publications", 0)
+            work.get(_interfaces_keys.PRIMITIVE_TILE_INTERFACE_PUBLICATIONS, 0)
             + ledger.spatial_interface_composition_publications
             + ledger.fused_interface_publications
         ),
@@ -96,7 +110,9 @@ def tile_application_compatibility_values(
         "spacetime_temporal_absorption_max": ledger.powered_absorption_max_span,
         "temporal_leaf_applications": ledger.tile_scheduler_leaf_function_applications,
         "finite_action_unique": ledger.local_interface_nodes,
-        "finite_action_alias_hits": work.get("quotient_semantic_interner_hits", 0),
+        "finite_action_alias_hits": work.get(
+            _interfaces_keys.QUOTIENT_SEMANTIC_INTERNER_HITS, 0
+        ),
         "finite_action_retained_entries": (
             ledger.canonical_transfer_nodes
             + ledger.powered_interface_entries
@@ -112,7 +128,7 @@ def tile_application_compatibility_values(
             + ledger.tile_scheduler_demand_parent_misses
         ),
         "tile_observations": (
-            work.get("source_leaf_reads", 0)
+            work.get(_contracts_keys.SOURCE_LEAF_READS, 0)
             + ledger.tile_observation_descents
             + ledger.tile_width_descents
             + ledger.tile_fused_observation_descents

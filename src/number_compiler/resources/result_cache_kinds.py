@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Literal
+from enum import StrEnum
 
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.tiles.tile_result_records import (
@@ -22,9 +22,22 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     SpatialInterfaceKey,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import resources as _resources_keys
 
-ResultCacheKind = Literal["result", "interface", "behavior", "region", "spatial"]
-RemovalCause = Literal["eviction", "retirement"]
+
+class ResultCacheKind(StrEnum):
+    RESULT = "result"
+    INTERFACE = "interface"
+    BEHAVIOR = "behavior"
+    REGION = "region"
+    SPATIAL = "spatial"
+
+
+class RemovalCause(StrEnum):
+    EVICTION = "eviction"
+    RETIREMENT = "retirement"
+
+
 REVERSE_BOUND_OUTPUT_RETAINED_NODES = 9
 
 
@@ -43,7 +56,7 @@ def retained_result_memo_nodes(values: Iterable[object]) -> int:
 def result_cache_kind(key: object) -> ResultCacheKind:
     """Classify every admitted shared-result key by its semantic cache level."""
     if type(key) is PoweredResultKey:
-        return "result"
+        return ResultCacheKind.RESULT
     if type(key) in (
         PoweredInterfaceKey,
         FusedInterfaceKey,
@@ -53,13 +66,13 @@ def result_cache_kind(key: object) -> ResultCacheKind:
         ReverseBoundOutputKey,
         SourceRootMatchKey,
     ):
-        return "interface"
+        return ResultCacheKind.INTERFACE
     if type(key) is BehaviorBindingKey:
-        return "behavior"
+        return ResultCacheKind.BEHAVIOR
     if type(key) in (NormalizedRegionKey, BoundaryConcatKey):
-        return "region"
+        return ResultCacheKind.REGION
     if type(key) is SpatialInterfaceKey:
-        return "spatial"
+        return ResultCacheKind.SPATIAL
     raise TypeError("shared result memo contains an unknown key sort")
 
 
@@ -71,14 +84,16 @@ def record_cache_removal(
     """Attribute one removed entry while retaining no semantic request history."""
     if type(ledger) is not ResourceLedger:
         raise TypeError("cache removal accounting requires an index ledger")
-    if cause not in ("eviction", "retirement"):
-        raise ValueError("cache removal accounting has another cause")
+    if not isinstance(cause, RemovalCause):
+        raise TypeError("cache removal accounting has another cause")
     kind = result_cache_kind(key)
-    ledger.bump("result_cache_kind_classification_visits")
-    suffix = "evicted_entries" if cause == "eviction" else "retirement_removals"
+    ledger.bump(_resources_keys.RESULT_CACHE_KIND_CLASSIFICATION_VISITS)
+    suffix = (
+        "evicted_entries" if cause is RemovalCause.EVICTION else "retirement_removals"
+    )
     ledger.bump(f"result_cache_{kind}_{suffix}")
-    if type(key) is ReverseBoundOutputKey and cause == "eviction":
-        ledger.bump("reverse_bound_output_evictions")
+    if type(key) is ReverseBoundOutputKey and cause is RemovalCause.EVICTION:
+        ledger.bump(_resources_keys.REVERSE_BOUND_OUTPUT_EVICTIONS)
 
 
 def record_unattributed_post_eviction_miss(
@@ -88,12 +103,14 @@ def record_unattributed_post_eviction_miss(
     """Count an unknown-attribution miss only after this cache kind was evicted."""
     if type(ledger) is not ResourceLedger:
         raise TypeError("cache miss accounting requires an index ledger")
-    if kind not in ("result", "interface", "behavior", "region", "spatial"):
-        raise ValueError("cache miss accounting has another bounded kind")
+    if not isinstance(kind, ResultCacheKind):
+        raise TypeError("cache miss accounting has another bounded kind")
     if ledger.counters.get(f"result_cache_{kind}_evicted_entries", 0):
         ledger.bump(f"result_cache_{kind}_post_eviction_misses_attribution_unknown")
-        if kind == "result":
-            ledger.bump("completed_result_recomputation_attribution_unknown")
+        if kind is ResultCacheKind.RESULT:
+            ledger.bump(
+                _resources_keys.COMPLETED_RESULT_RECOMPUTATION_ATTRIBUTION_UNKNOWN
+            )
 
 
 __all__ = [

@@ -17,6 +17,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     TransferSummaryID,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -226,8 +230,8 @@ class FinitePortActionArena:
         ):
             raise ValueError("invalid finite decision child")
         if low == high:
-            self.ledger.bump("finite_decision_interner_requests")
-            self.ledger.bump("finite_decision_identity_reductions")
+            self.ledger.bump(_functions_keys.FINITE_DECISION_INTERNER_REQUESTS)
+            self.ledger.bump(_functions_keys.FINITE_DECISION_IDENTITY_REDUCTIONS)
             return low
         for child in (low, high):
             child_variable = nodes[child].variable
@@ -237,22 +241,22 @@ class FinitePortActionArena:
         # This is a private read after validation. Publication still passes
         # through the ledger-owned stores and their reservation checks.
         found = self._keys._data.get(key)
-        self.ledger.bump("finite_decision_interner_requests")
+        self.ledger.bump(_functions_keys.FINITE_DECISION_INTERNER_REQUESTS)
         if found is not None:
-            self.ledger.bump("finite_decision_interner_hits")
+            self.ledger.bump(_functions_keys.FINITE_DECISION_INTERNER_HITS)
             return found
-        self.ledger.bump("finite_decision_interner_evaluations")
+        self.ledger.bump(_functions_keys.FINITE_DECISION_INTERNER_EVALUATIONS)
         try:
             self.ledger.reserve_many(
                 ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
             )
         except BlockContextBudgetExceeded:
-            self.ledger.bump("finite_decision_publication_rejections")
+            self.ledger.bump(_functions_keys.FINITE_DECISION_PUBLICATION_REJECTIONS)
             raise
         index = len(self._nodes)
         self._nodes.append(_Decision(variable, low, high))
         self._keys[key] = index
-        self.ledger.bump("finite_decision_published_nodes")
+        self.ledger.bump(_functions_keys.FINITE_DECISION_PUBLISHED_NODES)
         return index
 
     def variable(self, variable: PortVariable) -> TransferSummaryID:
@@ -282,15 +286,15 @@ class FinitePortActionArena:
     ) -> TransferSummaryID:
         """Canonical if-then-else, using an explicit Shannon expansion stack."""
         root = self._resolve(condition), self._resolve(yes), self._resolve(no)
-        self.ledger.bump("composition_requests")
+        self.ledger.bump(_shared_keys.COMPOSITION_REQUESTS)
         root_key = _ChoiceIndexKey(*root)
         cached_root = self._ite.get(root_key)
         if cached_root is not None:
             if type(cached_root) is not int or not 0 <= cached_root < len(self._nodes):
                 raise ValueError("cached finite choice has an invalid private identity")
-            self.ledger.bump("composition_cache_hits")
+            self.ledger.bump(_shared_keys.COMPOSITION_CACHE_HITS)
             return self._handle(cached_root)
-        self.ledger.bump("composition_evaluations")
+        self.ledger.bump(_shared_keys.COMPOSITION_EVALUATIONS)
         results: dict[tuple[int, int, int], int] = {}
         frames: list[tuple[tuple[int, int, int], bool]] = [(root, False)]
         splits: dict[
@@ -338,7 +342,7 @@ class FinitePortActionArena:
             result = self._intern(variable, results[low_key], results[high_key])
             self._ite[memo_key] = result
             results[key] = result
-            self.ledger.bump("decision_subproblem_evaluations")
+            self.ledger.bump(_functions_keys.DECISION_SUBPROBLEM_EVALUATIONS)
         return self._handle(results[root])
 
     def negate(self, function: TransferSummaryID) -> TransferSummaryID:
@@ -359,14 +363,14 @@ class FinitePortActionArena:
         self._resolve(before)
         self._resolve(after)
         key = PortCompositionKey(before, after, port)
-        self.ledger.bump("composition_requests")
+        self.ledger.bump(_shared_keys.COMPOSITION_REQUESTS)
         found = self._compositions.get(key)
         if found is not None:
-            self.ledger.bump("composition_cache_hits")
+            self.ledger.bump(_shared_keys.COMPOSITION_CACHE_HITS)
             return found
         result = self.substitute(after, {port: before})
         self._compositions[key] = result
-        self.ledger.bump("composition_evaluations")
+        self.ledger.bump(_shared_keys.COMPOSITION_EVALUATIONS)
         return result
 
     def apply(
@@ -375,9 +379,9 @@ class FinitePortActionArena:
         index = self._resolve(function)
         if any(type(value) is not bool for value in inputs.values()):
             raise TypeError("finite-port observations require Boolean values")
-        self.ledger.bump("finite_port_applications")
+        self.ledger.bump(_functions_keys.FINITE_PORT_APPLICATIONS)
         while index >= 2:
-            self.ledger.bump("finite_port_decision_visits")
+            self.ledger.bump(_functions_keys.FINITE_PORT_DECISION_VISITS)
             node = self._nodes[index]
             if node.variable is None:
                 raise AssertionError(index)

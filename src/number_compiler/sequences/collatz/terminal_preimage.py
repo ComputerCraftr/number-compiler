@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -198,15 +199,17 @@ def probe_terminal_power2_macro(
     source_bits = source.bit_length()
     # 3*x+1 < 4*x for x>1, so its exponent is at most source_bits+1.
     scratch.require_bits(16 * (2 * source_bits + control_bits + 12))
-    ledger.bump("collatz_terminal_power2_probe_attempts")
-    ledger.bump("collatz_terminal_power2_probe_operand_bits", 2 * source_bits + 2)
+    ledger.bump(_collatz_keys.COLLATZ_TERMINAL_POWER2_PROBE_ATTEMPTS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_TERMINAL_POWER2_PROBE_OPERAND_BITS, 2 * source_bits + 2
+    )
     macro = select_terminal_power2_macro(source, available_physical_ticks)
     if macro is None:
-        ledger.bump("collatz_terminal_power2_probe_misses")
+        ledger.bump(_collatz_keys.COLLATZ_TERMINAL_POWER2_PROBE_MISSES)
         return None
     validation_operand_bits = _validate_terminal_power2_macro(macro)
     ledger.bump(
-        "collatz_terminal_power2_probe_validation_operand_bits",
+        _collatz_keys.COLLATZ_TERMINAL_POWER2_PROBE_VALIDATION_OPERAND_BITS,
         validation_operand_bits,
     )
     return macro

@@ -21,7 +21,10 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
     join,
     leaf,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import (
+    arithmetic_contracts as _contracts_keys,
+)
 
 
 class SourceGeometry:
@@ -57,12 +60,14 @@ class SourceGeometry:
         ledger.register_execution_root(self)
         self.token = ArenaToken("source-geometry")
         prefix = f"source-geometry-{len(ledger.inventory())}"
-        self.owner = ledger.register(prefix + "-nodes", "exact_source", "INDEX_OWNED")
+        self.owner = ledger.register(
+            prefix + "-nodes", "exact_source", ResourceScope.INDEX_OWNED
+        )
         self.nodes: MutableMapping[tuple[int, ...], DyadicTile] = ledger.make_dict(
             self.owner, nodes_per_entry=1
         )
         self.source_owner = ledger.register(
-            prefix + "-source-record", "exact_source", "INDEX_OWNED"
+            prefix + "-source-record", "exact_source", ResourceScope.INDEX_OWNED
         )
         self._sources: MutableSequence[ExactSource] = ledger.make_list(
             self.source_owner
@@ -75,17 +80,17 @@ class SourceGeometry:
     def _leaf(self, symbol: int) -> DyadicTile:
         if type(symbol) is not int or symbol < 0:
             raise ValueError("source symbol must be a nonnegative integer")
-        self.ledger.bump("source_leaf_interner_requests")
+        self.ledger.bump(_contracts_keys.SOURCE_LEAF_INTERNER_REQUESTS)
         key = (symbol,)
         found = self.nodes.get(key)
         if found is not None:
-            self.ledger.bump("source_leaf_interner_hits")
+            self.ledger.bump(_contracts_keys.SOURCE_LEAF_INTERNER_HITS)
             return found
-        self.ledger.bump("source_leaf_interner_evaluations")
+        self.ledger.bump(_contracts_keys.SOURCE_LEAF_INTERNER_EVALUATIONS)
         try:
             self.ledger.reserve(self.owner, entries=1, nodes=1)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("source_leaf_publication_rejections")
+            self.ledger.bump(_contracts_keys.SOURCE_LEAF_PUBLICATION_REJECTIONS)
             raise
         node = leaf(symbol)
         self.nodes[key] = node
@@ -99,17 +104,17 @@ class SourceGeometry:
             or left.level != right.level
         ):
             raise ValueError("source parents require equally sized source tiles")
-        self.ledger.bump("source_parent_interner_requests")
+        self.ledger.bump(_contracts_keys.SOURCE_PARENT_INTERNER_REQUESTS)
         key = (left.node_id, right.node_id)
         found = self.nodes.get(key)
         if found is not None:
-            self.ledger.bump("source_parent_interner_hits")
+            self.ledger.bump(_contracts_keys.SOURCE_PARENT_INTERNER_HITS)
             return found
-        self.ledger.bump("source_parent_interner_evaluations")
+        self.ledger.bump(_contracts_keys.SOURCE_PARENT_INTERNER_EVALUATIONS)
         try:
             self.ledger.reserve(self.owner, entries=1, nodes=1)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("source_parent_publication_rejections")
+            self.ledger.bump(_contracts_keys.SOURCE_PARENT_PUBLICATION_REJECTIONS)
             raise
         node = join(left, right)
         self.nodes[key] = node
@@ -150,16 +155,16 @@ class SourceGeometry:
         width = 1 << level
         if start % width:
             return None
-        self.ledger.bump("source_tile_lookup_requests")
+        self.ledger.bump(_contracts_keys.SOURCE_TILE_LOOKUP_REQUESTS)
         for chunk in root.chunks:
-            self.ledger.bump("source_chunk_visits")
+            self.ledger.bump(_contracts_keys.SOURCE_CHUNK_VISITS)
             if not chunk.start <= start < chunk.end:
                 continue
             node, origin = chunk.tile, chunk.start
             if node.level < level or start + width > chunk.end:
                 return None
             while node.level > level:
-                self.ledger.bump("source_tile_node_visits")
+                self.ledger.bump(_contracts_keys.SOURCE_TILE_NODE_VISITS)
                 left, right = node.left, node.right
                 if left is None or right is None:
                     raise AssertionError("source parent has no children")
@@ -168,7 +173,7 @@ class SourceGeometry:
                     node = left
                 else:
                     node, origin = right, middle
-            self.ledger.bump("source_tile_lookup_hits")
+            self.ledger.bump(_contracts_keys.SOURCE_TILE_LOOKUP_HITS)
             return node
         return None
 
@@ -201,7 +206,7 @@ class SourceGeometry:
         node = self.tile_at(position, 0)
         if node is None or node.symbol is None:
             raise IndexError(position)
-        self.ledger.bump("source_leaf_reads")
+        self.ledger.bump(_contracts_keys.SOURCE_LEAF_READS)
         return node.symbol
 
     def existing_parent(
@@ -215,7 +220,7 @@ class SourceGeometry:
         """
         if any(type(value) is not int or value < 0 for value in (left_id, right_id)):
             raise ValueError("original child identities must be nonnegative integers")
-        self.ledger.bump("source_parent_lookup_requests")
+        self.ledger.bump(_contracts_keys.SOURCE_PARENT_LOOKUP_REQUESTS)
         parent = self.nodes.get((left_id, right_id))
         root = self._read_root
         if parent is None or root is None:
@@ -223,17 +228,25 @@ class SourceGeometry:
         pending = [(chunk.start, chunk.tile) for chunk in reversed(root.chunks)]
         seen: set[int] = set()
         while pending:
-            peak = self.ledger.counters.get("source_origin_stack_peak", 0)
-            self.ledger.bump("source_origin_stack_peak", max(0, len(pending) - peak))
+            peak = self.ledger.counters.get(_contracts_keys.SOURCE_ORIGIN_STACK_PEAK, 0)
+            self.ledger.bump(
+                _contracts_keys.SOURCE_ORIGIN_STACK_PEAK,
+                max(0, len(pending) - peak),
+            )
             workspace = len(pending) + len(seen)
-            peak = self.ledger.counters.get("source_origin_workspace_peak", 0)
-            self.ledger.bump("source_origin_workspace_peak", max(0, workspace - peak))
+            peak = self.ledger.counters.get(
+                _contracts_keys.SOURCE_ORIGIN_WORKSPACE_PEAK, 0
+            )
+            self.ledger.bump(
+                _contracts_keys.SOURCE_ORIGIN_WORKSPACE_PEAK,
+                max(0, workspace - peak),
+            )
             start, tile = pending.pop()
-            self.ledger.bump("source_origin_frame_visits")
+            self.ledger.bump(_contracts_keys.SOURCE_ORIGIN_FRAME_VISITS)
             if tile.node_id in seen:
                 continue
             seen.add(tile.node_id)
-            self.ledger.bump("source_origin_node_visits")
+            self.ledger.bump(_contracts_keys.SOURCE_ORIGIN_NODE_VISITS)
             if tile.node_id == parent.node_id:
                 return start, tile
             if tile.level <= parent.level:

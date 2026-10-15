@@ -22,6 +22,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     SymbolSort,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import observation_inputs
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -111,7 +114,7 @@ def lower_finite(
     if type(resolved) is not ExprID:
         raise AssertionError("expression head returned a scalar")
     node = arena.node(resolved)
-    runtime.ledger.bump("boundary_expression_scalar_observations")
+    runtime.ledger.bump(_execution_keys.BOUNDARY_EXPRESSION_SCALAR_OBSERVATIONS)
     if node.kind == "symbol":
         return node.value
     if node.kind == "literal":
@@ -152,7 +155,8 @@ def lower_finite(
         )
         if constant is not None:
             runtime.ledger.bump(
-                "primitive_expression_arguments_elided", values.count(None)
+                _execution_keys.PRIMITIVE_EXPRESSION_ARGUMENTS_ELIDED,
+                values.count(None),
             )
             return constant
         unresolved = [index for index, value in enumerate(values) if value is None]
@@ -176,4 +180,4 @@ def lower_finite(
                 "finite primitive dependency returned a structured value"
             )
         values[index] = result
-        runtime.ledger.bump("primitive_expression_arguments_observed")
+        runtime.ledger.bump(_execution_keys.PRIMITIVE_EXPRESSION_ARGUMENTS_OBSERVED)

@@ -26,14 +26,14 @@ def test_closed_form_cli_reads_exact_and_modular_endpoint_ports(
         "4",
         "--no-value",
         "--info",
-        "closed-form",
+        "temporal.closed-form",
         "--format",
         "json",
     ]
     assert cli.main(arguments) == 0
     exact = json.loads(capsys.readouterr().out)
     assert exact["value"] is None
-    port = exact["info"]["closed-form"]
+    port = exact["info"]["temporal.closed-form"]
     assert port["source"] == 173488
     assert port["target"] == 17631568
     assert port["carry_word"] == 10011
@@ -44,8 +44,8 @@ def test_closed_form_cli_reads_exact_and_modular_endpoint_ports(
     assert port["affine_gain"] == 160
     assert port["phase_in"] == port["phase_out"] == 0
 
-    assert cli.main([*arguments, "--modulus", "97"]) == 0
-    modular = json.loads(capsys.readouterr().out)["info"]["closed-form"]
+    assert cli.main([*arguments, "--temporal-closed-form-modulus", "97"]) == 0
+    modular = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]
     for field in ("source", "target", "carry_correction", "U", "H"):
         assert modular[field] == port[field] % 97
     assert modular["carry_word"] == port["carry_word"] % 970
@@ -92,7 +92,7 @@ def test_closed_form_compact_index_has_no_expanded_request_coordinate(
                 "0",
                 "--no-value",
                 "--info",
-                "closed-form",
+                "temporal.closed-form",
                 "--format",
                 "json",
             ]
@@ -100,7 +100,7 @@ def test_closed_form_compact_index_has_no_expanded_request_coordinate(
         == 0
     )
     packet = json.loads(capsys.readouterr().out)
-    port = packet["info"]["closed-form"]
+    port = packet["info"]["temporal.closed-form"]
     assert (
         packet["index"]
         == port["index"]
@@ -129,14 +129,14 @@ def test_closed_form_retains_decimal_contraction(
                 "2",
                 "--no-value",
                 "--info",
-                "closed-form",
+                "temporal.closed-form",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    port = json.loads(capsys.readouterr().out)["info"]["closed-form"]
+    port = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]
     assert port["target"] == expected
     assert port["phase_in"] is None
     assert port["affine_gain"] is None
@@ -157,8 +157,8 @@ def test_closed_form_modulus_is_validated_at_cli_boundary(
                 "1",
                 "--no-value",
                 "--info",
-                "closed-form",
-                "--modulus",
+                "temporal.closed-form",
+                "--temporal-closed-form-modulus",
                 value,
             ]
         )
@@ -178,8 +178,8 @@ def test_closed_form_rejects_fractional_modulus() -> None:
                 "1",
                 "--no-value",
                 "--info",
-                "closed-form",
-                "--modulus",
+                "temporal.closed-form",
+                "--temporal-closed-form-modulus",
                 "1.5",
             ]
         )

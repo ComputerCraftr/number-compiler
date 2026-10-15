@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
@@ -135,19 +138,26 @@ class ExpressionClosures:
         )
         record = ClosureProgram(canonical, normalized, canonical_support)
         # Failed admission has not changed any ledger counters or stores.
-        self.ledger.bump("expression_closure_admission_visits", len(visited))
-        self.ledger.bump("expression_closure_admission_frame_visits", frames)
         self.ledger.bump(
-            "expression_closure_admission_workspace_peak",
+            _execution_keys.EXPRESSION_CLOSURE_ADMISSION_VISITS,
+            len(visited),
+        )
+        self.ledger.bump(
+            _execution_keys.EXPRESSION_CLOSURE_ADMISSION_FRAME_VISITS,
+            frames,
+        )
+        self.ledger.bump(
+            _execution_keys.EXPRESSION_CLOSURE_ADMISSION_WORKSPACE_PEAK,
             max(
                 0,
                 peak
                 - self.ledger.counters.get(
-                    "expression_closure_admission_workspace_peak", 0
+                    _execution_keys.EXPRESSION_CLOSURE_ADMISSION_WORKSPACE_PEAK,
+                    0,
                 ),
             ),
         )
-        self.ledger.bump("expression_closure_interner_requests")
+        self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_INTERNER_REQUESTS)
         return self._publish(record)
 
     def intern_canonical(
@@ -199,16 +209,17 @@ class ExpressionClosures:
             if port in body_node.free_ports
         )
         record = ClosureProgram(parameters, body, support)
-        self.ledger.bump("expression_closure_canonical_requests")
+        self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_CANONICAL_REQUESTS)
         self.ledger.bump(
-            "expression_closure_admission_visits", len(body_node.free_ports)
+            _execution_keys.EXPRESSION_CLOSURE_ADMISSION_VISITS,
+            len(body_node.free_ports),
         )
         return self._publish(record)
 
     def _publish(self, record: ClosureProgram) -> ClosureProgramID:
         found = self.ids.get(record)
         if found is not None:
-            self.ledger.bump("expression_closure_interner_hits")
+            self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_INTERNER_HITS)
             return found
         self.ledger.reserve_many(((self.node_owner, 1, 1), (self.id_owner, 1, 0)))
         result = ClosureProgramID(
@@ -216,7 +227,7 @@ class ExpressionClosures:
         )
         self.nodes.append(record)
         self.ids[record] = result
-        self.ledger.bump("expression_closure_interner_evaluations")
+        self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_INTERNER_EVALUATIONS)
         return result
 
     def validate_arguments(
@@ -263,17 +274,19 @@ class ExpressionClosures:
     ) -> ExprID | None:
         record = self._effective(program, arguments)
         if not record.support:
-            self.ledger.bump("expression_closure_constant_reductions")
+            self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_CONSTANT_REDUCTIONS)
             return record.body
         if record.body in record.support:
-            self.ledger.bump("expression_closure_identity_reductions")
+            self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_IDENTITY_REDUCTIONS)
             return arguments[record.support.index(record.body)]
         node = self.expressions.node(record.body)
         if node.kind in ("anchor", "continuation", "finite_apply"):
             child = self.expressions._handle(node.children[0])
             if child in record.support:
                 argument = arguments[record.support.index(child)]
-                self.ledger.bump("expression_closure_projection_reductions")
+                self.ledger.bump(
+                    _execution_keys.EXPRESSION_CLOSURE_PROJECTION_REDUCTIONS
+                )
                 if node.kind == "anchor":
                     return self.expressions.anchor(argument)
                 if node.kind == "continuation":
@@ -297,7 +310,7 @@ class ExpressionClosures:
 
     def expand(self, program: ClosureProgramID, arguments: Sequence[ExprID]) -> ExprID:
         record = self._effective(program, arguments)
-        self.ledger.bump("expression_closure_instantiations")
+        self.ledger.bump(_execution_keys.EXPRESSION_CLOSURE_INSTANTIATIONS)
         return self.expressions.substitute(
             record.body, dict(zip(record.support, arguments, strict=True))
         )

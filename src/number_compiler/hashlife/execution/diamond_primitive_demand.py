@@ -20,6 +20,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     PrimitiveKernel,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,12 +102,12 @@ class PrimitiveDemandOracle:
         key = PrimitiveDemandKey(kernel, operation, side, values)
         primitive, sizes = self._validate(key)
         # Every supplied field has been checked before even a warm query counts.
-        self.ledger.bump("primitive_demand_requests")
+        self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_REQUESTS)
         if all(value is not None for value in values):
             # A fully observed fixed primitive operation needs no certificate
             # allocation or response memo, even when the cache is full.
-            self.ledger.bump("primitive_demand_known_evaluations")
-            self.ledger.bump("primitive_demand_completion_tests")
+            self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_KNOWN_EVALUATIONS)
+            self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_COMPLETION_TESTS)
             assert values[0] is not None and values[1] is not None
             if operation == "advance":
                 return primitive.advance(BoundarySide(side), values[0], values[1])
@@ -112,7 +115,7 @@ class PrimitiveDemandOracle:
             return primitive.emit(values[0], values[1], values[2])
         found = self.memo.get(key)
         if found is not None:
-            self.ledger.bump("primitive_demand_cache_hits")
+            self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_CACHE_HITS)
             return found.value
         limit = self.ledger.max_cache_entries
         if limit is not None and self.ledger.entries >= limit:
@@ -126,16 +129,18 @@ class PrimitiveDemandOracle:
             )
         cursors = [0 if value is None else value for value in values]
         self.ledger.bump(
-            "primitive_demand_cursor_peak",
+            _execution_keys.PRIMITIVE_DEMAND_CURSOR_PEAK,
             max(
                 0,
                 len(cursors)
-                - self.ledger.counters.get("primitive_demand_cursor_peak", 0),
+                - self.ledger.counters.get(
+                    _execution_keys.PRIMITIVE_DEMAND_CURSOR_PEAK, 0
+                ),
             ),
         )
         baseline: int | None = None
         while True:
-            self.ledger.bump("primitive_demand_completion_tests")
+            self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_COMPLETION_TESTS)
             result = (
                 primitive.advance(BoundarySide(side), cursors[0], cursors[1])
                 if operation == "advance"
@@ -144,7 +149,7 @@ class PrimitiveDemandOracle:
             if baseline is None:
                 baseline = result
             elif baseline != result:
-                self.ledger.bump("primitive_demand_early_variation_exits")
+                self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_EARLY_VARIATION_EXITS)
                 baseline = None
                 break
             # Mixed-radix enumeration has at most three original finite ports.
@@ -161,5 +166,5 @@ class PrimitiveDemandOracle:
                 break
         certificate = PrimitiveDemandCertificate(baseline)
         self.memo[key] = certificate
-        self.ledger.bump("primitive_demand_evaluations")
+        self.ledger.bump(_execution_keys.PRIMITIVE_DEMAND_EVALUATIONS)
         return certificate.value

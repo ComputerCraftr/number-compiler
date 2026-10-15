@@ -47,6 +47,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureID,
     _Builder,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_tasks import (
@@ -77,7 +80,7 @@ def _structured_program(
                 "structured expression has no constructor head"
             )
         if head != task.expression:
-            self.ledger.bump("semantic_expression_head_elisions")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_HEAD_ELISIONS)
             return (
                 yield StructuredExpressionTask(
                     head, task.environment, task.depth, task.profile

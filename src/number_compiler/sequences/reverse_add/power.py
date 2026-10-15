@@ -26,7 +26,8 @@ from number_compiler.arithmetic.fields.radix import (
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import (
     closing_output_stream,
     initialize_output_stream_metrics,
@@ -46,6 +47,11 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.reverse_add.source_images import (
         ReverseSourceImageWorkspace,
+    )
+    from number_compiler.sequences.reverse_add.temporal_matrix import (
+        ReverseInnovationBank,
+        SkewMoment,
+        SourceBoundMoment,
     )
 
 
@@ -152,7 +158,9 @@ class ReverseAddPoweredTerm:
                 2 * self.base,
             )
         )
-        self._ledger.bump("reverse_source_pair_authority_symbols", len(pair))
+        self._ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_PAIR_AUTHORITY_SYMBOLS, len(pair)
+        )
 
     @property
     def operator_nodes(self) -> int:
@@ -270,6 +278,63 @@ class ReverseAddPoweredTerm:
                 scratch=scratch,
                 first_width=first_width,
             )
+
+    def temporal_matrix(self, *, max_bits: int = 16384) -> SourceBoundMoment:
+        """Project the authenticated endpoint into its exact skew matrix."""
+        from number_compiler.sequences.reverse_add.temporal_matrix import (
+            source_bound_temporal_matrix,
+        )
+
+        return source_bound_temporal_matrix(self, max_bits=max_bits)
+
+    def temporal_moments(self, *, modulus: int) -> SkewMoment:
+        """Project modular U,V directly from the issued Q19 source SLP."""
+        from number_compiler.sequences.reverse_add.temporal_matrix import (
+            source_bound_modular_moments,
+        )
+
+        return source_bound_modular_moments(self, modulus=modulus)
+
+    def temporal_stencil(
+        self, *, max_bits: int = 16384, max_digits: int = 8192
+    ) -> ReverseInnovationBank:
+        """Observe the exact endpoint's bounded five-band/borrow stencil.
+
+        Width and bit caps are checked before endpoint digit expansion. The
+        returned future borrow stencil is diagnostic source law; it does not
+        authorize skipping future full-root transitions.
+        """
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        if self.base != 10:
+            raise ValueError("temporal stencil is decimal-only")
+        max_digits = require_integer(max_digits, "stencil digit budget", 1)
+        if self.maximum_width > max_digits:
+            raise ValueError("reverse/add stencil exceeds its digit budget")
+        action = self.temporal_matrix(max_bits=max_bits)
+        from number_compiler.sequences.reverse_add.temporal_matrix import (
+            ReverseInnovationBank,
+        )
+
+        width = max(1, self.maximum_width)
+        workspace_owner = self._ledger.register(
+            f"reverse-temporal-stencil-work-{self._ledger.owner_count}",
+            "temporary_work",
+            scope=ResourceScope.INDEX_OWNED,
+        )
+        try:
+            with self._ledger.reservation(
+                workspace_owner,
+                entries=16 * width + 64,
+                nodes=16 * width + 64,
+            ):
+                return ReverseInnovationBank.observe(
+                    action.target,
+                    max_digits=max_digits,
+                    ledger=self._ledger,
+                )
+        finally:
+            self._ledger.mark_disposed(workspace_owner)
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)

@@ -128,12 +128,14 @@ def test_uncertified_two_step_square_handles_growth(seed: int) -> None:
         assert metrics.get("double_reverse_square_guard_refusals", 0) == 0
 
 
-def test_contraction_still_uses_the_exact_scheduler_fallback() -> None:
+def test_contraction_uses_exact_normalized_temporal_square() -> None:
     with DoubleReverseTerm(10, 2) as term:
         assert term.materialize(max_bits=64) == _literal(10, 2)
         metrics = term.metrics()
-        assert metrics["double_reverse_square_guard_refusals"] == 1
-        assert metrics.get("double_reverse_temporal_square_applications", 0) == 0
+        assert metrics["double_reverse_temporal_square_applications"] == 1
+        assert metrics["double_reverse_temporal_square_normalizations"] >= 1
+        assert metrics["double_reverse_temporal_square_shrink_seams"] >= 1
+        assert metrics.get("double_reverse_spatial_transducer_applications", 0) == 0
 
 
 @pytest.mark.parametrize("seed", (196, 173488))
@@ -188,7 +190,7 @@ def test_warm_parent_action_hit_skips_cone_discovery(
         assert metrics["double_reverse_boundary_node_visits"] > visits_before
 
 
-def test_same_border_forged_target_is_rejected_by_issuer_identity() -> None:
+def test_same_border_forged_and_mutated_target_are_rejected_by_issuer_binding() -> None:
     with DoubleReverseTerm(173488, 4) as term:
         engine = term._adapter.temporal_hashlife
         source = term._source.root
@@ -205,6 +207,15 @@ def test_same_border_forged_target_is_rejected_by_issuer_identity() -> None:
         forged = replace(action, target=engine._handle(forged_root))
         with pytest.raises(ValueError, match="not published by this owner"):
             engine.validate_action(forged)
+        original_local_id = action.target.local_id
+        object.__setattr__(action.target, "local_id", forged_root)
+        try:
+            with pytest.raises(ValueError, match="not published by this owner"):
+                engine.validate_action(action)
+            with pytest.raises(ValueError, match="not published by this owner"):
+                engine.advance_action(source, 2, phase)
+        finally:
+            object.__setattr__(action.target, "local_id", original_local_id)
 
 
 def test_temporal_action_rejects_foreign_issuer_and_stale_memo() -> None:

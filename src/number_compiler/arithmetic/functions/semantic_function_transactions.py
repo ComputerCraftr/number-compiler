@@ -18,6 +18,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     _union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.semantic_functions import (
@@ -90,8 +93,14 @@ class _Transaction:
         self._workspace_entries += entries
         self._workspace_nodes += nodes
         ledger = self.arena.ledger
-        ledger.bump("semantic_function_workspace_allocated_entries", entries)
-        ledger.bump("semantic_function_workspace_allocated_nodes", nodes)
+        ledger.bump(
+            _functions_keys.SEMANTIC_FUNCTION_WORKSPACE_ALLOCATED_ENTRIES,
+            entries,
+        )
+        ledger.bump(
+            _functions_keys.SEMANTIC_FUNCTION_WORKSPACE_ALLOCATED_NODES,
+            nodes,
+        )
         for name, value in (
             ("entries", self._workspace_entries),
             ("nodes", self._workspace_nodes),
@@ -200,7 +209,7 @@ class _Transaction:
         if found is None:
             found = self.keys.get(node)
         if found is not None:
-            self.arena.ledger.bump("semantic_function_intern_hits")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_INTERN_HITS)
             return found
         result = self.base + len(self.staged)
         try:
@@ -227,7 +236,7 @@ class _Transaction:
                 result,
                 self._total[node.low] and self._total[node.high],
             )
-        self.arena.ledger.bump("semantic_function_staged_nodes")
+        self.arena.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_STAGED_NODES)
         return result
 
     def _total_condition(self, root: int) -> bool:
@@ -237,12 +246,12 @@ class _Transaction:
         an undefined condition would otherwise change partial ITE semantics.
         """
         if root in self._total:
-            self.arena.ledger.bump("semantic_total_condition_hits")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_TOTAL_CONDITION_HITS)
             return self._total[root]
         pending = [(root, False)]
         while pending:
             identity, ready = pending.pop()
-            self.arena.ledger.bump("semantic_total_condition_frames")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_TOTAL_CONDITION_FRAMES)
             if identity in self._total:
                 continue
             node = self.node(identity)
@@ -259,13 +268,14 @@ class _Transaction:
                     ((identity, True), (node.high, False), (node.low, False))
                 )
             self.arena.ledger.bump(
-                "semantic_total_condition_workspace_peak",
+                _functions_keys.SEMANTIC_TOTAL_CONDITION_WORKSPACE_PEAK,
                 max(
                     0,
                     len(pending)
                     + len(self._total)
                     - self.arena.ledger.counters.get(
-                        "semantic_total_condition_workspace_peak", 0
+                        _functions_keys.SEMANTIC_TOTAL_CONDITION_WORKSPACE_PEAK,
+                        0,
                     ),
                 ),
             )
@@ -277,7 +287,7 @@ class _Transaction:
     def decision(
         self, signature: FunctionSignature, variable: PortVariable, low: int, high: int
     ) -> int:
-        self.arena.ledger.bump("semantic_decision_requests")
+        self.arena.ledger.bump(_functions_keys.SEMANTIC_DECISION_REQUESTS)
         if low == high:
             return low
         a, b = self.node(low), self.node(high)
@@ -303,7 +313,7 @@ class _Transaction:
         if found is None:
             found = self.keys.get(key)
         if found is not None:
-            self.arena.ledger.bump("semantic_decision_early_hits")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_DECISION_EARLY_HITS)
             return found
         support = self._decision_support(variable, a.support, b.support)
         return self.intern(
@@ -316,9 +326,10 @@ class _Transaction:
         left: tuple[PortVariable, ...],
         right: tuple[PortVariable, ...],
     ) -> tuple[PortVariable, ...]:
-        self.arena.ledger.bump("semantic_decision_support_builds")
+        self.arena.ledger.bump(_functions_keys.SEMANTIC_DECISION_SUPPORT_BUILDS)
         self.arena.ledger.bump(
-            "semantic_decision_support_input_references", len(left) + len(right)
+            _functions_keys.SEMANTIC_DECISION_SUPPORT_INPUT_REFERENCES,
+            len(left) + len(right),
         )
         if not left or left == right:
             return (variable, *right)
@@ -342,15 +353,15 @@ class _Transaction:
             and (left.variable is None or variable < left.variable)
             and (right.variable is None or variable < right.variable)
         ):
-            self.arena.ledger.bump("semantic_direct_decision_rebuilds")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_DIRECT_DECISION_REBUILDS)
             return self.decision(signature, variable, low, high)
-        self.arena.ledger.bump("semantic_reordered_decision_rebuilds")
+        self.arena.ledger.bump(_functions_keys.SEMANTIC_REORDERED_DECISION_REBUILDS)
         return self.choose(self.bit(signature.inputs, variable), high, low)
 
     def choose(self, condition: int, yes: int, no: int) -> int:
         root = condition, yes, no
         if root in self.choices:
-            self.arena.ledger.bump("semantic_ite_transaction_hits")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_ITE_TRANSACTION_HITS)
             return self.choices[root]
         if self.arena.cache_construction_reductions and all(
             0 <= identity < self.base for identity in root
@@ -359,12 +370,14 @@ class _Transaction:
                 "construction-ite",
                 tuple(self.arena._handle(identity) for identity in root),
             )
-            self.arena.ledger.bump("semantic_ite_canonical_requests")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_ITE_CANONICAL_REQUESTS)
             cached = self.arena.memo.get(request)
             if cached is not None:
                 self.arena.resolve(cached)
                 self.remember(self.choices, root, cached.local_id)
-                self.arena.ledger.bump("semantic_ite_canonical_early_hits")
+                self.arena.ledger.bump(
+                    _functions_keys.SEMANTIC_ITE_CANONICAL_EARLY_HITS
+                )
                 return cached.local_id
             if len(self.choice_requests) < 256:
                 self.remember_choice_request(root)
@@ -378,7 +391,7 @@ class _Transaction:
             if key in self.choices:
                 continue
             c, a, b = (self.node(item) for item in key)
-            self.arena.ledger.bump("semantic_function_ite_frames")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_ITE_FRAMES)
             if c.terminal is not None:
                 self.remember(
                     self.choices,
@@ -391,7 +404,9 @@ class _Transaction:
                 )
             elif key[1] == key[2] and self._total_condition(key[0]):
                 self.remember(self.choices, key, key[1])
-                self.arena.ledger.bump("semantic_identical_branch_reductions")
+                self.arena.ledger.bump(
+                    _functions_keys.SEMANTIC_IDENTICAL_BRANCH_REDUCTIONS
+                )
             elif (
                 c.signature == a.signature == b.signature
                 and c.signature.output == BOOL
@@ -418,7 +433,9 @@ class _Transaction:
                 # ITE(c,1,0), ITE(c,c,0), ITE(c,1,c) are c even when
                 # c is undefined. This preserves partial-function semantics.
                 self.remember(self.choices, key, key[0])
-                self.arena.ledger.bump("semantic_boolean_identity_reductions")
+                self.arena.ledger.bump(
+                    _functions_keys.SEMANTIC_BOOLEAN_IDENTITY_REDUCTIONS
+                )
             elif ready:
                 variable, low, high = children[key]
                 self.remember(
@@ -458,7 +475,7 @@ class _Transaction:
             if current in done:
                 continue
             node = self.node(current)
-            self.arena.ledger.bump("semantic_function_rewrite_frames")
+            self.arena.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_REWRITE_FRAMES)
             if node.terminal is not None:
                 done[current] = transform(node.terminal)
             elif ready:
@@ -472,36 +489,39 @@ class _Transaction:
 
     def resign(self, root: int, signature: FunctionSignature) -> int:
         ledger = self.arena.ledger
-        ledger.bump("semantic_function_resign_requests")
+        ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_REQUESTS)
         if self.node(root).signature == signature:
-            ledger.bump("semantic_function_resign_identity_hits")
+            ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_IDENTITY_HITS)
             return root
         target = root, signature
         if target in self._resigned:
-            ledger.bump("semantic_function_resign_cache_hits")
+            ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_CACHE_HITS)
             return self._resigned[target]
         # One transaction imports several output bits and validity roots under
         # the same declaration. Share their complete child DAGs before walking
         # them again; these are construction references, not observations.
-        ledger.bump("semantic_function_resign_evaluations")
+        ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_EVALUATIONS)
         pending = [(root, False)]
         while pending:
             ledger.bump(
-                "semantic_function_resign_workspace_peak",
+                _functions_keys.SEMANTIC_FUNCTION_RESIGN_WORKSPACE_PEAK,
                 max(
                     0,
                     len(pending)
                     + len(self._resigned)
-                    - ledger.counters.get("semantic_function_resign_workspace_peak", 0),
+                    - ledger.counters.get(
+                        _functions_keys.SEMANTIC_FUNCTION_RESIGN_WORKSPACE_PEAK,
+                        0,
+                    ),
                 ),
             )
             current, ready = pending.pop()
             key = current, signature
             if key in self._resigned:
-                ledger.bump("semantic_function_resign_shared_child_hits")
+                ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_SHARED_CHILD_HITS)
                 continue
             node = self.node(current)
-            ledger.bump("semantic_function_resign_frames")
+            ledger.bump(_functions_keys.SEMANTIC_FUNCTION_RESIGN_FRAMES)
             if node.signature == signature:
                 self.remember(self._resigned, key, current)
             elif node.terminal is not None:

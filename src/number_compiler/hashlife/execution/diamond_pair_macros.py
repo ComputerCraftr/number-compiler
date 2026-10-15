@@ -39,6 +39,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     substitution_bindings,
     to_expression,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 LEFT_A = PortVariable(0, 0, "diamond-pair-left-a", 0)
 RIGHT_A = PortVariable(0, 1, "diamond-pair-right-a", 0)
@@ -147,13 +150,13 @@ class PrimitivePairMacros:
     def _intern(self, record: PairMacroRecord) -> TransferSummaryID:
         found = self._ids.get(record)
         if found is not None:
-            self.ledger.bump("pair_macro_program_interner_hits")
+            self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_HITS)
             return found
         self.ledger.reserve_many(((self._node_owner, 1, 1), (self._index_owner, 1, 0)))
         result = TransferSummaryID(self.token, "diamond-pair-macro", len(self._nodes))
         self._nodes.append(record)
         self._ids[record] = result
-        self.ledger.bump("pair_macro_program_interner_evaluations")
+        self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_EVALUATIONS)
         return result
 
     def _publish(self, key: PairMacroKey, record: PairMacroRecord) -> TransferSummaryID:
@@ -168,9 +171,9 @@ class PrimitivePairMacros:
             )
             self._nodes.append(record)
             self._ids[record] = result
-            self.ledger.bump("pair_macro_program_interner_evaluations")
+            self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_EVALUATIONS)
         else:
-            self.ledger.bump("pair_macro_program_interner_hits")
+            self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_HITS)
         self._bindings[key] = result
         return result
 
@@ -212,10 +215,10 @@ class PrimitivePairMacros:
         if (node.base, node.blank) != (original.base, original.blank):
             raise ValueError("macro and original source have incompatible alphabets")
         self._record_source_admission(source_admission)
-        self.ledger.bump("macro_transfer_requests")
+        self.ledger.bump(_execution_keys.MACRO_TRANSFER_REQUESTS)
         found = self._bindings.get(PairMacroKey(action, cell))
         if found is not None:
-            self.ledger.bump("macro_transfer_cache_hits")
+            self.ledger.bump(_execution_keys.MACRO_TRANSFER_CACHE_HITS)
         return found
 
     def _require_source(self, cell: CellID) -> tuple[int, int, int, int]:
@@ -224,8 +227,8 @@ class PrimitivePairMacros:
 
     def _record_source_admission(self, stats: tuple[int, int, int, int]) -> None:
         visits, unique, pending_peak, workspace_peak = stats
-        self.ledger.bump("spatial_source_admission_frame_visits", visits)
-        self.ledger.bump("spatial_source_admission_unique_visits", unique)
+        self.ledger.bump(_execution_keys.SPATIAL_SOURCE_ADMISSION_FRAME_VISITS, visits)
+        self.ledger.bump(_execution_keys.SPATIAL_SOURCE_ADMISSION_UNIQUE_VISITS, unique)
         for counter, value in (
             ("spatial_source_admission_pending_peak", pending_peak),
             ("spatial_source_admission_workspace_peak", workspace_peak),
@@ -249,7 +252,7 @@ class PrimitivePairMacros:
         left = input_expression(self.kernels, a.left_count, LEFT_A)
         right = input_expression(self.kernels, a.right_count, RIGHT_A)
         context = self.contexts.leaf(action, original_symbol)
-        self.ledger.bump("pair_macro_leaf_evaluations")
+        self.ledger.bump(_execution_keys.PAIR_MACRO_LEAF_EVALUATIONS)
         return PairMacroRecord(
             action,
             self.kernels.advance_expression(a_id, BoundarySide.LEFT, left, symbol),
@@ -268,7 +271,7 @@ class PrimitivePairMacros:
         context = self.contexts.join(
             action, left.left_context, right.left_context, middle_left, middle_right
         )
-        self.ledger.bump("pair_macro_parent_evaluations")
+        self.ledger.bump(_execution_keys.PAIR_MACRO_PARENT_EVALUATIONS)
         return PairMacroRecord(
             action,
             self.unary.compose(a_id, 0, middle_left, right.left_transfer, LEFT_A),
@@ -290,8 +293,11 @@ class PrimitivePairMacros:
             return found
         stack = [(cell, False, True)]
         while stack:
-            peak = self.ledger.counters.get("pair_macro_stack_peak", 0)
-            self.ledger.bump("pair_macro_stack_peak", max(0, len(stack) - peak))
+            peak = self.ledger.counters.get(_execution_keys.PAIR_MACRO_STACK_PEAK, 0)
+            self.ledger.bump(
+                _execution_keys.PAIR_MACRO_STACK_PEAK,
+                max(0, len(stack) - peak),
+            )
             current, ready, probed = stack.pop()
             key = PairMacroKey(action, current)
             if (
@@ -320,7 +326,7 @@ class PrimitivePairMacros:
             else:
                 record = self._leaf(action, current)
             self._publish(key, record)
-            self.ledger.bump("macro_transfer_evaluations")
+            self.ledger.bump(_execution_keys.MACRO_TRANSFER_EVALUATIONS)
         return self._bindings[PairMacroKey(action, cell)]
 
     def _validate_state(
@@ -351,7 +357,7 @@ class PrimitivePairMacros:
         a, b = self.kernels.kernel(a_id), self.kernels.kernel(b_id)
         domain = b.left_count if side == 0 else b.right_count
         expression = record.left_context if side == 0 else record.right_context
-        self.ledger.bump("pair_macro_context_applications")
+        self.ledger.bump(_execution_keys.PAIR_MACRO_CONTEXT_APPLICATIONS)
         output = yield ContextObservation(
             expression,
             self.kernels.constant(a.left_count, left_value),
@@ -418,7 +424,7 @@ class PrimitivePairMacros:
         target = self.boundaries.literal(
             first, side, self.kernels.evaluate(next_anchor, inputs)
         )
-        self.ledger.bump("pair_macro_boundary_applications")
+        self.ledger.bump(_execution_keys.PAIR_MACRO_BOUNDARY_APPLICATIONS)
         return self.boundaries.pair(action, side, target, continuation)
 
     def _standalone(self, program: Generator[Task, Result, Result]) -> BoundaryStateID:

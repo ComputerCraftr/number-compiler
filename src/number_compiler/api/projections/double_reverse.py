@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.reverse_payloads import DoubleReverseTermPayload
 from number_compiler.api.symbolic_terms import SymbolicExpression
 
@@ -42,14 +43,14 @@ def project(
         valid,
     )
     return ProjectedNumberTerm(
-        "2rev10",
+        FamilyId.DOUBLE_REVERSE,
         query.index,
         query.seed,
         10,
-        SymbolicExpression("2rev10", query.index, query.seed, 10),
+        SymbolicExpression(FamilyId.DOUBLE_REVERSE, query.index, query.seed, 10),
         DoubleReverseTermPayload(term),
         ProjectionMetrics(
-            "2rev10",
+            FamilyId.DOUBLE_REVERSE,
             query.index,
             0,
             0,

@@ -79,6 +79,13 @@ def _cold_production_d68(monkeypatch: pytest.MonkeyPatch) -> ProcessCache:
         ledger.counters["collatz_physical_temporal_mixed_clock_macro_physical_ticks"]
         == _D68_PHYSICAL_TICKS
     )
+    assert (
+        ledger.counters.get(
+            "collatz_physical_unified_skew_existing_mixed_parent_yields", 0
+        )
+        == 1
+    )
+    assert ledger.counters.get("collatz_physical_unified_skew_composed_actions", 0) == 0
     assert ledger.counters["collatz_hashlife_mixed_publications"] == 1
     _assert_query_retains_only_accounted_d8_rows(ledger)
     assert cache.stats().entries > 0
@@ -99,6 +106,9 @@ def test_d68_complete_action_is_applied_before_any_new_discovery(
             temporal_mixed_execution, "select_mixed_clock_macro", forbidden
         )
         monkeypatch.setattr(temporal_run_executor, "select_mixed_macro", forbidden)
+        monkeypatch.setattr(
+            temporal_run_executor, "consume_unified_skew_chain", forbidden
+        )
         for source in (_D68_SOURCE, _D68_SOURCE + (1 << 68)):
             ledger = ResourceLedger()
             result = compile_collatz_temporal_run_quotient(

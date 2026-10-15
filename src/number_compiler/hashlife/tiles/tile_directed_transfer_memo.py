@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -24,6 +30,7 @@ from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferK
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -246,7 +253,7 @@ def _prepare_admission(
         kernel.base,
         max(1, kernel.blank.bit_length()),
         "unsigned-radix-cell-with-explicit-blank",
-        "canonical-tile-alphabet-v1",
+        CANONICAL_TILE_ALPHABET_VERSION,
     )
     domain = declaration.inputs[side]
     return _DirectedTransferAdmission(
@@ -354,7 +361,7 @@ def _validate_key(
         if identity in visited:
             continue
         visited.add(identity)
-        results.ledger.bump("tile_directed_transfer_validation_visits")
+        results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_VALIDATION_VISITS)
         terminal = cursor.terminal
         if terminal is not None:
             if terminal.kind == "atom" and terminal.value == 1:
@@ -379,7 +386,7 @@ def _validate_key(
             )
     if not admitted:
         raise ValueError("directed transfer state has no admissible opposite port")
-    results.ledger.bump("tile_directed_transfer_validation_requests")
+    results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_VALIDATION_REQUESTS)
     return cardinality
 
 
@@ -460,14 +467,16 @@ def lookup_prepared_directed_transfer(
     """Probe a validated request without repeating primitive admission."""
     _validate_request(results, request)
     found = results._memo.get(request.key)
-    results.ledger.bump("tile_directed_transfer_requests")
+    results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_REQUESTS)
     if found is None:
-        record_unattributed_post_eviction_miss(results.ledger, "interface")
+        record_unattributed_post_eviction_miss(
+            results.ledger, ResultCacheKind.INTERFACE
+        )
         return None
     if type(found) is not int:
         raise TypeError("directed transfer memo contains another value sort")
     _validate_exit(request, found)
-    results.ledger.bump("tile_directed_transfer_early_hits")
+    results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_EARLY_HITS)
     return found
 
 
@@ -492,7 +501,7 @@ def publish_prepared_directed_transfer(
     results._validate_action(request.key.action)
     _validate_exit(request, outgoing)
     key = request.key
-    results.ledger.bump("tile_directed_transfer_publication_requests")
+    results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_PUBLICATION_REQUESTS)
     found = results._memo.get(key)
     if found is not None:
         if type(found) is not int:
@@ -500,10 +509,10 @@ def publish_prepared_directed_transfer(
         _validate_exit(request, found)
         if found != outgoing:
             raise ValueError("directed transfer already has another exact exit")
-        results.ledger.bump("tile_directed_transfer_late_duplicates")
+        results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_LATE_DUPLICATES)
         return found
     publish_indexed_result(results, key, outgoing)
-    results.ledger.bump("tile_directed_transfer_publications")
+    results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_PUBLICATIONS)
     return outgoing
 
 

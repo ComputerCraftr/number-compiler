@@ -9,6 +9,10 @@ from pathlib import Path
 
 from devtools.paths import report_output
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    BoundaryPathKind,
+    GuardedBorderPath,
+)
 from number_compiler.sequences.collatz.border_return_grammar import BorderReturnMacro
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol,
@@ -96,13 +100,17 @@ def audit(output: Path) -> dict[str, object]:
         ):
             raise AssertionError(("wrong signed borrow/carry tape", source, ticks))
         macro = result.first_boundary_macro
-        if macro is not None and macro.family == "6305R":
+        if (
+            macro is not None
+            and isinstance(macro.identity, GuardedBorderPath)
+            and macro.identity.kind is BoundaryPathKind.THREE_BORDER_RETURN
+        ):
             if type(macro) is not BorderReturnMacro:
                 raise AssertionError(
                     ("6305R route has another macro type", source, ticks)
                 )
             composite += 1
-            routes[macro.exit_port] += 1
+            routes[macro.exit_port.value] += 1
             if macro.fields.endpoint(macro.source) != macro.endpoint:
                 raise AssertionError(("wrong composite", source, ticks))
             normalized_symbols += macro.normalized_symbols

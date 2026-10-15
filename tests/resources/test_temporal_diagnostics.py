@@ -30,7 +30,7 @@ def test_explicit_mahler_audit_does_not_reconstruct_endpoint() -> None:
     from number_compiler.api.cli_requests import parse_request
     from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
 
-    request = parse_request(["antihydra", "--nth", "65", "--info", "mahler"])
+    request = parse_request(["antihydra", "--nth", "65", "--info", "arithmetic.mahler"])
     assert request is not None
     query = QueryContext(request, NumberCompiler())
     query.information()

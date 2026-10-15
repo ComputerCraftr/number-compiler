@@ -39,8 +39,8 @@ def test_accumulator_cli_preserves_normalized_and_physical_clocks(
                 "--nth",
                 str(ticks),
                 "--info",
-                "accumulator",
-                "--modulus",
+                "temporal.accumulator",
+                "--temporal-accumulator-modulus",
                 "49",
                 "--format",
                 "json",
@@ -50,7 +50,7 @@ def test_accumulator_cli_preserves_normalized_and_physical_clocks(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] == str(current)
-    observation = packet["info"]["accumulator"]
+    observation = packet["info"]["temporal.accumulator"]
     assert observation["normalized_accumulator_residue"] == total % 49
     assert observation["source_included"] is True
     assert observation["modulus"] == 49
@@ -84,7 +84,7 @@ def test_accumulator_information_does_not_render_digits(
                 "17",
                 "--no-value",
                 "--info",
-                "accumulator",
+                "temporal.accumulator",
                 "--format",
                 "json",
             ]

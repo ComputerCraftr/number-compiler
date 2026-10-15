@@ -15,10 +15,18 @@ from number_compiler.api.cli_types import (
     ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
+from number_compiler.api.observation_types import (
+    IndexEncoding,
+    ObservationId,
+    OutputStatus,
+    SelectorId,
+    output_status,
+)
 from number_compiler.api.output_schema import (
     JsonValue,
     ObservationPacket,
     VerificationResult,
+    observation_packet,
 )
 from number_compiler.api.query_types import (
     AntihydraVerifyQuery,
@@ -31,10 +39,32 @@ if TYPE_CHECKING:
     from number_compiler.api.cli_context import QueryContext
     from number_compiler.api.cylinder_observation import CollatzObservationContext
     from number_compiler.api.number_api import ProjectedNumberTerm
+    from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 
 
 Packet = dict[str, JsonValue]
 OptionsT = TypeVar("OptionsT")
+
+
+def _family_observation_kind(name: ObservationId) -> str:
+    """Translate the wire identifier to a family-owned observer selector."""
+    return {
+        ObservationId.TEMPORAL_CLOCK: "clock",
+        ObservationId.ARITHMETIC_MODULAR: "modular",
+        ObservationId.ARITHMETIC_TWISTED: "twisted",
+        ObservationId.ARITHMETIC_HASSE: "hasse",
+        ObservationId.ARITHMETIC_HENSEL: "hensel",
+        ObservationId.ARITHMETIC_TROPICAL: "tropical",
+        ObservationId.ARITHMETIC_FACTOR: "factor",
+        ObservationId.SAFETY_EXECUTION: "safety",
+        ObservationId.SAFETY_LEDGER: "ledger",
+        ObservationId.SPATIAL_TAPE: "tape",
+        ObservationId.TEMPORAL_SPACETIME: "spacetime",
+        ObservationId.ARITHMETIC_MAHLER: "mahler",
+        ObservationId.NUMBER_THEORY_PRIMALITY: "primality",
+        ObservationId.NUMBER_THEORY_FACTOR: "factor",
+        ObservationId.NUMBER_THEORY_ROOT: "root",
+    }.get(name, name.value)
 
 
 def verify_antihydra(query: ExecutionQuery) -> VerificationResult:
@@ -47,7 +77,7 @@ def verify_antihydra(query: ExecutionQuery) -> VerificationResult:
     except (ValueError, TypeError, OverflowError) as exc:
         verdict = {
             "nonhalting_certified": False,
-            "status": "rejected",
+            "status": OutputStatus.REJECTED.value,
             "reason": str(exc),
         }
     return VerificationResult(
@@ -71,7 +101,7 @@ def _present_requested_coordinates(
     requested coordinate; this deliberately does not recursively inspect data.
     """
     index_presentation = context.request.presentation.index
-    if index_presentation.encoding != "power10":
+    if index_presentation.encoding is not IndexEncoding.POWER10:
         return packet
     encoded = cast(JsonValue, index_presentation.value(context.request.index))
     root: Packet = dict(packet)
@@ -94,16 +124,19 @@ def _present_requested_coordinates(
 
 def _publish(
     context: QueryContext,
-    name: str,
+    name: ObservationId,
     packet: Mapping[str, object],
     *,
     coordinates: tuple[tuple[str, ...], ...] = (),
 ) -> Packet:
     result = _present_requested_coordinates(context, _packet(packet), coordinates)
-    status = result.get("status")
-    metadata = _common_metadata(
-        context, name, status=status if isinstance(status, str) else "available"
+    raw_status = result.get("status")
+    status = (
+        output_status(raw_status)
+        if isinstance(raw_status, str)
+        else OutputStatus.AVAILABLE
     )
+    metadata = _common_metadata(context, name, status=status)
     result["family"] = metadata["family"]
     result["kind"] = metadata["kind"]
     result["index"] = metadata["index"]
@@ -113,16 +146,19 @@ def _publish(
 
 
 def _common_metadata(
-    context: QueryContext, name: str, *, status: str
+    context: QueryContext,
+    name: ObservationId,
+    *,
+    status: OutputStatus,
 ) -> ObservationPacket:
     """Return the authoritative common coordinate fields for an observer."""
-    return {
-        "family": context.request.family,
-        "kind": name,
-        "index": context.request.presentation_index,
-        "index_unit": context.request.index_unit,
-        "status": status,
-    }
+    return observation_packet(
+        family=context.request.family.value,
+        kind=name.value,
+        index=context.request.presentation_index,
+        index_unit=context.request.index_unit.value,
+        status=status.value,
+    )
 
 
 def _options(context: QueryContext, cls: type[OptionsT]) -> OptionsT:
@@ -140,20 +176,39 @@ def admit_noop(context: QueryContext) -> None:
     del context
 
 
-def observe_noop(context: QueryContext, name: str) -> Packet:
+def observe_noop(context: QueryContext, name: ObservationId) -> Packet:
     del context, name
     raise ValueError("family has no information observer")
 
 
-def observe_double_reverse(context: QueryContext, name: str) -> Packet:
-    """Project carry and moment ports from the already admitted endpoint."""
+def observe_double_reverse(context: QueryContext, name: ObservationId) -> Packet:
+    """Demand either an admitted pointed cylinder or completed endpoint ports."""
     from number_compiler.api.number_api import DoubleReverseTermPayload
 
     options = _options(context, DoubleReverseObservationOptions)
     payload = context.term.payload
     if not isinstance(payload, DoubleReverseTermPayload):
         raise TypeError("2rev10 observer received a foreign term payload")
-    if name != "closed-form":
+    if name is ObservationId.ARITHMETIC_RADIX25_SHIFT:
+        result_port = payload.term.source_radix25_shift(places=options.radix_places)
+        return _publish(
+            context,
+            name,
+            {
+                **asdict(result_port),
+                "carry_transfer": result_port.carry_transfer,
+                "scope": "source-bound radix-2/5 projection; not future branch authority",
+            },
+        )
+    if name in {
+        ObservationId.TEMPORAL_RADIX_WALSH,
+        ObservationId.SPATIAL_STENCIL,
+        ObservationId.TEMPORAL_BANK,
+        ObservationId.SPATIAL_PAIR_BANK,
+        ObservationId.TEMPORAL_GRAMMAR,
+    }:
+        return _observe_double_reverse_cylinder(context, name, payload.term, options)
+    if name is not ObservationId.TEMPORAL_CLOSED_FORM:
         raise ValueError("unsupported 2rev10 information observer")
     result = payload.term.temporal_closed_form(
         modulus=options.modulus,
@@ -186,10 +241,121 @@ def observe_double_reverse(context: QueryContext, name: str) -> Packet:
             "right_births": result.right_births,
             "affine_gain": result.affine_gain,
             "affine_shift": result.affine_shift,
+            "prefix_steps": result.prefix_steps,
+            "suffix_steps": result.suffix_steps,
+            "entry_value": result.entry_value,
+            "suffix_phase_in": result.suffix_phase_in,
+            "suffix_phase_out": result.suffix_phase_out,
+            "suffix_affine_gain": result.suffix_affine_gain,
+            "suffix_affine_shift": result.suffix_affine_shift,
             "scope": "source-bound powered SLP endpoint",
         },
         coordinates=(("steps",),),
     )
+
+
+def _observe_double_reverse_cylinder(
+    context: QueryContext,
+    name: ObservationId,
+    term: DoubleReverseTerm,
+    options: DoubleReverseObservationOptions,
+) -> Packet:
+    from number_compiler.sequences.double_reverse.temporal_hashlife import (
+        UncertifiedPointedStencilError,
+    )
+
+    try:
+        if name is ObservationId.TEMPORAL_RADIX_WALSH:
+            joint = term.joint_radix25_temporal_bank(
+                options.grammar_position,
+                period=options.grammar_period,
+                places=options.radix_places,
+                walsh_start=options.walsh_start,
+            )
+            packet = asdict(joint)
+            packet["source"]["carry_transfer"] = joint.source.carry_transfer
+            return _publish(
+                context,
+                name,
+                {
+                    **packet,
+                    "scope": "source-certified finite temporal halo; borrow ingress remains conditional",
+                },
+            )
+        if name is ObservationId.SPATIAL_PAIR_BANK:
+            pair = term.exact_temporal_pair(options.pair_bank_position)
+            return _publish(
+                context,
+                name,
+                {
+                    **asdict(pair),
+                    "position_unit": "final_outer_to_inner_pair",
+                    "scope": "exact demanded pair in an authenticated finite cylinder",
+                },
+            )
+        if name is ObservationId.TEMPORAL_GRAMMAR:
+            bank = term.protected_temporal_bank(
+                options.grammar_position, period=options.grammar_period
+            )
+            return _publish(
+                context,
+                name,
+                {
+                    **asdict(bank),
+                    "counts": bank.counts(),
+                    "represented_steps": bank.represented_steps,
+                    "position_unit": "entry_outer_to_inner_pair",
+                    "region_unit": "entry_source_half_open_digits",
+                    "scope": "source-periodic finite causal halo; not a full-root future certificate",
+                },
+            )
+        if name is ObservationId.SPATIAL_STENCIL:
+            stencil = term.pointed_stencil(options.stencil_position)
+            return _publish(
+                context,
+                name,
+                {
+                    "position": options.stencil_position,
+                    "position_unit": "lsd_digit",
+                    "digit": stencil.digit,
+                    "ltgt": stencil.ltgt,
+                    "f5": stencil.f5,
+                    "moore_state": stencil.moore_state,
+                    "width": stencil.width,
+                    "phase_in": stencil.phase_in,
+                    "phase_out": stencil.phase_out,
+                    "prefix_steps": stencil.prefix_steps,
+                    "paired_steps": stencil.f_steps,
+                    "scope": "source-certified pointed cylinder",
+                },
+            )
+        from number_compiler.sequences.double_reverse.temporal_border_bank import (
+            pumped_border_word,
+        )
+
+        prefix, envelopes = term.temporal_border_bank()
+        rows = []
+        for envelope in envelopes:
+            row = asdict(envelope)
+            row["exact_sum"] = envelope.exact_sum
+            row["forced_next_output"] = envelope.forced_next_output
+            if envelope.observer in {"growth", "carry_edge", "reflected_xor"}:
+                word = pumped_border_word(
+                    envelope.initial_edge, envelope.steps, envelope.observer
+                )
+                row["forced_word"] = asdict(word)
+            rows.append(row)
+        return _publish(
+            context,
+            name,
+            {
+                "prefix_steps": prefix,
+                "envelopes": rows,
+                "scope": "all inward-carry alternatives of the admitted border",
+            },
+        )
+    except UncertifiedPointedStencilError as exc:
+        return _publish(context, name, {"status": "unavailable", "reason": str(exc)})
 
 
 def prepare_reverse(context: QueryContext, term: ProjectedNumberTerm) -> None:
@@ -200,7 +366,10 @@ def admit_reverse(context: QueryContext) -> None:
     if not context.request.observations.info:
         return
     options = _options(context, ReverseAddObservationOptions)
-    if "mirror" not in options.info:
+    if not {
+        ObservationId.SPATIAL_MIRROR,
+        ObservationId.TEMPORAL_STENCIL,
+    }.intersection(options.info):
         return
     from number_compiler.api.number_api import PoweredReverseAddTermPayload
 
@@ -208,19 +377,49 @@ def admit_reverse(context: QueryContext) -> None:
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse/add query published a foreign term payload")
     if payload.term.maximum_width > options.max_digits:
-        raise ValueError("mirror target exceeds digit budget")
+        raise ValueError("reverse/add observation target exceeds digit budget")
 
 
-def observe_reverse(context: QueryContext, name: str) -> Packet:
+def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     options = _options(context, ReverseAddObservationOptions)
     from number_compiler.api.number_api import PoweredReverseAddTermPayload
 
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse/add query published a foreign term payload")
-    if name == "boundary-macro":
+    if name is ObservationId.TEMPORAL_MACRO:
         return _publish(context, name, asdict(payload.term.observe_boundary_macro()))
-    if name == "mirror":
+    if name is ObservationId.TEMPORAL_MATRIX:
+        if options.modulus is not None:
+            return _publish(
+                context,
+                name,
+                asdict(payload.term.temporal_moments(modulus=options.modulus)),
+                coordinates=(("duration",),),
+            )
+        return _publish(
+            context,
+            name,
+            asdict(
+                payload.term.temporal_matrix(
+                    max_bits=context.request.presentation.max_output_bits,
+                )
+            ),
+            coordinates=(("moment", "duration"),),
+        )
+    if name is ObservationId.TEMPORAL_STENCIL:
+        stencil = payload.term.temporal_stencil(
+            max_bits=context.request.presentation.max_output_bits,
+            max_digits=options.max_digits,
+        )
+        packet = asdict(stencil)
+        packet["carry_transfer"] = stencil.carry_transfer.value
+        return _publish(
+            context,
+            name,
+            packet,
+        )
+    if name is ObservationId.SPATIAL_MIRROR:
         from number_compiler.api.cylinder_observation import observe_mirror
 
         return _publish(
@@ -247,30 +446,35 @@ def prepare_collatz(context: QueryContext, term: ProjectedNumberTerm) -> None:
 
     if not isinstance(term.payload, PoweredCollatzTermPayload):
         raise TypeError("Collatz query published a foreign term payload")
-    if "clock" in options.info:
+    if ObservationId.TEMPORAL_CLOCK in options.info:
         term.payload.term.prepare_width_spine()
-    if "accumulator" in options.info:
+    if ObservationId.TEMPORAL_ACCUMULATOR in options.info:
         term.payload.term.prepare_joint_cocycle()
-    if {"boundary-macro", "innovation-borrow"}.intersection(options.info):
+    if {
+        ObservationId.TEMPORAL_MACRO,
+        ObservationId.TEMPORAL_INNOVATION_BORROW,
+    }.intersection(options.info):
         term.payload.term.prepare_innovation_tape(
-            complete_word="innovation-borrow" in options.info,
-            modulus=options.modulus if "innovation-borrow" in options.info else None,
+            complete_word=ObservationId.TEMPORAL_INNOVATION_BORROW in options.info,
+            modulus=options.innovation_modulus
+            if ObservationId.TEMPORAL_INNOVATION_BORROW in options.info
+            else None,
         )
 
 
 def admit_collatz(context: QueryContext) -> None:
     request = context.request
-    if request.selector != "nth" or not request.observations.info:
+    if request.selector is not SelectorId.NTH or not request.observations.info:
         return
     options = _options(context, CollatzTermObservationOptions)
-    if "clock" not in options.info or request.index == 0:
+    if ObservationId.TEMPORAL_CLOCK not in options.info or request.index == 0:
         return
     from number_compiler.api.number_api import PoweredCollatzTermPayload
 
     payload = context._raw_projected_term().payload
     if not isinstance(payload, PoweredCollatzTermPayload):
         raise TypeError("Collatz query published a foreign term payload")
-    if payload.term.maximum_width > options.max_digits:
+    if payload.term.maximum_width > options.clock_max_digits:
         raise ValueError("physical clock target exceeds digit budget")
 
 
@@ -300,9 +504,9 @@ def _event_context(
     return context._events
 
 
-def observe_collatz(context: QueryContext, name: str) -> Packet:
+def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
     request = context.request
-    if request.selector == "events":
+    if request.selector is SelectorId.EVENTS:
         event_options = _options(context, CollatzEventObservationOptions)
         execution = request.execution
         if not isinstance(execution, CollatzEventQuery):
@@ -312,10 +516,16 @@ def observe_collatz(context: QueryContext, name: str) -> Packet:
         packet = observe(
             execution.seed,
             execution.events,
-            kind=name,
+            kind=_family_observation_kind(name),
             modulus=event_options.modulus,
-            width=event_options.width,
-            sign=event_options.sign,
+            width=(
+                event_options.twisted_width
+                if name is ObservationId.ARITHMETIC_TWISTED
+                else event_options.hasse_order
+                if name is ObservationId.ARITHMETIC_HASSE
+                else event_options.twisted_width
+            ),
+            sign=event_options.twisted_sign,
             precision=event_options.precision,
             target=event_options.target,
             s_weight=event_options.s_weight,
@@ -336,28 +546,35 @@ def observe_collatz(context: QueryContext, name: str) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, PoweredCollatzTermPayload):
         raise TypeError("Collatz query published a foreign term payload")
-    if name == "clock":
+    if name is ObservationId.TEMPORAL_CLOCK:
         from number_compiler.api.cylinder_observation import observe_physical_clock
 
         packet = observe_physical_clock(
             execution.seed,
             execution.index,
-            max_ticks=term_options.max_events,
-            max_digits=term_options.max_digits,
+            max_ticks=term_options.clock_max_events,
+            max_digits=term_options.clock_max_digits,
             _term=payload.term,
             _include_metrics=False,
         )
         return _publish(context, name, packet, coordinates=(("requested_ticks",),))
-    if name == "accumulator":
+    if name is ObservationId.TEMPORAL_ACCUMULATOR:
         return _publish(
-            context, name, asdict(payload.term.accumulator(term_options.modulus))
+            context,
+            name,
+            asdict(payload.term.accumulator(term_options.accumulator_modulus)),
         )
-    if name in {"boundary-macro", "innovation-borrow"}:
+    if name in {
+        ObservationId.TEMPORAL_MACRO,
+        ObservationId.TEMPORAL_INNOVATION_BORROW,
+    }:
         return _publish(
             context,
             name,
             payload.term.observe_boundary_macro(
-                modulus=term_options.modulus if name == "innovation-borrow" else None
+                modulus=term_options.innovation_modulus
+                if name is ObservationId.TEMPORAL_INNOVATION_BORROW
+                else None
             ),
         )
     raise ValueError("observation has no Collatz handler")
@@ -371,7 +588,7 @@ def prepare_antihydra(context: QueryContext, term: ProjectedNumberTerm) -> None:
 
     if not isinstance(term.payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
-    if "mahler" in options.info:
+    if ObservationId.ARITHMETIC_MAHLER in options.info:
         term.payload.term.prepare_mahler()
 
 
@@ -394,8 +611,8 @@ def admit_comma(context: QueryContext) -> None:
         return
     options = _options(context, CommaObservationOptions)
     if request.presentation.no_value and not set(options.info) - {
-        "metrics",
-        "certificate",
+        ObservationId.METRICS,
+        ObservationId.SAFETY_CERTIFICATE,
     }:
         if request.index > CERTIFIED_MAX_INDEX:
             context.unresolved_boundary = unresolved_boundary(request.index)
@@ -404,20 +621,20 @@ def admit_comma(context: QueryContext) -> None:
         payload.require_certified()
     except UnresolvedSequenceTerm as error:
         if not request.presentation.no_value or set(options.info) - {
-            "metrics",
-            "certificate",
+            ObservationId.METRICS,
+            ObservationId.SAFETY_CERTIFICATE,
         }:
             raise
         context.unresolved_boundary = error
 
 
-def observe_comma(context: QueryContext, name: str) -> Packet:
+def observe_comma(context: QueryContext, name: ObservationId) -> Packet:
     from number_compiler.api.number_api import CommaTermPayload
 
     payload = context.term.payload
     if not isinstance(payload, CommaTermPayload):
         raise TypeError("comma query published a foreign term payload")
-    if name == "certificate":
+    if name is ObservationId.SAFETY_CERTIFICATE:
         from number_compiler.sequences.comma.certificates import certificate_status
 
         packet = certificate_status(
@@ -429,7 +646,11 @@ def observe_comma(context: QueryContext, name: str) -> Packet:
         )
         return _publish(context, name, packet, coordinates=(("requested_index",),))
     payload.require_certified()
-    value = payload.term.clock() if name == "clock" else payload.term.tropical()
+    value = (
+        payload.term.clock()
+        if name is ObservationId.TEMPORAL_CLOCK
+        else payload.term.tropical()
+    )
     return _publish(
         context,
         name,
@@ -445,10 +666,10 @@ def prepare_comma(context: QueryContext, term: ProjectedNumberTerm) -> None:
     del context, term
 
 
-def observe_special(context: QueryContext, name: str) -> Packet:
+def observe_special(context: QueryContext, name: ObservationId) -> Packet:
     request = context.request
     options = _options(context, SpecialObservationOptions)
-    if name == "root":
+    if name is ObservationId.NUMBER_THEORY_ROOT:
         from number_compiler.api.cylinder_observation import observe_etale_root
 
         if options.defect is None:
@@ -465,16 +686,16 @@ def observe_special(context: QueryContext, name: str) -> Packet:
 
     if context._special is None:
         resolution = CanonicalSequenceCompiler().resolve_special_theorem(
-            request.family,
+            request.family.value,
             request.index,
-            collect_etale_factor="factor" in options.info,
+            collect_etale_factor=ObservationId.NUMBER_THEORY_FACTOR in options.info,
             max_factor_products=options.max_factor_products,
             max_candidate_bits=options.max_candidate_bits,
         )
         failure = resolution.source_guard.failure_bit
         status = "unknown" if failure is None else "composite" if failure else "prime"
         context._special = {
-            "family": request.family,
+            "family": request.family.value,
             "index": request.index,
             "status": status,
             "decided": resolution.decided,
@@ -484,7 +705,10 @@ def observe_special(context: QueryContext, name: str) -> Packet:
                 None if resolution.primality is None else asdict(resolution.primality)
             ),
             "factor_witness": resolution.factor_witness,
-            "factor_target": {"family": request.family, "parameter": request.index},
+            "factor_target": {
+                "family": request.family.value,
+                "parameter": request.index,
+            },
             "factor_proof": (
                 "proper-coefficient-gcd"
                 if resolution.factor_witness is not None
@@ -497,7 +721,7 @@ def observe_special(context: QueryContext, name: str) -> Packet:
             ),
             "etale_ring_multiplications": resolution.etale_ring_multiplications,
         }
-    if name == "primality":
+    if name is ObservationId.NUMBER_THEORY_PRIMALITY:
         packet = dict(context._special)
         return _publish(
             context,
@@ -505,7 +729,7 @@ def observe_special(context: QueryContext, name: str) -> Packet:
             packet,
             coordinates=(("index",),),
         )
-    if name == "factor":
+    if name is ObservationId.NUMBER_THEORY_FACTOR:
         packet = dict(context._special)
         packet["status"] = (
             "available"
@@ -529,15 +753,17 @@ def observe_special(context: QueryContext, name: str) -> Packet:
     raise ValueError("observation has no special-number handler")
 
 
-def observe_antihydra(context: QueryContext, name: str) -> Packet:
+def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     options = _options(context, AntihydraObservationOptions)
     from number_compiler.api.number_api import AntihydraTermPayload
 
     alias = (
-        "twisted"
-        if name == "tape" and "twisted" in options.info
-        else "tape"
-        if name == "twisted" and "tape" in options.info
+        ObservationId.ARITHMETIC_TWISTED
+        if name is ObservationId.SPATIAL_TAPE
+        and ObservationId.ARITHMETIC_TWISTED in options.info
+        else ObservationId.SPATIAL_TAPE
+        if name is ObservationId.ARITHMETIC_TWISTED
+        and ObservationId.SPATIAL_TAPE in options.info
         else None
     )
     if alias is not None and alias in context._info:
@@ -546,13 +772,16 @@ def observe_antihydra(context: QueryContext, name: str) -> Packet:
             raise TypeError("Antihydra query published a foreign term payload")
         payload.term.engine.count("query_observer_reuses")
         packet = dict(context._info[alias])
-        packet["kind"] = name
+        packet["kind"] = name.value
         return packet
 
     payload = context.term.payload
     if not isinstance(payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
-    if name in {"ledger", "modular"}:
+    if name in {
+        ObservationId.SAFETY_LEDGER,
+        ObservationId.ARITHMETIC_MODULAR,
+    }:
         result = payload.term.result()
         centered_odd = (result.returns + result.balance) // 3
         value = (
@@ -564,7 +793,7 @@ def observe_antihydra(context: QueryContext, name: str) -> Packet:
                 "centered_odd_events": centered_odd,
                 "odd_a_steps": result.returns - centered_odd,
             }
-            if name == "ledger"
+            if name is ObservationId.SAFETY_LEDGER
             else {"h": result.h % options.modulus, "modulus": options.modulus}
         )
         return _publish(
@@ -585,8 +814,14 @@ def observe_antihydra(context: QueryContext, name: str) -> Packet:
         observe_run,
     )
 
-    if name in {"mahler", "hensel"}:
-        if {"mahler", "hensel"}.issubset(options.info):
+    if name in {
+        ObservationId.ARITHMETIC_MAHLER,
+        ObservationId.ARITHMETIC_HENSEL,
+    }:
+        if {
+            ObservationId.ARITHMETIC_MAHLER,
+            ObservationId.ARITHMETIC_HENSEL,
+        }.issubset(options.info):
             packets = observe_arithmetic_many(
                 payload.term.result(),
                 kinds=("mahler", "hensel"),
@@ -595,9 +830,9 @@ def observe_antihydra(context: QueryContext, name: str) -> Packet:
             )
             context._info.update(
                 {
-                    packet_name: _publish(
+                    ObservationId("arithmetic." + packet_name): _publish(
                         context,
-                        packet_name,
+                        ObservationId("arithmetic." + packet_name),
                         packet,
                         coordinates=(("requested_returns",),),
                     )
@@ -607,15 +842,15 @@ def observe_antihydra(context: QueryContext, name: str) -> Packet:
             return context._info[name]
         packet = observe_arithmetic_many(
             payload.term.result(),
-            kinds=(name,),
+            kinds=(_family_observation_kind(name),),
             precision=options.precision,
             _include_metrics=False,
-        )[name]
+        )[_family_observation_kind(name)]
         return _publish(context, name, packet, coordinates=(("requested_returns",),))
 
     packet = observe_run(
         payload.term.physical_run(),
-        kind=name,
+        kind=_family_observation_kind(name),
         modulus=options.modulus,
         width=options.width,
         sign=options.sign,

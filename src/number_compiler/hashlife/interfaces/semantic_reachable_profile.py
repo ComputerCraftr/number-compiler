@@ -41,6 +41,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _Builder,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -145,12 +148,12 @@ class SemanticProfileArena:
             )
         found = self.keys.get(action)
         if found is not None:
-            self.ledger.bump("semantic_reachable_profile_requests")
-            self.ledger.bump("semantic_reachable_profile_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_REQUESTS)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_HITS)
             return found
         self.ledger.reserve_many(((self.node_owner, 1, 1), (self.key_owner, 1, 0)))
-        self.ledger.bump("semantic_reachable_profile_requests")
-        self.ledger.bump("semantic_reachable_profile_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_REQUESTS)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_EVALUATIONS)
         try:
             definition = cast(
                 _ReachableDefinition,
@@ -165,7 +168,7 @@ class SemanticProfileArena:
         )
         self.nodes.append(SemanticReachableProfile(action, 0, definition))
         self.keys[action] = profile
-        self.ledger.bump("semantic_reachable_profile_admissions")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_ADMISSIONS)
         return profile
 
     def resolve(self, profile: SemanticProfileID) -> SemanticReachableProfile:
@@ -232,14 +235,14 @@ class SemanticProfileArena:
         if self.structures is not None and structures is not self.structures:
             raise ValueError("reachable decoder belongs to another structure arena")
         if self.runtime.actions.resolve(action).kind == "atom":
-            self.ledger.bump("semantic_reachable_codec_requests")
-            self.ledger.bump("semantic_reachable_codec_primitive_ports")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_REQUESTS)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_PRIMITIVE_PORTS)
             return ports[0]
         key = ReachableCodecKey(profile, CodecRequest(action, side, namespace))
         found = self.records.get(key)
         if found is not None:
-            self.ledger.bump("semantic_reachable_codec_requests")
-            self.ledger.bump("semantic_reachable_codec_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_REQUESTS)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_HITS)
             return found
         if (
             self.ledger.max_cache_entries is not None
@@ -250,8 +253,8 @@ class SemanticProfileArena:
             )
         result = ReachableCodec(self.token, profile, key.request, ports)
         self.records[key] = result
-        self.ledger.bump("semantic_reachable_codec_requests")
-        self.ledger.bump("semantic_reachable_codec_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_REQUESTS)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_CODEC_EVALUATIONS)
         self.structures = structures
         return result
 
@@ -293,7 +296,8 @@ class SemanticProfileArena:
             signature = FunctionSignature(ports, target)
             root = builder.atom(signature, roots, valid)
             self.ledger.bump(
-                "semantic_reachable_decoder_table_cells", len(definition.states)
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_TABLE_CELLS,
+                len(definition.states),
             )
             return self._publish_decode(builder, root, key)
         argument = FinitePort(
@@ -319,9 +323,12 @@ class SemanticProfileArena:
                 if value < definition.argument_count
                 else (0,) * (1 << code.bits)
             )
-            self.ledger.bump("semantic_reachable_decoder_padded_leaf_rows", len(values))
             self.ledger.bump(
-                "semantic_reachable_decoder_certificate_word_reads",
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_PADDED_LEAF_ROWS,
+                len(values),
+            )
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_CERTIFICATE_WORD_READS,
                 len(definition.states) if value < definition.argument_count else 0,
             )
             self._peak(
@@ -330,7 +337,7 @@ class SemanticProfileArena:
             )
             columns[value] = tables.compile(values)
             self.ledger.bump(
-                "semantic_reachable_decoder_table_cells",
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_TABLE_CELLS,
                 len(definition.states) if value < definition.argument_count else 0,
             )
         body_roots = self._lookup(circuit, selector, columns)
@@ -357,7 +364,7 @@ class SemanticProfileArena:
             prepared.reserve_with(((self.decodes.owner, 1, 0),))
             prepared.publish_reserved()
             self.decodes._data[key] = prepared.roots[0]
-            self.ledger.bump("semantic_reachable_decoder_compilations")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_COMPILATIONS)
             return prepared.roots[0]
         finally:
             if prepared is None:
@@ -368,8 +375,8 @@ class SemanticProfileArena:
     def _lookup_decode(self, key: ReachableDecodeKey) -> StructureID | None:
         found = self.decodes.get(key)
         if found is not None:
-            self.ledger.bump("semantic_reachable_decoder_requests")
-            self.ledger.bump("semantic_reachable_decoder_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_REQUESTS)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_HITS)
             return found
         if (
             self.ledger.max_cache_entries is not None
@@ -378,8 +385,8 @@ class SemanticProfileArena:
             raise BlockContextBudgetExceeded(
                 "reachable decoder needs one metadata entry"
             )
-        self.ledger.bump("semantic_reachable_decoder_requests")
-        self.ledger.bump("semantic_reachable_decoder_evaluations")
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_REQUESTS)
+        self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_EVALUATIONS)
         return None
 
     def decode(self, codec: ReachableCodec, structures: StructureArena) -> StructureID:
@@ -418,12 +425,17 @@ class SemanticProfileArena:
     def _table_work(
         self, padded_rows: int, width: int, valid_rows: int, live_rows: int
     ) -> None:
-        self.ledger.bump("semantic_reachable_decoder_padded_leaf_rows", padded_rows)
         self.ledger.bump(
-            "semantic_reachable_decoder_leaf_bit_slots", padded_rows * width
+            _interfaces_keys.SEMANTIC_REACHABLE_DECODER_PADDED_LEAF_ROWS,
+            padded_rows,
         )
         self.ledger.bump(
-            "semantic_reachable_decoder_certificate_bit_tests", valid_rows * width
+            _interfaces_keys.SEMANTIC_REACHABLE_DECODER_LEAF_BIT_SLOTS,
+            padded_rows * width,
+        )
+        self.ledger.bump(
+            _interfaces_keys.SEMANTIC_REACHABLE_DECODER_CERTIFICATE_BIT_TESTS,
+            valid_rows * width,
         )
         self._peak("semantic_reachable_decoder_local_rows_peak", live_rows)
         self._peak(
@@ -454,10 +466,14 @@ class SemanticProfileArena:
             self._peak(
                 "semantic_reachable_decoder_local_bit_references_peak", live * width
             )
-            self.ledger.bump("semantic_reachable_decoder_lookup_levels")
-            self.ledger.bump("semantic_reachable_decoder_lookup_rows", count)
+            self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_LOOKUP_LEVELS)
             self.ledger.bump(
-                "semantic_reachable_decoder_lookup_decisions", count * width
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_LOOKUP_ROWS,
+                count,
+            )
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_LOOKUP_DECISIONS,
+                count * width,
             )
             variable = PortVariable(
                 selector.variable.time,
@@ -476,7 +492,10 @@ class SemanticProfileArena:
 
     def _filter(self, circuit: _Circuit, port: FinitePort, accepted: int) -> int:
         size = 1 << port.bits
-        self.ledger.bump("semantic_reachable_decoder_domain_leaf_rows", size)
+        self.ledger.bump(
+            _interfaces_keys.SEMANTIC_REACHABLE_DECODER_DOMAIN_LEAF_ROWS,
+            size,
+        )
         self._peak("semantic_reachable_decoder_domain_references_peak", size)
         leaves = {
             value: accepted if value < port.cardinality else circuit.zero
@@ -487,7 +506,10 @@ class SemanticProfileArena:
             self._peak(
                 "semantic_reachable_decoder_domain_references_peak", len(leaves) + count
             )
-            self.ledger.bump("semantic_reachable_decoder_domain_lookup_rows", count)
+            self.ledger.bump(
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_DOMAIN_LOOKUP_ROWS,
+                count,
+            )
             variable = PortVariable(
                 port.variable.time, port.variable.side, port.variable.role, bit
             )
@@ -553,27 +575,32 @@ class _FixedTableLookup:
             (bit, table), ready = pending.pop()
             pending_slots -= len(table)
             key = (bit, table)
-            ledger.bump("semantic_reachable_decoder_subtable_frames")
+            ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_FRAMES)
             ledger.bump(
-                "semantic_reachable_decoder_subtable_key_value_hash_visits", len(table)
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_KEY_VALUE_HASH_VISITS,
+                len(table),
             )
             if key in self.memo:
-                ledger.bump("semantic_reachable_decoder_subtable_early_hits")
+                ledger.bump(
+                    _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_EARLY_HITS
+                )
                 continue
             if ready:
                 ledger.bump(
-                    "semantic_reachable_decoder_subtable_created_value_slots",
+                    _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_CREATED_VALUE_SLOTS,
                     len(table),
                 )
                 ledger.bump(
-                    "semantic_reachable_decoder_subtable_key_value_hash_visits",
+                    _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_KEY_VALUE_HASH_VISITS,
                     len(table),
                 )
                 low = self.memo[(bit + 1, table[::2])]
                 high = self.memo[(bit + 1, table[1::2])]
                 if low == high:
                     result = low
-                    ledger.bump("semantic_reachable_decoder_subtable_equal_children")
+                    ledger.bump(
+                        _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_EQUAL_CHILDREN
+                    )
                 else:
                     variable = PortVariable(
                         self.port.variable.time,
@@ -586,10 +613,13 @@ class _FixedTableLookup:
                         for left, right in zip(low, high)
                     )
                     ledger.bump(
-                        "semantic_reachable_decoder_subtable_bit_decisions", self.width
+                        _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_BIT_DECISIONS,
+                        self.width,
                     )
             else:
-                ledger.bump("semantic_reachable_decoder_subtable_evaluations")
+                ledger.bump(
+                    _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_EVALUATIONS
+                )
                 first = table[0]
                 uniform = True
                 compared = 0
@@ -599,7 +629,8 @@ class _FixedTableLookup:
                         uniform = False
                         break
                 ledger.bump(
-                    "semantic_reachable_decoder_subtable_uniform_comparisons", compared
+                    _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_UNIFORM_COMPARISONS,
+                    compared,
                 )
                 if uniform:
                     result = tuple(
@@ -607,20 +638,24 @@ class _FixedTableLookup:
                         for index in range(self.width)
                     )
                     ledger.bump(
-                        "semantic_reachable_decoder_certificate_bit_tests", self.width
+                        _interfaces_keys.SEMANTIC_REACHABLE_DECODER_CERTIFICATE_BIT_TESTS,
+                        self.width,
                     )
-                    ledger.bump("semantic_reachable_decoder_subtable_constants")
+                    ledger.bump(
+                        _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_CONSTANTS
+                    )
                 else:
                     low_key, high_key = (bit + 1, table[::2]), (bit + 1, table[1::2])
                     ledger.bump(
-                        "semantic_reachable_decoder_subtable_created_value_slots",
+                        _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_CREATED_VALUE_SLOTS,
                         len(table),
                     )
                     pending.extend(((key, True), (high_key, False), (low_key, False)))
                     pending_slots += len(table) * 2
                     continue
             ledger.bump(
-                "semantic_reachable_decoder_subtable_key_value_hash_visits", len(table)
+                _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_KEY_VALUE_HASH_VISITS,
+                len(table),
             )
             self.memo[key] = result
             self.value_slots += len(table)
@@ -636,6 +671,7 @@ class _FixedTableLookup:
                 len(self.memo),
             )
         ledger.bump(
-            "semantic_reachable_decoder_subtable_key_value_hash_visits", len(values)
+            _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_KEY_VALUE_HASH_VISITS,
+            len(values),
         )
         return self.memo[root]

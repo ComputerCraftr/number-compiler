@@ -16,12 +16,26 @@ from number_compiler.arithmetic.functions.finite_observer import (
     partition_representatives,
     refine_observer_partition,
 )
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_630,
+    CycleEntryPhase,
+    GuardedBorderPath,
+)
 from number_compiler.sequences.collatz.innovation_temporal_tape import (
+    InnovationCoreIdentity,
     InnovationObserverMemo,
     innovation_moore_clock,
 )
 
-_FAMILIES = ("421", "4721", "630", "989")
+_INNOVATION_CORES: tuple[InnovationCoreIdentity, ...] = (
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_630,
+    ENTRY_89_AT_NINE,
+)
 _ISSUED_FUTURE = object()
 _UNISSUED = object()
 
@@ -43,7 +57,7 @@ class GuardedInnovationFutureMoore:
     global_successors: tuple[int, ...]
     global_representatives: tuple[int, ...]
     local_offsets: tuple[int, ...]
-    local_states: tuple[tuple[str, int], ...]
+    local_states: tuple[tuple[InnovationCoreIdentity, int], ...]
     stabilization_horizon: int
     _authority: object = field(default=_UNISSUED, init=False, repr=False, compare=False)
     _seal: tuple[object, ...] = field(default=(), init=False, repr=False, compare=False)
@@ -82,17 +96,17 @@ class GuardedInnovationFutureMoore:
     def disjoint_class_count(self) -> int:
         return len(self.local_states)
 
-    def _family_index(self, family: str) -> int:
-        if type(family) is not str:
-            raise TypeError("guarded Collatz family must be a string")
+    def _identity_index(self, identity: InnovationCoreIdentity) -> int:
+        if type(identity) not in (CycleEntryPhase, GuardedBorderPath):
+            raise TypeError("guarded Collatz clock requires a typed border identity")
         try:
-            return _FAMILIES.index(family)
+            return _INNOVATION_CORES.index(identity)
         except ValueError as error:
-            raise ValueError("unknown guarded Collatz family") from error
+            raise ValueError("unknown guarded Collatz border identity") from error
 
     def global_id(
         self,
-        family: str,
+        identity: InnovationCoreIdentity,
         phase: int,
         *,
         memo: InnovationObserverMemo | None = None,
@@ -100,8 +114,10 @@ class GuardedInnovationFutureMoore:
         self._check_issued()
         phase = require_integer(phase, "innovation phase")
         _check_memo(memo)
-        k = self._family_index(family)
-        local = innovation_moore_clock(family, self.modulus, memo=memo).class_id(phase)
+        k = self._identity_index(identity)
+        local = innovation_moore_clock(identity, self.modulus, memo=memo).class_id(
+            phase
+        )
         return self.local_to_global[k][local]
 
     def _finite_partition(
@@ -135,7 +151,7 @@ class GuardedInnovationFutureMoore:
 
     def finite_id(
         self,
-        family: str,
+        identity: InnovationCoreIdentity,
         phase: int,
         returns: int,
         *,
@@ -145,8 +161,10 @@ class GuardedInnovationFutureMoore:
         phase = require_integer(phase, "innovation phase")
         returns = require_integer(returns, "finite Moore horizon", 0)
         _check_memo(memo)
-        k = self._family_index(family)
-        local = innovation_moore_clock(family, self.modulus, memo=memo).class_id(phase)
+        k = self._identity_index(identity)
+        local = innovation_moore_clock(identity, self.modulus, memo=memo).class_id(
+            phase
+        )
         labels = self._finite_partition(returns, memo)
         return labels[self.local_to_global[k][local]]
 
@@ -226,11 +244,12 @@ def innovation_future_moore(
 
     def build() -> GuardedInnovationFutureMoore:
         clocks = tuple(
-            innovation_moore_clock(family, modulus, memo=memo) for family in _FAMILIES
+            innovation_moore_clock(identity, modulus, memo=memo)
+            for identity in _INNOVATION_CORES
         )
         states = tuple(
-            (family, local)
-            for family, clock in zip(_FAMILIES, clocks, strict=True)
+            (identity, local)
+            for identity, clock in zip(_INNOVATION_CORES, clocks, strict=True)
             for local in range(clock.class_count)
         )
         offsets: list[int] = []
@@ -239,12 +258,13 @@ def innovation_future_moore(
             offsets.append(cursor)
             cursor += clock.class_count
         output = tuple(
-            clocks[_FAMILIES.index(family)].outputs[local] for family, local in states
+            clocks[_INNOVATION_CORES.index(identity)].outputs[local]
+            for identity, local in states
         )
         successors = tuple(
-            offsets[_FAMILIES.index(family)]
-            + clocks[_FAMILIES.index(family)].successors[local]
-            for family, local in states
+            offsets[_INNOVATION_CORES.index(identity)]
+            + clocks[_INNOVATION_CORES.index(identity)].successors[local]
+            for identity, local in states
         )
 
         minimized = minimize_finite_observer(

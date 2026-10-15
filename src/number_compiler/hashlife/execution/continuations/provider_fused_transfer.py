@@ -31,6 +31,10 @@ from number_compiler.hashlife.execution.continuations.provider_absorption import
 )
 from number_compiler.hashlife.execution.field_images import SourceBindingID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,11 +105,11 @@ class HigherSummaryProviderStrategy:
         combined = summaries.combine_runtime_unary(
             tuple(summaries.runtime_unary(action, cell, side) for cell in ordered)
         )
-        self.ledger.bump("provider_fused_parent_transfer_requests")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_PARENT_TRANSFER_REQUESTS)
         # Keep the K application unforced.  The emit scheduler absorbs its
         # SECOND/RES continuation together with the opposite boundary; forcing
         # here would enumerate the composed concrete wreath state first.
-        self.ledger.bump("provider_fused_parent_transfer_evaluations")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_PARENT_TRANSFER_EVALUATIONS)
         return summaries.transfer_value(combined, incoming)
 
     def _canonical_exterior(
@@ -158,7 +162,7 @@ class HigherSummaryProviderStrategy:
         )
         if type(result) is not int:
             raise AssertionError("fused provider output did not reduce to a symbol")
-        self.ledger.bump("output_morphism_visits")
+        self.ledger.bump(_shared_keys.OUTPUT_MORPHISM_VISITS)
         return result
 
     def width(
@@ -177,7 +181,7 @@ class HigherSummaryProviderStrategy:
                 high = middle
             else:
                 low = middle + 1
-            self.ledger.bump("spatial_observation_descents")
+            self.ledger.bump(_execution_keys.SPATIAL_OBSERVATION_DESCENTS)
         return low
 
 
@@ -278,9 +282,9 @@ class ProviderFusedTransfer:
         if binding not in self._bindings:
             self.ledger.reserve(self._binding_owner, entries=1)
             self._bindings[binding] = None
-            self.ledger.bump("provider_fused_binding_publications")
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_BINDING_PUBLICATIONS)
         else:
-            self.ledger.bump("provider_fused_binding_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_BINDING_HITS)
         return binding
 
     def _validate(
@@ -313,10 +317,10 @@ class ProviderFusedTransfer:
         if not 0 <= coordinate < self.sources.binding_extent(occurrence.source):
             raise IndexError(coordinate)
         key = _FusedPointKey(binding, left, right, coordinate)
-        self.ledger.bump("provider_fused_point_requests")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_POINT_REQUESTS)
         found = self._points.get(key)
         if found is not None:
-            self.ledger.bump("provider_fused_point_early_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_POINT_EARLY_HITS)
             return found
         result = self.strategy.point(occurrence, left, right, coordinate)
         if type(result) is not int:
@@ -326,12 +330,14 @@ class ProviderFusedTransfer:
             self._points.clear()
             self.ledger.release(self._point_owner, entries=count)
         if type(left) is RuntimeValueID or type(right) is RuntimeValueID:
-            self.ledger.bump("provider_fused_point_uncacheable_boundaries")
-            self.ledger.bump("provider_fused_point_evaluations")
+            self.ledger.bump(
+                _execution_keys.PROVIDER_FUSED_POINT_UNCACHEABLE_BOUNDARIES
+            )
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_POINT_EVALUATIONS)
             return result
         self.ledger.reserve(self._point_owner, entries=1)
         self._points[key] = result
-        self.ledger.bump("provider_fused_point_evaluations")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_POINT_EVALUATIONS)
         return result
 
     def width(
@@ -342,10 +348,10 @@ class ProviderFusedTransfer:
     ) -> int:
         occurrence = self._validate(binding, left, right)
         key = _FusedWidthKey(binding, left, right)
-        self.ledger.bump("provider_fused_width_requests")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_WIDTH_REQUESTS)
         found = self._widths.get(key)
         if found is not None:
-            self.ledger.bump("provider_fused_width_early_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_WIDTH_EARLY_HITS)
             return found
         result = self.strategy.width(occurrence, left, right)
         if type(result) is not int or result < 0:
@@ -355,12 +361,14 @@ class ProviderFusedTransfer:
             self._widths.clear()
             self.ledger.release(self._width_owner, entries=count)
         if type(left) is RuntimeValueID or type(right) is RuntimeValueID:
-            self.ledger.bump("provider_fused_width_uncacheable_boundaries")
-            self.ledger.bump("provider_fused_width_evaluations")
+            self.ledger.bump(
+                _execution_keys.PROVIDER_FUSED_WIDTH_UNCACHEABLE_BOUNDARIES
+            )
+            self.ledger.bump(_execution_keys.PROVIDER_FUSED_WIDTH_EVALUATIONS)
             return result
         self.ledger.reserve(self._width_owner, entries=1)
         self._widths[key] = result
-        self.ledger.bump("provider_fused_width_evaluations")
+        self.ledger.bump(_execution_keys.PROVIDER_FUSED_WIDTH_EVALUATIONS)
         return result
 
 

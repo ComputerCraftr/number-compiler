@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.automata.primitive_semantics import (
     PrimitiveSemantics,
@@ -24,7 +24,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaHandle,
     ArenaToken,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -70,14 +73,19 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_transfers import FieldTransferArena
 
 
+SEMANTIC_INTERFACE_TAG: Final[str] = "fixed-padded-cell-v2"
 SEMANTIC_INTERFACE_CONTRACT = (
-    "fixed-padded-cell-v2",
+    SEMANTIC_INTERFACE_TAG,
     "boundary-exits",
     "coordinate-output",
     "nonblank-activity",
@@ -228,7 +236,7 @@ class SemanticCoordinateOutputArena:
                 pending,
                 pending,
             )
-            self.ledger.bump("output_morphism_nodes")
+            self.ledger.bump(_interfaces_keys.OUTPUT_MORPHISM_NODES)
         return CoordinateOutputMorphismID(self.owner, self._KIND, found)
 
     def resolve(self, reference: CoordinateOutputMorphismID) -> _OutputRecord:
@@ -313,7 +321,7 @@ class SemanticLocalInterfaceCompiler:
         # geometry.  Including them here creates a width-sized port domain and
         # prevents equivalent local boundary actions from aliasing.
         behavior = (SEMANTIC_INTERFACE_CONTRACT, _effect_key(primitive.effect), level)
-        identity = SemanticIdentity("semantic-interface", behavior)
+        identity = SemanticIdentity(SemanticIdentityDomain.SEMANTIC_INTERFACE, behavior)
         admissible = self.quotients.functions.atom(FunctionSignature(ports, BOOL), 1)
         return self.quotients.intern_interface(
             MacroInterface(identity, ports, outputs, admissible)
@@ -373,7 +381,7 @@ class SemanticLocalInterfaceCompiler:
             self._default_sources.setdefault(interface, current)
             self._interface_kernels.setdefault(interface, kernel)
             built[current] = _Compiled(interface, extent)
-            self.ledger.bump("local_interface_compilations")
+            self.ledger.bump(_interfaces_keys.LOCAL_INTERFACE_COMPILATIONS)
         result = built[source].interface
         if self.quotients.resolve(result).signature != signature:
             raise AssertionError("compiled interface has another signature")
@@ -426,7 +434,7 @@ class SemanticLocalInterfaceCompiler:
             self._geometry_last = (key, result)
             return result
         evaluated = self._finite_observe(interface, channel, left, right)
-        self.ledger.bump("local_interface_observations")
+        self.ledger.bump(_interfaces_keys.LOCAL_INTERFACE_OBSERVATIONS)
         return evaluated
 
     def _finite_observe(
@@ -631,7 +639,7 @@ class SemanticLocalInterfaceCompiler:
     def _parent(
         self, laws: PrimitiveSemantics, width: int, left: _Compiled, right: _Compiled
     ) -> tuple[tuple[FactoredFunctionID, ...], int]:
-        self.ledger.bump("local_interface_spatial_compositions")
+        self.ledger.bump(_interfaces_keys.LOCAL_INTERFACE_SPATIAL_COMPOSITIONS)
         ports = self._ports(laws)
         incoming_left = self._variable(ports, _LEFT, laws.left_sort)
         incoming_right = self._variable(ports, _RIGHT, laws.right_sort)
@@ -788,7 +796,7 @@ class PrimitiveSemanticTransferAdapter:
         boundary = self.boundaries.resolve(incoming)
         if output.interface != interface:
             raise AssertionError("transfer output differs from its interface")
-        self.ledger.bump("output_morphism_visits")
+        self.ledger.bump(_shared_keys.OUTPUT_MORPHISM_VISITS)
         return self.compiler.observe(
             interface,
             "output",

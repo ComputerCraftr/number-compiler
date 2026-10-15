@@ -23,7 +23,10 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.fields.centered_carry import (
     carry_coboundary,
     reflected_innovation,
@@ -42,7 +45,12 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     _Zero,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList
+from number_compiler.sequences.reverse_add.semantic_tags import (
+    REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
+    REVERSE_ADD_SOURCE_CARRY_TAG,
+)
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 
@@ -56,8 +64,8 @@ def _carry_semantic(
     source_owner: int, base: int, extent: int, growth: int
 ) -> SemanticIdentity:
     return SemanticIdentity(
-        "reverse-add-source-carry-v1",
-        ("reverse-add-source-carry-v1", source_owner, base, extent, growth),
+        SemanticIdentityDomain.REVERSE_ADD_SOURCE_CARRY,
+        (REVERSE_ADD_SOURCE_CARRY_TAG, source_owner, base, extent, growth),
     )
 
 
@@ -238,9 +246,9 @@ def _clause_authority(
     workspace_owner: int,
 ) -> SemanticIdentity:
     return SemanticIdentity(
-        "reverse-add-primitive-cylinder-clause-v1",
+        SemanticIdentityDomain.REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE,
         (
-            "reverse-add-primitive-cylinder-clause-v1",
+            REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
             binding._source_owner,
             arena._node_owner,
             arena._key_owner,
@@ -442,7 +450,9 @@ class PrimitiveSuccessorClause:
             while pending:
                 reference, coordinate, scale = pending.pop()
                 self.arena.ledger.release(self._workspace_owner, nodes=1)
-                self.arena.ledger.bump("reverse_primitive_cylinder_dag_visits")
+                self.arena.ledger.bump(
+                    _reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_DAG_VISITS
+                )
                 node = self.arena.resolve(reference)
                 if type(node) is _Zero:
                     continue
@@ -548,7 +558,7 @@ def primitive_successor_clause(
     if growth not in (0, 1):
         raise ValueError("reverse/add terminal carry must be binary")
     base = source.base
-    arena.ledger.bump("reverse_primitive_cylinder_source_admissions")
+    arena.ledger.bump(_reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_SOURCE_ADMISSIONS)
 
     source_owner = ports._cache.owner
     semantic = _carry_semantic(source_owner, base, extent, growth)
@@ -671,7 +681,7 @@ def primitive_successor_clause(
             if binding is not None:
                 binding._invalidate()
         raise
-    arena.ledger.bump("reverse_primitive_cylinder_beta_normalizations")
+    arena.ledger.bump(_reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_BETA_NORMALIZATIONS)
     assert result is not None
     return result
 

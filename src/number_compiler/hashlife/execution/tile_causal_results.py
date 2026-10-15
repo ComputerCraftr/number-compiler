@@ -10,6 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, TypeAlias, cast
 
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
@@ -242,7 +246,7 @@ def probe_causal_result(
     key = _causal_result_key(
         results, action, input_tile, state, wiring, action_admission=action_admission
     )
-    results.ledger.bump("tile_causal_result_probe_requests")
+    results.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_PROBE_REQUESTS)
     found = lookup_causal_result(results, key, action_admission=action_admission)
     return key, found
 

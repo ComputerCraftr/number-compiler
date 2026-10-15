@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 def nonnegative_affine_width(
@@ -24,7 +27,7 @@ def nonnegative_affine_width(
         raise ValueError("affine width requires nonnegative coordinates")
     if type(ledger) is not ResourceLedger:
         raise TypeError("affine width requires a resource ledger")
-    ledger.bump("affine_width_requests")
+    ledger.bump(_fields_keys.AFFINE_WIDTH_REQUESTS)
     for suffix in (
         "operand_bits",
         "interval_checks",
@@ -40,21 +43,21 @@ def nonnegative_affine_width(
     owner = ledger.register("affine-width-scratch", "execution_stack")
     while True:
         bits = precision + multiplier.bit_length() + offset.bit_length() + 64
-        ledger.bump("affine_width_operand_bits", bits)
+        ledger.bump(_fields_keys.AFFINE_WIDTH_OPERAND_BITS, bits)
         try:
             with ledger.reservation(owner, nodes=8 * ((bits + 63) // 64)):
                 lower_width, upper_width = _width_interval(
                     source, shift, multiplier, offset, width, precision
                 )
         except BaseException:
-            ledger.bump("affine_width_failures")
+            ledger.bump(_fields_keys.AFFINE_WIDTH_FAILURES)
             raise
-        ledger.bump("affine_width_interval_checks")
+        ledger.bump(_fields_keys.AFFINE_WIDTH_INTERVAL_CHECKS)
         if precision == width:
-            ledger.bump("affine_width_exact_boundaries")
+            ledger.bump(_fields_keys.AFFINE_WIDTH_EXACT_BOUNDARIES)
         if lower_width == upper_width:
             return lower_width
-        ledger.bump("affine_width_refinements")
+        ledger.bump(_fields_keys.AFFINE_WIDTH_REFINEMENTS)
         precision = min(width, precision * 2)
 
 

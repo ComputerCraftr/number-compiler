@@ -47,6 +47,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprID,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -280,14 +283,15 @@ class HigherContextArena:
         self._record_admission(*self._validate(task))
 
     def _record_admission(self, visits: int, peak: int) -> None:
-        self.ledger.bump("higher_context_admission_visits", visits)
+        self.ledger.bump(_execution_keys.HIGHER_CONTEXT_ADMISSION_VISITS, visits)
         self.ledger.bump(
-            "higher_context_admission_workspace_peak",
+            _execution_keys.HIGHER_CONTEXT_ADMISSION_WORKSPACE_PEAK,
             max(
                 0,
                 peak
                 - self.ledger.counters.get(
-                    "higher_context_admission_workspace_peak", 0
+                    _execution_keys.HIGHER_CONTEXT_ADMISSION_WORKSPACE_PEAK,
+                    0,
                 ),
             ),
         )
@@ -312,7 +316,7 @@ class HigherContextArena:
         symbol = self.expressions.symbol(task.action, 0) if radius == 0 else task.symbol
         if initial == task.state and symbol == task.symbol:
             return task
-        self.ledger.bump("higher_reset_key_normalizations")
+        self.ledger.bump(_execution_keys.HIGHER_RESET_KEY_NORMALIZATIONS)
         return HigherStep(task.action, 1, initial, symbol)
 
     def _observation_result(
@@ -337,7 +341,7 @@ class HigherContextArena:
         if isinstance(task, HigherStep):
             task = self._canonical_step(task)
         self._record_admission(visits, peak)
-        self.ledger.bump("higher_context_requests")
+        self.ledger.bump(_execution_keys.HIGHER_CONTEXT_REQUESTS)
         if isinstance(task, HigherEmit):
             # Never build a bound local-output response index.
             return None
@@ -347,7 +351,7 @@ class HigherContextArena:
         else:
             found = self.observations.get(task)
         if found is not None:
-            self.ledger.bump("higher_context_cache_hits")
+            self.ledger.bump(_execution_keys.HIGHER_CONTEXT_CACHE_HITS)
         return found
 
     def publish(self, task: HigherTask, result: Result) -> None:
@@ -371,9 +375,9 @@ class HigherContextArena:
             if retain_expression_response(self.expressions, expression, inputs):
                 self.observations[task] = expression
             else:
-                self.ledger.bump("higher_context_bound_result_memo_drops")
+                self.ledger.bump(_execution_keys.HIGHER_CONTEXT_BOUND_RESULT_MEMO_DROPS)
         self._record_admission(*admission)
-        self.ledger.bump("higher_context_evaluations")
+        self.ledger.bump(_execution_keys.HIGHER_CONTEXT_EVALUATIONS)
 
     def _publish_summary(
         self, key: HigherSummary | HigherUnarySummary, record: HigherRecord
@@ -417,9 +421,11 @@ class HigherContextArena:
             found = TransferSummaryID(self.token, kind, len(self._nodes))
             self._nodes.append(record)
             self._ids[record] = found
-            self.ledger.bump("higher_context_program_interner_evaluations")
+            self.ledger.bump(
+                _execution_keys.HIGHER_CONTEXT_PROGRAM_INTERNER_EVALUATIONS
+            )
         else:
-            self.ledger.bump("higher_context_program_interner_hits")
+            self.ledger.bump(_execution_keys.HIGHER_CONTEXT_PROGRAM_INTERNER_HITS)
         self.bindings[key] = found
         return found
 
@@ -467,7 +473,7 @@ class HigherContextArena:
             original = task
             task = self._canonical_step(task)
             if task != original:
-                self.ledger.bump("higher_primitive_right_reset_elisions")
+                self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_RIGHT_RESET_ELISIONS)
         if isinstance(task, HigherInitial):
             return (yield from self._initial(task))
         if isinstance(task, HigherStep):
@@ -479,9 +485,9 @@ class HigherContextArena:
         if isinstance(task, HigherSummary):
             return (yield from self._summary(task))
         if isinstance(task, HigherUnaryObserve):
-            self.ledger.bump("higher_unary_observations")
+            self.ledger.bump(_execution_keys.HIGHER_UNARY_OBSERVATIONS)
             return self._unary_apply(self.unary(task.summary), task.state)
-        self.ledger.bump("higher_context_observations")
+        self.ledger.bump(_execution_keys.HIGHER_CONTEXT_OBSERVATIONS)
         return self._context_apply(
             self.context(task.summary), task.left, task.right, task.incoming, task.side
         )
@@ -527,7 +533,7 @@ class HigherContextArena:
             return task.state
         if node.kind == "atom":
             if task.side == 1 and self.runtime.kernel(task.action).right_count == 1:
-                self.ledger.bump("higher_singleton_right_steps")
+                self.ledger.bump(_execution_keys.HIGHER_SINGLETON_RIGHT_STEPS)
                 return task.state
             return arena.primitive_advance(
                 task.action, task.side, task.state, task.symbol
@@ -551,7 +557,7 @@ class HigherContextArena:
             )
             previous = arena.apply(continuation, opposite)
         else:
-            self.ledger.bump("higher_constant_argument_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
         left, right = (anchor, argument) if task.side == 0 else (argument, anchor)
         symbol = _expr((yield HigherEmit(first, left, task.symbol, right)))
         value = _expr((yield HigherStep(second, task.side, previous, symbol)))
@@ -584,12 +590,12 @@ class HigherContextArena:
             left_argument = _expr((yield HigherStep(first, 1, right, task.symbol)))
             next_left = arena.apply(left_function, left_argument)
         else:
-            self.ledger.bump("higher_constant_argument_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
         if next_right is None:
             right_argument = _expr((yield HigherStep(first, 0, left, task.symbol)))
             next_right = arena.apply(right_function, right_argument)
         else:
-            self.ledger.bump("higher_constant_argument_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
         symbol = _expr((yield HigherEmit(first, left, task.symbol, right)))
         return _expr((yield HigherEmit(second, next_left, symbol, next_right)))
 
@@ -609,7 +615,7 @@ class HigherContextArena:
         reset = self._right_reset(task.action, task.cell, task.side)
         if reset:
             variable = _expr((yield HigherInitial(task.action, task.side)))
-            self.ledger.bump("higher_right_reset_specializations")
+            self.ledger.bump(_execution_keys.HIGHER_RIGHT_RESET_SPECIALIZATIONS)
         temporal = self.actions.node(task.action)
         if temporal.kind == "compose":
             first, second = (
@@ -640,7 +646,7 @@ class HigherContextArena:
                     continuation, self._unary_apply(opposite, argument)
                 )
             else:
-                self.ledger.bump("higher_constant_argument_elisions")
+                self.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
             left, right = (anchor, argument) if task.side == 0 else (argument, anchor)
             continuation_body = self._context_apply(
                 context, left, right, incoming, task.side
@@ -651,7 +657,7 @@ class HigherContextArena:
                 self._unary_apply(forward, anchor),
                 arena.lambda_(argument, continuation_body),
             )
-            self.ledger.bump("higher_unary_temporal_compositions")
+            self.ledger.bump(_execution_keys.HIGHER_UNARY_TEMPORAL_COMPOSITIONS)
         elif temporal.kind == "atom":
             finite = _summary_id(
                 (yield SpatialSummary(task.action, task.cell, task.side))
@@ -659,13 +665,13 @@ class HigherContextArena:
             body = self.expressions.finite_apply(
                 task.action, task.side, finite, variable
             )
-            self.ledger.bump("higher_primitive_function_bindings")
+            self.ledger.bump(_execution_keys.HIGHER_PRIMITIVE_FUNCTION_BINDINGS)
         elif not node.level:
             symbol = self.expressions.symbol(
                 task.action, self.cells.source_symbol(task.cell)
             )
             body = _expr((yield HigherStep(task.action, task.side, variable, symbol)))
-            self.ledger.bump("higher_unary_leaf_compilations")
+            self.ledger.bump(_execution_keys.HIGHER_UNARY_LEAF_COMPILATIONS)
         else:
             low, high = self.cells.split(task.cell)
             before, after = (low, high) if task.side == 0 else (high, low)
@@ -677,7 +683,7 @@ class HigherContextArena:
             )
             midpoint = self._unary_apply(before_record, variable)
             body = self._unary_apply(after_record, midpoint)
-            self.ledger.bump("higher_unary_parent_compositions")
+            self.ledger.bump(_execution_keys.HIGHER_UNARY_PARENT_COMPOSITIONS)
         program = self.expressions.closures.intern_canonical(
             (self._unary_variable(task.action, task.side),),
             body,
@@ -694,7 +700,7 @@ class HigherContextArena:
         _, _, incoming_right = self._context_variables(task.provider, task.consumer, 1)
         if self._right_reset(task.consumer, task.cell, 1):
             incoming_right = _expr((yield HigherInitial(task.consumer, 1)))
-            self.ledger.bump("higher_right_reset_specializations")
+            self.ledger.bump(_execution_keys.HIGHER_RIGHT_RESET_SPECIALIZATIONS)
         if not node.level:
             original = self.expressions.symbol(
                 task.provider, self.cells.source_symbol(task.cell)
@@ -702,7 +708,7 @@ class HigherContextArena:
             symbol = _expr((yield HigherEmit(task.provider, left, original, right)))
             lbody = _expr((yield HigherStep(task.consumer, 0, incoming_left, symbol)))
             rbody = _expr((yield HigherStep(task.consumer, 1, incoming_right, symbol)))
-            self.ledger.bump("higher_context_leaf_compilations")
+            self.ledger.bump(_execution_keys.HIGHER_CONTEXT_LEAF_COMPILATIONS)
         else:
             low_cell, high_cell = self.cells.split(task.cell)
             low = self.context(
@@ -727,7 +733,7 @@ class HigherContextArena:
             lbody = self._context_apply(high, middle_left, right, midpoint, 0)
             midpoint = self._context_apply(high, middle_left, right, incoming_right, 1)
             rbody = self._context_apply(low, left, middle_right, midpoint, 1)
-            self.ledger.bump("higher_context_parent_compositions")
+            self.ledger.bump(_execution_keys.HIGHER_CONTEXT_PARENT_COMPOSITIONS)
         left_program = self.expressions.closures.intern_canonical(
             self._context_variables(task.provider, task.consumer, 0),
             lbody,

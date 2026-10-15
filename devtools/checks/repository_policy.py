@@ -825,6 +825,10 @@ def repository_policy_report(root: Path) -> dict[str, object]:
         )
     with _profile_stage("entrypoints"):
         entrypoint_violations = validation_entrypoint_violations(root, parsed_sources)
+    with _profile_stage("semantic-names"):
+        from devtools.checks.semantic_name_policy import semantic_name_violations
+
+        semantic_violations = semantic_name_violations(root, parsed_sources)
     with _profile_stage("recursion", detail=f"modules={len(parsed_sources)}"):
         cycles = recursion_cycles(root, parsed_sources=parsed_sources)
     with _profile_stage("clones", detail=f"modules={len(parsed_sources)}"):
@@ -853,6 +857,7 @@ def repository_policy_report(root: Path) -> dict[str, object]:
         "isabelle_session_option_violations": session_violations,
         "ownership_violations": ownership_violations,
         "validation_entrypoint_violations": entrypoint_violations,
+        "semantic_name_violations": semantic_violations,
         "recursion_cycles": cycles,
         "duplicate_bodies": duplicate_sites,
         "package_violations": package_issues,
@@ -886,6 +891,7 @@ def main() -> int:
             or report["isabelle_session_option_violations"]
             or report["ownership_violations"]
             or report["validation_entrypoint_violations"]
+            or report["semantic_name_violations"]
             or report["recursion_cycles"]
             or report["duplicate_bodies"]
             or report["package_violations"]

@@ -16,6 +16,9 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
@@ -137,7 +140,7 @@ def active_width(
             high = middle
         else:
             low = middle + 1
-        scheduler.ledger.bump("concrete_port_width_descents")
+        scheduler.ledger.bump(_observation_keys.CONCRETE_PORT_WIDTH_DESCENTS)
     return low
 
 

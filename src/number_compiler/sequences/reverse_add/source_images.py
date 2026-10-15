@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Hashable, Iterator
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Final, Literal, cast
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -32,6 +32,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairOutputOccurrence,
     ReversePairQ19OutputOwner,
@@ -87,9 +88,14 @@ def _source_digit(source: ExactSource, position: int) -> int:
     return source.digits[position]
 
 
+REVERSE_SOURCE_IMAGE_SEMANTIC_VERSION: Final[str] = (
+    "source-cylinder-v9-completed-width-owner"
+)
+
+
 class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     family = "reverse-add"
-    semantic_version = "source-cylinder-v9-completed-width-owner"
+    semantic_version = REVERSE_SOURCE_IMAGE_SEMANTIC_VERSION
 
     def __init__(self, actions: ReverseActionArena) -> None:
         self.actions = actions
@@ -152,7 +158,8 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         extent = 1 << ((required - 1).bit_length())
         if construction is None:
             self.ledger.bump(
-                "reverse_source_pair_authority_construction_symbols", width
+                _reverse_add_keys.REVERSE_SOURCE_PAIR_AUTHORITY_CONSTRUCTION_SYMBOLS,
+                width,
             )
             pair = tuple(digits[i] + digits[width - 1 - i] for i in range(width))
             construction = OriginalSourceConstruction(
@@ -166,7 +173,10 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 )
             )
         else:
-            self.ledger.bump("reverse_source_pair_authority_validation_symbols", width)
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_PAIR_AUTHORITY_VALIDATION_SYMBOLS,
+                width,
+            )
             pair_source = construction.validate_source()
             if (
                 pair_source.base != source.base
@@ -256,7 +266,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             raise ValueError("reverse recursive fallback source changed")
         found = self._recursive_for_steps(steps)
         if found is not None:
-            self.ledger.bump("reverse_source_recursive_occurrence_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_RECURSIVE_OCCURRENCE_HITS)
             return found[1]
         cutover = self._recursive
         if cutover is None:
@@ -281,7 +291,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 )
         prefix: ReverseRecursiveOccurrence | None = None
         for length, candidate in self._recursive_occurrences.items():
-            self.ledger.bump("reverse_source_completed_prefix_checks")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_COMPLETED_PREFIX_CHECKS)
             if (
                 type(length) is not int
                 or type(candidate) is not ReverseRecursiveOccurrence
@@ -296,11 +306,15 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             else cutover.apply_to_occurrence(prefix, steps - prefix.temporal_steps)
         )
         if prefix is not None:
-            self.ledger.bump("reverse_source_completed_prefix_applications")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_COMPLETED_PREFIX_APPLICATIONS
+            )
         if occurrence.temporal_steps != steps:
             raise AssertionError((occurrence.temporal_steps, steps))
         self._recursive_occurrences[steps] = occurrence
-        self.ledger.bump("reverse_source_recursive_occurrence_publications")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_RECURSIVE_OCCURRENCE_PUBLICATIONS
+        )
         return occurrence
 
     def _recursive_for_steps(
@@ -438,8 +452,10 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             self._recursive_occurrences[total] = target
         else:
             target = cached[1]
-            self.ledger.bump("reverse_source_completed_parent_hits")
-        self.ledger.bump("reverse_source_completed_provider_applications")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_COMPLETED_PARENT_HITS)
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_COMPLETED_PROVIDER_APPLICATIONS
+        )
         return SourceImageCandidate(
             ReverseImagePayload(cumulative, target.image),
             total,
@@ -575,10 +591,14 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         cumulative = self.actions.compose(payload.action, action)
         if self.actions.node(cumulative).steps != occurrence.temporal_steps:
             raise ValueError("bounded Q19 startup disagrees with temporal action")
-        self.ledger.bump("reverse_q19_root_bootstrap_pair_steps", steps - 1)
-        self.ledger.bump("reverse_q19_root_bootstrap_publications")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_ROOT_BOOTSTRAP_PAIR_STEPS, steps - 1
+        )
+        self.ledger.bump(_reverse_add_keys.REVERSE_Q19_ROOT_BOOTSTRAP_PUBLICATIONS)
         if steps == 3:
-            self.ledger.bump("reverse_source_punctured_completed_child_publications")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_PUNCTURED_COMPLETED_CHILD_PUBLICATIONS
+            )
         return SourceImageCandidate(
             ReverseImagePayload(cumulative, pair_output=occurrence),
             source.binding.extent + steps,
@@ -615,17 +635,16 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             if owner is None or self._q19_source is not origin:
                 raise ValueError("punctured block has no matching Q19 source owner")
             if steps not in (2, 3, 4):
-                # Larger powers are split by TileScheduler into completed
-                # T2/T4 children; no all-depth quotient is inferred here.
+                # TileScheduler owns temporal composition. It splits larger
+                # requests into completed T2/T4 children and joins those
+                # source-issued outputs at its existing parent boundary.
                 return None
             pair_output = owner.apply_punctured_pair_block(
                 payload.pair_output, steps=4 if steps == 4 else 2
             )
             if steps == 3:
                 # The odd tail is one authenticated irreducible leaf,
-                # consumed inside the completed-output owner. This avoids
-                # routing an admitted Q19 occurrence through the generic
-                # source primitive adapter.
+                # consumed inside the completed-output owner.
                 pair_output = owner.apply_pair_step(pair_output)
             cumulative = self.actions.compose(
                 payload.action,
@@ -635,9 +654,13 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 raise ValueError(
                     "punctured pair output and action have different durations"
                 )
-            self.ledger.bump("reverse_source_punctured_completed_child_publications")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_PUNCTURED_COMPLETED_CHILD_PUBLICATIONS
+            )
             if steps == 3:
-                self.ledger.bump("reverse_source_punctured_t3_leaf_applications")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PUNCTURED_T3_LEAF_APPLICATIONS
+                )
             return SourceImageCandidate(
                 ReverseImagePayload(cumulative, pair_output=pair_output),
                 source.binding.extent + steps,
@@ -655,7 +678,9 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 cast(ReverseImagePayload, source.payload).action,
                 cast(ReverseActionID, action),
             )
-            self.ledger.bump("reverse_source_two_step_pullback_publications")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_TWO_STEP_PULLBACK_PUBLICATIONS
+            )
             return SourceImageCandidate(
                 ReverseImagePayload(cumulative),
                 source.binding.extent + 2,
@@ -680,7 +705,9 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                     cast(ReverseImagePayload, source.payload).action,
                     cast(ReverseActionID, action),
                 )
-                self.ledger.bump("reverse_source_completed_child_publications")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_COMPLETED_CHILD_PUBLICATIONS
+                )
                 return SourceImageCandidate(
                     ReverseImagePayload(cumulative, occurrence.image),
                     source.binding.extent + steps,
@@ -692,7 +719,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 cast(ReverseImagePayload, source.payload).action,
                 cast(ReverseActionID, action),
             )
-            self.ledger.bump("reverse_source_same_carry_publications")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_SAME_CARRY_PUBLICATIONS)
             return SourceImageCandidate(
                 ReverseImagePayload(cumulative),
                 source.binding.extent + steps,
@@ -700,7 +727,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 radix=origin.base,
                 precision=len(origin.digits),
             )
-        self.ledger.bump("reverse_cylinder_construction_failures")
+        self.ledger.bump(_reverse_add_keys.REVERSE_CYLINDER_CONSTRUCTION_FAILURES)
         raise ReverseCylinderConstructionUnavailable(
             "reverse/add cannot answer this demand: the successor-closed "
             f"source cylinder for {source_steps + steps} temporal steps "
@@ -731,7 +758,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             raise ReverseCylinderConstructionUnavailable(
                 "reverse chronology requires a completed final occurrence"
             )
-        self.ledger.bump("reverse_source_completed_chronological_joins")
+        self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_COMPLETED_CHRONOLOGICAL_JOINS)
         return SourceImageCandidate(
             final,
             after.binding.extent,
@@ -754,7 +781,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             and payload.occurrence is None
             and payload.pair_output is None
         ):
-            self.ledger.bump("reverse_cylinder_construction_failures")
+            self.ledger.bump(_reverse_add_keys.REVERSE_CYLINDER_CONSTRUCTION_FAILURES)
             raise ReverseCylinderConstructionUnavailable(
                 "reverse/add source cylinder construction is unavailable for "
                 f"{total} temporal steps"
@@ -781,10 +808,14 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if base == 10:
             domain = _CARRY_ACTIONS.index(transfer)
             digit = skew_normalized_digit(domain, pair % 9, incoming)
-            self.ledger.bump("reverse_source_mod9_digit_reconstructions")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_MOD9_DIGIT_RECONSTRUCTIONS
+            )
         else:
             digit = pair + incoming - base * outgoing
-            self.ledger.bump("reverse_source_radix_digit_reconstructions")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_RADIX_DIGIT_RECONSTRUCTIONS
+            )
         return outgoing, digit
 
     def iter_second_digits(self, source: ExactSource) -> Iterator[int]:
@@ -793,7 +824,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         carry = 0
         for pair in ports.iter_second_pairs():
             carry, digit = self._normalized(pair, carry, source.base)
-            self.ledger.bump("reverse_source_second_step_coordinates")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_SECOND_STEP_COORDINATES)
             yield digit
         if carry:
             yield carry
@@ -811,7 +842,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         _, digit = self._normalized(
             ports.second_pair(position), ports.second_carry(position), source.base
         )
-        self.ledger.bump("reverse_source_second_step_coordinates")
+        self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_SECOND_STEP_COORDINATES)
         return digit
 
     def iter_same_carry_digits(self, source: ExactSource, steps: int) -> Iterator[int]:
@@ -842,15 +873,21 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             if steps == 0:
                 return SourceImageProjection(source_width)
             if steps == 2:
-                self.ledger.bump("reverse_source_two_step_width_demands")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_TWO_STEP_WIDTH_DEMANDS
+                )
                 return SourceImageProjection(self.ports(source).second_width())
             if steps >= 3:
                 recursive = self._recursive_for_steps(steps)
                 if recursive is not None:
                     cutover, occurrence = recursive
-                    self.ledger.bump("reverse_source_recursive_width_demands")
+                    self.ledger.bump(
+                        _reverse_add_keys.REVERSE_SOURCE_RECURSIVE_WIDTH_DEMANDS
+                    )
                     return SourceImageProjection(cutover.width(occurrence))
-                self.ledger.bump("reverse_source_same_carry_width_demands")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_SAME_CARRY_WIDTH_DEMANDS
+                )
                 return SourceImageProjection(source_width)
             return SourceImageProjection(self._width(source))
         if demand.name != "digit" or len(demand.parameters) != 1:
@@ -864,21 +901,23 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             recursive = self._recursive_for_steps(steps)
             if recursive is not None:
                 cutover, occurrence = recursive
-                self.ledger.bump("reverse_source_recursive_digit_demands")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_RECURSIVE_DIGIT_DEMANDS
+                )
                 return SourceImageProjection(cutover.digit(occurrence, position))
             if position >= source_width:
                 raise IndexError(position)
-            self.ledger.bump("reverse_source_same_carry_digit_demands")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_SAME_CARRY_DIGIT_DEMANDS)
             return SourceImageProjection(
                 same_carry_digit(self.ports(source), steps, position)
             )
         if steps == 2:
-            self.ledger.bump("reverse_source_two_step_digit_demands")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_TWO_STEP_DIGIT_DEMANDS)
             return SourceImageProjection(self.second_digit(source, position))
         if steps == 0:
             if position >= source_width:
                 raise IndexError(position)
-            self.ledger.bump("reverse_source_digit_reads")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_DIGIT_READS)
             return SourceImageProjection(_source_digit(source, position))
         if position > source_width:
             raise IndexError(position)
@@ -891,7 +930,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             _, digit = self._normalized(
                 ports.pair(position), ports.carry(position), source.base
             )
-            self.ledger.bump("reverse_source_carry_coordinates")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CARRY_COORDINATES)
         return SourceImageProjection(digit)
 
     def iter_primitive_digits(self, source: ExactSource) -> Iterator[int]:
@@ -900,7 +939,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         carry = 0
         for position in range(ports.width):
             carry, digit = self._normalized(ports.pair(position), carry, source.base)
-            self.ledger.bump("reverse_source_carry_coordinates")
+            self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_CARRY_COORDINATES)
             yield digit
         if carry:
             yield 1

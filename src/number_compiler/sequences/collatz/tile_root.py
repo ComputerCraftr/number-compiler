@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.tiles.source_root_match_memo import source_root_match
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -45,19 +46,19 @@ def initial_event_shift(
         or key.wiring != adapter.wiring(key.action)
     ):
         return None
-    scheduler.ledger.bump("collatz_initial_root_requests")
+    scheduler.ledger.bump(_collatz_keys.COLLATZ_INITIAL_ROOT_REQUESTS)
     root = scheduler.tiles.resolve(key.input)
     if root.last_active is None or root.last_active + 3 > root.width:
         # The finite-word primitive must have room for its complete carry.
         # Otherwise shifting its clipped output is not the integer law.
-        scheduler.ledger.bump("collatz_initial_root_declines")
+        scheduler.ledger.bump(_collatz_keys.COLLATZ_INITIAL_ROOT_DECLINES)
         return None
     summary = source_root_match(scheduler.results, key.input)
     valuation = summary.phase0_first_mismatch
     if valuation is None:
         raise AssertionError("padded Collatz root has no mismatch before its edge")
     if valuation == 0 or ticks > valuation + 1:
-        scheduler.ledger.bump("collatz_initial_root_declines")
+        scheduler.ledger.bump(_collatz_keys.COLLATZ_INITIAL_ROOT_DECLINES)
         return None
     primitive = adapter._action_keys.get(
         ("power", action.kernel, 1, TemporalCocycle(1))

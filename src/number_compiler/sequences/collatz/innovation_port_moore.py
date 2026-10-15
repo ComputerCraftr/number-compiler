@@ -9,6 +9,7 @@ from number_compiler.arithmetic.functions.finite_observer import (
     partition_representatives,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol as _exact_source_symbol,
 )
@@ -16,6 +17,9 @@ from number_compiler.sequences.collatz.innovation_input_tape import (
     NormalizedParityProgram,
     ParityFactor,
     _boundary_macro_specs,
+)
+from number_compiler.sequences.collatz.innovation_tape_contract import (
+    SIGNED_INNOVATION_TAPE_TAG,
 )
 from number_compiler.sequences.collatz.innovation_temporal_tape import (
     InnovationObserverMemo,
@@ -325,7 +329,7 @@ class InnovationTapeObservation:
 
     def structural_payload(self) -> tuple[object, ...]:
         return (
-            "collatz-global-signed-tape-v1",
+            SIGNED_INNOVATION_TAPE_TAG,
             self.source,
             self.endpoint,
             self.physical_endpoint,
@@ -390,7 +394,7 @@ def _emit_word(
         if len(sample) < 48:
             sample.append(symbol)
         steps += 1
-    ledger.bump("collatz_innovation_moore_input_symbols", len(bits))
+    ledger.bump(_collatz_keys.COLLATZ_INNOVATION_MOORE_INPUT_SYMBOLS, len(bits))
     return control, steps
 
 
@@ -460,7 +464,7 @@ def _feed_factor(
                         steps += skipped * len(factor.motif)
                         iteration += skipped
                         ledger.bump(
-                            "collatz_innovation_moore_cycle_skipped_motif_repetitions",
+                            _collatz_keys.COLLATZ_INNOVATION_MOORE_CYCLE_SKIPPED_MOTIF_REPETITIONS,
                             skipped,
                         )
                         continue

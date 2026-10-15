@@ -72,7 +72,7 @@ def test_no_value_and_repeatable_selectors_keep_payloads_under_info(
                 "0",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
                 "metrics",
                 "--format",
@@ -83,8 +83,8 @@ def test_no_value_and_repeatable_selectors_keep_payloads_under_info(
     )
     row = json.loads(capsys.readouterr().out)
     assert row["value"] is None
-    assert set(row["info"]) == {"primality", "metrics"}
-    assert row["info"]["primality"]["status"] == "prime"
+    assert set(row["info"]) == {"number-theory.primality", "metrics"}
+    assert row["info"]["number-theory.primality"]["status"] == "prime"
 
 
 def test_text_keeps_digits_on_stdout_and_info_dict_on_stderr(
@@ -100,7 +100,7 @@ def test_text_keeps_digits_on_stdout_and_info_dict_on_stderr(
 
 def test_unsupported_family_selector_is_rejected_before_execution() -> None:
     with pytest.raises(SystemExit) as unsupported:
-        main(["fermat", "--nth", "0", "--info", "clock"])
+        main(["fermat", "--nth", "0", "--info", "temporal.clock"])
     assert unsupported.value.code == 2
 
 
@@ -109,14 +109,14 @@ def test_unsupported_family_selector_is_rejected_before_execution() -> None:
     [
         ("reverse-add", "--nth", "0", ["--seed", "196"], "metrics"),
         ("reverse-add", "--nth", "0", ["--seed", "1"], "metrics"),
-        ("collatz", "--nth", "0", ["--seed", "27"], "clock"),
-        ("collatz", "--events", "0", ["--seed", "27"], "clock"),
-        ("antihydra", "--nth", "0", [], "ledger"),
-        ("antihydra", "--nth", "0", [], "clock"),
-        ("antihydra", "--nth", "0", [], "mahler"),
+        ("collatz", "--nth", "0", ["--seed", "27"], "temporal.clock"),
+        ("collatz", "--events", "0", ["--seed", "27"], "temporal.clock"),
+        ("antihydra", "--nth", "0", [], "safety.ledger"),
+        ("antihydra", "--nth", "0", [], "temporal.clock"),
+        ("antihydra", "--nth", "0", [], "arithmetic.mahler"),
         ("prime", "--nth", "0", [], "metrics"),
-        ("fermat", "--nth", "0", [], "primality"),
-        ("mersenne", "--nth", "2", [], "primality"),
+        ("fermat", "--nth", "0", [], "number-theory.primality"),
+        ("mersenne", "--nth", "2", [], "number-theory.primality"),
     ],
 )
 def test_info_packets_share_selector_metadata_without_unsolicited_metrics(
@@ -160,7 +160,7 @@ def test_info_packets_share_selector_metadata_without_unsolicited_metrics(
         }.intersection(packet)
 
 
-@pytest.mark.parametrize("name", ["primality", "factor"])
+@pytest.mark.parametrize("name", ["number-theory.primality", "number-theory.factor"])
 def test_unresolved_special_information_has_consistent_exit_status(
     capsys: pytest.CaptureFixture[str],
     name: str,

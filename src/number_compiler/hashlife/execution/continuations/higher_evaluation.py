@@ -17,6 +17,9 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeTableFunction,
     RuntimeValueID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_semantic import (
@@ -299,12 +302,12 @@ def evaluate_higher(
             else:
                 raise AssertionError(f"unhandled higher expression {node.kind}")
     finally:
-        arena.ledger.bump("higher_semantic_task_frames", frames)
+        arena.ledger.bump(_execution_keys.HIGHER_SEMANTIC_TASK_FRAMES, frames)
     if len(stack) != 1:
         raise AssertionError("higher evaluator did not produce one result")
     arena._evaluations += 1
     arena._evaluation_workspace_peak = max(arena._evaluation_workspace_peak, peak)
-    arena.ledger.bump("higher_semantic_evaluations")
+    arena.ledger.bump(_execution_keys.HIGHER_SEMANTIC_EVALUATIONS)
     return stack[0]
 
 

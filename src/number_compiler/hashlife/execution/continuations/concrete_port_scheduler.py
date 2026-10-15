@@ -50,6 +50,9 @@ from number_compiler.hashlife.observation.concrete_port_queries import (
     range_cells,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class ConcretePortAdapter(Protocol):
@@ -247,7 +250,7 @@ class ConcretePortScheduler:
         )
         found = self._virtual_keys.get(record)
         if found is not None:
-            self.ledger.bump("concrete_virtual_interface_alias_hits")
+            self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_ALIAS_HITS)
             return self._virtual_id(found)
         self.ledger.reserve_many(
             ((self._virtual_owner, 1, 1), (self._virtual_key_owner, 1, 0)),
@@ -256,7 +259,7 @@ class ConcretePortScheduler:
         self._next_virtual += 1
         self._virtual[local_id] = record
         self._virtual_keys[record] = local_id
-        self.ledger.bump("concrete_virtual_interface_publications")
+        self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_PUBLICATIONS)
         return self._virtual_id(local_id)
 
     def _publish_virtual(
@@ -288,7 +291,7 @@ class ConcretePortScheduler:
             self.ledger.reserve(self._virtual_binding_owner, entries=1)
             result = self._virtual_id(found)
             self._virtual_bindings[binding] = result
-            self.ledger.bump("concrete_virtual_interface_alias_hits")
+            self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_ALIAS_HITS)
             return result
         self.ledger.reserve_many(
             (
@@ -303,7 +306,7 @@ class ConcretePortScheduler:
         self._virtual[local_id] = record
         self._virtual_keys[record] = local_id
         self._virtual_bindings[binding] = result
-        self.ledger.bump("concrete_virtual_interface_publications")
+        self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_PUBLICATIONS)
         return result
 
     def _validate_virtual_binding(self, binding: _VirtualBinding) -> None:
@@ -345,7 +348,7 @@ class ConcretePortScheduler:
         self.resolve_residual(record.residual)
         found = self._port_keys.get(record)
         if found is not None:
-            self.ledger.bump("concrete_port_state_alias_hits")
+            self.ledger.bump(_execution_keys.CONCRETE_PORT_STATE_ALIAS_HITS)
             return self._port_id(found)
         self.ledger.reserve_many(
             ((self._port_owner, 1, 1), (self._port_key_owner, 1, 0)),
@@ -354,7 +357,7 @@ class ConcretePortScheduler:
         self._next_port += 1
         self._ports[local_id] = record
         self._port_keys[record] = local_id
-        self.ledger.bump("concrete_port_state_publications")
+        self.ledger.bump(_execution_keys.CONCRETE_PORT_STATE_PUBLICATIONS)
         return self._port_id(local_id)
 
     def _intern_residual(self, record: _Residual) -> ResidualBindingID:
@@ -507,7 +510,7 @@ class ConcretePortScheduler:
             return
         self.ledger.reserve(self._memo_owner, entries=1)
         self._memo[key] = value
-        self.ledger.bump("concrete_port_task_evaluations")
+        self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EVALUATIONS)
         if key and type(key[0]) is str:
             self.ledger.bump(f"concrete_port_{str(key[0]).lower()}_evaluations")
 

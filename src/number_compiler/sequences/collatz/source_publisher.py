@@ -10,7 +10,7 @@ Collatz source trajectory.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
@@ -22,6 +22,7 @@ from number_compiler.arithmetic.automata.program_word import (
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.frame import CollatzAffineSuffixGerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
@@ -30,6 +31,8 @@ from number_compiler.sequences.collatz.physical_support import (
     PhysicalSupportArena,
 )
 from number_compiler.sequences.collatz.power import CollatzEventArena, CollatzEventNode
+
+COLLATZ_SOURCE_PUBLISHER_TAG: Final[str] = "collatz-source-publisher-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +131,7 @@ class CollatzSourcePublisher:
     @property
     def binding(self) -> tuple[object, ...]:
         return (
-            "collatz-source-publisher-v1",
+            COLLATZ_SOURCE_PUBLISHER_TAG,
             self.seed,
             self.requested_events,
             self.max_events,
@@ -209,39 +212,39 @@ class CollatzSourcePublisher:
             traversal.close()
             if ledger is not None:
                 ledger.bump(
-                    "collatz_source_admission_word_nodes_visited",
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_NODES_VISITED,
                     metrics.visited_nodes,
                 )
                 ledger.bump(
-                    "collatz_source_admission_word_block_bits_visited",
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_BLOCK_BITS_VISITED,
                     metrics.visited_block_bits,
                 )
                 ledger.bump(
-                    "collatz_source_admission_run_block_bits_compared",
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_RUN_BLOCK_BITS_COMPARED,
                     run_block_bits,
                 )
                 ledger.bump(
-                    "collatz_source_admission_mismatch_descent_steps",
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_MISMATCH_DESCENT_STEPS,
                     mismatch_descent_steps,
                 )
                 ledger.bump(
-                    "collatz_source_admission_mismatch_descent_block_bits",
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_MISMATCH_DESCENT_BLOCK_BITS,
                     mismatch_descent_bits,
                 )
                 previous = ledger.counters.get(
-                    "collatz_source_admission_word_frontier_peak", 0
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_FRONTIER_PEAK, 0
                 )
                 if metrics.peak_frontier > previous:
                     ledger.bump(
-                        "collatz_source_admission_word_frontier_peak",
+                        _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_FRONTIER_PEAK,
                         metrics.peak_frontier - previous,
                     )
                 previous_bits = ledger.counters.get(
-                    "collatz_source_admission_word_frontier_bits_peak", 0
+                    _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_FRONTIER_BITS_PEAK, 0
                 )
                 if metrics.peak_frontier_bits > previous_bits:
                     ledger.bump(
-                        "collatz_source_admission_word_frontier_bits_peak",
+                        _collatz_keys.COLLATZ_SOURCE_ADMISSION_WORD_FRONTIER_BITS_PEAK,
                         metrics.peak_frontier_bits - previous_bits,
                     )
 
@@ -360,7 +363,9 @@ class CollatzSourcePublisher:
                 frontier=self._admission_workspace,
             )
             admission_comparisons += comparisons
-            self.ledger.bump("collatz_source_admission_digit_comparisons", comparisons)
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_SOURCE_ADMISSION_DIGIT_COMPARISONS, comparisons
+            )
             if source_width > self.max_digits:
                 raise ValueError("source observation digit budget exceeded")
             advance = self.transitions.advance(germ)
@@ -372,8 +377,10 @@ class CollatzSourcePublisher:
             support = self.supports.concat(support, support_atom)
             discovered += 1
             digit_work += source_width
-            self.ledger.bump("collatz_source_discovery_events")
-            self.ledger.bump("collatz_source_discovery_digit_work", source_width)
+            self.ledger.bump(_collatz_keys.COLLATZ_SOURCE_DISCOVERY_EVENTS)
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_SOURCE_DISCOVERY_DIGIT_WORK, source_width
+            )
             germ = advance.target
             reached_one = germ.multiplier == 0 and germ.offset == 1
 

@@ -1,18 +1,17 @@
 """Guard the concrete comma writer bridge and its Isabelle symbol syntax."""
 
-from devtools.checks.isabelle_registry import discover_sessions
+from collections.abc import Mapping
+
+from devtools.checks.isabelle_syntax import Session
 from devtools.paths import isabelle_root
 
 ISABELLE = isabelle_root()
 
 
-def test_concrete_decade_summary_producer_bridge_is_registered() -> None:
-    sessions = discover_sessions(ISABELLE)
-    future = next(
-        session
-        for session in sessions
-        if session.name == "Comma_Semantic_Future_Instance"
-    )
+def test_concrete_decade_summary_producer_bridge_is_registered(
+    repository_sessions: Mapping[str, Session],
+) -> None:
+    future = repository_sessions["Comma_Semantic_Future_Instance"]
     assert "Comma_Semantic_Release" in future.theories
 
     release = (
@@ -204,12 +203,10 @@ def test_producer_near_increment_uses_one_isabelle_exists_symbol() -> None:
     assert r"(\\<exists>increment." not in declaration
 
 
-def test_grouped_chart_termination_uses_the_checked_scalar_continuation() -> None:
-    future = next(
-        session
-        for session in discover_sessions(ISABELLE)
-        if session.name == "Comma_Semantic_Future_Instance"
-    )
+def test_grouped_chart_termination_uses_the_checked_scalar_continuation(
+    repository_sessions: Mapping[str, Session],
+) -> None:
+    future = repository_sessions["Comma_Semantic_Future_Instance"]
     assert future.theories.index(
         "Comma_Python_Grouped_Near_Refinement"
     ) < future.theories.index("Comma_Python_Grouped_Chart_Refinement")

@@ -1,0 +1,30 @@
+"""Stable counter names for hashlife observation execution."""
+
+from typing import Final
+
+CONCRETE_PORT_WIDTH_DESCENTS: Final = "concrete_port_width_descents"
+DIAMOND_POINT_QUERIES: Final = "diamond_point_queries"
+PHYSICAL_CYCLE_POINT_QUERIES: Final = "physical_cycle_point_queries"
+PHYSICAL_CYCLE_WIDTH_QUERIES: Final = "physical_cycle_width_queries"
+REVERSE_CURRENT_GROWTH_WIDTH_SHORTCUTS: Final = "reverse_current_growth_width_shortcuts"
+TILE_CYLINDER_CACHE_HITS: Final = "tile_cylinder_cache_hits"
+TILE_CYLINDER_COEFFICIENT_ADDITIONS: Final = "tile_cylinder_coefficient_additions"
+TILE_CYLINDER_COMPOSITIONS: Final = "tile_cylinder_compositions"
+TILE_CYLINDER_LEAF_READS: Final = "tile_cylinder_leaf_reads"
+TILE_CYLINDER_NODE_EVALUATIONS: Final = "tile_cylinder_node_evaluations"
+TILE_ENDPOINT_EMISSIONS: Final = "tile_endpoint_emissions"
+TILE_ENDPOINT_PROJECTION_DESCENTS: Final = "tile_endpoint_projection_descents"
+TILE_PROJECTION_COCYCLE_OBSERVATIONS: Final = "tile_projection_cocycle_observations"
+TILE_PROJECTION_COMPILATION_FRAMES: Final = "tile_projection_compilation_frames"
+TILE_PROJECTION_PHYSICAL_SUPPORT_OBSERVATIONS: Final = (
+    "tile_projection_physical_support_observations"
+)
+TILE_PROJECTION_WIDTH_OBSERVATIONS: Final = "tile_projection_width_observations"
+TILE_SCHEDULER_DEMAND_PARENT_MISSES: Final = "tile_scheduler_demand_parent_misses"
+TILE_SOURCE_IMPORTS: Final = "tile_source_imports"
+WIDTH_CONTEXT_PEAK_RECORDS: Final = "width_context_peak_records"
+WIDTH_DESCENT_STEPS: Final = "width_descent_steps"
+WIDTH_FOREST_CONTEXT_VISITS: Final = "width_forest_context_visits"
+WIDTH_OBSERVER_REQUESTS: Final = "width_observer_requests"
+WIDTH_PARENT_VISITS: Final = "width_parent_visits"
+WIDTH_QUERIES: Final = "width_queries"

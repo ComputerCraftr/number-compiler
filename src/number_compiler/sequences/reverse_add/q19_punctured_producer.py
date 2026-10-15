@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_on_error
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.punctured_temporal import (
     PuncturedTemporalWork,
     append_run,
@@ -103,7 +104,9 @@ class PuncturedPairProducer:
             return published
         except BaseException:
             if recording_started:
-                owner.ledger.bump("reverse_q19_punctured_failed_applications")
+                owner.ledger.bump(
+                    _reverse_add_keys.REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS
+                )
             else:
                 self._record_work(
                     work, emitted_nodes=emitted_nodes, steps=steps, failed=True
@@ -119,13 +122,26 @@ class PuncturedPairProducer:
         failed: bool = False,
     ) -> None:
         ledger = self._owner.ledger
-        ledger.bump("reverse_q19_punctured_prefix_run_visits", work.run_records_visited)
-        ledger.bump("reverse_q19_punctured_prefix_queries", work.prefix_queries)
-        ledger.bump("reverse_q19_punctured_event_regions", work.event_regions)
-        ledger.bump("reverse_q19_punctured_output_runs", work.output_runs)
-        ledger.bump("reverse_q19_punctured_emitted_grammar_nodes", emitted_nodes)
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_PREFIX_RUN_VISITS,
+            work.run_records_visited,
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_PREFIX_QUERIES,
+            work.prefix_queries,
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_EVENT_REGIONS, work.event_regions
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_OUTPUT_RUNS, work.output_runs
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_EMITTED_GRAMMAR_NODES,
+            emitted_nodes,
+        )
         if failed:
-            ledger.bump("reverse_q19_punctured_failed_applications")
+            ledger.bump(_reverse_add_keys.REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS)
         else:
             ledger.bump(f"reverse_q19_punctured_t{steps}_applications")
 
@@ -137,7 +153,9 @@ class PuncturedPairProducer:
         tasks: list[tuple[str, int, int]] = [("NODE", root, 1)]
         while tasks:
             kind, node_id, remaining = tasks.pop()
-            owner.ledger.bump("reverse_q19_punctured_input_grammar_nodes_visited")
+            owner.ledger.bump(
+                _reverse_add_keys.REVERSE_Q19_PUNCTURED_INPUT_GRAMMAR_NODES_VISITED
+            )
             if kind == "REPEAT_REST":
                 if remaining:
                     tasks.append((kind, node_id, remaining - 1))
@@ -170,7 +188,9 @@ class PuncturedPairProducer:
             raise AssertionError("punctured source runs changed pair-half extent")
         if len(runs) != summary.runs:
             raise AssertionError("punctured source runs changed canonical run count")
-        owner.ledger.bump("reverse_q19_punctured_run_records_visited", len(runs))
+        owner.ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_RUN_RECORDS_VISITED, len(runs)
+        )
         return tuple(runs)
 
     def _run_word(

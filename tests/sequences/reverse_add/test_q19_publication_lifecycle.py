@@ -72,6 +72,26 @@ def test_successful_q19_construction_keeps_its_owners_open() -> None:
     assert ledger.entries == ledger.nodes == 0
 
 
+def test_issued_occurrence_rejects_mutated_public_metadata_without_refolding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace, owner = _q19_workspace()
+    occurrence = owner.initial
+
+    def forbidden_refold(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("issued-handle validation refolded the Q19 grammar")
+
+    monkeypatch.setattr(ReversePairQ19OutputOwner, "_full_summary", forbidden_refold)
+    owner.validate_issued_occurrence(occurrence)
+    object.__setattr__(occurrence, "pair_width", occurrence.pair_width - 1)
+    with pytest.raises(ValueError, match="metadata was altered"):
+        owner.validate_issued_occurrence(occurrence)
+    with pytest.raises(ValueError, match="metadata was altered"):
+        owner.validate(occurrence)
+    workspace.dispose()
+    assert workspace.ledger.entries == workspace.ledger.nodes == 0
+
+
 def test_q19_walk_stack_obeys_tightened_node_budget_and_rolls_back() -> None:
     ledger = ResourceLedger()
     owner = ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
@@ -313,7 +333,7 @@ def test_q19_partial_owner_setup_retires_registered_resources(
         target_ledger: ResourceLedger,
         name: str,
         role: str,
-        scope: ResourceScope = "ENGINE_OWNED",
+        scope: ResourceScope = ResourceScope.ENGINE_OWNED,
     ) -> int:
         if name.endswith("-projector-block"):
             raise construction_error

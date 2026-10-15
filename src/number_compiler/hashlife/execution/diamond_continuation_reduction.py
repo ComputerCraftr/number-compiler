@@ -49,6 +49,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     substitution_bindings,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -160,19 +163,25 @@ class PrimitiveContinuationReducer:
         self.expressions.node(expression)
         cached = self.binding_admission.get(expression)
         if cached is not None:
-            self.ledger.bump("primitive_continuation_binding_admission_hits")
+            self.ledger.bump(
+                _execution_keys.PRIMITIVE_CONTINUATION_BINDING_ADMISSION_HITS
+            )
             return cached
         eligible, visits, peak = function_program_admission(
             self.expressions, expression
         )
-        self.ledger.bump("primitive_continuation_binding_admission_frames", visits)
         self.ledger.bump(
-            "primitive_continuation_binding_admission_peak",
+            _execution_keys.PRIMITIVE_CONTINUATION_BINDING_ADMISSION_FRAMES,
+            visits,
+        )
+        self.ledger.bump(
+            _execution_keys.PRIMITIVE_CONTINUATION_BINDING_ADMISSION_PEAK,
             max(
                 0,
                 peak
                 - self.ledger.counters.get(
-                    "primitive_continuation_binding_admission_peak", 0
+                    _execution_keys.PRIMITIVE_CONTINUATION_BINDING_ADMISSION_PEAK,
+                    0,
                 ),
             ),
         )
@@ -181,27 +190,29 @@ class PrimitiveContinuationReducer:
 
     def probe(self, task: ContinuationTask) -> ExprID | TransferSummaryID | None:
         self.validate(task)
-        self.ledger.bump("primitive_continuation_requests")
+        self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_REQUESTS)
         found: ExprID | TransferSummaryID | None
         if isinstance(task, NormalizePrimitiveLambda):
             found = self.normalized.get(task)
             if found is not None:
-                self.ledger.bump("primitive_continuation_cache_hits")
+                self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_CACHE_HITS)
                 return found
             if not self._admit_binding(task.function):
                 return None
         else:
             depends, _, visits, peak = self._support(task.expression, task.variable)
             self.ledger.bump(
-                "primitive_continuation_support_metadata_reads", 2 * visits
+                _execution_keys.PRIMITIVE_CONTINUATION_SUPPORT_METADATA_READS,
+                2 * visits,
             )
             self.ledger.bump(
-                "primitive_continuation_admission_workspace_peak",
+                _execution_keys.PRIMITIVE_CONTINUATION_ADMISSION_WORKSPACE_PEAK,
                 max(
                     0,
                     peak
                     - self.ledger.counters.get(
-                        "primitive_continuation_admission_workspace_peak", 0
+                        _execution_keys.PRIMITIVE_CONTINUATION_ADMISSION_WORKSPACE_PEAK,
+                        0,
                     ),
                 ),
             )
@@ -211,7 +222,7 @@ class PrimitiveContinuationReducer:
                 return None
             found = self.maps.get(task)
             if found is not None:
-                self.ledger.bump("primitive_continuation_cache_hits")
+                self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_CACHE_HITS)
                 return found
             if not self._admit_binding(task.expression):
                 return None
@@ -236,7 +247,10 @@ class PrimitiveContinuationReducer:
 
     def publish(self, task: ContinuationTask, result: Result) -> None:
         visits = self._validate_result(task, result)
-        self.ledger.bump("primitive_continuation_result_validation_visits", visits)
+        self.ledger.bump(
+            _execution_keys.PRIMITIVE_CONTINUATION_RESULT_VALIDATION_VISITS,
+            visits,
+        )
         if isinstance(task, NormalizePrimitiveLambda):
             expression = _expression(result)
             if (
@@ -250,14 +264,16 @@ class PrimitiveContinuationReducer:
                 self.normalized[task] = expression
         else:
             depends = self._support(task.expression, task.variable)[0]
-            self.ledger.bump("primitive_continuation_support_metadata_reads")
+            self.ledger.bump(
+                _execution_keys.PRIMITIVE_CONTINUATION_SUPPORT_METADATA_READS
+            )
             if (
                 depends
                 and isinstance(self.expressions.node(task.expression).sort, StateSort)
                 and self._admit_binding(task.expression)
             ):
                 self.maps[task] = _function(result)
-        self.ledger.bump("primitive_continuation_evaluations")
+        self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_EVALUATIONS)
 
     def program(self, task: ContinuationTask) -> Generator[Task, Result, Result]:
         if isinstance(task, NormalizePrimitiveLambda):
@@ -276,22 +292,22 @@ class PrimitiveContinuationReducer:
             or arena.constant_function(task.function) is not None
             or arena.primitive(signature.domain.action) is None
         ):
-            self.ledger.bump("primitive_continuation_declined")
+            self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_DECLINED)
             return task.function
         variable = arena.fresh_variable(
             signature.domain, "primitive-continuation-input", (task.function,)
         )
         body = arena.apply(task.function, variable)
         foreign = self._support(body, variable)[1]
-        self.ledger.bump("primitive_continuation_support_metadata_reads")
+        self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_SUPPORT_METADATA_READS)
         if foreign:
-            self.ledger.bump("primitive_continuation_declined")
+            self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_DECLINED)
             return task.function
         if arena.primitive(signature.codomain.action) is None:
             head_expression = _expression((yield ResolveExpr(body)))
             head = arena.node(head_expression)
             if head.kind != "pair":
-                self.ledger.bump("primitive_continuation_declined")
+                self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_DECLINED)
                 return task.function
             anchor = arena.anchor(head_expression)
             anchor_function = arena.lambda_(variable, anchor)
@@ -308,7 +324,7 @@ class PrimitiveContinuationReducer:
                 arena.apply(normalized_anchor, variable),
                 normalized_continuation,
             )
-            self.ledger.bump("primitive_continuation_pair_decompositions")
+            self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_PAIR_DECOMPOSITIONS)
             return arena.lambda_(variable, new_body)
         head = arena.node(body)
         if head.kind in ("finite_apply", "finite_map") and head.children == (
@@ -319,7 +335,7 @@ class PrimitiveContinuationReducer:
         normalized = arena.finite_map(
             signature.domain, signature.codomain, finite, variable
         )
-        self.ledger.bump("primitive_continuation_extensional_reductions")
+        self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_EXTENSIONAL_REDUCTIONS)
         return arena.lambda_(variable, normalized)
 
     def _compile(
@@ -369,7 +385,9 @@ class PrimitiveContinuationReducer:
                 old_port,
                 argument_map,
             )
-            self.ledger.bump("primitive_continuation_function_compositions")
+            self.ledger.bump(
+                _execution_keys.PRIMITIVE_CONTINUATION_FUNCTION_COMPOSITIONS
+            )
             return self.kernels.substitute(node.function, bindings)
         if node.kind not in ("advance", "emit") or node.action is None:
             raise ValueError("unsupported finite continuation constructor")
@@ -387,11 +405,13 @@ class PrimitiveContinuationReducer:
         if len(arguments) not in (2, 3):
             raise AssertionError("primitive continuation exceeded its fixed arity")
         self.ledger.bump(
-            "primitive_continuation_argument_peak",
+            _execution_keys.PRIMITIVE_CONTINUATION_ARGUMENT_PEAK,
             max(
                 0,
                 len(arguments)
-                - self.ledger.counters.get("primitive_continuation_argument_peak", 0),
+                - self.ledger.counters.get(
+                    _execution_keys.PRIMITIVE_CONTINUATION_ARGUMENT_PEAK, 0
+                ),
             ),
         )
         target = self.kernels._kernel_ids.get(
@@ -405,7 +425,7 @@ class PrimitiveContinuationReducer:
             for argument in arguments
             for bit in self.kernels.expression(argument).bits
         )
-        self.ledger.bump("primitive_continuation_kernel_lifts")
+        self.ledger.bump(_execution_keys.PRIMITIVE_CONTINUATION_KERNEL_LIFTS)
         if constants:
             if node.kind == "advance":
                 return self.kernels.advance_expression(

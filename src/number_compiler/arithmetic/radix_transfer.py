@@ -9,22 +9,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_radix_transfer as _radix_transfer_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 def _multiply(left: int, right: int, modulus: int, ledger: ResourceLedger) -> int:
     """Multiply bounded residues without forming a double-width product."""
     if left.bit_length() + right.bit_length() <= 64:
-        ledger.bump("radix_limb_operations")
+        ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
         return ledger.observe_arithmetic(left * right) % modulus
     result = 0
     while right:
         if right & 1:
             result = ledger.observe_arithmetic(result + left) % modulus
-            ledger.bump("radix_limb_operations")
+            ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
         right >>= 1
         if right:
             left = ledger.observe_arithmetic(left + left) % modulus
-            ledger.bump("radix_limb_operations")
+            ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
     return result
 
 
@@ -73,8 +77,8 @@ class RadixRemainderTransfer:
         multiplier = _multiply(after.multiplier, self.multiplier, self.radix, ledger)
         transported = _multiply(after.multiplier, self.offset, self.radix, ledger)
         offset = ledger.observe_arithmetic(transported + after.offset) % self.radix
-        ledger.bump("radix_limb_operations")
-        ledger.bump("radix_recursive_transfer_evaluations")
+        ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
+        ledger.bump(_radix_transfer_keys.RADIX_RECURSIVE_TRANSFER_EVALUATIONS)
         return RadixRemainderTransfer(self.radix, multiplier, offset)
 
     def apply(self, state: int, ledger: ResourceLedger) -> int:
@@ -84,7 +88,7 @@ class RadixRemainderTransfer:
         if not 0 <= state < self.radix:
             raise ValueError("radix remainder lies outside its port")
         product = _multiply(self.multiplier, state, self.radix, ledger)
-        ledger.bump("radix_limb_operations")
+        ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
         return ledger.observe_arithmetic(product + self.offset) % self.radix
 
 

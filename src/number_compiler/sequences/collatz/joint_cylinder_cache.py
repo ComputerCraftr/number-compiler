@@ -8,7 +8,7 @@ macro before consuming either result.
 
 from __future__ import annotations
 
-from typing import Self, cast
+from typing import Final, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -31,7 +31,7 @@ _JOINT_ACTION_ISSUER = object()
 class JointCertifiedMacroCache:
     """Ledger-owned local and process cache for complete affine field actions."""
 
-    VERSION = "collatz-joint-source-cylinder-v1"
+    VERSION: Final[str] = "collatz-joint-source-cylinder-v1"
     LIMIT = 256
     MAX_INTERIOR = 64
     MAX_WIDTH = 256

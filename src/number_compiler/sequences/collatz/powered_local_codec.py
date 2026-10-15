@@ -31,6 +31,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,7 +395,7 @@ class CollatzPoweredLocalCodec:
                 raise AssertionError("source forests always contain a cell")
         self.ledger.reserve(self._binary_source_owner, entries=1)
         self._binary_source_actions[key] = result
-        self.ledger.bump("collatz_radix4_source_morphism_compilations")
+        self.ledger.bump(_collatz_keys.COLLATZ_RADIX4_SOURCE_MORPHISM_COMPILATIONS)
         return result
 
     @staticmethod

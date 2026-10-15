@@ -8,6 +8,9 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -32,13 +35,13 @@ def complete_clock_kernel(
     )
     found = scheduler._lookup_execution_key(key)
     if found is not None:
-        scheduler.ledger.bump("tile_scheduler_parent_early_hits")
+        scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_PARENT_EARLY_HITS)
         return found
     from number_compiler.hashlife.execution.tile_causal_entry import causal_complete
 
-    scheduler.ledger.bump("tile_clock_kernel_evaluations")
+    scheduler.ledger.bump(_execution_keys.TILE_CLOCK_KERNEL_EVALUATIONS)
     result = causal_complete(scheduler, key)
     if result is not None:
         return result
-    scheduler.ledger.bump("tile_scheduler_direct_requests")
+    scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_DIRECT_REQUESTS)
     return scheduler._complete_direct(key, checked_miss=True)

@@ -33,6 +33,9 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,7 +250,7 @@ class HigherLocalInterfaceArena:
         self._validate_interface(interface)
         found = self._higher_signature_keys.get(interface)
         if found is not None:
-            self.ledger.bump("higher_interface_signature_hits")
+            self.ledger.bump(_execution_keys.HIGHER_INTERFACE_SIGNATURE_HITS)
             return found
         self.ledger.reserve_many(
             (
@@ -262,7 +265,7 @@ class HigherLocalInterfaceArena:
         )
         self._higher_signatures.append(interface)
         self._higher_signature_keys[interface] = result
-        self.ledger.bump("higher_interface_signature_evaluations")
+        self.ledger.bump(_execution_keys.HIGHER_INTERFACE_SIGNATURE_EVALUATIONS)
         return result
 
     def interface(self, reference: PortSignatureID) -> HigherMacroInterface:
@@ -318,7 +321,7 @@ class HigherLocalInterfaceArena:
         record = HigherInterfaceRecord(signature, components)
         found = self._higher_keys.get(record)
         if found is not None:
-            self.ledger.bump("higher_interface_normal_form_hits")
+            self.ledger.bump(_execution_keys.HIGHER_INTERFACE_NORMAL_FORM_HITS)
             return found
         self.ledger.reserve_many(
             (
@@ -333,7 +336,7 @@ class HigherLocalInterfaceArena:
         )
         self._higher_nodes.append(record)
         self._higher_keys[record] = result
-        self.ledger.bump("higher_interface_publications")
+        self.ledger.bump(_execution_keys.HIGHER_INTERFACE_PUBLICATIONS)
         return result
 
     def resolve(self, reference: LocalInterfaceID) -> HigherInterfaceRecord:

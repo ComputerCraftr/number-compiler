@@ -115,7 +115,14 @@ class DyadicTerminalFieldAction:
 
     @property
     def producer_issued(self) -> bool:
-        return self._issuer is _FIELD_ACTION_ISSUER and self._issued_coefficients == (
+        return (
+            self._issuer is _FIELD_ACTION_ISSUER
+            and self._issued_coefficients == self.coefficient_snapshot()
+        )
+
+    def coefficient_snapshot(self) -> tuple[int, ...]:
+        """Return the exact affine fields for an outer publication seal."""
+        return (
             self.steps,
             self.gain,
             self.offset,

@@ -11,6 +11,7 @@ from number_compiler.api.cli import main
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.cli_types import CommaObservationOptions
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import ObservationId
 from number_compiler.api.query_types import CommaTermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 from number_compiler.sequences.comma.power import CommaTerm
@@ -26,7 +27,7 @@ from number_compiler.sequences.comma.power import CommaTerm
         ["--events", "1"],
         ["--max-comma-states", "0"],
         ["--max-comma-work", "0"],
-        ["--info", "hensel"],
+        ["--info", "arithmetic.hensel"],
     ],
 )
 def test_comma_rejects_irrelevant_or_invalid_flags(extra: list[str]) -> None:
@@ -40,12 +41,22 @@ def test_comma_rejects_irrelevant_or_invalid_flags(extra: list[str]) -> None:
 
 def test_comma_preserves_oeis_index_and_deduplicates_information() -> None:
     request = parse_request(
-        ["a367620", "--nth", "20000", "--info", "clock", "--info", "clock"]
+        [
+            "a367620",
+            "--nth",
+            "20000",
+            "--info",
+            "temporal.clock",
+            "--info",
+            "temporal.clock",
+        ]
     )
     assert request is not None
     assert isinstance(request.execution, CommaTermQuery)
     assert request.index_unit == "oeis_index"
-    assert request.observations == CommaObservationOptions(info=("clock",))
+    assert request.observations == CommaObservationOptions(
+        info=(ObservationId.TEMPORAL_CLOCK,)
+    )
     assert request.execution.max_comma_states == 131072
     assert request.execution.max_comma_work == 1000000
     assert main(["a367620", "--nth", "0"]) == 2
@@ -86,9 +97,9 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
                 "--info",
                 "metrics",
                 "--info",
-                "certificate",
+                "safety.certificate",
                 "--info",
-                "certificate",
+                "safety.certificate",
                 "--format",
                 "json",
             ]
@@ -106,8 +117,8 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
     assert metrics["width"] is None
     assert metrics["execution_metrics"]["schema_version"] == 8
     assert metrics["execution_metrics"]["reporting"]["inspected_inventory_rows"] == 0
-    assert payload["info"]["certificate"]["runtime_verified"] is False
-    assert payload["info"]["certificate"]["isabelle_instance_checked"] is False
+    assert payload["info"]["safety.certificate"]["runtime_verified"] is False
+    assert payload["info"]["safety.certificate"]["isabelle_instance_checked"] is False
 
 
 def test_public_api_requires_prefix_evidence_on_every_value_demand() -> None:

@@ -19,6 +19,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 )
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
+    DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION,
     DyadicAggregateSummary,
     DyadicCycleSummary,
     DyadicImageSummary,
@@ -62,7 +63,7 @@ class DyadicReturnImageWorkspace(
     """One pinned dyadic return image owned by ``TileScheduler``."""
 
     family = "dyadic-return-source-image"
-    semantic_version = "dyadic-return-source-image-v1"
+    semantic_version = DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION
     _ACTION_KIND = "dyadic-return-action"
     _SOURCE_KIND = "dyadic-return-source"
     _SUPPORT_KIND = "dyadic-return-support"

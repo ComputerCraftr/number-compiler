@@ -9,7 +9,7 @@ binary geometric composition over SLP repeats.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import SLPArena, SLPNode
@@ -328,6 +328,16 @@ class DoubleReverseClosedForm:
     right_births: int | None
     affine_gain: int | None
     affine_shift: int | None
+    # An original seed may enter a certified cylinder only after a transient.
+    # These fields describe the *suffix*, without pretending its affine
+    # action is source-universal across the uncertified prefix.
+    prefix_steps: int | None = None
+    suffix_steps: int | None = None
+    entry_value: int | None = None
+    suffix_phase_in: int | None = None
+    suffix_phase_out: int | None = None
+    suffix_affine_gain: int | None = None
+    suffix_affine_shift: int | None = None
 
     @property
     def matrix(self) -> tuple[tuple[int, int, int], ...]:
@@ -461,8 +471,15 @@ def closed_form_from_roots(
     max_bits: int = 4096,
     ledger: ResourceLedger | None = None,
     scratch_owner: int | None = None,
+    entry_root: int | None = None,
+    prefix_steps: int | None = None,
 ) -> DoubleReverseClosedForm:
-    """Project exact/modeled carry and moments from authenticated endpoint SLPs."""
+    """Project moments from endpoint SLPs, optionally including one suffix entry.
+
+    When ``entry_root`` is provided, source, entry, and target summaries share
+    one SLP fold. The optional prefix metadata describes an already-authenticated
+    owner cursor; these numeric projections do not issue or authenticate it.
+    """
     if type(steps) is not int or steps < 0:
         raise ValueError("closed-form step count must be nonnegative")
     if modulus is not None and (type(modulus) is not int or modulus < 1):
@@ -473,16 +490,36 @@ def closed_form_from_roots(
         raise ValueError("invalid double-reverse source SLP root")
     if type(target_root) is not int or not 0 <= target_root < len(arena.nodes):
         raise ValueError("invalid double-reverse target SLP root")
+    if (entry_root is None) != (prefix_steps is None):
+        raise ValueError("suffix projection requires both entry root and prefix")
+    if entry_root is not None and (
+        type(entry_root) is not int or not 0 <= entry_root < len(arena.nodes)
+    ):
+        raise ValueError("invalid double-reverse suffix entry SLP root")
+    if prefix_steps is not None and (
+        type(prefix_steps) is not int or not 0 <= prefix_steps <= steps
+    ):
+        raise ValueError("invalid double-reverse suffix prefix length")
 
     effective_modulus = None if modulus is None else 10 * modulus
-    start, end = _charged_fold_ports(
+    roots = (
+        (source_root, target_root)
+        if entry_root is None
+        else (source_root, entry_root, target_root)
+    )
+    projections = _charged_fold_ports(
         arena,
-        (source_root, target_root),
+        roots,
         modulus=effective_modulus if modulus is not None else None,
         max_bits=max_bits,
         ledger=ledger,
         scratch_owner=scratch_owner,
     )
+    if entry_root is None:
+        start, end = projections
+        entry = None
+    else:
+        start, entry, end = projections
     if start.last is None:
         raise ValueError("a physical 2rev10 source must be nonempty")
     if steps == 0 and start.forward != end.forward:
@@ -574,7 +611,7 @@ def closed_form_from_roots(
             raise BlockContextBudgetExceeded(
                 "double-reverse moment port exceeds the requested bit budget"
             )
-    return DoubleReverseClosedForm(
+    result = DoubleReverseClosedForm(
         steps,
         x0,
         x1,
@@ -593,6 +630,108 @@ def closed_form_from_roots(
         right,
         affine_gain,
         affine_shift,
+    )
+    if entry is not None and prefix_steps is not None:
+        assert entry_root is not None
+        suffix = _suffix_affine_projection(
+            arena,
+            entry_root,
+            target_root,
+            entry,
+            end,
+            steps - prefix_steps,
+            prefix_steps,
+            modulus=modulus,
+            max_bits=max_bits,
+        )
+        if suffix is not None:
+            result = replace(
+                result,
+                prefix_steps=suffix[0],
+                suffix_steps=suffix[1],
+                entry_value=suffix[2],
+                suffix_phase_in=suffix[3],
+                suffix_phase_out=suffix[4],
+                suffix_affine_gain=suffix[5],
+                suffix_affine_shift=suffix[6],
+            )
+    return result
+
+
+def _suffix_affine_projection(
+    arena: SLPArena,
+    entry_root: int,
+    target_root: int,
+    entry: DecimalCarryPort,
+    target: DecimalCarryPort,
+    suffix_steps: int,
+    prefix_steps: int,
+    *,
+    modulus: int | None,
+    max_bits: int,
+) -> tuple[int, int, int, int, int, int, int] | None:
+    """Derive a cylinder suffix from the already folded entry/target ports."""
+    if suffix_steps % 2:
+        return None
+    entry_width = arena.nodes[entry_root].length
+    if entry_width < 5:
+        return None
+    phase = edge_phase(
+        (symbol_at(arena, entry_root, 0), symbol_at(arena, entry_root, 1)),
+        (
+            symbol_at(arena, entry_root, entry_width - 2),
+            symbol_at(arena, entry_root, entry_width - 1),
+        ),
+    )
+    if phase is None:
+        return None
+    target_width = arena.nodes[target_root].length
+    if target_width < 5:
+        raise AssertionError("certified suffix contracted below its border")
+    phase_out = edge_phase(
+        (symbol_at(arena, target_root, 0), symbol_at(arena, target_root, 1)),
+        (
+            symbol_at(arena, target_root, target_width - 2),
+            symbol_at(arena, target_root, target_width - 1),
+        ),
+    )
+    if phase_out != (phase + suffix_steps) % 4:
+        raise AssertionError("certified suffix edge phase did not advance")
+    f_steps = suffix_steps // 2
+    left, right = growth_ports(phase, f_steps)
+    if target_width != entry_width + left + right:
+        raise AssertionError("certified suffix growth clock disagrees")
+    if modulus is None:
+        entry_value = entry.forward
+        target_value = target.forward
+        gain_bound = 2 * f_steps + (3322 * right + 999) // 1000 + 2
+        if gain_bound + max(1, entry_value.bit_length()) > max_bits:
+            raise BlockContextBudgetExceeded(
+                "double-reverse affine suffix exceeds the requested bit budget"
+            )
+        gain = 4**f_steps * 10**right
+        shift = target_value - gain * entry_value
+        if max(abs(gain), abs(shift)).bit_length() > max_bits:
+            raise BlockContextBudgetExceeded(
+                "double-reverse affine suffix exceeds the requested bit budget"
+            )
+        if target_value != gain * entry_value + shift:
+            raise AssertionError("suffix affine projection lost its endpoint")
+    else:
+        entry_value = entry.forward % modulus
+        target_value = target.forward % modulus
+        gain = (pow(4, f_steps, modulus) * pow(10, right, modulus)) % modulus
+        shift = (target_value - gain * entry_value) % modulus
+        if (gain * entry_value + shift) % modulus != target_value:
+            raise AssertionError("modular suffix affine projection lost its endpoint")
+    return (
+        prefix_steps,
+        suffix_steps,
+        entry_value,
+        phase,
+        phase_out,
+        gain,
+        shift,
     )
 
 

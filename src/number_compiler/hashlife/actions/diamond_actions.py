@@ -23,6 +23,10 @@ from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
     ProgramComposition,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_actions as _actions_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
@@ -383,7 +387,7 @@ class TemporalActionArena:
         for node in nodes:
             self._ids[node] = len(self._nodes)
             self._nodes.append(node)
-        self.ledger.bump("diamond_temporal_import_visits", visits)
+        self.ledger.bump(_actions_keys.DIAMOND_TEMPORAL_IMPORT_VISITS, visits)
         return self._handle(resolved[reference.local_id])
 
     def primitive(self, action: ActionProgramID) -> BlockEffect:
@@ -395,11 +399,11 @@ class TemporalActionArena:
         result, node = self._plan_compose(before, after)
         if node is not None:
             result = self._intern(node)
-        self.ledger.bump("diamond_temporal_composition_requests")
+        self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
         self.ledger.bump(
-            "diamond_temporal_composition_hits"
+            _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS
             if node is None
-            else "diamond_temporal_composition_evaluations"
+            else _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS
         )
         return result
 
@@ -610,9 +614,10 @@ class ImageCellArena:
         key = self._key(node)
         found = self._ids.get(key)
         if found is not None:
-            self.ledger.bump("diamond_cell_interner_hits")
+            self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_HITS)
             self.ledger.bump(
-                "diamond_source_origin_metadata_reads", 2 if node.kind == "join" else 0
+                _actions_keys.DIAMOND_SOURCE_ORIGIN_METADATA_READS,
+                2 if node.kind == "join" else 0,
             )
             return self._handle(found)
         index = append_indexed_node(
@@ -624,9 +629,10 @@ class ImageCellArena:
             key,
             node,
         )
-        self.ledger.bump("diamond_cell_interner_evaluations")
+        self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_EVALUATIONS)
         self.ledger.bump(
-            "diamond_source_origin_metadata_reads", 2 if node.kind == "join" else 0
+            _actions_keys.DIAMOND_SOURCE_ORIGIN_METADATA_READS,
+            2 if node.kind == "join" else 0,
         )
         return self._handle(index)
 
@@ -669,11 +675,14 @@ class ImageCellArena:
                 level = min(level, (start & -start).bit_length() - 1)
             result.append((start, self.source(start, level)))
             start += 1 << level
-        self.ledger.bump("diamond_source_forest_requests")
-        self.ledger.bump("diamond_source_forest_chunks", len(result))
-        peak = self.ledger.counters.get("diamond_source_forest_peak_chunks", 0)
+        self.ledger.bump(_actions_keys.DIAMOND_SOURCE_FOREST_REQUESTS)
+        self.ledger.bump(_actions_keys.DIAMOND_SOURCE_FOREST_CHUNKS, len(result))
+        peak = self.ledger.counters.get(
+            _actions_keys.DIAMOND_SOURCE_FOREST_PEAK_CHUNKS, 0
+        )
         self.ledger.bump(
-            "diamond_source_forest_peak_chunks", max(0, len(result) - peak)
+            _actions_keys.DIAMOND_SOURCE_FOREST_PEAK_CHUNKS,
+            max(0, len(result) - peak),
         )
         return tuple(result)
 
@@ -720,7 +729,7 @@ class ImageCellArena:
             if staged is not None:
                 raise AssertionError("image references an unpublished temporal action")
             result = self._handle(found)
-            self.ledger.bump("diamond_cell_interner_hits")
+            self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_HITS)
         else:
             reservations = [(self._node_owner, 1, 1), (self._index_owner, 1, 0)]
             if staged is not None:
@@ -737,15 +746,15 @@ class ImageCellArena:
             result = self._handle(len(self._nodes))
             self._ids[key] = result.local_id
             self._nodes.append(image_node)
-            self.ledger.bump("diamond_cell_interner_evaluations")
+            self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_EVALUATIONS)
         if nested:
-            self.ledger.bump("diamond_temporal_composition_requests")
+            self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
             self.ledger.bump(
-                "diamond_temporal_composition_hits"
+                _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS
                 if staged is None
-                else "diamond_temporal_composition_evaluations"
+                else _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS
             )
-        self.ledger.bump("diamond_image_normalized_requests")
+        self.ledger.bump(_shared_keys.DIAMOND_IMAGE_NORMALIZED_REQUESTS)
         return result
 
     def slice(self, cell: CellID, offset: int, level: int) -> CellID:
@@ -762,7 +771,7 @@ class ImageCellArena:
         if offset % width or offset + width > 1 << node.level:
             raise ValueError("cell slice must be aligned and contained")
         if level == node.level:
-            self.ledger.bump("diamond_slice_requests")
+            self.ledger.bump(_actions_keys.DIAMOND_SLICE_REQUESTS)
             return cell
         visits = 0
         reflected = False
@@ -787,8 +796,10 @@ class ImageCellArena:
                     cell = self._handle(node.left)
             node = self.resolve(cell)
             if node.level == level:
-                self.ledger.bump("diamond_slice_requests")
-                self.ledger.bump("diamond_slice_normalization_visits", visits)
+                self.ledger.bump(_actions_keys.DIAMOND_SLICE_REQUESTS)
+                self.ledger.bump(
+                    _actions_keys.DIAMOND_SLICE_NORMALIZATION_VISITS, visits
+                )
                 return self.mirror(cell) if reflected else cell
         if node.kind == "source":
             result = self.source(node.source_start + offset, level)
@@ -796,8 +807,8 @@ class ImageCellArena:
             result = self._intern(
                 CellNode("slice", level, left=cell.local_id, offset=offset)
             )
-        self.ledger.bump("diamond_slice_requests")
-        self.ledger.bump("diamond_slice_normalization_visits", visits)
+        self.ledger.bump(_actions_keys.DIAMOND_SLICE_REQUESTS)
+        self.ledger.bump(_actions_keys.DIAMOND_SLICE_NORMALIZATION_VISITS, visits)
         return self.mirror(result) if reflected else result
 
     def split(self, cell: CellID) -> tuple[CellID, CellID]:

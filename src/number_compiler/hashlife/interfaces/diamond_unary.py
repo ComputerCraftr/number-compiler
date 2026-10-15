@@ -29,6 +29,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     substitution_bindings,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +87,10 @@ class PrimitiveUnaryFunctions:
                 "substitution does not preserve the declared primitive port"
             )
         key = UnaryComposition(kernel, side, before, after, port)
-        self.ledger.bump("unary_function_composition_requests")
+        self.ledger.bump(_interfaces_keys.UNARY_FUNCTION_COMPOSITION_REQUESTS)
         cached = self._memo.get(key)
         if cached is not None:
-            self.ledger.bump("unary_function_composition_hits")
+            self.ledger.bump(_interfaces_keys.UNARY_FUNCTION_COMPOSITION_HITS)
             return cached
         width = (domain - 1).bit_length()
         variables = {
@@ -105,7 +108,7 @@ class PrimitiveUnaryFunctions:
             after, substitution_bindings(self.kernels, domain, port, before)
         )
         self._memo[key] = answer
-        self.ledger.bump("unary_function_composition_evaluations")
+        self.ledger.bump(_interfaces_keys.UNARY_FUNCTION_COMPOSITION_EVALUATIONS)
         return answer
 
     def mapped(
@@ -140,10 +143,10 @@ class PrimitiveUnaryFunctions:
         key = UnaryKernelApplication(
             input_kernel, input_side, port, kernel, operation, side, arguments
         )
-        self.ledger.bump("unary_kernel_application_requests")
+        self.ledger.bump(_interfaces_keys.UNARY_KERNEL_APPLICATION_REQUESTS)
         cached = self._memo.get(key)
         if cached is not None:
-            self.ledger.bump("unary_kernel_application_hits")
+            self.ledger.bump(_interfaces_keys.UNARY_KERNEL_APPLICATION_HITS)
             return cached
         width = (domain - 1).bit_length()
         variables = {
@@ -161,7 +164,7 @@ class PrimitiveUnaryFunctions:
             domain, port, target, operation, BoundarySide(side), expressions
         )
         self._memo[key] = answer
-        self.ledger.bump("unary_kernel_application_evaluations")
+        self.ledger.bump(_interfaces_keys.UNARY_KERNEL_APPLICATION_EVALUATIONS)
         return answer
 
     def _mapped_correlated(
@@ -267,12 +270,20 @@ class PrimitiveUnaryFunctions:
             if len(terminals) + len(splits) > product_limit:
                 overflow = True
                 break
-        self.ledger.bump("unary_correlated_cofactor_visits", visits)
-        self.ledger.bump("unary_correlated_terminal_evaluations", terminal_evaluations)
-        old_peak = self.ledger.counters.get("unary_correlated_workspace_peak", 0)
-        self.ledger.bump("unary_correlated_workspace_peak", max(0, peak - old_peak))
+        self.ledger.bump(_interfaces_keys.UNARY_CORRELATED_COFACTOR_VISITS, visits)
+        self.ledger.bump(
+            _interfaces_keys.UNARY_CORRELATED_TERMINAL_EVALUATIONS,
+            terminal_evaluations,
+        )
+        old_peak = self.ledger.counters.get(
+            _interfaces_keys.UNARY_CORRELATED_WORKSPACE_PEAK, 0
+        )
+        self.ledger.bump(
+            _interfaces_keys.UNARY_CORRELATED_WORKSPACE_PEAK,
+            max(0, peak - old_peak),
+        )
         if overflow:
-            self.ledger.bump("unary_correlated_fallbacks")
+            self.ledger.bump(_interfaces_keys.UNARY_CORRELATED_FALLBACKS)
 
             def evaluate(code: int) -> int:
                 inputs = observation_inputs(domain, port, code)
@@ -329,9 +340,12 @@ class PrimitiveUnaryFunctions:
         while True:
             if code < domain and depth < width:
                 frames.append((depth, code, None))
-                peak = self.ledger.counters.get("unary_function_workspace_peak", 0)
+                peak = self.ledger.counters.get(
+                    _interfaces_keys.UNARY_FUNCTION_WORKSPACE_PEAK, 0
+                )
                 self.ledger.bump(
-                    "unary_function_workspace_peak", max(0, len(frames) - peak)
+                    _interfaces_keys.UNARY_FUNCTION_WORKSPACE_PEAK,
+                    max(0, len(frames) - peak),
                 )
                 depth += 1
                 continue
@@ -339,7 +353,7 @@ class PrimitiveUnaryFunctions:
             if code < domain:
                 value = evaluate(code)
                 self.ledger.observe_arithmetic(value)
-                self.ledger.bump("unary_function_port_evaluations")
+                self.ledger.bump(_interfaces_keys.UNARY_FUNCTION_PORT_EVALUATIONS)
             result = tuple(
                 functions.constant(bool(value & (1 << bit)))
                 for bit in range(output_width)

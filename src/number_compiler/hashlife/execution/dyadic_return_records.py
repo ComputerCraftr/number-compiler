@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+
+DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION: Final[str] = (
+    "dyadic-return-source-image-v1"
+)
 
 
 @dataclass(frozen=True, slots=True)

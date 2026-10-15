@@ -18,9 +18,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import gcd
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
 from number_compiler.sequences.prime.set import is_prime_u64, smallest_factor
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.fermat_pumped_radial_unit import (
+        FermatPumpedRadialUnit,
+    )
+    from number_compiler.sequences.power_numbers.signed_terminal_halo import (
+        SignedFoldBirthWindow,
+    )
+    from number_compiler.sequences.power_numbers.source_halo import (
+        StableUnwrappedHaloBlock,
+    )
+    from number_compiler.sequences.power_numbers.source_matrix import (
+        FermatMultiradixPort,
+        UnwrappedInnerDigitStencil,
+        UnwrappedInnerRadixPort,
+    )
+    from number_compiler.sequences.power_numbers.terminal_source_demand import (
+        SourceTerminalDemand,
+    )
+    from number_compiler.sequences.power_numbers.three_dyadic_pivot_moore import (
+        DyadicPivotMoore,
+    )
+    from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
+        ThreePowerJointQuotient,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +96,143 @@ class FermatNumberSpec:
         exponent = self.exponent_extent.materialize(max_power=max_bits.bit_length())
         return (1 << exponent) + 1
 
+    def terminal_source_demand(self) -> SourceTerminalDemand:
+        """Return a lazy, candidate-bound source obligation, never a proof bit."""
+        from number_compiler.sequences.power_numbers.terminal_source_demand import (
+            SourceTerminalDemand,
+        )
+
+        return SourceTerminalDemand.for_candidate("fermat", self.index)
+
+    def demand_joint_three_power_quotient(
+        self,
+        level: int,
+        demands: tuple[tuple[int, int], ...] = (
+            (2, 16),
+            (3, 10),
+            (5, 8),
+            (7, 6),
+            (10, 6),
+            (11, 5),
+            (13, 5),
+            (27, 4),
+        ),
+        *,
+        moving_width: int = 12,
+    ) -> ThreePowerJointQuotient:
+        """Share one unwrapped source across finite CRT, pivot and Walsh demands.
+
+        The packet does not evaluate the Fermat candidate modulus or issue a
+        primality status. Walsh transforms are computed only when requested
+        from the returned packet.
+        """
+        from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
+            demand_three_power_joint_quotient,
+        )
+
+        return demand_three_power_joint_quotient(
+            self.index, level, demands, moving_width=moving_width
+        )
+
+    def demand_pumped_radial_unit(self, level: int) -> FermatPumpedRadialUnit:
+        """Retain the exact symbolic radial/unit split at one nested level.
+
+        This is a source description only. It does not evaluate the unit
+        modulo the Fermat candidate or contribute a primality decision.
+        """
+        from number_compiler.sequences.power_numbers.fermat_pumped_radial_unit import (
+            FermatPumpedRadialUnit,
+        )
+
+        return FermatPumpedRadialUnit(self.index, level)
+
+    def demand_dyadic_pivot_moore(
+        self, level: int, offsets: tuple[int, ...] = (0, 1, 2, 3, 5, 6)
+    ) -> DyadicPivotMoore:
+        """Demand bounded local pivot ports inside this Fermat source horizon.
+
+        The returned Moore observer retains ``level`` as occurrence metadata;
+        its finite state is not a candidate-primality observation.
+        """
+        if type(self.index) is not int or self.index < 1:
+            raise ValueError(("Fermat source index", self.index))
+        if type(level) is not int or level < 1:
+            raise ValueError(("dyadic source level", level))
+        if not self.exponent_extent.contains_index(level):
+            raise ValueError(("level-exceeds-Fermat-source", level, self.index))
+        from number_compiler.sequences.power_numbers.three_dyadic_pivot_moore import (
+            DyadicPivotMoore,
+        )
+
+        return DyadicPivotMoore(level, offsets)
+
+    def demand_three_power_multiradix_port(
+        self, level: int, base: int, places: int
+    ) -> FermatMultiradixPort:
+        """Demand bounded low-radix carry/borrow wires of ``3**(2**level)``.
+
+        The small-modulus source observation is separate from candidate
+        reduction and is not a terminal remainder or primality certificate.
+        """
+        from number_compiler.sequences.power_numbers.source_matrix import (
+            demand_three_power_multiradix_port,
+        )
+
+        return demand_three_power_multiradix_port(self.index, level, base, places)
+
+    def demand_unwrapped_inner_radix_port(
+        self, level: int, base: int
+    ) -> UnwrappedInnerRadixPort:
+        """Demand bounded source carry/borrow/digit wires under the no-wrap guard."""
+        from number_compiler.sequences.power_numbers.source_matrix import (
+            demand_unwrapped_inner_radix_port,
+        )
+
+        return demand_unwrapped_inner_radix_port("fermat", self.index, level, base)
+
+    def demand_unwrapped_inner_digit_stencil(
+        self, level: int, base: int, positions: tuple[int, ...]
+    ) -> UnwrappedInnerDigitStencil:
+        """Demand only selected digits of the raw inner square source."""
+        from number_compiler.sequences.power_numbers.source_matrix import (
+            demand_unwrapped_inner_digit_stencil,
+        )
+
+        return demand_unwrapped_inner_digit_stencil(
+            "fermat", self.index, level, base, positions
+        )
+
+    def power_stable_unwrapped_inner_halo(
+        self, source_level: int, span: int
+    ) -> StableUnwrappedHaloBlock:
+        """Power an explicitly requested stationary no-wrap binary halo."""
+        from number_compiler.sequences.power_numbers.source_halo import (
+            StableUnwrappedHaloBlock,
+        )
+
+        return StableUnwrappedHaloBlock("fermat", self.index, source_level, span)
+
+    def project_signed_fold_birth_window(
+        self, source: object, *, start: int = 0, length: int = 64
+    ) -> SignedFoldBirthWindow:
+        """Project an already supplied negacyclic fold, conditionally."""
+        from number_compiler.arithmetic.carry.signed_weighted_carry import (
+            WideSignedCarryAction,
+        )
+        from number_compiler.sequences.power_numbers.signed_terminal_halo import (
+            demand_signed_birth_window,
+        )
+
+        if type(source) is not WideSignedCarryAction:
+            raise TypeError("signed-fold projection requires a carry SLP")
+        if (
+            source.sign != -1
+            or source.width & (source.width - 1)
+            or source.width.bit_length() - 1 != self.index
+        ):
+            raise ValueError("Fermat signed-fold width or negacyclic seam mismatch")
+        return demand_signed_birth_window(source, start=start, length=length)
+
 
 @dataclass(frozen=True, slots=True)
 class MersenneNumberSpec:
@@ -92,6 +255,63 @@ class MersenneNumberSpec:
         if max_bits <= 0 or self.bit_length > max_bits:
             raise ValueError((self.bit_length, max_bits))
         return (1 << self.exponent) - 1
+
+    def terminal_source_demand(self) -> SourceTerminalDemand:
+        """Return a lazy cyclic trace demand, not a Lucas-Lehmer certificate."""
+        from number_compiler.sequences.power_numbers.terminal_source_demand import (
+            SourceTerminalDemand,
+        )
+
+        return SourceTerminalDemand.for_candidate("mersenne", self.exponent)
+
+    def project_signed_fold_birth_window(
+        self, source: object, *, start: int = 0, length: int = 64
+    ) -> SignedFoldBirthWindow:
+        """Project an already supplied cyclic fold, conditionally."""
+        from number_compiler.arithmetic.carry.signed_weighted_carry import (
+            WideSignedCarryAction,
+        )
+        from number_compiler.sequences.power_numbers.signed_terminal_halo import (
+            demand_signed_birth_window,
+        )
+
+        if type(source) is not WideSignedCarryAction:
+            raise TypeError("signed-fold projection requires a carry SLP")
+        if source.sign != 1 or source.width != self.exponent:
+            raise ValueError("Mersenne signed-fold width or cyclic seam mismatch")
+        return demand_signed_birth_window(source, start=start, length=length)
+
+    def demand_unwrapped_inner_radix_port(
+        self, level: int, base: int
+    ) -> UnwrappedInnerRadixPort:
+        """Demand bounded source carry/borrow/digit wires under the no-wrap guard."""
+        from number_compiler.sequences.power_numbers.source_matrix import (
+            demand_unwrapped_inner_radix_port,
+        )
+
+        return demand_unwrapped_inner_radix_port("mersenne", self.exponent, level, base)
+
+    def demand_unwrapped_inner_digit_stencil(
+        self, level: int, base: int, positions: tuple[int, ...]
+    ) -> UnwrappedInnerDigitStencil:
+        """Demand only selected digits of the raw norm-one trace square."""
+        from number_compiler.sequences.power_numbers.source_matrix import (
+            demand_unwrapped_inner_digit_stencil,
+        )
+
+        return demand_unwrapped_inner_digit_stencil(
+            "mersenne", self.exponent, level, base, positions
+        )
+
+    def power_stable_unwrapped_inner_halo(
+        self, source_level: int, span: int
+    ) -> StableUnwrappedHaloBlock:
+        """Power an explicitly requested stationary no-wrap binary halo."""
+        from number_compiler.sequences.power_numbers.source_halo import (
+            StableUnwrappedHaloBlock,
+        )
+
+        return StableUnwrappedHaloBlock("mersenne", self.exponent, source_level, span)
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +478,18 @@ def special_modulus_matches(family: str, parameter: int, modulus: int) -> bool:
     raise ValueError(family)
 
 
+def verified_special_divisor(
+    family: str, parameter: int, modulus: int, defect: int
+) -> int:
+    """Check an admitted integer witness against the exact candidate source."""
+    if not special_modulus_matches(family, parameter, modulus):
+        raise ValueError("defect modulus does not match the requested special source")
+    support = gcd(modulus, defect)
+    if not 1 < support < modulus:
+        raise ValueError("unissued defect must exhibit a proper candidate divisor")
+    return support
+
+
 def mersenne_exponent_is_prime(exponent: int) -> bool:
     """Decide the exponent gate without producing an unnecessary factor.
 
@@ -319,4 +551,5 @@ __all__ = [
     "mersenne_radix_reinterpretation",
     "mersenne_successor",
     "special_modulus_matches",
+    "verified_special_divisor",
 ]

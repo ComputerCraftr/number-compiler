@@ -3,6 +3,87 @@ theory Double_Reverse_Temporal_Refinement
     Shared_Carry_Dynamics.Temporal_Decimal_Carry_Monoid
 begin
 
+text \<open>The exact square normalizer may remove any decimal zero suffix before
+applying T x = 2 * reverse10 x.  The following arithmetic theorem
+proves that contraction normalization preserves both the first endpoint and
+T-squared endpoint.  It is a numeric law only; it does not certify an SLP
+slice, scheduler publication, or global temporal cone.\<close>
+
+function double_reverse_decimal_digits :: "nat \<Rightarrow> nat" where
+  "double_reverse_decimal_digits n =
+    (if n < 10 then 1 else Suc (double_reverse_decimal_digits (n div 10)))"
+  by pat_completeness auto
+termination
+  by (relation "measure id") auto
+
+function double_reverse_reverse10 :: "nat \<Rightarrow> nat" where
+  "double_reverse_reverse10 n =
+    (if n < 10 then n else
+      n mod 10 * 10 ^ (double_reverse_decimal_digits n - 1) +
+        double_reverse_reverse10 (n div 10))"
+  by pat_completeness auto
+termination
+  by (relation "measure id") auto
+
+definition double_reverse_T :: "nat \<Rightarrow> nat" where
+  "double_reverse_T n = 2 * double_reverse_reverse10 n"
+
+lemma double_reverse_reverse10_ignores_trailing_zero:
+  "double_reverse_reverse10 (10*n) = double_reverse_reverse10 n"
+proof (cases n)
+  case 0
+  then show ?thesis by (simp add: double_reverse_reverse10.simps)
+next
+  case (Suc m)
+  then show ?thesis
+    by (simp add: double_reverse_reverse10.simps)
+qed
+
+lemma double_reverse_T_ignores_trailing_zero:
+  "double_reverse_T (10*n) = double_reverse_T n"
+  by (simp add: double_reverse_T_def
+      double_reverse_reverse10_ignores_trailing_zero)
+
+lemma double_reverse_T_ignores_zero_suffix:
+  "double_reverse_T (n * 10^zeros) = double_reverse_T n"
+proof (induction zeros)
+  case 0
+  then show ?case by simp
+next
+  case (Suc zeros)
+  have factor:
+    "n * 10 ^ Suc zeros = 10 * (n * 10 ^ zeros)"
+    by (simp add: power_Suc algebra_simps)
+  have contraction:
+    "double_reverse_T (n * 10 ^ Suc zeros) =
+      double_reverse_T (n * 10 ^ zeros)"
+    unfolding factor
+    by (rule double_reverse_T_ignores_trailing_zero)
+  show ?case using contraction Suc.IH by simp
+qed
+
+theorem double_reverse_T2_ignores_zero_suffix:
+  "double_reverse_T (double_reverse_T (n * 10^zeros)) =
+    double_reverse_T (double_reverse_T n)"
+  by (simp only: double_reverse_T_ignores_zero_suffix)
+
+text \<open>The source radix projection separates decimal reversal from binary
+multiplication. These two residue laws are the 2-adic and 5-adic halves of
+the bounded radix-25 observer. They do not replace decimal reversal by bit
+reversal or publish temporal branch control.\<close>
+
+lemma double_reverse_T_mod_power_two:
+  "double_reverse_T n mod (2^places) =
+    (2 * (double_reverse_reverse10 n mod (2^places))) mod (2^places)"
+  unfolding double_reverse_T_def
+  by (rule mod_mult_right_eq[symmetric])
+
+lemma double_reverse_T_mod_power_five:
+  "double_reverse_T n mod (5^places) =
+    (2 * (double_reverse_reverse10 n mod (5^places))) mod (5^places)"
+  unfolding double_reverse_T_def
+  by (rule mod_mult_right_eq[symmetric])
+
 text \<open>The border phase, source-aligned endpoint moments, and decimal
 threshold carry laws are separated here.  A repeated phase action is not by
 itself a powered sequence occurrence: applying an action still requires the
@@ -356,6 +437,265 @@ proof -
     by (simp add: algebra_simps)
 qed
 
+text \<open>The guarded periodic bank emits an exact five-way partition of a
+source-aligned decimal pair.  Its two borrow outputs are conditional local
+responses for incoming borrow 0 or 1; they are not a reconstructed
+full-width innovation tape or a closure theorem for arbitrary roots.\<close>
+
+definition double_reverse_pair_lt_low :: "nat \<Rightarrow> nat" where
+  "double_reverse_pair_lt_low pair = (if pair < 5 then 1 else 0)"
+
+definition double_reverse_pair_lt_high :: "nat \<Rightarrow> nat" where
+  "double_reverse_pair_lt_high pair =
+    (if 5 \<le> pair \<and> pair \<le> 8 then 1 else 0)"
+
+definition double_reverse_pair_eq :: "nat \<Rightarrow> nat" where
+  "double_reverse_pair_eq pair = (if pair = 9 then 1 else 0)"
+
+definition double_reverse_pair_gt_low :: "nat \<Rightarrow> nat" where
+  "double_reverse_pair_gt_low pair =
+    (if 10 \<le> pair \<and> pair \<le> 14 then 1 else 0)"
+
+definition double_reverse_pair_gt_high :: "nat \<Rightarrow> nat" where
+  "double_reverse_pair_gt_high pair =
+    (if 15 \<le> pair \<and> pair \<le> 18 then 1 else 0)"
+
+theorem double_reverse_pair_band_partition:
+  assumes "pair \<le> 18"
+  shows "double_reverse_pair_lt_low pair +
+      double_reverse_pair_lt_high pair + double_reverse_pair_eq pair +
+      double_reverse_pair_gt_low pair + double_reverse_pair_gt_high pair = 1"
+  using assms
+  by (simp add: double_reverse_pair_lt_low_def
+      double_reverse_pair_lt_high_def double_reverse_pair_eq_def
+      double_reverse_pair_gt_low_def double_reverse_pair_gt_high_def;
+      presburger)
+
+lemma double_reverse_decimal_pair_band_partition:
+  assumes "left < 10" "right < 10"
+  shows "double_reverse_pair_lt_low (left + right) +
+      double_reverse_pair_lt_high (left + right) +
+      double_reverse_pair_eq (left + right) +
+      double_reverse_pair_gt_low (left + right) +
+      double_reverse_pair_gt_high (left + right) = 1"
+proof -
+  have "left + right \<le> 18" using assms by presburger
+  then show ?thesis by (rule double_reverse_pair_band_partition)
+qed
+
+definition double_reverse_conditional_borrow :: "nat \<Rightarrow> nat \<Rightarrow> nat
+    \<Rightarrow> nat" where
+  "double_reverse_conditional_borrow before after incoming =
+    (if after < before + incoming then 1 else 0)"
+
+lemma double_reverse_conditional_borrow_ports:
+  "(double_reverse_conditional_borrow before after 0,
+    double_reverse_conditional_borrow before after 1) =
+   ((if after < before then 1 else 0),
+    (if after < Suc before then 1 else 0))"
+  by (simp add: double_reverse_conditional_borrow_def)
+
+text \<open>The pointed temporal evaluator is admitted only after its exact
+two-cell edge enters this nine-state cylinder.  This finite relation records
+both possible inward carries at the shrinking-side edge and the forced
+carry-independent branch at the other edge.  It proves border closure and
+phase advance, not generation of an arbitrary interior word by Hashlife.\<close>
+
+type_synonym double_reverse_boundary_edge = "nat \<times> nat \<times> nat \<times> nat"
+
+definition double_reverse_closed_border :: "double_reverse_boundary_edge set" where
+  "double_reverse_closed_border =
+    {(1,7,4,2), (1,7,6,8), (1,7,8,8),
+     (4,8,4,2), (4,8,6,8), (4,8,8,8),
+     (4,9,4,2), (4,9,6,8), (4,9,8,8)}"
+
+definition double_reverse_border_phase ::
+    "double_reverse_boundary_edge \<Rightarrow> nat" where
+  "double_reverse_border_phase edge =
+    (case edge of (a,b,y,z) \<Rightarrow>
+      (if a = 1 then (if z = 8 then 0 else 1)
+       else (if z = 8 then 3 else 2)))"
+
+definition double_reverse_border_target ::
+    "double_reverse_boundary_edge \<Rightarrow> nat \<Rightarrow>
+      double_reverse_boundary_edge" where
+  "double_reverse_border_target edge inward =
+    (case edge of (a,b,y,z) \<Rightarrow>
+      (if 5 \<le> z then
+        (1, (2*z + threshold5_digit y) mod 10,
+          (2*b + threshold5_digit a) mod 10, (2*a) mod 10)
+       else
+        (2*z + threshold5_digit y, (2*y + inward) mod 10,
+          (2*b + threshold5_digit a) mod 10, (2*a) mod 10)))"
+
+definition double_reverse_border_width_growth ::
+    "double_reverse_boundary_edge \<Rightarrow> nat" where
+  "double_reverse_border_width_growth edge =
+    (case edge of (a,b,y,z) \<Rightarrow> if 5 \<le> z then 1 else 0)"
+
+lemma double_reverse_closed_border_ingress_closed:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+    and inward: "inward < 2"
+  shows "double_reverse_border_target edge inward \<in>
+    double_reverse_closed_border"
+proof -
+  have inward_cases: "inward = 0 \<or> inward = 1"
+    using inward by presburger
+  have edge_cases:
+    "edge = (1,7,4,2) \<or> edge = (1,7,6,8) \<or>
+      edge = (1,7,8,8) \<or> edge = (4,8,4,2) \<or>
+      edge = (4,8,6,8) \<or> edge = (4,8,8,8) \<or>
+      edge = (4,9,4,2) \<or> edge = (4,9,6,8) \<or>
+      edge = (4,9,8,8)"
+    using edge by (simp add: double_reverse_closed_border_def)
+  show ?thesis
+    using edge_cases inward_cases
+    by (elim disjE; simp add: double_reverse_closed_border_def
+        double_reverse_border_target_def threshold5_digit_def)
+qed
+
+lemma double_reverse_closed_border_phase_step:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+    and inward: "inward < 2"
+  shows "double_reverse_border_phase
+      (double_reverse_border_target edge inward) =
+    (double_reverse_border_phase edge + 1) mod 4"
+proof -
+  have inward_cases: "inward = 0 \<or> inward = 1"
+    using inward by presburger
+  have edge_cases:
+    "edge = (1,7,4,2) \<or> edge = (1,7,6,8) \<or>
+      edge = (1,7,8,8) \<or> edge = (4,8,4,2) \<or>
+      edge = (4,8,6,8) \<or> edge = (4,8,8,8) \<or>
+      edge = (4,9,4,2) \<or> edge = (4,9,6,8) \<or>
+      edge = (4,9,8,8)"
+    using edge by (simp add: double_reverse_closed_border_def)
+  show ?thesis
+    using edge_cases inward_cases
+    by (elim disjE; simp add: double_reverse_closed_border_def
+        double_reverse_border_phase_def double_reverse_border_target_def
+        threshold5_digit_def)
+qed
+
+lemma double_reverse_closed_border_two_phase_steps:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+    and first_inward: "first_inward < 2"
+    and second_inward: "second_inward < 2"
+  shows "double_reverse_border_phase
+      (double_reverse_border_target
+        (double_reverse_border_target edge first_inward) second_inward) =
+    double_reverse_phase_after 1 (double_reverse_border_phase edge)"
+proof -
+  have first_closed:
+    "double_reverse_border_target edge first_inward \<in>
+      double_reverse_closed_border"
+    by (rule double_reverse_closed_border_ingress_closed[OF edge first_inward])
+  have first_phase:
+    "double_reverse_border_phase
+      (double_reverse_border_target edge first_inward) =
+      (double_reverse_border_phase edge + 1) mod 4"
+    by (rule double_reverse_closed_border_phase_step[OF edge first_inward])
+  have second_phase:
+    "double_reverse_border_phase
+      (double_reverse_border_target
+        (double_reverse_border_target edge first_inward) second_inward) =
+      (double_reverse_border_phase
+        (double_reverse_border_target edge first_inward) + 1) mod 4"
+    by (rule double_reverse_closed_border_phase_step[OF first_closed second_inward])
+  let ?phase = "double_reverse_border_phase edge"
+  have one_plus: "(1::nat) + 1 = 2" by simp
+  have mod_nested: "(( (?phase + 1) mod 4 + 1) mod 4) =
+      (?phase + 2) mod 4"
+    by (simp only: mod_add_left_eq add.assoc one_plus)
+  show ?thesis
+    using first_phase second_phase mod_nested
+    by (simp add: double_reverse_phase_after_def)
+qed
+
+definition double_reverse_border_physical_births :: "nat \<Rightarrow> nat \<times> nat" where
+  "double_reverse_border_physical_births phase =
+    (if phase mod 4 = 3 then 1 else 0,
+     if phase mod 4 = 0 then 1 else 0)"
+
+definition double_reverse_border_pair_births :: "nat \<Rightarrow> nat \<times> nat" where
+  "double_reverse_border_pair_births phase =
+    double_reverse_growth_then
+      (double_reverse_border_physical_births phase)
+      (double_reverse_border_physical_births ((phase + 1) mod 4))"
+
+lemma double_reverse_closed_border_growth_matches_width:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+  shows "double_reverse_border_width_growth edge =
+    fst (double_reverse_border_physical_births
+      (double_reverse_border_phase edge)) +
+    snd (double_reverse_border_physical_births
+      (double_reverse_border_phase edge))"
+  using edge
+  by (auto simp: double_reverse_closed_border_def
+      double_reverse_border_width_growth_def double_reverse_border_phase_def
+      double_reverse_border_physical_births_def split: prod.splits)
+
+lemma double_reverse_border_pair_births_match_controller:
+  assumes phase: "phase < 4"
+  shows "double_reverse_border_pair_births phase =
+    (double_reverse_left_birth phase, double_reverse_right_birth phase)"
+  using phase
+  by (cases phase; simp add: double_reverse_border_pair_births_def
+      double_reverse_border_physical_births_def double_reverse_growth_then_def
+      double_reverse_left_birth_def double_reverse_right_birth_def)
+
+fun double_reverse_closed_border_growth_trace ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<times> nat" where
+  "double_reverse_closed_border_growth_trace 0 phase = (0,0)"
+| "double_reverse_closed_border_growth_trace (Suc steps) phase =
+    double_reverse_growth_then
+      (double_reverse_border_pair_births phase)
+      (double_reverse_closed_border_growth_trace steps
+        (double_reverse_phase_after 1 phase))"
+
+lemma double_reverse_closed_border_growth_trace_refines_controller:
+  assumes phase: "phase < 4"
+  shows "double_reverse_closed_border_growth_trace steps phase =
+    double_reverse_growth_trace steps phase"
+  using phase
+proof (induction steps arbitrary: phase)
+  case 0
+  then show ?case by simp
+next
+  case (Suc steps)
+  have next_phase: "double_reverse_phase_after 1 phase < 4"
+    using Suc.prems
+    unfolding double_reverse_phase_after_def
+    by presburger
+  have pair:
+    "double_reverse_border_pair_births phase =
+      (double_reverse_left_birth phase, double_reverse_right_birth phase)"
+    by (rule double_reverse_border_pair_births_match_controller[OF Suc.prems])
+  have ih:
+    "double_reverse_closed_border_growth_trace steps
+        (double_reverse_phase_after 1 phase) =
+      double_reverse_growth_trace steps (double_reverse_phase_after 1 phase)"
+    by (rule Suc.IH[OF next_phase])
+  show ?case
+    using pair ih
+    by (simp add: double_reverse_growth_then_def)
+qed
+
+theorem double_reverse_closed_border_growth_trace_even:
+  assumes phase: "phase < 4"
+  shows "double_reverse_closed_border_growth_trace (2*returns) phase =
+    (returns, returns)"
+proof -
+  have refinement:
+    "double_reverse_closed_border_growth_trace (2*returns) phase =
+      double_reverse_growth_trace (2*returns) phase"
+    by (rule double_reverse_closed_border_growth_trace_refines_controller[OF phase])
+  have controller:
+    "double_reverse_growth_trace (2*returns) phase = (returns, returns)"
+    by (rule double_reverse_growth_trace_even[OF phase])
+  show ?thesis using refinement controller by simp
+qed
+
 text \<open>The carry reset law is the invariant that permits this local kernel
 composition: each nonempty emitted digit selects its outgoing threshold
 carry without consulting a stale incoming port.  This theorem is local to
@@ -378,7 +718,22 @@ ML \<open>
     double_reverse_growth_trace_two double_reverse_growth_trace_even
     double_reverse_interval_moments_source_aligned
     double_reverse_endpoint_matrix_refines_source
+    double_reverse_reverse10_ignores_trailing_zero
+    double_reverse_T_ignores_trailing_zero
+    double_reverse_T_ignores_zero_suffix
+    double_reverse_T2_ignores_zero_suffix
+    double_reverse_T_mod_power_two double_reverse_T_mod_power_five
     double_reverse_two_pass_cell_refines_kernel
+    double_reverse_pair_band_partition
+    double_reverse_decimal_pair_band_partition
+    double_reverse_conditional_borrow_ports
+    double_reverse_closed_border_ingress_closed
+    double_reverse_closed_border_phase_step
+    double_reverse_closed_border_two_phase_steps
+    double_reverse_closed_border_growth_matches_width
+    double_reverse_border_pair_births_match_controller
+    double_reverse_closed_border_growth_trace_refines_controller
+    double_reverse_closed_border_growth_trace_even
     double_reverse_ordered_pair_regression
     threshold5_carry_reset threshold5_weight_append threshold5_weight_repeat};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    BorderExitPort,
+)
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     select_border_return_macro,
@@ -19,6 +24,8 @@ from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
     admit_routed_boundary_macro_plan,
+    boundary_macro_26847_phase,
+    boundary_metric_suffix,
     select_admitted_boundary_macro,
     validate_admitted_boundary_macro_plan,
 )
@@ -36,9 +43,9 @@ def admit_physical_boundary_plan(
 ) -> AdmittedBoundaryMacroPlan | None:
     """Admit and account one source/clock-bound named boundary candidate."""
     plan = admit_routed_boundary_macro_plan(source, remaining)
-    ledger.bump("collatz_physical_boundary_plan_checks")
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_PLAN_CHECKS)
     ledger.bump(
-        "collatz_physical_boundary_plan_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_PLAN_OPERAND_BITS,
         source.bit_length() + remaining.bit_length(),
     )
     return plan
@@ -46,7 +53,10 @@ def admit_physical_boundary_plan(
 
 def minimum_useful_border_extent(plan: AdmittedBoundaryMacroPlan | None) -> int:
     """Let border preflight defer only to an admitted edge-cycle alternative."""
-    if plan is not None and (plan.family == "0563" or plan.family.startswith("26847")):
+    if plan is not None and (
+        plan.identity == ENTRY_0563
+        or boundary_macro_26847_phase(plan.identity) is not None
+    ):
         return plan.physical_ticks
     return 0
 
@@ -115,12 +125,14 @@ def consume_border_return(
                 8 * (before.bit_length() + 4 * steps + 4 * control_bits + 32)
             )
         except BlockContextBudgetExceeded as exc:
-            ledger.bump("collatz_physical_border_return_admission_budget_refusals")
+            ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_ADMISSION_BUDGET_REFUSALS
+            )
             if minimum_useful_physical_ticks:
                 raise _OptionalBorderPreflightRefused from exc
             raise
 
-    ledger.bump("collatz_physical_border_return_admission_checks")
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_ADMISSION_CHECKS)
     try:
         border = select_border_return_macro(
             before,
@@ -131,7 +143,7 @@ def consume_border_return(
         )
     except _OptionalBorderPreflightRefused:
         ledger.bump(
-            "collatz_physical_border_return_candidate_alternate_route_fallbacks"
+            _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_ALTERNATE_ROUTE_FALLBACKS
         )
         return None, None
     if border is None:
@@ -144,21 +156,36 @@ def consume_border_return(
     if width_spine.complete:
         width_spine.record(border.width_blank)
     normalized_f5, physical_f5 = _compose_f5_actions(state, border)
-    ledger.bump("collatz_physical_boundary_6305R_macro_actions")
-    ledger.bump("collatz_physical_boundary_6305R_macro_repetitions", border.repetitions)
-    ledger.bump("collatz_physical_border_return_3_reentries", border.returns)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_6305R_MACRO_ACTIONS)
     ledger.bump(
-        "collatz_physical_border_return_zero_tail_symbols", sum(border.zero_tails)
+        _collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_6305R_MACRO_REPETITIONS,
+        border.repetitions,
     )
     ledger.bump(
-        "collatz_physical_border_return_exit_8_to_4", int(border.exit_port == "8_to_4")
+        _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_3_REENTRIES, border.returns
     )
     ledger.bump(
-        "collatz_physical_border_return_exit_8_to_9",
-        int(border.exit_port.startswith("8_to_9")),
+        _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_ZERO_TAIL_SYMBOLS,
+        sum(border.zero_tails),
     )
     ledger.bump(
-        "collatz_physical_temporal_run_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_EXIT_8_TO_4,
+        int(border.exit_port is BorderExitPort.EIGHT_TO_FOUR),
+    )
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_EXIT_8_TO_9,
+        int(
+            border.exit_port
+            in (
+                BorderExitPort.EIGHT_TO_NINE,
+                BorderExitPort.EIGHT_TO_NINE_TO_EIGHT,
+                BorderExitPort.EIGHT_TO_NINE_OPEN,
+                BorderExitPort.EIGHT_TO_NINE_PENDING,
+            )
+        ),
+    )
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
         before.bit_length()
         + border.endpoint.bit_length()
         + border.fields.gain.bit_length()
@@ -176,7 +203,7 @@ def consume_border_return(
             )
         except BlockContextBudgetExceeded:
             macros.frontier.clear()
-            ledger.bump("collatz_boundary_prefix_budget_bypasses")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_BUDGET_BYPASSES)
     return MixedRunExecutorState(
         border.endpoint,
         state.remaining - border.physical_ticks,
@@ -225,7 +252,7 @@ def consume_named_boundary(
     boundary = select_admitted_boundary_macro(plan, templates=templates)
     if (
         boundary is None
-        or boundary.family != plan.family
+        or boundary.identity != plan.identity
         or boundary.repetitions != plan.repetitions
         or boundary.normalized_symbols != plan.normalized_symbols
     ):
@@ -240,17 +267,18 @@ def consume_named_boundary(
     if width_spine.complete:
         width_spine.record(boundary.width_blank)
     normalized_f5, physical_f5 = _compose_f5_actions(state, boundary)
-    family = plan.family
-    ledger.bump(f"collatz_physical_boundary_{family}_macro_actions")
+    metric_suffix = boundary_metric_suffix(plan.identity)
+    ledger.bump(f"collatz_physical_boundary_{metric_suffix}_macro_actions")
     ledger.bump(
-        f"collatz_physical_boundary_{family}_macro_repetitions", boundary.repetitions
+        f"collatz_physical_boundary_{metric_suffix}_macro_repetitions",
+        boundary.repetitions,
     )
     ledger.bump(
-        f"collatz_physical_boundary_{family}_macro_physical_ticks",
+        f"collatz_physical_boundary_{metric_suffix}_macro_physical_ticks",
         boundary.physical_ticks,
     )
     ledger.bump(
-        "collatz_physical_temporal_run_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
         state.current.bit_length()
         + boundary.endpoint.bit_length()
         + boundary.fields.gain.bit_length()
@@ -271,7 +299,7 @@ def consume_named_boundary(
         except BlockContextBudgetExceeded:
             macros.frontier.clear()
             lookup_enabled = False
-            ledger.bump("collatz_boundary_prefix_budget_bypasses")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_BUDGET_BYPASSES)
     width_spine.reset_segment()
     return (
         MixedRunExecutorState(

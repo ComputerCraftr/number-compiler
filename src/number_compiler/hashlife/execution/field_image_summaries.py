@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from number_compiler.hashlife.execution.field_image_domains import FieldInterfaceArena
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +114,7 @@ class ParametricFieldImageSummary:
             return
         if not isinstance(interfaces, HigherLocalInterfaceArena):
             raise TypeError("range expressions require a higher semantic interface")
-        interfaces.ledger.bump("field_range_summary_validations")
+        interfaces.ledger.bump(_execution_keys.FIELD_RANGE_SUMMARY_VALIDATIONS)
         local = interfaces.resolve(self.interface)
         signature = interfaces.interface(local.signature)
         inputs = {port.variable for port in signature.inputs}
@@ -127,7 +130,9 @@ class ParametricFieldImageSummary:
             else FieldAtomSort("field-growth-biased", 2 * width + 1),
         )
         for expression, expected in zip(summary.expressions(), sorts, strict=True):
-            interfaces.ledger.bump("field_range_summary_validation_expressions")
+            interfaces.ledger.bump(
+                _execution_keys.FIELD_RANGE_SUMMARY_VALIDATION_EXPRESSIONS
+            )
             node = interfaces.semantics.expression(expression)
             if node.sort != expected:
                 raise ValueError("range summary expression has another extent sort")

@@ -30,7 +30,9 @@ from number_compiler.projection.tile_radix import (
     TileRadixObservation,
 )
 from number_compiler.resources.construction_scope import RuntimeConstruction
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import projection as _projection_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.cycle import fixed_cycle_target
 
@@ -96,22 +98,22 @@ class RadixProjection:
             "remainder",
             source_scope=workspace.owner,
         )
-        self.ledger.bump("radix_provider_digit_requests")
+        self.ledger.bump(_projection_keys.RADIX_PROVIDER_DIGIT_REQUESTS)
         cached = self._microblocks.get(key)
         if cached is not None:
-            self.ledger.bump("radix_provider_digit_early_hits")
+            self.ledger.bump(_projection_keys.RADIX_PROVIDER_DIGIT_EARLY_HITS)
             return int(cached.encoded)
 
         # Exterior admission uses the same affine image; a zero remainder
         # alone cannot distinguish an internal zero digit from blank padding.
         digit = term._admitted_radix_digit(self.radix, index)
-        term._ledger.bump("collatz_image_radix_demands")
+        term._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
         if not 0 <= digit < self.radix:
             raise AssertionError("radix provider produced an invalid digit")
         self._microblocks.put(
             key, ExactMicroblock(digit, max(1, (self.radix - 1).bit_length()))
         )
-        self.ledger.bump("radix_provider_digit_evaluations")
+        self.ledger.bump(_projection_keys.RADIX_PROVIDER_DIGIT_EVALUATIONS)
         return digit
 
     def _original_affine_digit(
@@ -179,7 +181,7 @@ class RadixProjection:
                     low = self.ledger.observe_arithmetic(
                         low | (term.seed_digits[source_skip + position] << position)
                     )
-                    self.ledger.bump("radix_native_original_bit_reads")
+                    self.ledger.bump(_projection_keys.RADIX_NATIVE_ORIGINAL_BIT_READS)
                 self.ledger.bump(
                     "radix_native_odd_constant_queries"
                     if not low_bits
@@ -212,7 +214,7 @@ class RadixProjection:
                 source_index,
             )
             if bounded is not None:
-                self.ledger.bump("radix_native_bounded_source_queries")
+                self.ledger.bump(_projection_keys.RADIX_NATIVE_BOUNDED_SOURCE_QUERIES)
                 return bounded
             if encoding is None:
                 encoding = self._native_source.encode(
@@ -231,7 +233,7 @@ class RadixProjection:
         # immutable source encoding for the public source-audit contract.
         cycle_value = fixed_cycle_target(term.seed_digits, term.steps)
         if cycle_value is not None:
-            self.ledger.bump("radix_fixed_cycle_observations")
+            self.ledger.bump(_projection_keys.RADIX_FIXED_CYCLE_OBSERVATIONS)
             if index == 0:
                 return cycle_value % self.radix
             if index == 1 and cycle_value >= self.radix:
@@ -272,7 +274,7 @@ class RadixProjection:
                     self.ledger.release(self._fused_actions.owner, entries=1)
                     raise
             else:
-                self.ledger.bump("radix_fused_binding_hits")
+                self.ledger.bump(_projection_keys.RADIX_FUSED_BINDING_HITS)
             if self._fused is None:
                 raise AssertionError("fused binding has no semantic arena")
             return self._fused.digit(action)
@@ -300,7 +302,7 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
     width = term.maximum_width
     if not 0 <= index < width:
         raise IndexError(index)
-    term._ledger.bump("radix_observations")
+    term._ledger.bump(_projection_keys.RADIX_OBSERVATIONS)
     if radix & (radix - 1) == 0:
         symbol = term._point_radix_symbol(radix, index)
         if symbol == radix:
@@ -309,7 +311,7 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
     projection = term._radix_projections.get(radix)
     if projection is None:
         owner = term._ledger.register(
-            "radix-applications", "application_index", "INDEX_OWNED"
+            "radix-applications", "application_index", ResourceScope.INDEX_OWNED
         )
         term._ledger.reserve(owner, entries=1)
         try:

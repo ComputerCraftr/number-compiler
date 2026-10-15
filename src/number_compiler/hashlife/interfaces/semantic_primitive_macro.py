@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.automata.primitive_semantics import (
     PrimitiveSemantics,
@@ -23,7 +23,10 @@ from number_compiler.arithmetic.automata.primitive_semantics import (
 )
 from number_compiler.arithmetic.contracts.block_effect import _effect_key
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -61,6 +64,10 @@ from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroTask,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -72,8 +79,9 @@ if TYPE_CHECKING:
     )
 
 
+SEMANTIC_PRIMITIVE_MACRO_TAG: Final[str] = "fixed-padded-cell-v1"
 CONTRACT = (
-    "fixed-padded-cell-v1",
+    SEMANTIC_PRIMITIVE_MACRO_TAG,
     "boundary-exits",
     "coordinate-output",
     "nonblank-activity",
@@ -212,14 +220,14 @@ class PrimitiveMacroArena:
     def probe(self, task: PrimitiveMacroTask) -> DiamondQuotientID | None:
         self.validate_task(task)
         if type(task) is PrimitiveMacroObservation:
-            self.ledger.bump("primitive_macro_observation_requests")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_OBSERVATION_REQUESTS)
             return None
         assert isinstance(task, PrimitiveMacroKey)
-        self.ledger.bump("primitive_macro_requests")
+        self.ledger.bump(_shared_keys.PRIMITIVE_MACRO_REQUESTS)
         cached = self.bindings.get(task)
         if cached is not None:
             self.quotients.resolve(cached.quotient)
-            self.ledger.bump("primitive_macro_early_hits")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_EARLY_HITS)
             return cached.quotient
         return None
 
@@ -257,7 +265,7 @@ class PrimitiveMacroArena:
                 raise AssertionError(
                     "admitted complete macro observation became undefined"
                 )
-            self.ledger.bump("primitive_macro_observation_evaluations")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_OBSERVATION_EVALUATIONS)
             return result
         assert isinstance(task, PrimitiveMacroKey)
         if (
@@ -269,8 +277,8 @@ class PrimitiveMacroArena:
             )
 
             raise BlockContextBudgetExceeded("primitive macro needs a source binding")
-        self.ledger.bump("primitive_macro_evaluations")
-        self.ledger.bump("primitive_macro_source_frames")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_EVALUATIONS)
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_SOURCE_FRAMES)
         node = self.cells.require_original(task.source)
         children: tuple[PrimitiveMacroBinding, PrimitiveMacroBinding] | None = None
         if node.level:
@@ -304,7 +312,9 @@ class PrimitiveMacroArena:
             else:
                 channels, extent = self._parent(laws, node.width, *children)
             behavior = (CONTRACT, _effect_key(primitive.effect), node.width)
-            identity = SemanticIdentity("primitive-macro", behavior)
+            identity = SemanticIdentity(
+                SemanticIdentityDomain.PRIMITIVE_MACRO, behavior
+            )
             outputs = tuple(
                 self.bits.resolve(channel).signature.output for channel in channels
             )
@@ -320,7 +330,7 @@ class PrimitiveMacroArena:
             )
             quotient = self.quotients.intern(interface, components)
             self.bindings._data[task] = PrimitiveMacroBinding(quotient, extent)
-            self.ledger.bump("primitive_macro_compilations")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_COMPILATIONS)
         except BaseException:
             self.ledger.release(self.bindings.owner, entries=1)
             raise
@@ -399,7 +409,7 @@ class PrimitiveMacroArena:
         left: PrimitiveMacroBinding,
         right: PrimitiveMacroBinding,
     ) -> tuple[tuple[FactoredFunctionID, ...], int]:
-        self.ledger.bump("primitive_macro_spatial_compositions")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_SPATIAL_COMPOSITIONS)
         ports, half = self._ports(laws, width), width // 2
         incoming_left = self._variable(ports, _LEFT, laws.left_sort)
         incoming_right = self._variable(ports, _RIGHT, laws.right_sort)

@@ -9,9 +9,24 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz import boundary_macros
+from number_compiler.sequences.collatz.border_identity import (
+    CYCLE_89,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_305,
+    PATH_630,
+    BoundaryPathKind,
+    ClosedBorderCycle,
+    CycleEntryPhase,
+    GuardedBorderPath,
+    border_return_path,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
+    admit_boundary_macro_plan,
+    boundary_metric_suffix,
     select_boundary_macro,
     validate_boundary_macro,
 )
@@ -38,7 +53,11 @@ def test_guarded_macro_is_exact_and_issued_only_by_the_selector() -> None:
     assert macro is not None
     validate_boundary_macro(macro)
     assert not hasattr(CollatzBoundaryMacro, "from_structural_payload")
-    assert (macro.family, macro.repetitions, macro.physical_ticks) == ("4721", 3, 13)
+    assert (macro.identity, macro.repetitions, macro.physical_ticks) == (
+        ENTRY_4721,
+        3,
+        13,
+    )
     assert macro.endpoint == _physical(2174, 13)
     with pytest.raises(TypeError):
         CollatzBoundaryMacro()
@@ -54,12 +73,45 @@ def test_guarded_macro_is_exact_and_issued_only_by_the_selector() -> None:
         validate_boundary_macro(forged)
 
 
+def test_cycle_display_phase_does_not_create_an_unguarded_entry_action() -> None:
+    eight_entry = CycleEntryPhase(CYCLE_89, 0)
+    assert eight_entry.display_label == "898"
+    assert ENTRY_89_AT_NINE.display_label == "989"
+    assert boundary_metric_suffix(ENTRY_89_AT_NINE) == "989"
+    assert admit_boundary_macro_plan(18, 100, minimum_repetitions=1) is None
+    with (
+        BoundaryActionTemplateMemo(ResourceLedger()) as templates,
+        pytest.raises(ValueError, match="unknown Collatz boundary action"),
+    ):
+        templates.get(eight_entry, 2)
+
+
+def test_cycle_phases_are_unique_and_guarded_path_labels_are_entry_first() -> None:
+    with pytest.raises(ValueError, match="identify every phase uniquely"):
+        ClosedBorderCycle.from_rotation((1, 2, 1, 2))
+
+    assert PATH_630.display_label == "6→3→0"
+    assert PATH_305.display_label == "3→0*→5"
+    assert border_return_path(3, 8).display_label == "3→0*→5→6→8"
+    assert border_return_path(6, 8).display_label == "6→3→0*→5→6→8"
+    assert border_return_path(5, 3).display_label == "5→6→3→0*→5→6→3"
+    assert border_return_path(0, 4).display_label == "0*→(3|5→6→3)→0*→5→6→8→4"
+
+    with pytest.raises(ValueError, match="exact entry and exit"):
+        GuardedBorderPath(BoundaryPathKind.SIX_THREE_ZERO, 6, 3)
+
+
 @pytest.mark.parametrize(
-    ("source", "ticks", "family"),
-    ((164, 7, "421"), (94, 9, "4721"), (26, 5, "630"), (19, 4, "989")),
+    ("source", "ticks", "identity"),
+    (
+        (164, 7, ENTRY_421),
+        (94, 9, ENTRY_4721),
+        (26, 5, PATH_630),
+        (19, 4, ENTRY_89_AT_NINE),
+    ),
 )
 def test_each_guarded_family_matches_endpoint_f5_joint_and_width(
-    source: int, ticks: int, family: str
+    source: int, ticks: int, identity: object
 ) -> None:
     result = compile_collatz_temporal_run_quotient(
         source,
@@ -76,7 +128,7 @@ def test_each_guarded_family_matches_endpoint_f5_joint_and_width(
     assert result.first_boundary is not None
     assert result.first_boundary[0] == 0
     assert result.first_boundary_macro is not None
-    assert result.first_boundary_macro.family == family
+    assert result.first_boundary_macro.identity == identity
     assert result.first_boundary_macro.endpoint == endpoint
     assert result.physical_f5 is not None
     assert result.physical_f5.apply(source) == endpoint % 5
@@ -132,7 +184,7 @@ def test_template_memo_warm_hit_bypasses_exact_cold_constructor(
 ) -> None:
     ledger = ResourceLedger()
     with BoundaryActionTemplateMemo(ledger) as memo:
-        cold = memo.get("4721", 2)
+        cold = memo.get(ENTRY_4721, 2)
 
         def forbidden(*_args: object, **_kwargs: object) -> object:
             raise AssertionError("warm boundary template lookup rebuilt its action")
@@ -140,7 +192,7 @@ def test_template_memo_warm_hit_bypasses_exact_cold_constructor(
         monkeypatch.setattr(
             boundary_macros, "_build_boundary_action_template", forbidden
         )
-        assert memo.get("4721", 2) is cold
+        assert memo.get(ENTRY_4721, 2) is cold
     assert ledger.counters["collatz_boundary_template_publications"] == 1
     assert ledger.counters["collatz_boundary_template_hits"] == 1
 
@@ -150,7 +202,7 @@ def test_template_memo_cleanup_failure_blocks_use_and_can_be_retried(
 ) -> None:
     ledger = ResourceLedger()
     memo = BoundaryActionTemplateMemo(ledger)
-    memo.get("4721", 2)
+    memo.get(ENTRY_4721, 2)
     templates = memo._templates
     assert templates is not None
     owner = templates.owner
@@ -173,7 +225,7 @@ def test_template_memo_cleanup_failure_blocks_use_and_can_be_retried(
     assert memo._closing and not memo._closed
     assert ledger.inventory_owner(owner).entries > 0
     with pytest.raises(RuntimeError, match="closed"):
-        memo.get("4721", 2)
+        memo.get(ENTRY_4721, 2)
 
     memo.dispose()
     assert memo._closed and not memo._closing
@@ -188,7 +240,7 @@ def test_foreign_macro_cannot_publish_at_another_root_origin() -> None:
         ResourceLedger(), 165, 7, include_innovation_tape=True
     )
     candidate = SourceImageCandidate(workspace.root_payload, workspace.steps)
-    occurrence = (0, 164, source_macro.physical_ticks, source_macro.family)
+    occurrence = (0, 164, source_macro.physical_ticks, source_macro.identity)
     with pytest.raises(ValueError, match="differs from its run witness"):
         workspace._attach_boundary_macro(candidate, occurrence, source_macro)
 
@@ -320,4 +372,4 @@ def test_demanded_989_macro_keeps_the_exact_completed_endpoint() -> None:
     )
     assert result.endpoint == _physical(19, 4)
     assert result.first_boundary_macro is not None
-    assert result.first_boundary_macro.family == "989"
+    assert result.first_boundary_macro.identity == ENTRY_89_AT_NINE

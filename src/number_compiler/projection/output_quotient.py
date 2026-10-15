@@ -188,9 +188,9 @@ class SpecialOutputMode(str, Enum):
 class SpecialBranchMask:
     """Two-sheet admissibility mask used by lazy special-source projections.
 
-    Bit 0 is the PASS/prime sheet and bit 1 is the FAIL/composite sheet.  The
-    mask is deliberately smaller than the idempotent algebra: cheap source
-    invariants intersect this mask *before* any theorem query is considered.
+    Bits 0 and 1 select the local PASS and FAIL alternatives. Their names alone
+    do not establish prime/composite semantics. A caller must supply a checked
+    connection before transporting a local constraint to a theorem coordinate.
     """
 
     bits: int = 0b11

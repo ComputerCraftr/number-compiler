@@ -31,6 +31,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 DIGIT = AtomSort("collatz-radix64-digit", 64)
 CARRY = AtomSort("collatz-mul3-carry", 3)
@@ -157,7 +158,7 @@ class CollatzOutputMorphism:
         self._domain(left, AtomSort(f"collatz-F5-left-e{shift}", lsize))
         self._domain(right, AtomSort(f"collatz-F5-right-e{shift}", rsize))
         sort = AtomSort("collatz-carry-F5-class", len(RADIX64_F5_CLASSES))
-        self.bits.ledger.bump("collatz_f5_directional_requests")
+        self.bits.ledger.bump(_collatz_keys.COLLATZ_F5_DIRECTIONAL_REQUESTS)
         if self._f5_pairs is None:
             ledger = self.bits.ledger
             ledger.register_execution_root(self)
@@ -174,7 +175,7 @@ class CollatzOutputMorphism:
         cached = self._f5_pairs.get(key)
         if cached is not None:
             self._domain(cached, sort)
-            self.bits.ledger.bump("collatz_f5_directional_hits")
+            self.bits.ledger.bump(_collatz_keys.COLLATZ_F5_DIRECTIONAL_HITS)
             return FactoredFunctionID(cached.owner, cached.kind, cached.local_id)
         result = self._select_index(
             left,
@@ -185,7 +186,7 @@ class CollatzOutputMorphism:
         self._f5_pairs[key] = FactoredFunctionID(
             result.owner, result.kind, result.local_id
         )
-        self.bits.ledger.bump("collatz_f5_directional_compositions")
+        self.bits.ledger.bump(_collatz_keys.COLLATZ_F5_DIRECTIONAL_COMPOSITIONS)
         return result
 
     def _select_carry(
@@ -241,7 +242,7 @@ class CollatzOutputMorphism:
             digit, DIGIT, tuple(3 * d % 64 for d in range(64))
         )
         value = self.bits.add(transported, carry, DIGIT, wrap=True)
-        self.bits.ledger.bump("collatz_output_morphism_raw_compositions")
+        self.bits.ledger.bump(_collatz_keys.COLLATZ_OUTPUT_MORPHISM_RAW_COMPOSITIONS)
         return outgoing, value
 
     def correction(
@@ -379,7 +380,7 @@ class CollatzOutputMorphism:
             self._select_carry(incoming, tuple(left_by_carry)),
             self._select_carry(incoming, tuple(right_by_carry)),
         )
-        self.bits.ledger.bump("collatz_free_consumer_compilations")
+        self.bits.ledger.bump(_collatz_keys.COLLATZ_FREE_CONSUMER_COMPILATIONS)
         return result
 
     def shift_domain(
@@ -405,7 +406,7 @@ class CollatzOutputMorphism:
             self.bits.map_atoms(adjacent_right, DOMAIN, row) for row in rows
         )
         result = self._select_index(left, branches)
-        self.bits.ledger.bump("collatz_directional_domain_compositions")
+        self.bits.ledger.bump(_collatz_keys.COLLATZ_DIRECTIONAL_DOMAIN_COMPOSITIONS)
         return result
 
     def growth(self, carry: FactoredFunctionID, shift: int) -> FactoredFunctionID:

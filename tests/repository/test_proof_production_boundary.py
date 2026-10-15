@@ -14,12 +14,22 @@ from devtools.checks.proof_boundary_audit import (
     proof_import_violations,
 )
 from devtools.paths import repository_root
+from tests.support.production_ast import ProductionASTGraph
 
 ROOT = repository_root()
 
 
-def test_all_production_modules_exclude_exact_oracle_dependencies() -> None:
-    assert production_proof_import_violations(ROOT / "src/number_compiler") == ()
+def test_all_production_modules_exclude_exact_oracle_dependencies(
+    production_ast_graph: ProductionASTGraph,
+) -> None:
+    package = ROOT / "src/number_compiler"
+    assert (
+        production_proof_import_violations(
+            package,
+            parsed_sources=production_ast_graph.under(package),
+        )
+        == ()
+    )
 
 
 def test_production_has_no_compatibility_proof_exemptions() -> None:

@@ -23,21 +23,78 @@ def _add_mod(a: tuple[int, ...], b: tuple[int, ...], modulus: int) -> tuple[int,
     return tuple((x + y) % modulus for x, y in zip(a, b, strict=True))
 
 
+def _projection(
+    pair: tuple[int, ...], order: int, bits: int
+) -> ReverseAddSymmetryProjection:
+    projection = ReverseAddSymmetryProjection.from_coefficients(
+        pair,
+        order=order,
+        bits=bits,
+    )
+    assert projection.inversion_fixed
+    assert projection.removed_edge_factor == (len(pair) % 2 == 0)
+    return projection
+
+
+def _assert_involution(projection: ReverseAddSymmetryProjection) -> None:
+    reflected = ReverseAddSymmetryProjection(
+        projection.order,
+        projection.bits,
+        projection.width,
+        projection.inversion_residue(),
+    )
+    assert reflected.inversion_residue() == projection.residue
+
+
+def _assert_one_step_frame(
+    pair: tuple[int, ...],
+    *,
+    base: int,
+    order: int,
+    bits: int,
+    check_involution: bool = False,
+) -> tuple[tuple[int, ...], int]:
+    target, growth = pair_step(pair, base)
+    event = forcing_event(pair, target, growth)
+    source_projection = _projection(pair, order, bits)
+    innovation_projection = _projection(event, order, bits)
+    expected_projection = _projection(target, order, bits)
+    if check_involution:
+        for projection in (
+            source_projection,
+            innovation_projection,
+            expected_projection,
+        ):
+            _assert_involution(projection)
+    linear = ReverseAddSymmetryLinearAction(
+        order,
+        bits,
+        1 - growth,
+        growth,
+    )
+    actual = _add_mod(
+        linear.apply_residue(
+            source_projection.residue,
+            start_parity=len(pair) & 1,
+        ),
+        innovation_projection.residue,
+        1 << bits,
+    )
+    assert actual == expected_projection.residue
+    return target, growth
+
+
+@pytest.mark.validation
 def test_symmetry_projection_is_inversion_fixed_and_removes_even_edge_factor() -> None:
     for base in range(3, 8):
         for width in range(1, 7):
             half = (width + 1) // 2
             for values in itertools.product(range(2 * base - 1), repeat=half):
                 pair = _palindrome(values, width)
-                projection = ReverseAddSymmetryProjection.from_coefficients(
-                    pair,
-                    order=8,
-                    bits=5,
-                )
-                assert projection.inversion_fixed
-                assert projection.removed_edge_factor == (width % 2 == 0)
+                _projection(pair, order=8, bits=5)
 
 
+@pytest.mark.validation
 def test_one_step_reverse_add_is_exact_in_the_reversal_fixed_frame_randomized() -> None:
     rng = random.Random(0x5A77E7)
     for base in range(3, 17):
@@ -45,37 +102,33 @@ def test_one_step_reverse_add_is_exact_in_the_reversal_fixed_frame_randomized() 
             width = rng.randint(1, 20)
             half = [rng.randrange(2 * base - 1) for _ in range((width + 1) // 2)]
             pair = _palindrome(half, width)
-            target, growth = pair_step(pair, base)
-            event = forcing_event(pair, target, growth)
             for order in (2, 4, 8, 16):
-                source = ReverseAddSymmetryProjection.from_coefficients(
+                _assert_one_step_frame(
                     pair,
+                    base=base,
                     order=order,
                     bits=6,
                 )
-                innovation = ReverseAddSymmetryProjection.from_coefficients(
-                    event,
-                    order=order,
-                    bits=6,
-                )
-                expected = ReverseAddSymmetryProjection.from_coefficients(
-                    target,
-                    order=order,
-                    bits=6,
-                )
-                linear = ReverseAddSymmetryLinearAction(
-                    order,
-                    6,
-                    1 - growth,
-                    growth,
-                )
-                actual = _add_mod(
-                    linear.apply_residue(source.residue, start_parity=width & 1),
-                    innovation.residue,
-                    64,
-                )
-                assert actual == expected.residue
-                assert expected.inversion_fixed
+
+
+def test_symmetry_frame_small_cases_cover_sectors_growth_and_involution() -> None:
+    cases = (
+        ((9,), 0, 1),
+        ((10,), 1, 1),
+        ((9, 9), 0, 0),
+        ((10, 10), 1, 0),
+    )
+    for pair, expected_growth, expected_parity in cases:
+        assert (len(pair) & 1) == expected_parity
+        for order in (2, 4, 8, 16):
+            _target, growth = _assert_one_step_frame(
+                pair,
+                base=10,
+                order=order,
+                bits=6,
+                check_involution=True,
+            )
+            assert growth == expected_growth
 
 
 def test_growth_is_only_a_two_sector_symmetry_action() -> None:

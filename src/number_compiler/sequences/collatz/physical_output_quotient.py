@@ -21,6 +21,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
 )
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 
@@ -67,8 +68,8 @@ def collatz_physical_leaf_output(
         left, BOOL, tuple(int(uses_right) for uses_right, _value in consumers)
     )
     result = bits.select(consumes_right, shifted, local)
-    bits.ledger.bump("collatz_physical_factored_output_compilations")
-    bits.ledger.bump("collatz_physical_joint_output_tables_elided")
+    bits.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_FACTORED_OUTPUT_COMPILATIONS)
+    bits.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_JOINT_OUTPUT_TABLES_ELIDED)
     return result
 
 

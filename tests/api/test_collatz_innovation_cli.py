@@ -26,14 +26,14 @@ def test_innovation_rejects_unsupported_modulus_before_construction(
                 "--nth",
                 "16",
                 "--info",
-                "innovation-borrow",
-                "--modulus",
+                "temporal.innovation-borrow",
+                "--temporal-innovation-borrow-modulus",
                 str(modulus),
             ]
         )
 
 
-@pytest.mark.parametrize("name", ("boundary-macro", "innovation-borrow"))
+@pytest.mark.parametrize("name", ("temporal.macro", "temporal.innovation-borrow"))
 def test_guarded_observation_does_not_demand_accumulator_or_render(
     name: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -80,8 +80,8 @@ def test_value_and_innovation_keep_physical_endpoint(
                 "--nth",
                 "13",
                 "--info",
-                "innovation-borrow",
-                "--modulus",
+                "temporal.innovation-borrow",
+                "--temporal-innovation-borrow-modulus",
                 "49",
                 "--format",
                 "json",
@@ -91,7 +91,7 @@ def test_value_and_innovation_keep_physical_endpoint(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] == str(expected)
-    assert packet["info"]["innovation-borrow"]["index"] == 13
+    assert packet["info"]["temporal.innovation-borrow"]["index"] == 13
 
 
 def test_ordinary_value_does_not_prepare_innovation(

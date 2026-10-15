@@ -5,9 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.sequences.collatz.border_identity import (
+    BoundaryActionIdentity,
+    CycleEntryPhase,
+    GuardedBorderPath,
+)
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.fields.homogeneous_growth import (
+        GrowthArithmeticEvaluator,
+    )
+    from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianPacket
     from number_compiler.sequences.collatz.border_return_grammar import (
         BorderReturnMacro,
     )
@@ -24,6 +33,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.temporal_run_quotient import (
         CollatzF5AffineAction,
         CollatzRootFiberCertificate,
+    )
+    from number_compiler.sequences.collatz.unified_skew_chain import (
+        UnifiedSkewChain,
     )
 
 
@@ -47,9 +59,10 @@ class CollatzTemporalRunQuotient:
     root_certificate: CollatzRootFiberCertificate | None
     tape_width_summary: CollatzTapeWidthSummary | None = None
     joint_action: CollatzJointRunAction | None = None
-    first_boundary: tuple[int, int, int, str] | None = None
+    first_boundary: tuple[int, int, int, BoundaryActionIdentity] | None = None
     first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None = None
     innovation_observation: InnovationTapeObservation | None = None
+    unified_skew_chain: UnifiedSkewChain | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -129,7 +142,7 @@ class CollatzTemporalRunQuotient:
                 type(witness) is not tuple
                 or len(witness) != 4
                 or any(type(value) is not int for value in witness[:3])
-                or type(witness[3]) is not str
+                or type(witness[3]) not in (CycleEntryPhase, GuardedBorderPath)
                 or witness[0] < 0
                 or witness[1] <= 0
                 or witness[2] <= 0
@@ -157,9 +170,24 @@ class CollatzTemporalRunQuotient:
             if self.first_boundary is None or (
                 self.first_boundary[1] != macro.source
                 or self.first_boundary[2] != macro.physical_ticks
-                or self.first_boundary[3] != macro.family
+                or self.first_boundary[3] != macro.identity
             ):
                 raise ValueError("Collatz first boundary action is detached")
+        if self.unified_skew_chain is not None:
+            from number_compiler.sequences.collatz.unified_skew_chain import (
+                UnifiedSkewChain,
+            )
+
+            chain = self.unified_skew_chain
+            if (
+                type(chain) is not UnifiedSkewChain
+                or chain.source != self.source
+                or chain.physical_ticks > self.physical_ticks
+                or chain.normalized_symbols > self.normalized_symbols
+                or chain.odd_symbols > self.one_run_symbols
+            ):
+                raise ValueError("unified skew action is detached from the run")
+            chain.verify()
         if self.innovation_observation is not None:
             from number_compiler.sequences.collatz.innovation_port_moore import (
                 InnovationTapeObservation,
@@ -200,6 +228,29 @@ class CollatzTemporalRunQuotient:
             self.normalized_f5,
             self.physical_f5,
         )
+
+    def radial_leading_binary(
+        self, evaluator: GrowthArithmeticEvaluator, width: int = 8
+    ) -> RadialSturmianPacket:
+        """Project supplied physical counts to the 3**odds/2**divisions slope.
+
+        Compiler-produced records populate these counts from the admitted
+        source run, including any pending odd half-step or terminal cycle
+        after a shorter skew chain. This projection consumes the record's
+        counts; it does not authenticate the source or endpoint itself.
+        """
+        from number_compiler.arithmetic.fields.homogeneous_growth import (
+            HomogeneousGrowthScale,
+        )
+        from number_compiler.arithmetic.fields.radial_sturmian import (
+            RadialSturmianClock,
+        )
+
+        if self.unified_skew_chain is not None:
+            self.unified_skew_chain.verify()
+        return RadialSturmianClock(
+            HomogeneousGrowthScale(self.odd_ticks, self.division_ticks)
+        ).leading_binary(evaluator, width)
 
     @property
     def width(self) -> int:

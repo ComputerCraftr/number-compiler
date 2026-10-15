@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
@@ -18,12 +18,16 @@ from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.threshold_envelope import ThresholdEnvelope
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.hensel_cylinders import (
     MAX_CYLINDER_BITS,
     HenselCylinder,
 )
 from number_compiler.sequences.collatz.parity import collatz_parity_inverse_residue
 from number_compiler.sequences.collatz.radix64_transducer import compose_radix64_events
+
+COLLATZ_SATURATED_OCCURRENCE_TAG: Final[str] = "collatz-saturated-occurrence-v2"
+COLLATZ_SOURCE_FREE_SATURATED_TAG: Final[str] = "collatz-source-free-saturated-v1"
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.source_publisher import (
@@ -114,7 +118,7 @@ class SaturatedCollatzOccurrence:
     def canonical_key(self) -> tuple[object, ...]:
         transfer = self.action.endpoint
         return (
-            "collatz-saturated-occurrence-v2",
+            COLLATZ_SATURATED_OCCURRENCE_TAG,
             self.events,
             self.domain.bits,
             self.domain.residue,
@@ -307,10 +311,11 @@ class _SaturatedFold:
         if ledger is None:
             return
         ledger.bump(
-            "collatz_saturated_threshold_lines", len(node.action.threshold.lines)
+            _collatz_keys.COLLATZ_SATURATED_THRESHOLD_LINES,
+            len(node.action.threshold.lines),
         )
         ledger.bump(
-            "collatz_saturated_coefficient_bits",
+            _collatz_keys.COLLATZ_SATURATED_COEFFICIENT_BITS,
             sum(
                 line.multiplier.numerator.bit_length()
                 + line.multiplier.denominator.bit_length()
@@ -324,18 +329,18 @@ class _SaturatedFold:
         self, before: SaturatedCollatzOccurrence, after: SaturatedCollatzOccurrence
     ) -> SaturatedCollatzOccurrence:
         if self.ledger is not None:
-            self.ledger.bump("collatz_saturated_composition_attempts")
+            self.ledger.bump(_collatz_keys.COLLATZ_SATURATED_COMPOSITION_ATTEMPTS)
         result = compose_occurrences(before, after)
         self.compositions += 1
         if self.ledger is not None:
-            self.ledger.bump("collatz_saturated_compositions")
+            self.ledger.bump(_collatz_keys.COLLATZ_SATURATED_COMPOSITIONS)
         self._charge(result)
         return result
 
     def _push(self, node: SaturatedCollatzOccurrence) -> None:
         self.leaves += 1
         if self.ledger is not None:
-            self.ledger.bump("collatz_saturated_leaves")
+            self.ledger.bump(_collatz_keys.COLLATZ_SATURATED_LEAVES)
         self._charge(node)
         level = 0
         while True:
@@ -354,14 +359,14 @@ class _SaturatedFold:
         if not self.buffer:
             return
         if self.ledger is not None:
-            self.ledger.bump("collatz_saturated_leaf_attempts")
+            self.ledger.bump(_collatz_keys.COLLATZ_SATURATED_LEAF_ATTEMPTS)
         self._push(publish_valuation_block(self.buffer))
         self.buffer.clear()
 
     def accept(self, valuation: int) -> None:
         self.reads += 1
         if self.ledger is not None:
-            self.ledger.bump("collatz_saturated_event_reads")
+            self.ledger.bump(_collatz_keys.COLLATZ_SATURATED_EVENT_READS)
         self.buffer.append(valuation)
         if len(self.buffer) == self.leaf_events:
             self._publish_buffer()
@@ -393,7 +398,7 @@ class SourceFreeSaturatedCollatzProgram:
 
     @property
     def canonical_key(self) -> tuple[str, int]:
-        return "collatz-source-free-saturated-v1", self.events
+        return COLLATZ_SOURCE_FREE_SATURATED_TAG, self.events
 
     @property
     def operator_nodes(self) -> int:
@@ -507,12 +512,12 @@ def from_published_prefix(
     # balanced leaves and joins. This is temporary construction capacity, not
     # a retained powered-state claim.
     temporary = 2 * published.discovered_events + 1
-    ledger.bump("collatz_saturated_attempts")
+    ledger.bump(_collatz_keys.COLLATZ_SATURATED_ATTEMPTS)
     try:
         with ledger.reservation(owner, entries=temporary, nodes=temporary):
             return _from_published_prefix_reserved(published, leaf_events=leaf_events)
     except BaseException:
-        ledger.bump("collatz_saturated_failed_constructions")
+        ledger.bump(_collatz_keys.COLLATZ_SATURATED_FAILED_CONSTRUCTIONS)
         raise
 
 

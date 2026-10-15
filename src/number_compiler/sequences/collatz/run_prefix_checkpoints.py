@@ -9,6 +9,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -19,8 +20,15 @@ from number_compiler.sequences.collatz.source_cylinder_cache import (
 from number_compiler.sequences.collatz.tape_width import (
     CollatzWidthSpineAccumulator,
 )
+from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
 _MIN_CHECKPOINT_WIDTH = 8
+
+
+def temporal_run_share_width(seed: int, physical_ticks: int) -> int:
+    """Choose the first power-of-two run checkpoint for this source horizon."""
+    bounded_extent = min(max(8, seed.bit_length()), max(8, physical_ticks // 2))
+    return 1 << (bounded_extent.bit_length() - 1)
 
 
 def observe_temporal_run_prefix(
@@ -130,18 +138,20 @@ def _publish_checkpoints(
                 raise TypeError("Collatz checkpoint prefix returned a non-integer")
             if primitive_steps:
                 ledger.bump(
-                    "collatz_temporal_root_checkpoint_d8_steps", primitive_steps
+                    _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_D8_STEPS,
+                    primitive_steps,
                 )
-            ledger.bump("collatz_temporal_root_checkpoint_candidates")
+            ledger.bump(_collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_CANDIDATES)
             ledger.bump(
-                "collatz_temporal_root_checkpoint_operand_bits",
+                _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_OPERAND_BITS,
                 anchor.bit_length()
                 + source.bit_length()
                 + endpoint.bit_length()
                 + checkpoint.bit_length(),
             )
             ledger.bump(
-                "collatz_temporal_root_checkpoint_action_operand_bits", action_bits
+                _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_ACTION_OPERAND_BITS,
+                action_bits,
             )
             if not 0 <= prefix_ones <= prefix_width:
                 raise AssertionError("Collatz root checkpoint odd count is invalid")
@@ -154,9 +164,9 @@ def _publish_checkpoints(
                 endpoint,
             ):
                 published += 1
-                ledger.bump("collatz_temporal_root_checkpoint_publications")
+                ledger.bump(_collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_PUBLICATIONS)
         except BlockContextBudgetExceeded:
-            ledger.bump("collatz_temporal_root_checkpoint_budget_bypasses")
+            ledger.bump(_collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_BUDGET_BYPASSES)
             break
     return published
 
@@ -247,4 +257,38 @@ def _publish_d8_root_checkpoints(
         odd_offset=odd_offset,
         block_width=8,
         prefix=prefix,
+    )
+
+
+def _publish_d8_frame_root_checkpoints(
+    macros: CollatzDyadicMacros,
+    scratch: RunArithmeticWorkspace,
+    *,
+    anchor: int,
+    source_frame: D8CylinderFrame,
+    normalized_offset: int,
+    odd_offset: int,
+    endpoint_frame: D8CylinderFrame,
+    odd_symbols: int,
+    ledger: ResourceLedger,
+) -> None:
+    """Publish a crossed D8 root point, charging its two required lifts."""
+    source = source_frame.materialize()
+    endpoint = endpoint_frame.materialize()
+    ledger.bump(
+        _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_FRAME_MATERIALIZATIONS, 2
+    )
+    ledger.bump(
+        _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_FRAME_OPERAND_BITS,
+        source.bit_length() + endpoint.bit_length(),
+    )
+    _publish_d8_root_checkpoints(
+        macros,
+        scratch,
+        anchor=anchor,
+        source=source,
+        normalized_offset=normalized_offset,
+        odd_offset=odd_offset,
+        endpoint=endpoint,
+        odd_symbols=odd_symbols,
     )

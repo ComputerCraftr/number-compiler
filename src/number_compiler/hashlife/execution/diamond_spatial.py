@@ -28,6 +28,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
 )
 from number_compiler.hashlife.interfaces.diamond_output import _expression
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -81,7 +84,7 @@ class PrimitiveSpatialTransfers:
             result = kernels.advance_expression(
                 kernel, BoundarySide(task.side), variable, symbol
             )
-            self.ledger.bump("primitive_spatial_leaf_evaluations")
+            self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_LEAF_EVALUATIONS)
             return result
         left, right = runtime.cells.split(task.cell)
         before, after = (left, right) if task.side == 0 else (right, left)
@@ -90,7 +93,7 @@ class PrimitiveSpatialTransfers:
         result = runtime.pair_macros.unary.compose(
             kernel, task.side, first, second, port
         )
-        self.ledger.bump("primitive_spatial_parent_evaluations")
+        self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_PARENT_EVALUATIONS)
         return result
 
     def observe(
@@ -138,5 +141,5 @@ class PrimitiveSpatialTransfers:
         value = runtime.kernels.evaluate(
             summary, observation_inputs(domain, port, code)
         )
-        self.ledger.bump("primitive_spatial_observations")
+        self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_OBSERVATIONS)
         return runtime.boundaries.literal(action, side, value)

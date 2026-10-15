@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,9 +66,9 @@ def compose_width_ledger(
         raise TypeError("width-ledger composition requires its resource ledger")
     if type(before) is not BlankLedger or type(after) is not BlankLedger:
         raise TypeError("Collatz width composition requires canonical blank ledgers")
-    ledger.bump("collatz_physical_tape_width_compositions")
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TAPE_WIDTH_COMPOSITIONS)
     ledger.bump(
-        "collatz_physical_tape_width_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TAPE_WIDTH_OPERAND_BITS,
         sum(
             max(1, abs(value).bit_length())
             for value in (*before.as_tuple(), *after.as_tuple())
@@ -133,9 +134,9 @@ def charge_width_repeat(
         raise TypeError("width-ledger repeat requires its resource ledger")
     if type(summary) is not BlankLedger or type(repeats) is not int or repeats < 0:
         raise ValueError("invalid Collatz width summary repetition")
-    ledger.bump("collatz_physical_tape_width_repeat_operations")
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TAPE_WIDTH_REPEAT_OPERATIONS)
     ledger.bump(
-        "collatz_physical_tape_width_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TAPE_WIDTH_OPERAND_BITS,
         max(1, repeats.bit_length())
         + sum(max(1, abs(value).bit_length()) for value in summary.as_tuple()),
     )

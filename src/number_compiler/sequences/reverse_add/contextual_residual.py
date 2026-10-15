@@ -22,6 +22,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
@@ -224,7 +225,7 @@ class ReverseContextualResidualArena:
         for symbol, (a, b) in enumerate(zip(current, successor, strict=True)):
             old = mapping.setdefault(a, (symbol, b))
             if old[1] != b:
-                self.ledger.bump("reverse_residual_successor_conflicts")
+                self.ledger.bump(_reverse_add_keys.REVERSE_RESIDUAL_SUCCESSOR_CONFLICTS)
                 raise ResidualSuccessorConflict(old[0], symbol)
         pending = {
             (before, after, source, a): b
@@ -235,7 +236,7 @@ class ReverseContextualResidualArena:
             self._successors.owner, entries=len(pending), nodes=8 * len(pending)
         )
         self._successors._data.update(pending)
-        self.ledger.bump("reverse_residual_transports_certified")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RESIDUAL_TRANSPORTS_CERTIFIED)
         return len(mapping)
 
     def advance(
@@ -260,7 +261,7 @@ class ReverseContextualResidualArena:
         if found is None:
             raise ValueError("no certified successor for this residual and context")
         self.bits.resolve(found)
-        self.ledger.bump("reverse_residual_successor_hits")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RESIDUAL_SUCCESSOR_HITS)
         return found
 
     def refine(

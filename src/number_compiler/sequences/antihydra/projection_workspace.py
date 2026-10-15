@@ -1,6 +1,7 @@
 """One reusable, charged, empty-between-queries section-image workspace."""
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerDict
 
 Image = tuple[tuple[int, ...], ...]
@@ -45,7 +46,7 @@ class SectionImageWorkspace:
         if len(self.images) >= capacity:
             del self.images[next(iter(self.images))]
             self.ledger.release(self.owner, entries=1, nodes=12 * self.area)
-            self.ledger.bump("spacetime_section_image_evictions")
+            self.ledger.bump(_antihydra_keys.SPACETIME_SECTION_IMAGE_EVICTIONS)
         self.ledger.reserve(self.owner, entries=1, nodes=12 * self.area)
         try:
             self.images[key] = image

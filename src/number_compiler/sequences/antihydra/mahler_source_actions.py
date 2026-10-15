@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from operator import add, lt, mul
-from typing import TYPE_CHECKING, Literal, Self, cast
+from typing import TYPE_CHECKING, Final, Literal, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -17,13 +17,21 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
     compose_increasing_minplus_values,
 )
+from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
+from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+from number_compiler.arithmetic.fields.three_power_radix import (
+    ThreePowerRadixOrbit,
+    difference_power_block,
+)
+from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicImageSummary,
     _SupportNode,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheLease,
@@ -39,6 +47,10 @@ if TYPE_CHECKING:
 
 # Trusted producer-path marker only; domain action admission remains local.
 _SOURCE_ACTION_PUBLISHER = object()
+_INTEGER_ROOT_ACTION_CACHE_VERSION: Final[str] = "integer-root-v2-publisher-qualified"
+_CENTERED_PARITY_SAFETY_TAG: Final[str] = (
+    "centered-parity-strict-margin-positive-infinity"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,30 +88,147 @@ class MahlerSourceBoundSafetyAction:
         # to_action divides offsets and caps by 2^(extent + 2) = 8 here.
         return cls(1, -12 * epsilon, 18 if epsilon == 0 else 6)
 
-    def then_with_gain(
-        self, after: MahlerSourceBoundSafetyAction, gain: int
+    def then_bit(
+        self,
+        epsilon: int,
+        *,
+        ledger: ResourceLedger | None = None,
     ) -> MahlerSourceBoundSafetyAction:
+        """Compose one more exact bit through the common min-plus owner."""
+        return self.then(self.one_bit(epsilon), ledger=ledger)
+
+    def then(
+        self,
+        after: MahlerSourceBoundSafetyAction,
+        *,
+        ledger: ResourceLedger | None = None,
+    ) -> MahlerSourceBoundSafetyAction:
+        """Chronologically compose complete source-bound Mahler actions."""
         if type(after) is not MahlerSourceBoundSafetyAction:
-            raise TypeError("Mahler normal forms require their exact action sort")
+            raise TypeError("Mahler composition requires another source-bound action")
         self.__post_init__()
         after.__post_init__()
-        if type(gain) is not int or gain <= 0:
-            raise ValueError("Mahler admitted downstream gain must be positive")
+        if not self.extent:
+            return after
+        if not after.extent:
+            return self
         offset, cap = compose_increasing_minplus_values(
             self.offset_hat,
             self.cap_hat,
-            gain,
+            3**after.extent,
             after.offset_hat << self.extent,
             None if after.cap_hat is None else after.cap_hat << self.extent,
             multiply=mul,
             add=add,
             less=lt,
         )
-        return MahlerSourceBoundSafetyAction(self.extent + after.extent, offset, cap)
+        result = MahlerSourceBoundSafetyAction(self.extent + after.extent, offset, cap)
+        if ledger is not None:
+            if type(ledger) is not ResourceLedger:
+                raise TypeError("Mahler composition metrics require a query ledger")
+            ledger.bump(_antihydra_keys.MAHLER_SOURCE_BOUND_COMPOSITIONS)
+        return result
 
-    def then_bit(self, epsilon: int) -> MahlerSourceBoundSafetyAction:
-        """Compose one more exact bit using the Mahler source gain ``3``."""
-        return self.then_with_gain(self.one_bit(epsilon), 3)
+    def power(
+        self,
+        repetitions: int,
+        *,
+        max_coefficient_bits: int = 8192,
+        ledger: ResourceLedger | None = None,
+    ) -> MahlerSourceBoundSafetyAction:
+        """Square a repeated admitted min-plus word within an explicit cap."""
+        if type(repetitions) is not int or repetitions < 0:
+            raise ValueError("Mahler repetitions must be a natural integer")
+        if type(max_coefficient_bits) is not int or max_coefficient_bits < 1:
+            raise ValueError("Mahler coefficient budget must be positive")
+        result = MahlerSourceBoundSafetyAction()
+        factor = self
+        remaining = repetitions
+        while remaining:
+            if remaining & 1:
+                estimate = (
+                    max(
+                        result.extent + factor.extent,
+                        abs(result.offset_hat).bit_length(),
+                        abs(factor.offset_hat).bit_length(),
+                        abs(result.cap_hat).bit_length()
+                        if result.cap_hat is not None
+                        else 0,
+                        abs(factor.cap_hat).bit_length()
+                        if factor.cap_hat is not None
+                        else 0,
+                    )
+                    * 2
+                )
+                if estimate > max_coefficient_bits:
+                    raise BlockContextBudgetExceeded(
+                        "Mahler power exceeds its bit budget"
+                    )
+                result = result.then(factor, ledger=ledger)
+            remaining >>= 1
+            if remaining:
+                estimate = (
+                    max(
+                        factor.extent,
+                        abs(factor.offset_hat).bit_length(),
+                        abs(factor.cap_hat).bit_length()
+                        if factor.cap_hat is not None
+                        else 0,
+                    )
+                    * 4
+                )
+                if estimate > max_coefficient_bits:
+                    raise BlockContextBudgetExceeded(
+                        "Mahler square exceeds its bit budget"
+                    )
+                factor = factor.then(factor, ledger=ledger)
+        if ledger is not None:
+            if type(ledger) is not ResourceLedger:
+                raise TypeError("Mahler power metrics require a query ledger")
+            ledger.bump(_antihydra_keys.MAHLER_SOURCE_BOUND_POWERS)
+        return result
+
+    def demanded_tripling_ports(
+        self,
+        *,
+        base: int,
+        places: int,
+        walsh: bool = False,
+        ledger: ResourceLedger | None = None,
+    ) -> dict[str, object]:
+        """Observe the homogeneous 3**extent action on explicit demand only."""
+        if self.extent < 1:
+            raise ValueError("positive Mahler extent required for difference ports")
+        if walsh and (base != 64 or places != 64):
+            raise ValueError("Walsh64 requires 64 radix-64 positions")
+        if ledger is not None:
+            if type(ledger) is not ResourceLedger:
+                raise TypeError("Mahler radix-port metrics require a query ledger")
+            ledger.bump(_antihydra_keys.MAHLER_RADIX_PORT_DEMANDS)
+        orbit = ThreePowerRadixOrbit("ordinary", self.extent, base)
+        ports = orbit.ordinary_ports(places)
+        pivot = ports.difference_xor_mask
+        raw, valuation, normalized = difference_power_block(
+            self.extent, 2, base**places
+        )
+        return {
+            "source_extent": self.extent,
+            "radial_scale": (self.extent, self.extent),
+            "base": base,
+            "places": places,
+            "tripling_carries": ports.carry_word,
+            "successive_innovation_borrows": ports.forward_borrow_mask,
+            "difference_xor_mask": pivot,
+            "dyadic_block_difference": (raw, valuation, normalized),
+            "walsh64_mod5": walsh64_mod5(pivot) if walsh else None,
+            "scope": "homogeneous multiplier observation; not a safety or branch guard",
+        }
+
+    @property
+    def radial_sturmian_clock(self) -> RadialSturmianClock:
+        """Scale for this admitted Mahler source action, without its offset."""
+        self.__post_init__()
+        return RadialSturmianClock(HomogeneousGrowthScale(self.extent, self.extent))
 
     def to_action(self) -> SaturatingAffineAction:
         self.__post_init__()
@@ -165,13 +294,13 @@ class MahlerOccurrenceConsumer:
             try:
                 self.lease = cache.acquire(
                     "mahler-source-bound-action",
-                    "integer-root-v2-publisher-qualified",
+                    _INTEGER_ROOT_ACTION_CACHE_VERSION,
                     cast(
                         tuple[ImmutableValue, ...],
                         (
                             MACHINE_SHA256,
                             law.descriptor,
-                            "centered-parity-strict-margin-positive-infinity",
+                            _CENTERED_PARITY_SAFETY_TAG,
                         ),
                     ),
                 )

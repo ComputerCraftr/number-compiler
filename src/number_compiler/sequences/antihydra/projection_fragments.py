@@ -6,6 +6,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 
 ProjectionFragmentSeal = tuple[
     tuple[int | tuple[int, int, int, int, int, int], ...],
@@ -162,7 +163,7 @@ class ProjectionFragmentCache:
         if not self.matches_seal(key, found):
             raise ValueError("Antihydra projection fragment binding was changed")
         found.validate()
-        self.ledger.bump("spacetime_projection_fragment_hits")
+        self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_HITS)
         return found
 
     def put(
@@ -194,7 +195,7 @@ class ProjectionFragmentCache:
         while len(self.fragments) >= capacity:
             victim = next(iter(self.fragments))
             self._drop(victim)
-            self.ledger.bump("spacetime_projection_fragment_evictions")
+            self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_EVICTIONS)
         nodes = self._nodes(key)
         if (
             self.ledger.max_nodes is not None
@@ -203,7 +204,9 @@ class ProjectionFragmentCache:
             self.ledger.max_cache_entries is not None
             and self.ledger.entries + 2 > self.ledger.max_cache_entries
         ):
-            self.ledger.bump("spacetime_projection_fragment_retention_refusals")
+            self.ledger.bump(
+                _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_RETENTION_REFUSALS
+            )
             return fragment
         self.ledger.reserve_many(((self.owner, 1, nodes), (self.seal_owner, 1, 2)))
         try:
@@ -219,7 +222,7 @@ class ProjectionFragmentCache:
             self.ledger.release(self.owner, entries=1, nodes=nodes)
             self.ledger.release(self.seal_owner, entries=1, nodes=2)
             raise
-        self.ledger.bump("spacetime_projection_fragment_publications")
+        self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_PUBLICATIONS)
         return fragment
 
     def _drop(self, key: ProjectionFragmentKey) -> None:

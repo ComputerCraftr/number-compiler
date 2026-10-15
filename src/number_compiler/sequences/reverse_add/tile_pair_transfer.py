@@ -26,6 +26,7 @@ from number_compiler.hashlife.tiles.interface_publication import (
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.reverse_morphism_transfer import (
     ReverseMorphismTransferArena,
 )
@@ -126,8 +127,10 @@ def _finite_pair_transfer(
             # Exterior producer states already bind this whole interval. Its
             # two exits are not needed to discover a nonexistent midpoint.
             result = morphism.consume(chunks[0], (left, right), side, consumer)
-            engine.ledger.bump("tile_causal_finite_transfer_parent_observations")
-            engine.ledger.bump("tile_causal_finite_pair_transfers")
+            engine.ledger.bump(
+                _reverse_add_keys.TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS
+            )
+            engine.ledger.bump(_reverse_add_keys.TILE_CAUSAL_FINITE_PAIR_TRANSFERS)
             return result
 
     anchors = [left]
@@ -177,7 +180,9 @@ def _finite_pair_transfer(
                 side,
                 state,
             )
-            engine.ledger.bump("tile_causal_finite_transfer_parent_observations")
+            engine.ledger.bump(
+                _reverse_add_keys.TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS
+            )
             continue
         key = FusedInterfaceKey(
             action,
@@ -207,8 +212,10 @@ def _finite_pair_transfer(
             "boundary_right" if side else "boundary_left",
             ports,
         )
-        engine.ledger.bump("tile_causal_finite_transfer_parent_observations")
-    engine.ledger.bump("tile_causal_finite_pair_transfers")
+        engine.ledger.bump(
+            _reverse_add_keys.TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS
+        )
+    engine.ledger.bump(_reverse_add_keys.TILE_CAUSAL_FINITE_PAIR_TRANSFERS)
     return state
 
 

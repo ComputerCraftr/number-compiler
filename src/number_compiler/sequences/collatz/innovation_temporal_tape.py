@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass
-from typing import TYPE_CHECKING, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Final, Self, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -30,6 +30,16 @@ from number_compiler.arithmetic.functions.finite_observer import (
 )
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_630,
+    CycleEntryPhase,
+    GuardedBorderPath,
+)
+
+NORMALIZED_INNOVATION_TAPE_TAG: Final[str] = "normalized-innovation-v1"
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol as _exact_source_symbol,
 )
@@ -42,7 +52,13 @@ if TYPE_CHECKING:
 # B is subtraction/borrow; A positive addition/carry; N negative addition/carry.
 # Each letter always carries its actual zero/one modular flag.
 _SYMBOLS = ("B0", "B1", "A0", "A1", "N0", "N1")
-_FAMILIES = ("421", "4721", "630", "989")
+InnovationCoreIdentity = CycleEntryPhase | GuardedBorderPath
+_INNOVATION_CORES: tuple[InnovationCoreIdentity, ...] = (
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_630,
+    ENTRY_89_AT_NINE,
+)
 _COUNTER_PREFIX = "collatz_query_local_innovation_observer_"
 _MISSING = object()
 _MemoValue = TypeVar("_MemoValue")
@@ -100,7 +116,7 @@ class InnovationObserverMemo:
             self._scratch_owner = ledger.register(
                 prefix + "-scratch", "temporary_workspace"
             )
-            self._memo: OwnedMemo[tuple[str | int, ...], object] = OwnedMemo(
+            self._memo: OwnedMemo[tuple[object, ...], object] = OwnedMemo(
                 ledger,
                 self._owner,
                 node_cost=lambda key, item: _retained_node_count((key, item)),
@@ -146,7 +162,7 @@ class InnovationObserverMemo:
     def _get_or_build(
         self,
         layer: str,
-        key: tuple[int | str, ...],
+        key: tuple[object, ...],
         build: Callable[[], _MemoValue],
         *,
         work_nodes: int,
@@ -154,8 +170,11 @@ class InnovationObserverMemo:
         self._check_open()
         if type(layer) is not str or not layer:
             raise ValueError("observer cache layer must be named")
-        if type(key) is not tuple or any(type(part) not in (int, str) for part in key):
-            raise TypeError("observer memo key must use exact integer/string fields")
+        if type(key) is not tuple or any(
+            type(part) not in (int, str, CycleEntryPhase, GuardedBorderPath)
+            for part in key
+        ):
+            raise TypeError("observer memo key must use admitted exact fields")
         if type(work_nodes) is not int or work_nodes < 0:
             raise ValueError("observer construction work bound must be nonnegative")
         cache_key = (layer, *key)
@@ -197,35 +216,37 @@ def _addition(left: int, right: int, modulus: int, *, negative: bool = False) ->
     )
 
 
-def _core_symbols(family: str, phase: int, modulus: int) -> tuple[str, ...]:
+def _core_symbols(
+    identity: InnovationCoreIdentity, phase: int, modulus: int
+) -> tuple[str, ...]:
     """One *interior* return of the authenticated source's normalized orbit."""
     two = pow(2, -1, modulus)
     four = two * two % modulus
-    if family == "421":
+    if identity == ENTRY_421:
         eight = four * two % modulus
         # C: 1+u (mod 4 = 1), then D: 2+3u/2 (mod 4 = 2).
         c = _addition(1 + two * phase, 1 + 3 * four * phase, modulus, negative=True)
         d = _addition(1 + 3 * four * phase, 1 + 3 * eight * phase, modulus)
         return c, d
-    if family == "4721":
+    if identity == ENTRY_4721:
         # Pair of odd, mod-4=3 sources, with w and then 3w/2.
         second = 3 * two * phase % modulus
         return (
             _borrow(3 * phase, 2 * phase, modulus),
             _borrow(3 * second, 2 * second, modulus),
         )
-    if family == "630":
+    if identity == PATH_630:
         return (_borrow(2 * phase, phase, modulus),)
-    if family == "989":
+    if identity == ENTRY_89_AT_NINE:
         return (_borrow(3 * phase, 2 * phase, modulus),)
-    raise ValueError("unknown Collatz boundary macro family")
+    raise ValueError("unsupported Collatz innovation border identity")
 
 
 @dataclass(frozen=True, slots=True)
 class InnovationMooreClock:
     """Minimum complete-future quotient of one certified modular CORE clock."""
 
-    family: str
+    identity: InnovationCoreIdentity
     modulus: int
     multiplier: int
     classes: tuple[int, ...]  # residue -> Moore class
@@ -240,13 +261,13 @@ class InnovationMooreClock:
         return (
             self._authority is _ISSUED_CLOCK
             and len(seal) == 6
-            and type(self.family) is str
+            and type(self.identity) in (CycleEntryPhase, GuardedBorderPath)
+            and self.identity in _INNOVATION_CORES
             and type(self.modulus) is int
             and type(self.multiplier) is int
-            and type(seal[0]) is str
+            and seal[0] == self.identity
             and type(seal[1]) is int
             and type(seal[2]) is int
-            and seal[0] == self.family
             and seal[1] == self.modulus
             and seal[2] == self.multiplier
             and self.classes is seal[3]
@@ -301,8 +322,8 @@ class InnovationMooreClock:
         phase %= self.modulus
         root_class = self.class_id(phase)
         machine = innovation_future_moore(self.modulus, memo=memo)
-        global_id = machine.global_id(self.family, phase, memo=memo)
-        finite_id = machine.finite_id(self.family, phase, returns, memo=memo)
+        global_id = machine.global_id(self.identity, phase, memo=memo)
+        finite_id = machine.finite_id(self.identity, phase, returns, memo=memo)
         finite_count = machine.finite_count(returns, memo=memo)
         orbit = _global_class_orbit(self.modulus, global_id, memo=memo)
         prefix, period = orbit.prefix, orbit.period
@@ -318,7 +339,7 @@ class InnovationMooreClock:
         # phase, not the finite representative (which may diverge afterward).
         return {
             "modulus": self.modulus,
-            "family": self.family,
+            "border": self.identity.observation(),
             "moore_class": root_class,
             "moore_classes": self.class_count,
             "global_future_control_id": global_id,
@@ -360,7 +381,7 @@ class InnovationMooreClock:
 
 
 def innovation_moore_clock(
-    family: str,
+    identity: InnovationCoreIdentity,
     modulus: int,
     *,
     memo: InnovationObserverMemo | None = None,
@@ -372,8 +393,11 @@ def innovation_moore_clock(
     successor congruence, including nonunit phase tails when m is divisible
     by three.  It is not a whole-Collatz Moore quotient.
     """
-    if type(family) is not str or family not in _FAMILIES:
-        raise ValueError("unrecognized guarded Collatz family")
+    if (
+        type(identity) not in (CycleEntryPhase, GuardedBorderPath)
+        or identity not in _INNOVATION_CORES
+    ):
+        raise ValueError("unrecognized guarded Collatz border identity")
     modulus = require_integer(modulus, "modular clock modulus", 3, 4096)
     if modulus % 2 == 0:
         raise ValueError("modular clock requires odd 3 <= modulus <= 4096")
@@ -382,16 +406,16 @@ def innovation_moore_clock(
             raise TypeError("innovation clock memo must be query-owned")
         memo._check_open()
     multipliers = {
-        "421": (3, 4),
-        "4721": (9, 4),
-        "630": (1, 2),
-        "989": (3, 2),
+        ENTRY_421: (3, 4),
+        ENTRY_4721: (9, 4),
+        PATH_630: (1, 2),
+        ENTRY_89_AT_NINE: (3, 2),
     }
-    numerator, denominator = multipliers[family]
+    numerator, denominator = multipliers[identity]
     multiplier = numerator * pow(denominator, -1, modulus) % modulus
 
     def build() -> InnovationMooreClock:
-        outputs = tuple(_core_symbols(family, s, modulus) for s in range(modulus))
+        outputs = tuple(_core_symbols(identity, s, modulus) for s in range(modulus))
         next_states = tuple((s * multiplier) % modulus for s in range(modulus))
         result = minimize_finite_observer(
             tuple((target,) for target in next_states),
@@ -402,7 +426,7 @@ def innovation_moore_clock(
         class_outputs = tuple(outputs[i] for i in representatives)
         class_next = tuple(result.class_ids[next_states[i]] for i in representatives)
         clock = InnovationMooreClock(
-            family, modulus, multiplier, result.class_ids, class_outputs, class_next
+            identity, modulus, multiplier, result.class_ids, class_outputs, class_next
         )
 
         object.__setattr__(clock, "_authority", _ISSUED_CLOCK)
@@ -410,7 +434,7 @@ def innovation_moore_clock(
             clock,
             "_seal",
             (
-                family,
+                identity,
                 modulus,
                 multiplier,
                 clock.classes,
@@ -425,14 +449,14 @@ def innovation_moore_clock(
     else:
         clock = memo._get_or_build(
             "local-clock",
-            (family, modulus),
+            (identity, modulus),
             build,
             work_nodes=max(1, 32 * modulus),
         )
     if (
         type(clock) is not InnovationMooreClock
         or not clock.producer_issued
-        or clock.family != family
+        or clock.identity != identity
         or clock.modulus != modulus
         or clock.multiplier != multiplier
     ):
@@ -615,12 +639,13 @@ def innovation_macro_tape(
     if type(macro) is not CollatzBoundaryMacro:
         raise ValueError("normalized innovation tape requires a certified macro")
     validate_boundary_macro(macro)
-    clock = innovation_moore_clock(macro.family, modulus, memo=memo)
+    identity = macro.identity
+    clock = innovation_moore_clock(identity, modulus, memo=memo)
     r = macro.repetitions
     full = r == macro.maximum_repetitions
     entry: tuple[str, ...]
     exit_symbols: tuple[str, ...]
-    if macro.family == "421":
+    if identity == ENTRY_421:
         entry = (
             _exact_source_symbol(macro.source, modulus),
             _exact_source_symbol(macro.source // 2, modulus),
@@ -633,8 +658,8 @@ def innovation_macro_tape(
             w = (last + 2) * pow(4, -1, modulus) % modulus
             exit_symbols = (_borrow(3 * w, 2 * w, modulus),)
         else:
-            exit_symbols = (_core_symbols("421", last, modulus)[0],)
-    elif macro.family == "4721":
+            exit_symbols = (_core_symbols(ENTRY_421, last, modulus)[0],)
+    elif identity == ENTRY_4721:
         entry = (_exact_source_symbol(macro.source, modulus),)
         a = (macro.source + 2) // 8 % modulus
         core = clock.powered(a, r - 1, memo=memo)
@@ -649,7 +674,7 @@ def innovation_macro_tape(
             mid = 3 * pow(2, -1, modulus) * last % modulus
             second = _borrow(3 * mid, 2 * mid, modulus)
         exit_symbols = first, second
-    elif macro.family == "630":
+    elif identity == PATH_630:
         entry = (
             _exact_source_symbol(macro.source, modulus),
             _exact_source_symbol(macro.source // 2, modulus),
@@ -659,7 +684,7 @@ def innovation_macro_tape(
         a = 5 * (u % modulus) * pow(2, macro.maximum_repetitions - 2, modulus) % modulus
         core = clock.powered(a, r - int(full), memo=memo)
         exit_symbols = (_exact_source_symbol(10 * u, modulus),) if full else ()
-    else:  # 989
+    elif identity == ENTRY_89_AT_NINE:
         entry = ()
         a = (macro.source + 1) // 4 % modulus
         core = clock.powered(a, r - int(full), memo=memo)
@@ -668,6 +693,8 @@ def innovation_macro_tape(
             exit_symbols = (_exact_source_symbol(last_x, modulus),)
         else:
             exit_symbols = ()
+    else:
+        raise ValueError("boundary macro has no normalized innovation core")
     totals = _aggregate_symbols(entry, exit_symbols, core=core)
     if totals["normalized_steps"] != macro.normalized_symbols:
         raise AssertionError("powered innovation tape lost normalized clock")
@@ -679,7 +706,7 @@ def innovation_macro_tape(
     # Explicitly retain the *placement* of exceptional symbols.  The full
     # regular word is: ENTRY ++ CORE^returns ++ EXIT, not a bit-only count.
     return {
-        "family_word": macro.family,
+        "border": identity.observation(run_parameters=(macro.repetitions,)),
         "modulus": modulus,
         "entry_symbols": entry,
         "core": core,
@@ -688,7 +715,7 @@ def innovation_macro_tape(
         # program is canonical only within its witnessed extent; equality
         # never licenses endpoint, width, or accumulator action merging.
         "finite_future_action_id": (
-            "normalized-innovation-v1",
+            NORMALIZED_INNOVATION_TAPE_TAG,
             modulus,
             entry,
             require_integer(core["returns"], "powered return count", 0),

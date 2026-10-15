@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
 
 if TYPE_CHECKING:
@@ -54,14 +55,14 @@ def project(compiler: NumberCompiler, query: CommaTermQuery) -> ProjectedNumberT
         valid,
     )
     return ProjectedNumberTerm(
-        "a367620",
+        FamilyId.A367620,
         query.index,
         20,
         10,
-        SymbolicExpression("a367620", query.index),
+        SymbolicExpression(FamilyId.A367620, query.index),
         CommaTermPayload(term),
         ProjectionMetrics(
-            "a367620",
+            FamilyId.A367620,
             query.index,
             0,
             0,

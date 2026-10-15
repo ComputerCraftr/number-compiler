@@ -13,6 +13,7 @@ from number_compiler.api.family_registry import (
     resolve_verification_adapter,
 )
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import OutputFormat, SelectorId
 from number_compiler.api.output_schema import UnresolvedErrorPacket, query_result
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
@@ -22,7 +23,7 @@ def _verify(request: QueryRequest) -> int:
     from number_compiler.api.json_output import json_integers
 
     result = resolve_verification_adapter(request.execution)(request.execution)
-    if request.presentation.format == "json":
+    if request.presentation.format is OutputFormat.JSON:
         print(json.dumps(json_integers(result.packet), sort_keys=True))
     else:
         print(result.success_message if result.accepted else "certificate rejected")
@@ -57,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         if request is None:
             print("\n".join(family_listing()))
             return 0
-        if request.selector == "verify":
+        if request.selector is SelectorId.VERIFY:
             return _verify(request)
         from number_compiler.api.cli_context import QueryContext, information_unresolved
         from number_compiler.api.json_output import json_integers
@@ -70,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         context = QueryContext(request, compiler)
         context.admit_observation_extents()
         value = None
-        if request.selector == "nth" and not request.presentation.no_value:
+        if request.selector is SelectorId.NTH and not request.presentation.no_value:
             from number_compiler.api.symbolic_terms import render_symbolic
 
             value = (
@@ -81,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
                         context.term, f"10^{request.presentation.index.exponent}"
                     )
                 )
-                if request.presentation.format == "symbolic"
+                if request.presentation.format is OutputFormat.SYMBOLIC
                 else _rendering._render_value(
                     context.term,
                     output_base=request.presentation.output_base,
@@ -89,14 +90,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         info = context.information()
-        if request.presentation.format == "json":
+        if request.presentation.format is OutputFormat.JSON:
             print(
                 json.dumps(
                     json_integers(
                         query_result(
-                            family=request.family,
+                            family=request.family.value,
                             index=request.presentation_index,
-                            index_unit=request.index_unit,
+                            index_unit=request.index_unit.value,
                             output_base=request.presentation.output_base,
                             value=value,
                             info=info,
@@ -116,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
             if info:
                 print(json.dumps(json_integers(info), sort_keys=True), file=sys.stderr)
         if context.unresolved_boundary is not None:
-            if request.presentation.format != "json":
+            if request.presentation.format is not OutputFormat.JSON:
                 print(
                     f"number-compiler: {context.unresolved_boundary}", file=sys.stderr
                 )
@@ -124,16 +125,16 @@ def main(argv: list[str] | None = None) -> int:
         return 3 if information_unresolved(info) else 0
     except UnresolvedSequenceTerm as exc:
         # No endpoint or symbolic value is published across an unproved boundary.
-        if request is not None and request.presentation.format == "json":
+        if request is not None and request.presentation.format is OutputFormat.JSON:
             from number_compiler.api.json_output import json_integers
 
             print(
                 json.dumps(
                     json_integers(
                         query_result(
-                            family=request.family,
+                            family=request.family.value,
                             index=request.presentation_index,
-                            index_unit=request.index_unit,
+                            index_unit=request.index_unit.value,
                             output_base=request.presentation.output_base,
                             value=None,
                             info={},

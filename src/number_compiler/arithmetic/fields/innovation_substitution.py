@@ -17,6 +17,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     _Scale,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 def substitute_innovations(
@@ -28,12 +31,12 @@ def substitute_innovations(
 ) -> tuple[InnovationID, ...]:
     """Run simultaneous substitution using only the caller's arithmetic owner."""
     arena._check_open()
-    arena.ledger.bump("symbolic_innovation_pullback_attempts")
+    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_ATTEMPTS)
     for root in roots:
-        arena.ledger.bump("symbolic_innovation_pullback_root_checks")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_ROOT_CHECKS)
         arena.resolve(root)
     for atom, replacement in replacements.items():
-        arena.ledger.bump("symbolic_innovation_pullback_binding_checks")
+        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_BINDING_CHECKS)
         if not isinstance(arena.resolve(atom), _Atom):
             raise TypeError("innovation substitution keys must be primitive atoms")
         arena.resolve(replacement)
@@ -62,9 +65,9 @@ def substitute_innovations(
                 index = len(frames) - 1
                 reference, ready = frames[index]
                 del frames[index]
-                arena.ledger.bump("symbolic_innovation_pullback_frames")
+                arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_FRAMES)
                 if reference in memo:
-                    arena.ledger.bump("symbolic_innovation_pullback_hits")
+                    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_HITS)
                     continue
                 node = arena.resolve(reference)
                 if parity and (
@@ -76,8 +79,8 @@ def substitute_innovations(
                     # Do not enter the old source or forcing subtree. This
                     # changes only the demanded parity view, never exact data.
                     memo[reference] = arena.zero
-                    arena.ledger.bump("symbolic_innovation_parity_pruned")
-                    arena.ledger.bump("symbolic_innovation_pullback_nodes")
+                    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PARITY_PRUNED)
+                    arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_NODES)
                     continue
                 children: tuple[InnovationID, ...]
                 if isinstance(node, (_Radial, _Charted, _Scale)):
@@ -113,7 +116,7 @@ def substitute_innovations(
                 else:
                     result = reference
                 memo[reference] = result
-                arena.ledger.bump("symbolic_innovation_pullback_nodes")
+                arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_NODES)
         # Charge the outgoing collection while materializing it; retained
         # ownership belongs to the caller, just as for existing projections.
         with arena.ledger.reservation(memo.owner, nodes=len(roots)):

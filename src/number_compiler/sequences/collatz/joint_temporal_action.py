@@ -16,6 +16,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_cylinder_cache import (
     JointCertifiedMacroCache,
 )
@@ -379,9 +380,9 @@ class JointTemporalSpine:
         )
         self._scratch.require_bits(8 * required_bits)
         result = before.then(after)
-        self._ledger.bump("collatz_hashlife_joint_parent_joins")
+        self._ledger.bump(_collatz_keys.COLLATZ_HASHLIFE_JOINT_PARENT_JOINS)
         self._ledger.bump(
-            "collatz_hashlife_joint_operand_bits",
+            _collatz_keys.COLLATZ_HASHLIFE_JOINT_OPERAND_BITS,
             sum(
                 max(1, abs(value).bit_length())
                 for value in (
@@ -630,10 +631,14 @@ class CollatzJointTemporalBuilder:
         # producer action has been checked against its source and affine
         # coordinates. Callers cannot inject an unrelated cached integer.
         endpoint = frame.materialize()
-        self.ledger.bump("collatz_physical_temporal_d8_frame_materializations")
-        self.ledger.bump("collatz_physical_temporal_d8_endpoint_evaluations")
         self.ledger.bump(
-            "collatz_physical_temporal_run_operand_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_FRAME_MATERIALIZATIONS
+        )
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_ENDPOINT_EVALUATIONS
+        )
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
             source.bit_length() + frame.gain.bit_length() + endpoint.bit_length(),
         )
         spine._append_checked_d8_batch(
@@ -658,7 +663,7 @@ class CollatzJointTemporalBuilder:
             if macros is not None:
                 macros.remember(source, steps, odd_count, endpoint)
         self.ledger.bump(
-            "collatz_hashlife_joint_d8_batches",
+            _collatz_keys.COLLATZ_HASHLIFE_JOINT_D8_BATCHES,
         )
         return endpoint
 
@@ -761,7 +766,7 @@ class CollatzJointTemporalBuilder:
                         "joint macro differs from admitted endpoint occurrence"
                     )
                 self.ledger.bump(
-                    "collatz_hashlife_joint_endpoint_crosscheck_operand_bits",
+                    _collatz_keys.COLLATZ_HASHLIFE_JOINT_ENDPOINT_CROSSCHECK_OPERAND_BITS,
                     source.bit_length()
                     + endpoint.bit_length()
                     + action.gain.bit_length()

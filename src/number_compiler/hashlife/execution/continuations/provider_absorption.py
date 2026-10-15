@@ -33,6 +33,9 @@ from number_compiler.hashlife.execution.source_image_seals import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import (
     make_node_index,
     record_indexed_node,
@@ -318,13 +321,13 @@ class ProviderAbsorptionArena:
         self._validate_action(record.action)
         found = self._keys.get(record)
         if found is not None:
-            self.ledger.bump("provider_action_alias_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_ACTION_ALIAS_HITS)
             return self._handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, record)
-        self.ledger.bump("provider_action_publications")
+        self.ledger.bump(_execution_keys.PROVIDER_ACTION_PUBLICATIONS)
         return self._handle(local_id)
 
     def bind(
@@ -432,15 +435,17 @@ class ProviderAbsorptionArena:
         key = _PointKey(binding, left, right, coordinate)
         found = self._points.get(key)
         if found is not None:
-            self.ledger.bump("provider_observation_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_OBSERVATION_HITS)
             return found
         result = self._observe(binding.output, coordinate, left, right)
         if type(result) is not int:
             raise ValueError("provider observation returned a structured value")
         self._clear_points()
         if type(left) is RuntimeValueID or type(right) is RuntimeValueID:
-            self.ledger.bump("provider_observation_uncacheable_boundaries")
-            self.ledger.bump("provider_observation_evaluations")
+            self.ledger.bump(
+                _execution_keys.PROVIDER_OBSERVATION_UNCACHEABLE_BOUNDARIES
+            )
+            self.ledger.bump(_execution_keys.PROVIDER_OBSERVATION_EVALUATIONS)
             return result
         # Higher observations may evict their transient RuntimeValueIDs while
         # producing the scalar. Never retain a response key whose boundary
@@ -450,12 +455,14 @@ class ProviderAbsorptionArena:
             self._validate_boundary(left)
             self._validate_boundary(right)
         except (TypeError, ValueError, IndexError):
-            self.ledger.bump("provider_observation_uncacheable_boundaries")
-            self.ledger.bump("provider_observation_evaluations")
+            self.ledger.bump(
+                _execution_keys.PROVIDER_OBSERVATION_UNCACHEABLE_BOUNDARIES
+            )
+            self.ledger.bump(_execution_keys.PROVIDER_OBSERVATION_EVALUATIONS)
             return result
         self.ledger.reserve(self._point_owner, entries=1)
         self._points[key] = result
-        self.ledger.bump("provider_observation_evaluations")
+        self.ledger.bump(_execution_keys.PROVIDER_OBSERVATION_EVALUATIONS)
         return result
 
     def _validate_bound_channels(self, binding: ProviderBindingKey) -> ProviderAction:

@@ -128,7 +128,11 @@ from number_compiler.hashlife.tiles.tiles import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerDict
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 
 
 class PrimitiveTileKernelAdapter:
@@ -322,7 +326,7 @@ class PrimitiveTileKernelAdapter:
             for owner, entries, nodes in reservations:
                 self.ledger.release(owner, entries, nodes)
             raise
-        self.ledger.bump("tile_temporal_action_publications")
+        self.ledger.bump(_shared_keys.TILE_TEMPORAL_ACTION_PUBLICATIONS)
         return self._handle(local_id)
 
     def _spatial_events_add(self, effect: BlockEffect) -> bool:
@@ -481,7 +485,7 @@ class PrimitiveTileKernelAdapter:
                 kernel.base,
                 max(1, kernel.blank.bit_length()),
                 "unsigned-radix-cell-with-explicit-blank",
-                "canonical-tile-alphabet-v1",
+                CANONICAL_TILE_ALPHABET_VERSION,
             )
         )
 

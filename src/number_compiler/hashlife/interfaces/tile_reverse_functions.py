@@ -21,6 +21,9 @@ from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
     compose_reverse_sectors,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 def _constant(
@@ -157,7 +160,7 @@ def reverse_parent_components(
     active = a_active.predicate_or(b_active, ledger)
     halo_left = a[7].through(identity_left, b[1].right, ledger)
     halo_right = b[8].through(a[0].left, identity_right, ledger)
-    ledger.bump("reverse_port_parent_interfaces")
+    ledger.bump(_interfaces_keys.REVERSE_PORT_PARENT_INTERFACES)
     result = _finish(
         parent_left,
         parent_right,

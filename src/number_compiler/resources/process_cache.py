@@ -17,7 +17,7 @@ from typing import Final, Self, TypeVar, cast
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
 
 DEFAULT_PROCESS_CACHE_ENTRIES: Final = 131_072
 DEFAULT_PROCESS_CACHE_BYTES: Final = 32 * 1024 * 1024
@@ -309,16 +309,18 @@ class ProcessCache:
         self.enabled = enabled
         self.ledger = ResourceLedger()
         entry_owner = self.ledger.register(
-            "process-cache-entries", "query_memo", "SHARED_GLOBAL"
+            "process-cache-entries", "query_memo", ResourceScope.SHARED_GLOBAL
         )
         pin_owner = self.ledger.register(
-            "process-cache-leases", "spatial_binding", "SHARED_GLOBAL"
+            "process-cache-leases", "spatial_binding", ResourceScope.SHARED_GLOBAL
         )
         authority_owner = self.ledger.register(
-            "process-cache-authorities", "spatial_binding", "SHARED_GLOBAL"
+            "process-cache-authorities", "spatial_binding", ResourceScope.SHARED_GLOBAL
         )
         self._byte_owner = self.ledger.register(
-            "process-cache-accounted-bytes", "retained_storage", "SHARED_GLOBAL"
+            "process-cache-accounted-bytes",
+            "retained_storage",
+            ResourceScope.SHARED_GLOBAL,
         )
         self._entries: OwnedMemo[FullKey, CacheRecord] = OwnedMemo(
             self.ledger, entry_owner, nodes_per_entry=1, evictable=True

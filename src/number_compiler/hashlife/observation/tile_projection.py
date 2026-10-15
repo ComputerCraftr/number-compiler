@@ -30,6 +30,9 @@ from number_compiler.hashlife.tiles.tiles import (
     TileLease,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
@@ -152,7 +155,7 @@ def import_exact_source(
         if tiles.resolve(root.tile).width != padded_width:
             root.close()
             raise AssertionError("source import produced another padded extent")
-        tiles.ledger.bump("tile_source_imports")
+        tiles.ledger.bump(_observation_keys.TILE_SOURCE_IMPORTS)
         return root
     except BaseException:
         _close_all(blocks)
@@ -231,7 +234,7 @@ class LazyProjection:
     @source_reads_only
     def active_width(self) -> int:
         width = self._open().width(self._logical_extent)
-        self.ledger.bump("tile_projection_width_observations")
+        self.ledger.bump(_observation_keys.TILE_PROJECTION_WIDTH_OBSERVATIONS)
         return width
 
     @source_reads_only
@@ -242,7 +245,7 @@ class LazyProjection:
         application = self._open()
         application.validate_execution()
         result = application.interface()
-        self.ledger.bump("tile_projection_cocycle_observations")
+        self.ledger.bump(_observation_keys.TILE_PROJECTION_COCYCLE_OBSERVATIONS)
         return TemporalCocycle(
             result.physical_ticks, result.event_weight, result.frame_shift
         )
@@ -264,7 +267,9 @@ class LazyProjection:
             or support.true_count != result.event_weight
         ):
             raise ValueError("bound support disagrees with interface weights")
-        self.ledger.bump("tile_projection_physical_support_observations")
+        self.ledger.bump(
+            _observation_keys.TILE_PROJECTION_PHYSICAL_SUPPORT_OBSERVATIONS
+        )
         return support
 
     @source_reads_only
@@ -307,14 +312,14 @@ class LazyProjection:
                     continue
                 record = self.scheduler.tiles.resolve(tile)
                 if not record.level:
-                    self.ledger.bump("tile_endpoint_emissions")
+                    self.ledger.bump(_observation_keys.TILE_ENDPOINT_EMISSIONS)
                     yield tile
                     continue
                 if record.left is None or record.right is None:
                     raise ValueError("malformed endpoint tile")
                 half = 1 << (record.level - 1)
                 pending.extend(((record.right, start + half), (record.left, start)))
-                self.ledger.bump("tile_endpoint_projection_descents")
+                self.ledger.bump(_observation_keys.TILE_ENDPOINT_PROJECTION_DESCENTS)
         finally:
             lease.close()
 
@@ -572,12 +577,12 @@ def _build_tile_projection(
                 pending.extend(
                     ((current, True), (current.second, False), (current.first, False))
                 )
-                ledger.bump("tile_projection_compilation_frames")
+                ledger.bump(_observation_keys.TILE_PROJECTION_COMPILATION_FRAMES)
                 continue
             ledger.reserve(built_owner, entries=1)
             built_credit += 1
             built[identity] = admitted
-            ledger.bump("tile_projection_compilation_frames")
+            ledger.bump(_observation_keys.TILE_PROJECTION_COMPILATION_FRAMES)
         action = built[id(effect)]
     finally:
         for owner, store, credit in (

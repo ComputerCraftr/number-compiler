@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -40,20 +43,25 @@ class CausalHaloArena:
     def right(self, action: ActionProgramID) -> int | None:
         actions = self.runtime.actions
         actions.resolve(action)
-        self.ledger.bump("causal_halo_requests")
+        self.ledger.bump(_interfaces_keys.CAUSAL_HALO_REQUESTS)
         found = self._radii.get(action)
         if found is not None:
-            self.ledger.bump("causal_halo_cache_hits")
+            self.ledger.bump(_interfaces_keys.CAUSAL_HALO_CACHE_HITS)
             return found.radius
-        self.ledger.bump("causal_halo_query_evaluations")
+        self.ledger.bump(_interfaces_keys.CAUSAL_HALO_QUERY_EVALUATIONS)
         pending = [(action, False)]
         while pending:
-            previous = self.ledger.counters.get("causal_halo_stack_peak", 0)
-            self.ledger.bump("causal_halo_stack_peak", max(0, len(pending) - previous))
+            previous = self.ledger.counters.get(
+                _interfaces_keys.CAUSAL_HALO_STACK_PEAK, 0
+            )
+            self.ledger.bump(
+                _interfaces_keys.CAUSAL_HALO_STACK_PEAK,
+                max(0, len(pending) - previous),
+            )
             current, ready = pending.pop()
-            self.ledger.bump("causal_halo_dag_visits")
+            self.ledger.bump(_interfaces_keys.CAUSAL_HALO_DAG_VISITS)
             if current in self._radii:
-                self.ledger.bump("causal_halo_node_cache_hits")
+                self.ledger.bump(_interfaces_keys.CAUSAL_HALO_NODE_CACHE_HITS)
                 continue
             node = actions.resolve(current)
             radius: int | None
@@ -71,7 +79,7 @@ class CausalHaloArena:
                     for symbol in range(primitive.blank + 1):
                         expected = primitive.advance(BoundarySide.RIGHT, 0, symbol)
                         for state in range(1, primitive.right_count):
-                            self.ledger.bump("causal_halo_kernel_checks")
+                            self.ledger.bump(_interfaces_keys.CAUSAL_HALO_KERNEL_CHECKS)
                             if (
                                 primitive.advance(BoundarySide.RIGHT, state, symbol)
                                 != expected
@@ -92,5 +100,5 @@ class CausalHaloArena:
                 a, b = self._radii[first].radius, self._radii[second].radius
                 radius = None if a is None or b is None else a + b
             self._radii[current] = RightHalo(current, radius)
-            self.ledger.bump("causal_halo_evaluations")
+            self.ledger.bump(_interfaces_keys.CAUSAL_HALO_EVALUATIONS)
         return self._radii[action].radius

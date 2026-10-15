@@ -10,6 +10,19 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     _SourceNode,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    CYCLE_26847,
+    ENTRY_0563,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    ENTRY_26847_PHASES,
+    PATH_305,
+    PATH_630,
+    BoundaryActionIdentity,
+    cycle_phase,
+)
 from number_compiler.sequences.collatz.temporal_dyadic import (
     D8TemporalTable,
     bounded_run_length,
@@ -66,7 +79,7 @@ def _affine_power_guard(
     """Certify affine divisibility with progressively widened low residues."""
     if exponent > source_bits + max(2, coefficient.bit_length()):
         if ledger is not None:
-            ledger.bump("collatz_boundary_route_extent_impossible_checks")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_IMPOSSIBLE_CHECKS)
         return False
     checked = 1
     while True:
@@ -75,9 +88,9 @@ def _affine_power_guard(
             scratch.require_bits(8 * (source_bits + checked + 17))
         modulus = 1 << checked
         if ledger is not None:
-            ledger.bump("collatz_boundary_route_extent_residue_checks")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_RESIDUE_CHECKS)
             ledger.bump(
-                "collatz_boundary_route_extent_operand_bits",
+                _collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_OPERAND_BITS,
                 source_bits + modulus.bit_length(),
             )
         if (coefficient * _source_modulo(source, modulus) + offset) % modulus:
@@ -100,7 +113,7 @@ def _quotient_power_guard(
     """Certify a quotient-based 2-adic guard without constructing the quotient."""
     if exponent > source_bits + divisor.bit_length() + 2:
         if ledger is not None:
-            ledger.bump("collatz_boundary_route_extent_impossible_checks")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_IMPOSSIBLE_CHECKS)
         return False
     checked = 1
     while True:
@@ -112,9 +125,9 @@ def _quotient_power_guard(
         power = 1 << checked
         modulus = divisor * power
         if ledger is not None:
-            ledger.bump("collatz_boundary_route_extent_residue_checks")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_RESIDUE_CHECKS)
             ledger.bump(
-                "collatz_boundary_route_extent_operand_bits",
+                _collatz_keys.COLLATZ_BOUNDARY_ROUTE_EXTENT_OPERAND_BITS,
                 source_bits + modulus.bit_length(),
             )
         residue = _source_modulo(source, modulus)
@@ -137,8 +150,7 @@ def _needed_repetitions(width: int, stride: int, terminal_ticks: int) -> int:
 def _has_useful_boundary_extent(
     source: _SourceNode,
     width: int,
-    family: str,
-    phase: int | None,
+    identity: BoundaryActionIdentity,
     *,
     ledger: ResourceLedger | None,
     scratch: RunArithmeticWorkspace | None,
@@ -147,10 +159,10 @@ def _has_useful_boundary_extent(
     if width <= _MAX_BOUNDARY_ROUTE_TAIL:
         return True
     source_bits = exact_source_bit_length(source)
-    if family in ("421", "4721", "0563"):
-        stride, terminal = (3, 1) if family == "421" else (4, 1)
+    if identity in (ENTRY_421, ENTRY_4721, ENTRY_0563):
+        stride, terminal = (3, 1) if identity == ENTRY_421 else (4, 1)
         repetitions = _needed_repetitions(width, stride, terminal)
-        offset = -4 if family == "421" else 2
+        offset = -4 if identity == ENTRY_421 else 2
         return _affine_power_guard(
             source,
             1,
@@ -160,6 +172,7 @@ def _has_useful_boundary_extent(
             ledger=ledger,
             scratch=scratch,
         )
+    phase = cycle_phase(identity, CYCLE_26847)
     if phase is not None:
         repetitions = _needed_repetitions(width, 5, 1 - phase)
         return _affine_power_guard(
@@ -171,7 +184,7 @@ def _has_useful_boundary_extent(
             ledger=ledger,
             scratch=scratch,
         )
-    if family == "630":
+    if identity == PATH_630:
         repetitions = _needed_repetitions(width, 1, 3)
         return _quotient_power_guard(
             source,
@@ -182,7 +195,7 @@ def _has_useful_boundary_extent(
             ledger=ledger,
             scratch=scratch,
         )
-    if family == "305":
+    if identity == PATH_305:
         repetitions = _needed_repetitions(width, 1, 2)
         return _quotient_power_guard(
             source,
@@ -193,7 +206,7 @@ def _has_useful_boundary_extent(
             ledger=ledger,
             scratch=scratch,
         )
-    if family == "989":
+    if identity == ENTRY_89_AT_NINE:
         repetitions = _needed_repetitions(width, 2, 0)
         return _affine_power_guard(
             source,
@@ -223,9 +236,9 @@ def has_admitted_boundary_macro(
     if type(allow_border_return) is not bool:
         raise TypeError("border-return admission choice must be Boolean")
     if ledger is not None:
-        ledger.bump("collatz_physical_boundary_macro_plan_checks")
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_MACRO_PLAN_CHECKS)
         ledger.bump(
-            "collatz_physical_boundary_macro_plan_operand_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_MACRO_PLAN_OPERAND_BITS,
             source.residue.bit_length() + source.lift.bit_length() + width.bit_length(),
         )
     if (
@@ -234,46 +247,46 @@ def has_admitted_boundary_macro(
         and exact_source_bit_length(source) > 3
     ):
         return _has_useful_boundary_extent(
-            source, width, "421", None, ledger=ledger, scratch=scratch
+            source, width, ENTRY_421, ledger=ledger, scratch=scratch
         )
     if width >= 9 and _source_modulo(source, 160) == 94:
         return _has_useful_boundary_extent(
-            source, width, "4721", None, ledger=ledger, scratch=scratch
+            source, width, ENTRY_4721, ledger=ledger, scratch=scratch
         )
     if width >= 5 and _source_modulo(source, 40) == 30:
         return _has_useful_boundary_extent(
-            source, width, "0563", None, ledger=ledger, scratch=scratch
+            source, width, ENTRY_0563, ledger=ledger, scratch=scratch
         )
     if width >= 7 and _source_modulo(source, 160) == 112:
         return _has_useful_boundary_extent(
-            source, width, "26847", 0, ledger=ledger, scratch=scratch
+            source, width, ENTRY_26847_PHASES[0], ledger=ledger, scratch=scratch
         )
     if width >= 6 and _source_modulo(source, 80) == 56:
         return _has_useful_boundary_extent(
-            source, width, "26847P1", 1, ledger=ledger, scratch=scratch
+            source, width, ENTRY_26847_PHASES[1], ledger=ledger, scratch=scratch
         )
     if width >= 5 and _source_modulo(source, 40) == 28:
         return _has_useful_boundary_extent(
-            source, width, "26847P2", 2, ledger=ledger, scratch=scratch
+            source, width, ENTRY_26847_PHASES[2], ledger=ledger, scratch=scratch
         )
     if width >= 4 and _source_modulo(source, 20) == 14:
-        family, phase = (
-            ("4721", None) if _source_modulo(source, 40) == 14 else ("26847P3", 3)
+        identity = (
+            ENTRY_4721 if _source_modulo(source, 40) == 14 else ENTRY_26847_PHASES[3]
         )
         return _has_useful_boundary_extent(
-            source, width, family, phase, ledger=ledger, scratch=scratch
+            source, width, identity, ledger=ledger, scratch=scratch
         )
     if width >= 3 and _source_modulo(source, 10) == 7:
         return _has_useful_boundary_extent(
-            source, width, "26847P4", 4, ledger=ledger, scratch=scratch
+            source, width, ENTRY_26847_PHASES[4], ledger=ledger, scratch=scratch
         )
     if allow_border_return and width >= 6 and _source_modulo(source, 10) == 3:
         return _has_useful_boundary_extent(
-            source, width, "305", None, ledger=ledger, scratch=scratch
+            source, width, PATH_305, ledger=ledger, scratch=scratch
         )
     if allow_border_return and width >= 5 and _source_modulo(source, 80) == 26:
         return _has_useful_boundary_extent(
-            source, width, "630", None, ledger=ledger, scratch=scratch
+            source, width, PATH_630, ledger=ledger, scratch=scratch
         )
     if (
         (include_innovation_tape or include_joint_cocycle)
@@ -282,7 +295,7 @@ def has_admitted_boundary_macro(
         and _source_modulo(source, 4) == 3
     ):
         return _has_useful_boundary_extent(
-            source, width, "989", None, ledger=ledger, scratch=scratch
+            source, width, ENTRY_89_AT_NINE, ledger=ledger, scratch=scratch
         )
     return False
 

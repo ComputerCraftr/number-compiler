@@ -12,6 +12,7 @@ Period: 2026-10-11 through 2026-10-17 (Sunday–Saturday).
 | [Typed CLI contracts and source-derived checks](cli-contracts.md) | 0 |
 | [Comma labelled-selector proof cutover](comma.md) | 0 |
 | [NC8 boundary and joint cocycle integration](hashlife.md) | 0 |
+| [NC14 source-bound radix and carry integration](nc14-radix.md) | 0 |
 <!-- sprint-topics:end -->
 
 ## Provenance

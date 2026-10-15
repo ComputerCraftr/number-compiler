@@ -20,6 +20,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.stores import append_indexed_node
 
 
@@ -172,7 +173,7 @@ class CollatzRadix4RangeArena:
     def _intern(self, value: CollatzRadix4Range) -> CollatzRadix4RangeID:
         found = self._keys.get(value)
         if found is not None:
-            self.ledger.bump("collatz_range_semantic_alias_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_RANGE_SEMANTIC_ALIAS_HITS)
             return CollatzRadix4RangeID(self.owner, self._KIND, found)
         local = append_indexed_node(
             self.ledger,
@@ -191,7 +192,7 @@ class CollatzRadix4RangeArena:
         found = self._bindings.get(source)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("collatz_range_parent_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_RANGE_PARENT_HITS)
             return found
         blank = self.sources.alphabet()[1]
         pending: list[tuple[SourceCellID, bool]] = [(source, False)]
@@ -225,7 +226,7 @@ class CollatzRadix4RangeArena:
                 )
             self._bindings[current] = result
             built[current.local_id] = result
-            self.ledger.bump("collatz_range_parent_publications")
+            self.ledger.bump(_collatz_keys.COLLATZ_RANGE_PARENT_PUBLICATIONS)
         return built[source.local_id]
 
     def summarize_binding(
@@ -243,7 +244,7 @@ class CollatzRadix4RangeArena:
             result = self._intern(
                 self.resolve(result).then(self.resolve(self.summarize(cell))),
             )
-            self.ledger.bump("collatz_range_forest_compositions")
+            self.ledger.bump(_collatz_keys.COLLATZ_RANGE_FOREST_COMPOSITIONS)
         return result
 
 

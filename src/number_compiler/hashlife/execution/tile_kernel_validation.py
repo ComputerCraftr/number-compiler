@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_execution_adapter import (
         FamilyTileHooks,
@@ -330,6 +334,6 @@ def validate_kernel_alphabet(
         or alphabet.radix != kernel.base
         or alphabet.cell_bits != max(1, kernel.blank.bit_length())
         or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-        or alphabet.version != "canonical-tile-alphabet-v1"
+        or alphabet.version != CANONICAL_TILE_ALPHABET_VERSION
     ):
         raise ValueError("tile alphabet differs from primitive kernel")

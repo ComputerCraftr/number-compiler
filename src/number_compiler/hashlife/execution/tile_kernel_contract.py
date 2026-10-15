@@ -1,9 +1,13 @@
 """Semantic contract marker for canonical primitive tile kernels."""
 
+from typing import Final
+
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 
+PRIMITIVE_CANONICAL_TILE_TAG: Final[str] = "primitive-canonical-tile-v1"
+
 TILE_KERNEL_CONTRACT = (
-    "primitive-canonical-tile-v1",
+    PRIMITIVE_CANONICAL_TILE_TAG,
     "two-sided-boundary-transfer",
     "leaf-output-or-left-edge-output",
     "bounded-child-activity-and-edge-halos",

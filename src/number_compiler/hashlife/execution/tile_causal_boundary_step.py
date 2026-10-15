@@ -21,6 +21,9 @@ from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
     concat_cached_boundary_views,
 )
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView | None:
@@ -32,7 +35,10 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
             engine._keep(engine.tiles.mirror(tile)) for tile in reversed(pieces)
         )
         anchor, argument = argument, anchor
-    engine.ledger.bump("tile_causal_boundary_output_piece_normalizations", len(pieces))
+    engine.ledger.bump(
+        _execution_keys.TILE_CAUSAL_BOUNDARY_OUTPUT_PIECE_NORMALIZATIONS,
+        len(pieces),
+    )
     if len(pieces) != 1:
         chunks = engine.scheduler._causal_workspace.allocate(len(pieces))
         for tile in pieces:
@@ -74,7 +80,7 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
         engine.scheduler._pin_causal(engine._application, key, completed)
     if side:
         output = engine._keep(engine.tiles.mirror(output))
-    engine.ledger.bump("tile_causal_boundary_completed_parent_hits")
+    engine.ledger.bump(_execution_keys.TILE_CAUSAL_BOUNDARY_COMPLETED_PARENT_HITS)
     return BoundaryTileView(output, 0, view.relative_extent)
 
 
@@ -166,8 +172,8 @@ def boundary_step(
         )
         chunks.close()
         values.append(BoundaryTileView(output, 0, view.relative_extent))
-        engine.ledger.bump("tile_causal_boundary_single_tile_outputs")
-        engine.ledger.bump("tile_causal_boundary_output_completions")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_BOUNDARY_SINGLE_TILE_OUTPUTS)
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_BOUNDARY_OUTPUT_COMPLETIONS)
         return True
     if frame.stage == 0:
         # Normalize once, not again after each child task returns.
@@ -238,5 +244,5 @@ def boundary_step(
         if merged is None:
             raise AssertionError("empty causal boundary output")
         values.append(BoundaryTileView(merged.tile, 0, view.relative_extent))
-        engine.ledger.bump("tile_causal_boundary_output_completions")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_BOUNDARY_OUTPUT_COMPLETIONS)
     return True

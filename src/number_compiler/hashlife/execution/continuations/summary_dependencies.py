@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
@@ -117,8 +120,11 @@ def _build_runtime(
                 )
                 for state in range(cardinality)
             )
-            self.ledger.bump("higher_finite_transfer_evaluations")
-            self.ledger.bump("higher_finite_transfer_state_visits", cardinality)
+            self.ledger.bump(_execution_keys.HIGHER_FINITE_TRANSFER_EVALUATIONS)
+            self.ledger.bump(
+                _execution_keys.HIGHER_FINITE_TRANSFER_STATE_VISITS,
+                cardinality,
+            )
             recipe: UnaryRecipe = (
                 UnaryIdentity()
                 if outputs == tuple(range(cardinality))
@@ -156,7 +162,7 @@ def _ensure_runtime(
 
     found = self._runtime_bindings.get(root)
     if found is not None:
-        self.ledger.bump("higher_runtime_summary_binding_hits")
+        self.ledger.bump(_execution_keys.HIGHER_RUNTIME_SUMMARY_BINDING_HITS)
         return found
     stack: list[tuple[_UnaryBinding | _ContextBinding, bool]] = [(root, False)]
     active: set[_UnaryBinding | _ContextBinding] = set()
@@ -187,7 +193,7 @@ def _ensure_runtime(
         except BaseException:
             self.ledger.release(self._runtime_binding_owner, entries=1)
             raise
-        self.ledger.bump("higher_runtime_summary_publications")
+        self.ledger.bump(_execution_keys.HIGHER_RUNTIME_SUMMARY_PUBLICATIONS)
         active.discard(key)
     return self._runtime_bindings[root]
 

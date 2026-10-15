@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     LoweringCapability,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import projection as _projection_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ def iter_canonical_endpoint_digits(
     with endpoint_construction(owner, capability):
         if capability.owner is not owner:
             raise ValueError("foreign endpoint lowering capability")
-        projection.ledger.bump("endpoint_lowering_requests")
+        projection.ledger.bump(_projection_keys.ENDPOINT_LOWERING_REQUESTS)
         with closing_output_stream(projection.iter_endpoint_tiles()) as leaves:
             for tile in leaves:
                 record = projection.scheduler.tiles.resolve(tile)
@@ -41,9 +42,9 @@ def iter_canonical_endpoint_digits(
                     raise AssertionError(
                         "blank inside an explicitly requested endpoint"
                     )
-                projection.ledger.bump("explicitly_lowered_digits")
+                projection.ledger.bump(_projection_keys.EXPLICITLY_LOWERED_DIGITS)
                 yield record.symbol
-        projection.ledger.bump("explicitly_materialized_endpoints")
+        projection.ledger.bump(_projection_keys.EXPLICITLY_MATERIALIZED_ENDPOINTS)
 
 
 def iter_endpoint_digits(
@@ -61,7 +62,7 @@ def iter_endpoint_digits(
     with endpoint_construction(owner, capability):
         if capability.owner is not owner:
             raise ValueError("foreign endpoint lowering capability")
-        ledger.bump("endpoint_lowering_requests")
+        ledger.bump(_projection_keys.ENDPOINT_LOWERING_REQUESTS)
         # This buffer is permitted only inside explicit endpoint lowering. It
         # contains the already emitted part of the requested final output.
         reflected: list[int] = []
@@ -69,23 +70,23 @@ def iter_endpoint_digits(
         for position in range(width):
             if reflect_output and position >= midpoint:
                 value = reflected[width - 1 - position]
-                ledger.bump("endpoint_mirror_reuses")
+                ledger.bump(_projection_keys.ENDPOINT_MIRROR_REUSES)
             else:
                 value = point(position)
                 if reflect_output:
                     reflected.append(value)
                     ledger.bump(
-                        "endpoint_mirror_buffer_peak_bytes",
+                        _projection_keys.ENDPOINT_MIRROR_BUFFER_PEAK_BYTES,
                         max(
                             0,
                             getsizeof(reflected)
                             - ledger.counters.get(
-                                "endpoint_mirror_buffer_peak_bytes", 0
+                                _projection_keys.ENDPOINT_MIRROR_BUFFER_PEAK_BYTES, 0
                             ),
                         ),
                     )
             if value == blank:
                 raise AssertionError("blank inside an explicitly requested endpoint")
-            ledger.bump("explicitly_lowered_digits")
+            ledger.bump(_projection_keys.EXPLICITLY_LOWERED_DIGITS)
             yield value
-        ledger.bump("explicitly_materialized_endpoints")
+        ledger.bump(_projection_keys.EXPLICITLY_MATERIALIZED_ENDPOINTS)

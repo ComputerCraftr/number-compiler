@@ -35,6 +35,10 @@ from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -47,7 +51,7 @@ def _blank_view(engine: CausalTileEngine, view: BoundaryTileView | None) -> bool
     validate_boundary_operands(engine.tiles, BoundaryTileOperands(view))
     # A wholly inactive parent proves every clipped subregion inactive too.
     # Active parents deliberately decline here; no output or leaf scan occurs.
-    engine.ledger.bump("behavior_classification_summary_checks")
+    engine.ledger.bump(_execution_keys.BEHAVIOR_CLASSIFICATION_SUMMARY_CHECKS)
     return engine.tiles.resolve(view.tile).first_active is None
 
 
@@ -92,7 +96,7 @@ def quiescent_boundary(
             )
         )
     if not record.homogeneous or not _blank_view(engine, view):
-        engine.ledger.bump("exact_causal_fallback_requests")
+        engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
         return None
     left, right = (argument, anchor) if side else (anchor, argument)
     key: PoweredResultKey | None
@@ -110,7 +114,7 @@ def quiescent_boundary(
     else:
         key = engine._composite_key(action, view.tile, left, right)
         if key is None:
-            engine.ledger.bump("exact_causal_fallback_requests")
+            engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
             return None
     # The action record is authenticated above when a run admission is live.
     # Composite actions refer to their primitive behavioral kernel, so resolve
@@ -119,7 +123,7 @@ def quiescent_boundary(
     kernel = engine.adapter.kernels.kernel(kernel_id)
     behavior = kernel.behavior
     if behavior is None:
-        engine.ledger.bump("exact_causal_fallback_requests")
+        engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
         return None
     # The profile and certificate are admitted once per immutable kernel in
     # the existing quotient arena.  Warm bindings bypass proof evaluation.
@@ -140,7 +144,7 @@ def quiescent_boundary(
                 )
                 admitted_now = True
             except UnsupportedFutureBehaviorProfile:
-                engine.ledger.bump("exact_causal_fallback_requests")
+                engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
                 return None
         else:
             profile, behavior_class = admitted
@@ -162,7 +166,7 @@ def quiescent_boundary(
                         behavior_class,
                     )
                     admitted_now = False
-                engine.ledger.bump("exact_causal_fallback_requests")
+                engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
                 return None
         if completed.behavior != behavior_class:
             raise ValueError("behavior binding resolved another certified class")
@@ -178,8 +182,10 @@ def quiescent_boundary(
     finally:
         if reservation is not None:
             reservation.close()
-    engine.ledger.bump("causal_extent_discharged_by_behavior", discharged_extent)
-    engine.ledger.bump("tile_causal_quiescent_boundary_reuses")
+    engine.ledger.bump(
+        _shared_keys.CAUSAL_EXTENT_DISCHARGED_BY_BEHAVIOR, discharged_extent
+    )
+    engine.ledger.bump(_execution_keys.TILE_CAUSAL_QUIESCENT_BOUNDARY_REUSES)
     return BoundaryTileView(
         view.tile,
         0,

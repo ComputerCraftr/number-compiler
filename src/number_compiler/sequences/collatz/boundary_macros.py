@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -22,35 +22,81 @@ from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    CYCLE_26847,
+    ENTRY_0563,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    ENTRY_26847_PHASES,
+    PATH_305,
+    PATH_630,
+    BoundaryActionIdentity,
+    BoundaryPathKind,
+    CycleEntryPhase,
+    GuardedBorderPath,
+    cycle_phase,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
+
+COLLATZ_BOUNDARY_MACRO_ACTION_TAG: Final[str] = "collatz-boundary-macro-v1"
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.temporal_run_quotient import (
         CollatzF5AffineAction,
     )
 
-BoundaryTemplateName = str | tuple[int, ...]
-_26847_PHASES = {
-    "26847": 0,
-    "26847P1": 1,
-    "26847P2": 2,
-    "26847P3": 3,
-    "26847P4": 4,
-}
-_BOUNDARY_PLAN_FAMILIES = frozenset(
-    ("421", "4721", "0563", *_26847_PHASES, "630", "305", "989")
+BoundaryTemplateName = BoundaryActionIdentity | tuple[int, ...]
+_BOUNDARY_PLAN_IDENTITIES = frozenset(
+    (
+        ENTRY_421,
+        ENTRY_4721,
+        ENTRY_0563,
+        *ENTRY_26847_PHASES,
+        ENTRY_89_AT_NINE,
+        PATH_630,
+        PATH_305,
+    )
 )
+_BOUNDARY_METRIC_SUFFIXES: dict[BoundaryActionIdentity, str] = {
+    ENTRY_421: "421",
+    ENTRY_4721: "4721",
+    ENTRY_0563: "0563",
+    ENTRY_89_AT_NINE: "989",
+    PATH_630: "630",
+    PATH_305: "305",
+    **{
+        entry: "26847" if phase == 0 else f"26847P{phase}"
+        for phase, entry in enumerate(ENTRY_26847_PHASES)
+    },
+}
 
 
-def boundary_macro_26847_phase(family: str) -> int | None:
-    return _26847_PHASES.get(family)
+def boundary_macro_26847_phase(identity: BoundaryActionIdentity) -> int | None:
+    """Return a typed cycle occurrence's phase on the five-digit border."""
+    return cycle_phase(identity, CYCLE_26847)
+
+
+def boundary_metric_suffix(identity: BoundaryActionIdentity) -> str:
+    """Return the stable schema-eight counter suffix for an action identity."""
+    if (
+        type(identity) is GuardedBorderPath
+        and identity.kind is BoundaryPathKind.THREE_BORDER_RETURN
+    ):
+        return "6305R"
+    try:
+        return _BOUNDARY_METRIC_SUFFIXES[identity]
+    except KeyError as error:
+        raise ValueError("boundary identity has no family counter") from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class CollatzBoundaryMacro:
-    family: str
+    identity: BoundaryActionIdentity
     source: int
     repetitions: int
     maximum_repetitions: int
@@ -67,7 +113,7 @@ class CollatzBoundaryMacro:
     @classmethod
     def _issue(
         cls,
-        family: str,
+        identity: BoundaryActionIdentity,
         source: int,
         repetitions: int,
         maximum_repetitions: int,
@@ -79,7 +125,7 @@ class CollatzBoundaryMacro:
     ) -> CollatzBoundaryMacro:
         macro = object.__new__(cls)
         for name, value in (
-            ("family", family),
+            ("identity", identity),
             ("source", source),
             ("repetitions", repetitions),
             ("maximum_repetitions", maximum_repetitions),
@@ -99,7 +145,11 @@ class CollatzBoundaryMacro:
 
     @property
     def quiet(self) -> bool:
-        return self.family == "421"
+        return self.identity == ENTRY_421
+
+    @property
+    def display_label(self) -> str:
+        return self.identity.display_label
 
     def f5_action(self) -> CollatzF5AffineAction:
         """Project the authenticated integer endpoint action onto F5."""
@@ -109,9 +159,9 @@ class CollatzBoundaryMacro:
 
         return _project_dyadic_fields_f5(self.fields)
 
-    def observation(self) -> dict[str, int | str | bool]:
+    def observation(self) -> dict[str, object]:
         return {
-            "family_word": self.family,
+            "border": self.identity.observation(run_parameters=(self.repetitions,)),
             "source": self.source,
             "repetitions": self.repetitions,
             "maximum_repetitions": self.maximum_repetitions,
@@ -128,8 +178,8 @@ class CollatzBoundaryMacro:
         """Return the immutable, authority-free shape used by image ports."""
         fields = self.fields
         return (
-            "collatz-boundary-macro-v1",
-            self.family,
+            COLLATZ_BOUNDARY_MACRO_ACTION_TAG,
+            self.identity.structural_key(),
             self.source,
             self.repetitions,
             self.maximum_repetitions,
@@ -152,7 +202,7 @@ def boundary_macro_plan(
     available_physical_ticks: int,
     *,
     minimum_repetitions: int = 2,
-) -> tuple[str, int, int] | None:
+) -> tuple[BoundaryActionIdentity, int, int] | None:
     """Choose an exact guard and extent before allocating powered coefficients."""
     plan = admit_boundary_macro_plan(
         source,
@@ -161,7 +211,7 @@ def boundary_macro_plan(
     )
     if plan is None:
         return None
-    return plan.family, plan.maximum_repetitions, plan.repetitions
+    return plan.identity, plan.maximum_repetitions, plan.repetitions
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -171,7 +221,7 @@ class AdmittedBoundaryMacroPlan:
     source: int
     available_physical_ticks: int
     minimum_repetitions: int
-    family: str
+    identity: BoundaryActionIdentity
     maximum_repetitions: int
     repetitions: int
     _issuer: object = field(repr=False, compare=False, init=False)
@@ -179,35 +229,35 @@ class AdmittedBoundaryMacroPlan:
 
     @property
     def normalized_symbols(self) -> int:
-        if self.family in ("421", "4721", "0563"):
+        if self.identity in (ENTRY_421, ENTRY_4721, ENTRY_0563):
             return 2 * self.repetitions + 1
-        phase = boundary_macro_26847_phase(self.family)
+        phase = boundary_macro_26847_phase(self.identity)
         if phase is not None:
             return 4 * self.repetitions + 1 - phase
-        if self.family == "630":
+        if self.identity == PATH_630:
             return self.repetitions + 2
-        if self.family == "305":
+        if self.identity == PATH_305:
             return self.repetitions + 1
-        if self.family == "989":
+        if self.identity == ENTRY_89_AT_NINE:
             return self.repetitions
         raise ValueError("boundary plan has an unknown family")
 
     @property
     def physical_ticks(self) -> int:
-        if self.family == "421":
+        if self.identity == ENTRY_421:
             return 3 * self.repetitions + 1
-        if self.family == "4721":
+        if self.identity == ENTRY_4721:
             return 4 * self.repetitions + 1
-        if self.family == "0563":
+        if self.identity == ENTRY_0563:
             return 4 * self.repetitions + 1
-        phase = boundary_macro_26847_phase(self.family)
+        phase = boundary_macro_26847_phase(self.identity)
         if phase is not None:
             return 5 * self.repetitions + 1 - phase
-        if self.family == "630":
+        if self.identity == PATH_630:
             return self.repetitions + 3
-        if self.family == "305":
+        if self.identity == PATH_305:
             return self.repetitions + 2
-        if self.family == "989":
+        if self.identity == ENTRY_89_AT_NINE:
             return 2 * self.repetitions
         raise ValueError("boundary plan has an unknown family")
 
@@ -217,7 +267,7 @@ class AdmittedBoundaryMacroPlan:
         source: int,
         available_physical_ticks: int,
         minimum_repetitions: int,
-        family: str,
+        identity: BoundaryActionIdentity,
         maximum_repetitions: int,
         repetitions: int,
     ) -> AdmittedBoundaryMacroPlan:
@@ -226,7 +276,7 @@ class AdmittedBoundaryMacroPlan:
             ("source", source),
             ("available_physical_ticks", available_physical_ticks),
             ("minimum_repetitions", minimum_repetitions),
-            ("family", family),
+            ("identity", identity),
             ("maximum_repetitions", maximum_repetitions),
             ("repetitions", repetitions),
             ("_issuer", _BOUNDARY_PLAN_ISSUER),
@@ -247,6 +297,8 @@ def admit_boundary_macro_plan(
     available_physical_ticks: int,
     *,
     minimum_repetitions: int = 2,
+    radix_state: JointRadix6Source | None = None,
+    ledger: ResourceLedger | None = None,
 ) -> AdmittedBoundaryMacroPlan | None:
     """Issue a source-bound guard token for one later coefficient build."""
     if type(source) is not int or source <= 0:
@@ -255,42 +307,55 @@ def admit_boundary_macro_plan(
         raise ValueError("Collatz boundary requires nonnegative physical ticks")
     if type(minimum_repetitions) is not int or minimum_repetitions < 1:
         raise ValueError("minimum boundary repetitions must be positive")
-    if source > 4 and source % 40 == 4:
-        family, valuation, period = "421", v2_positive(source - 4), 3
-    elif source % 40 == 14:
-        family, valuation, period = "4721", v2_positive(source + 2), 4
-    elif source % 40 == 30:
-        family, valuation, period = "0563", v2_positive(source + 2), 4
-    elif source % 160 == 112:
-        family, valuation, period = "26847", v2_positive(13 * source - 16), 5
-    elif source % 80 == 56:
-        family, valuation, period = "26847P1", v2_positive(13 * source - 8), 5
-    elif source % 40 == 28:
-        family, valuation, period = "26847P2", v2_positive(13 * source - 4), 5
-    elif source % 20 == 14 and source % 40 != 14:
-        family, valuation, period = "26847P3", v2_positive(13 * source - 2), 5
-    elif source % 10 == 7:
-        family, valuation, period = "26847P4", v2_positive(13 * source - 1), 5
-    elif source % 20 == 6:
-        family, period = "630", 1
+    state = (
+        radix_state
+        if radix_state is not None
+        else JointRadix6Source.from_source(source)
+    )
+    if type(state) is not JointRadix6Source:
+        raise TypeError("boundary selector needs an exact radix-6 source state")
+    state.require_source(source)
+    if ledger is not None:
+        if type(ledger) is not ResourceLedger:
+            raise TypeError("boundary candidate metrics require a query ledger")
+        ledger.bump(_collatz_keys.COLLATZ_RADIX6_SOURCE_CANDIDATE_CHECKS)
+    family = state.candidate_family
+    identity: BoundaryActionIdentity
+    if family == ENTRY_421 and source > 4:
+        identity, valuation, period = ENTRY_421, state.demand_v2_affine(1, -4), 3
+    elif family == ENTRY_4721:
+        identity, valuation, period = ENTRY_4721, state.demand_v2_affine(1, 2), 4
+    elif family == ENTRY_0563:
+        identity, valuation, period = ENTRY_0563, state.demand_v2_affine(1, 2), 4
+    elif family in ENTRY_26847_PHASES:
+        phase = ENTRY_26847_PHASES.index(family)
+        identity, valuation, period = (
+            family,
+            state.demand_v2_affine(13, -(1 << (4 - phase))),
+            5,
+        )
+    elif family == PATH_630:
+        identity, period = PATH_630, 1
         maximum = v2_positive(3 * ((source - 6) // 20) + 1)
-    elif source % 10 == 3:
-        family, period = "305", 1
+    elif family == PATH_305:
+        identity, period = PATH_305, 1
         maximum = v2_positive(3 * ((source - 3) // 10) + 1)
-    elif source % 10 == 9:
-        family, period = "989", 2
-        maximum = v2_positive(source + 1)
+    elif family == ENTRY_89_AT_NINE:
+        identity, period = ENTRY_89_AT_NINE, 2
+        maximum = int(state.demand_v2_affine(1, 1))
     else:
         return None
-    if family in ("421", "4721", "0563"):
+    if identity in (ENTRY_421, ENTRY_4721, ENTRY_0563):
         maximum = (valuation - 1) // 2
         repetitions = min(maximum, (available_physical_ticks - 1) // period)
-    elif (phase := boundary_macro_26847_phase(family)) is not None:
-        maximum = (phase + valuation - 1) // 4
-        repetitions = min(maximum, (available_physical_ticks + phase - 1) // period)
-    elif family == "630":
+    elif (boundary_phase := boundary_macro_26847_phase(identity)) is not None:
+        maximum = (boundary_phase + valuation - 1) // 4
+        repetitions = min(
+            maximum, (available_physical_ticks + boundary_phase - 1) // period
+        )
+    elif identity == PATH_630:
         repetitions = min(maximum, available_physical_ticks - 3)
-    elif family == "305":
+    elif identity == PATH_305:
         repetitions = min(maximum, available_physical_ticks - 2)
     else:
         repetitions = min(maximum, available_physical_ticks // 2)
@@ -300,7 +365,7 @@ def admit_boundary_macro_plan(
         source,
         available_physical_ticks,
         minimum_repetitions,
-        family,
+        identity,
         maximum,
         repetitions,
     )
@@ -322,15 +387,15 @@ def admit_routed_boundary_macro_plan(
             plan.source,
             plan.available_physical_ticks,
             2,
-            plan.family,
+            plan.identity,
             plan.maximum_repetitions,
             plan.repetitions,
         )
     # A one-return edge action is useful when it answers the whole remaining
     # query. Inserting it into a long itinerary can preempt a better powered
     # mixed/D8 action and increase real scheduler work.
-    is_new_edge_family = plan.family == "0563" or (
-        boundary_macro_26847_phase(plan.family) is not None
+    is_new_edge_family = plan.identity == ENTRY_0563 or (
+        boundary_macro_26847_phase(plan.identity) is not None
     )
     if is_new_edge_family and plan.physical_ticks == available_physical_ticks:
         return plan
@@ -338,7 +403,7 @@ def admit_routed_boundary_macro_plan(
 
 
 def _build_boundary_action_template(
-    family: BoundaryTemplateName, repetitions: int
+    identity: BoundaryTemplateName, repetitions: int
 ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
     """Intern the *full parity action*, including accumulator coefficients.
 
@@ -348,18 +413,18 @@ def _build_boundary_action_template(
     """
     if type(repetitions) is not int or repetitions < 1:
         raise ValueError("guarded boundary action needs a positive repeat count")
-    if isinstance(family, tuple):
+    if isinstance(identity, tuple):
         fields = DyadicTerminalFieldAction.zero_run(0)
-        for bit in family:
+        for bit in identity:
             fields = fields.then(
                 DyadicTerminalFieldAction.one_run(1)
                 if bit
                 else DyadicTerminalFieldAction.zero_run(1)
             )
         fields = fields.power(repetitions)
-        odd = sum(family) * repetitions
+        odd = sum(identity) * repetitions
         ticks = fields.steps + odd
-    elif family == "421":
+    elif identity == ENTRY_421:
         motif = DyadicTerminalFieldAction.one_run(1).then(
             DyadicTerminalFieldAction.zero_run(1)
         )
@@ -370,13 +435,13 @@ def _build_boundary_action_template(
         )
         odd = repetitions
         ticks = 3 * repetitions + 1
-    elif family in ("4721", "0563"):
+    elif identity in (ENTRY_4721, ENTRY_0563):
         fields = DyadicTerminalFieldAction.zero_run(1).then(
             DyadicTerminalFieldAction.one_run(2 * repetitions)
         )
         odd = 2 * repetitions
         ticks = 4 * repetitions + 1
-    elif (phase := boundary_macro_26847_phase(family)) is not None:
+    elif (phase := boundary_macro_26847_phase(identity)) is not None:
         fields = DyadicTerminalFieldAction.zero_run(4 - phase)
         if repetitions > 1:
             motif = DyadicTerminalFieldAction.one_run(1).then(
@@ -386,7 +451,7 @@ def _build_boundary_action_template(
         fields = fields.then(DyadicTerminalFieldAction.one_run(1))
         odd = repetitions
         ticks = 5 * repetitions + 1 - phase
-    elif family == "630":
+    elif identity == PATH_630:
         fields = (
             DyadicTerminalFieldAction.zero_run(1)
             .then(DyadicTerminalFieldAction.one_run(1))
@@ -394,13 +459,13 @@ def _build_boundary_action_template(
         )
         odd = 1
         ticks = repetitions + 3
-    elif family == "305":
+    elif identity == PATH_305:
         fields = DyadicTerminalFieldAction.one_run(1).then(
             DyadicTerminalFieldAction.zero_run(repetitions)
         )
         odd = 1
         ticks = repetitions + 2
-    elif family == "989":
+    elif identity == ENTRY_89_AT_NINE:
         fields = DyadicTerminalFieldAction.one_run(repetitions)
         odd = repetitions
         ticks = 2 * repetitions
@@ -411,23 +476,25 @@ def _build_boundary_action_template(
     return fields, odd, ticks, fields.source_residue
 
 
-def _boundary_width_blank(family: str, source: int, endpoint: int) -> BlankLedger:
+def _boundary_width_blank(
+    identity: BoundaryActionIdentity, source: int, endpoint: int
+) -> BlankLedger:
     """Derive the exact physical width extrema from a completed macro."""
-    if family == "421":
+    if identity == ENTRY_421:
         raw_last = 2 * endpoint
         last_source, remainder = divmod(4 * raw_last - 4, 3)
         if remainder or last_source % 4:
             raise AssertionError("quiet boundary predecessor is not integral")
         lowest_width = (last_source // 4).bit_length()
         highest_width = source.bit_length()
-    elif family in ("4721", "0563"):
+    elif identity in (ENTRY_4721, ENTRY_0563):
         raw_last = 2 * endpoint
         last_source, remainder = divmod(4 * raw_last - 10, 9)
         if remainder or last_source % 2:
             raise AssertionError("growth boundary predecessor is not integral")
         lowest_width = (source // 2).bit_length()
         highest_width = max(source.bit_length(), raw_last.bit_length())
-    elif (phase := boundary_macro_26847_phase(family)) is not None:
+    elif (phase := boundary_macro_26847_phase(identity)) is not None:
         last_odd, remainder = divmod(2 * endpoint - 1, 3)
         initial_odd = source >> (4 - phase)
         if remainder or initial_odd <= 0:
@@ -438,13 +505,13 @@ def _boundary_width_blank(family: str, source: int, endpoint: int) -> BlankLedge
             (3 * initial_odd + 1).bit_length(),
             (2 * endpoint).bit_length(),
         )
-    elif family == "630":
+    elif identity == PATH_630:
         lowest_width = min(source // 2, endpoint).bit_length()
         highest_width = max((3 * (source // 2) + 1).bit_length(), source.bit_length())
-    elif family == "305":
+    elif identity == PATH_305:
         lowest_width = endpoint.bit_length()
         highest_width = max((3 * source + 1).bit_length(), source.bit_length())
-    elif family == "989":
+    elif identity == ENTRY_89_AT_NINE:
         lowest_width = source.bit_length()
         highest_width = (2 * endpoint).bit_length()
     else:
@@ -462,16 +529,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
     if getattr(macro, "_issuer", None) is not _BOUNDARY_MACRO_ISSUER:
         raise ValueError("Collatz boundary macro has no producer authority")
     if (
-        macro.family
-        not in (
-            "421",
-            "4721",
-            "0563",
-            *_26847_PHASES,
-            "630",
-            "305",
-            "989",
-        )
+        macro.identity not in _BOUNDARY_PLAN_IDENTITIES
         or type(macro.source) is not int
         or macro.source <= 0
         or type(macro.repetitions) is not int
@@ -487,7 +545,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
     ):
         raise ValueError("Collatz boundary macro fields are malformed")
     source = macro.source
-    if macro.family == "421":
+    if macro.identity == ENTRY_421:
         if source <= 4 or source % 40 != 4:
             raise ValueError("quiet boundary macro has the wrong source guard")
         maximum = (v2_positive(source - 4) - 1) // 2
@@ -496,7 +554,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
             macro.repetitions,
             3 * macro.repetitions + 1,
         )
-    elif macro.family == "4721":
+    elif macro.identity == ENTRY_4721:
         if source % 40 != 14:
             raise ValueError("growth boundary macro has the wrong source guard")
         maximum = (v2_positive(source + 2) - 1) // 2
@@ -505,7 +563,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
             2 * macro.repetitions,
             4 * macro.repetitions + 1,
         )
-    elif macro.family == "0563":
+    elif macro.identity == ENTRY_0563:
         if source % 40 != 30:
             raise ValueError("0563 boundary macro has the wrong source guard")
         maximum = (v2_positive(source + 2) - 1) // 2
@@ -514,7 +572,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
             2 * macro.repetitions,
             4 * macro.repetitions + 1,
         )
-    elif (phase := boundary_macro_26847_phase(macro.family)) is not None:
+    elif (phase := boundary_macro_26847_phase(macro.identity)) is not None:
         guard_modulus = 160 >> phase
         guard_residue = 112 >> phase
         if source % guard_modulus != guard_residue:
@@ -525,12 +583,12 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
             macro.repetitions,
             5 * macro.repetitions + 1 - phase,
         )
-    elif macro.family == "630":
+    elif macro.identity == PATH_630:
         if source % 20 != 6:
             raise ValueError("630 boundary macro has the wrong source guard")
         maximum = v2_positive(3 * ((source - 6) // 20) + 1)
         normalized, odd, ticks = macro.repetitions + 2, 1, macro.repetitions + 3
-    elif macro.family == "305":
+    elif macro.identity == PATH_305:
         if source % 10 != 3:
             raise ValueError("305 boundary macro has the wrong source guard")
         maximum = v2_positive(3 * ((source - 3) // 10) + 1)
@@ -559,7 +617,7 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
         or remainder != 0
         or endpoint <= 0
         or macro.endpoint != endpoint
-        or macro.width_blank != _boundary_width_blank(macro.family, source, endpoint)
+        or macro.width_blank != _boundary_width_blank(macro.identity, source, endpoint)
     ):
         raise ValueError("Collatz boundary macro is not an exact guarded action")
 
@@ -647,7 +705,13 @@ class BoundaryActionTemplateMemo:
                     fields = template[0]
                     return (
                         8
-                        + (len(value[0]) if isinstance(value[0], tuple) else 1)
+                        + (
+                            len(value[0])
+                            if isinstance(value[0], tuple)
+                            else len(value[0].cycle.digits)
+                            if isinstance(value[0], CycleEntryPhase)
+                            else 1
+                        )
                         + sum(
                             (max(1, component.bit_length()) + 63) // 64
                             for component in (
@@ -687,29 +751,36 @@ class BoundaryActionTemplateMemo:
         return templates
 
     def get(
-        self, family: BoundaryTemplateName, repetitions: int
+        self, identity: BoundaryTemplateName, repetitions: int
     ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
         if self._closed or self._closing:
             raise RuntimeError("boundary action template memo is closed")
-        if type(family) not in (str, tuple) or type(repetitions) is not int:
+        if (
+            type(identity) not in (CycleEntryPhase, GuardedBorderPath, tuple)
+            or type(repetitions) is not int
+        ):
             raise TypeError("boundary action template key is malformed")
-        if isinstance(family, tuple) and (
-            not 2 <= len(family) <= 64
-            or any(type(bit) is not int or bit not in (0, 1) for bit in family)
-            or not 0 < sum(family) < len(family)
+        if isinstance(identity, tuple) and (
+            not 2 <= len(identity) <= 64
+            or any(type(bit) is not int or bit not in (0, 1) for bit in identity)
+            or not 0 < sum(identity) < len(identity)
         ):
             raise ValueError("mixed boundary motif requires 2..64 Boolean symbols")
+        if isinstance(identity, (CycleEntryPhase, GuardedBorderPath)) and (
+            identity not in _BOUNDARY_PLAN_IDENTITIES
+        ):
+            raise ValueError("unknown Collatz boundary action identity")
         if repetitions < 1:
             raise ValueError("boundary action repeat count must be positive")
-        key = family, repetitions
-        self.ledger.bump("collatz_boundary_template_lookups")
+        key = identity, repetitions
+        self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_LOOKUPS)
         memo = self._memo()
         cached = memo.get(key)
         if cached is not None:
             if (
                 type(cached) is not tuple
                 or len(cached) != 3
-                or cached[0] != family
+                or cached[0] != identity
                 or cached[1] != repetitions
                 or type(cached[2]) is not tuple
                 or len(cached[2]) != 4
@@ -720,9 +791,9 @@ class BoundaryActionTemplateMemo:
                 raise ValueError("cached boundary action template is malformed")
             template = cached[2]
             fields, odd, ticks, guard = template
-            self.ledger.bump("collatz_boundary_template_validations")
+            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_VALIDATIONS)
             self.ledger.bump(
-                "collatz_boundary_template_validation_operand_bits",
+                _collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_VALIDATION_OPERAND_BITS,
                 fields.gain.bit_length()
                 + fields.offset.bit_length()
                 + guard.bit_length(),
@@ -734,24 +805,28 @@ class BoundaryActionTemplateMemo:
                 or (fields.gain * guard + fields.offset) % fields.source_modulus != 0
             ):
                 raise ValueError("cached boundary action template is inconsistent")
-            self.ledger.bump("collatz_boundary_template_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_HITS)
             return template
-        self.ledger.bump("collatz_boundary_template_misses")
-        if isinstance(family, tuple):
-            width = len(family) * repetitions
+        self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_MISSES)
+        if isinstance(identity, tuple):
+            width = len(identity) * repetitions
             with self.scratch(nodes=128 + 32 * ((2 * width + 63) // 64)):
-                self.ledger.bump("collatz_mixed_clock_coefficient_constructions")
-                self.ledger.bump("collatz_mixed_clock_requested_guard_bits", width)
-                template = _build_boundary_action_template(family, repetitions)
+                self.ledger.bump(
+                    _collatz_keys.COLLATZ_MIXED_CLOCK_COEFFICIENT_CONSTRUCTIONS
+                )
+                self.ledger.bump(
+                    _collatz_keys.COLLATZ_MIXED_CLOCK_REQUESTED_GUARD_BITS, width
+                )
+                template = _build_boundary_action_template(identity, repetitions)
         else:
-            template = _build_boundary_action_template(family, repetitions)
-        bound_template = family, repetitions, template
+            template = _build_boundary_action_template(identity, repetitions)
+        bound_template = identity, repetitions, template
         try:
             memo[key] = bound_template
         except BlockContextBudgetExceeded:
-            self.ledger.bump("collatz_boundary_template_bypasses")
+            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_BYPASSES)
         else:
-            self.ledger.bump("collatz_boundary_template_publications")
+            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_PUBLICATIONS)
         return template
 
 
@@ -788,15 +863,15 @@ def select_admitted_boundary_macro(
 ) -> CollatzBoundaryMacro:
     """Build the exact action once from an issued, validated source plan."""
     validate_admitted_boundary_macro_plan(plan)
-    family = plan.family
+    identity = plan.identity
     maximum = plan.maximum_repetitions
     repetitions = plan.repetitions
     if templates is not None and type(templates) is not BoundaryActionTemplateMemo:
         raise TypeError("boundary macro requires its ledger-owned template memo")
     fields, odd, ticks, guard = (
-        templates.get(family, repetitions)
+        templates.get(identity, repetitions)
         if templates is not None
-        else _build_boundary_action_template(family, repetitions)
+        else _build_boundary_action_template(identity, repetitions)
     )
     # Recheck the exact source cylinder without reconstructing the action.
     denominator = 1 << fields.steps
@@ -808,9 +883,9 @@ def select_admitted_boundary_macro(
     endpoint, remainder = divmod(fields.gain * source + fields.offset, denominator)
     if remainder or endpoint <= 0:
         raise AssertionError("guarded Collatz endpoint is not exact")
-    blank = _boundary_width_blank(family, source, endpoint)
+    blank = _boundary_width_blank(identity, source, endpoint)
     return CollatzBoundaryMacro._issue(
-        family,
+        identity,
         source,
         repetitions,
         maximum,
@@ -830,7 +905,7 @@ def validate_admitted_boundary_macro_plan(plan: AdmittedBoundaryMacroPlan) -> No
         or type(plan.source) is not int
         or type(plan.available_physical_ticks) is not int
         or type(plan.minimum_repetitions) is not int
-        or type(plan.family) is not str
+        or type(plan.identity) not in (CycleEntryPhase, GuardedBorderPath)
         or type(plan.maximum_repetitions) is not int
         or type(plan.repetitions) is not int
         or plan._issued_values
@@ -838,7 +913,7 @@ def validate_admitted_boundary_macro_plan(plan: AdmittedBoundaryMacroPlan) -> No
             plan.source,
             plan.available_physical_ticks,
             plan.minimum_repetitions,
-            plan.family,
+            plan.identity,
             plan.maximum_repetitions,
             plan.repetitions,
         )
@@ -847,7 +922,7 @@ def validate_admitted_boundary_macro_plan(plan: AdmittedBoundaryMacroPlan) -> No
     maximum = plan.maximum_repetitions
     repetitions = plan.repetitions
     if (
-        plan.family not in _BOUNDARY_PLAN_FAMILIES
+        plan.identity not in _BOUNDARY_PLAN_IDENTITIES
         or maximum < repetitions
         or repetitions < plan.minimum_repetitions
     ):
@@ -862,6 +937,7 @@ __all__ = [
     "admit_routed_boundary_macro_plan",
     "boundary_macro_26847_phase",
     "boundary_macro_plan",
+    "boundary_metric_suffix",
     "select_admitted_boundary_macro",
     "select_boundary_macro",
     "validate_admitted_boundary_macro_plan",

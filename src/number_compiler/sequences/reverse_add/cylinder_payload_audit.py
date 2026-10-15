@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentityDomain,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
+)
+from number_compiler.sequences.reverse_add.semantic_tags import (
+    REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
+    REVERSE_ADD_SOURCE_CARRY_TAG,
 )
 
 if TYPE_CHECKING:
@@ -264,9 +271,9 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
         return False
     atom = _node(root.arena, binding._atom)
     expected_atom_semantic = SemanticIdentity(
-        "reverse-add-source-carry-v1",
+        SemanticIdentityDomain.REVERSE_ADD_SOURCE_CARRY,
         (
-            "reverse-add-source-carry-v1",
+            REVERSE_ADD_SOURCE_CARRY_TAG,
             binding._source_owner,
             root.base,
             root.extent,
@@ -326,7 +333,7 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
     ):
         return False
     expected_behavior = (
-        "reverse-add-primitive-cylinder-clause-v1",
+        REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
         binding._source_owner,
         root.arena._node_owner,
         root.arena._key_owner,

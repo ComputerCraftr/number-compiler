@@ -11,6 +11,9 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class CausalObservationEngine(Protocol):
@@ -75,17 +78,19 @@ def causal_width(
         return 0
 
     pending = [_WidthFrame(0, tile, left, right)]
-    engine.ledger.bump("tile_causal_width_requests")
+    engine.ledger.bump(_execution_keys.TILE_CAUSAL_WIDTH_REQUESTS)
     while pending:
-        previous = engine.ledger.counters.get("tile_causal_width_workspace_peak", 0)
+        previous = engine.ledger.counters.get(
+            _execution_keys.TILE_CAUSAL_WIDTH_WORKSPACE_PEAK, 0
+        )
         if len(pending) > previous:
             engine.ledger.bump(
-                "tile_causal_width_workspace_peak",
+                _execution_keys.TILE_CAUSAL_WIDTH_WORKSPACE_PEAK,
                 len(pending) - previous,
             )
         frame = pending.pop()
         node = engine.tiles.resolve(frame.tile)
-        engine.ledger.bump("tile_causal_width_descents")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_WIDTH_DESCENTS)
         if frame.origin >= limit:
             continue
         covered = frame.origin + node.width <= limit

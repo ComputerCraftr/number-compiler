@@ -14,6 +14,8 @@ from number_compiler.hashlife.tiles.tiles import (
     TileID,
     TileLease,
 )
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.sequences.collatz.physical_support import (
     PhysicalSupport,
     PhysicalSupportArena,
@@ -39,11 +41,11 @@ def _power_of_two_exponent(
     """
     tiles = scheduler.tiles
     source_record = tiles.resolve(source)
-    scheduler.ledger.bump("collatz_power_two_summary_requests")
+    scheduler.ledger.bump(_collatz_keys.COLLATZ_POWER_TWO_SUMMARY_REQUESTS)
     # Every nontrivial power of two has a zero low bit. Reject the ordinary
     # odd Collatz case before allocating or walking the summary DAG.
     if source_record.extent > 1 and tiles.point(source, 0) != 0:
-        scheduler.ledger.bump("collatz_power_two_low_bit_declines")
+        scheduler.ledger.bump(_collatz_keys.COLLATZ_POWER_TWO_LOW_BIT_DECLINES)
         return None
     summaries: dict[TileID, _PowerSummary] = {}
     pending = [(source, False)]
@@ -53,7 +55,7 @@ def _power_of_two_exponent(
         if current in summaries:
             continue
         record = tiles.resolve(current)
-        scheduler.ledger.bump("collatz_power_two_summary_node_visits")
+        scheduler.ledger.bump(_collatz_keys.COLLATZ_POWER_TWO_SUMMARY_NODE_VISITS)
         if record.level == 0:
             if record.symbol == 0:
                 summary: _PowerSummary = ("zero", 0)
@@ -87,21 +89,23 @@ def _power_of_two_exponent(
             summary = ("invalid", 0)
         summaries[current] = summary
     scheduler.ledger.bump(
-        "collatz_power_two_summary_peak_entries",
+        _collatz_keys.COLLATZ_POWER_TWO_SUMMARY_PEAK_ENTRIES,
         max(
             0,
             len(summaries)
             - scheduler.ledger.counters.get(
-                "collatz_power_two_summary_peak_entries", 0
+                _collatz_keys.COLLATZ_POWER_TWO_SUMMARY_PEAK_ENTRIES, 0
             ),
         ),
     )
     scheduler.ledger.bump(
-        "collatz_power_two_summary_peak_frames",
+        _collatz_keys.COLLATZ_POWER_TWO_SUMMARY_PEAK_FRAMES,
         max(
             0,
             peak_pending
-            - scheduler.ledger.counters.get("collatz_power_two_summary_peak_frames", 0),
+            - scheduler.ledger.counters.get(
+                _collatz_keys.COLLATZ_POWER_TWO_SUMMARY_PEAK_FRAMES, 0
+            ),
         ),
     )
     result = summaries[source]
@@ -241,11 +245,11 @@ def complete_collatz_cycle(
                         scheduler, entry_ticks, cycle_ticks
                     ),
                 )
-                scheduler.ledger.bump("tile_collatz_cycle_completions")
+                scheduler.ledger.bump(_collatz_keys.TILE_COLLATZ_CYCLE_COMPLETIONS)
                 if entry_ticks:
-                    scheduler.ledger.bump("tile_collatz_power_two_entries")
+                    scheduler.ledger.bump(_collatz_keys.TILE_COLLATZ_POWER_TWO_ENTRIES)
                 scheduler.ledger.bump(
-                    "causal_extent_discharged_by_behavior",
+                    _shared_keys.CAUSAL_EXTENT_DISCHARGED_BY_BEHAVIOR,
                     input_record.width,
                 )
                 return scheduler.results.publish(key, completed)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
 from dataclasses import replace
+from typing import Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -34,6 +35,10 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditStoreBinding,
     register_payload_audit_contract,
 )
+from number_compiler.sequences.collatz.border_identity import (
+    BoundaryOccurrence,
+    is_boundary_occurrence,
+)
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     validate_border_return_macro,
@@ -44,6 +49,9 @@ from number_compiler.sequences.collatz.boundary_macros import (
 )
 from number_compiler.sequences.collatz.innovation_port_moore import (
     InnovationTapeObservation,
+)
+from number_compiler.sequences.collatz.innovation_tape_contract import (
+    SIGNED_INNOVATION_TAPE_TAG,
 )
 from number_compiler.sequences.collatz.innovation_temporal_tape import (
     _retained_node_count,
@@ -61,18 +69,24 @@ from number_compiler.sequences.collatz.tape_width import (
     cycle_width_summary,
 )
 
+COLLATZ_PHYSICAL_SEMANTIC_VERSION: Final[str] = (
+    "collatz-physical-source-image-v2-dyadic"
+)
+
 COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
     family="collatz-physical-source-image",
-    semantic_version="collatz-physical-source-image-v2-dyadic",
+    semantic_version=COLLATZ_PHYSICAL_SEMANTIC_VERSION,
     gains=(1, 6),
     offsets=(0, 2),
     weights=(0, 1),
     cycle=DyadicReturnCycle((1, 4, 2)),
 )
-_TAPE_WIDTH_PORT = "collatz-tape-width-summary-v1"
-_JOINT_COCYCLE_PORT = "collatz-joint-temporal-action-v1"
-_BOUNDARY_MACRO_PORT = "collatz-first-boundary-macro-v1"
-_INNOVATION_TAPE_PORT = "collatz-global-signed-tape-v1"
+_TAPE_WIDTH_PORT: Final[str] = "collatz-tape-width-summary-v1"
+_JOINT_COCYCLE_PORT: Final[str] = "collatz-joint-temporal-action-v1"
+_BOUNDARY_MACRO_PORT: Final[str] = "collatz-first-boundary-macro-v1"
+_INNOVATION_TAPE_PORT: Final[str] = SIGNED_INNOVATION_TAPE_TAG
+_GLOBAL_INNOVATION_OBSERVER_TAG: Final[str] = "collatz-global-innovation-observer-v2"
+_BOUNDARY_OBSERVER_TAG: Final[str] = "collatz-boundary-observer-v1"
 _BoundaryMacroSnapshot = tuple[int, tuple[object, ...]]
 
 
@@ -437,22 +451,14 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
     def _attach_boundary_macro(
         self,
         candidate: SourceImageCandidate,
-        occurrence: tuple[int, int, int, str],
+        occurrence: BoundaryOccurrence,
         macro: CollatzBoundaryMacro | BorderReturnMacro,
     ) -> SourceImageCandidate:
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz boundary macro needs a source-image candidate")
-        if (
-            type(occurrence) is not tuple
-            or len(occurrence) != 4
-            or type(occurrence[0]) is not int
-            or occurrence[0] < 0
-            or type(occurrence[1]) is not int
-            or type(occurrence[2]) is not int
-            or type(occurrence[3]) is not str
-        ):
+        if not is_boundary_occurrence(occurrence):
             raise ValueError("Collatz boundary macro occurrence is malformed")
-        start_tick, boundary_source, physical_ticks, family = occurrence
+        start_tick, boundary_source, physical_ticks, identity = occurrence
         if type(macro) is BorderReturnMacro:
             validate_border_return_macro(macro)
         elif type(macro) is CollatzBoundaryMacro:
@@ -462,7 +468,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         if (
             macro.source != boundary_source
             or macro.physical_ticks != physical_ticks
-            or macro.family != family
+            or macro.identity != identity
         ):
             raise ValueError("Collatz boundary macro differs from its run witness")
         if candidate.extent != self.steps:
@@ -595,9 +601,9 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             and action == self.root_action
         ):
             observer_consumer = (
-                ("collatz-global-innovation-observer-v2", self._innovation_modulus)
+                (_GLOBAL_INNOVATION_OBSERVER_TAG, self._innovation_modulus)
                 if self._innovation_modulus is not None
-                else ("collatz-boundary-observer-v1",)
+                else (_BOUNDARY_OBSERVER_TAG,)
             )
         source_bits = exact_source_bit_length(admitted)
         self._bump("temporal_reuse_routing_requests")

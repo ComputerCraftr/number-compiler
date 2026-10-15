@@ -430,3 +430,11 @@ kind = "sprint-topic"
 topic = "cli-contracts"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-nc14-radix"
+path = "docs/sprints/week-of-2026-10-11/nc14-radix.md"
+kind = "sprint-topic"
+topic = "nc14-radix"
+status = "current"
+week_start = "2026-10-11"

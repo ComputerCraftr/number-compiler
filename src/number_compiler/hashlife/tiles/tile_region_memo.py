@@ -20,7 +20,11 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -118,16 +122,16 @@ def lookup_normalized_region(
 ) -> NormalizedRegionResult | None:
     """Probe a validated raw clip before any spatial decomposition occurs."""
     _validate_key(arena, key)
-    arena.ledger.bump("tile_region_normalization_requests")
+    arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_REQUESTS)
     found = arena._memo.get(key)
     if found is None:
-        arena.ledger.bump("tile_region_normalization_misses")
-        record_unattributed_post_eviction_miss(arena.ledger, "region")
+        arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_MISSES)
+        record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.REGION)
         return None
     if type(found) is not NormalizedRegionResult:
         raise TypeError("normalized region memo contains another value sort")
     _validate_value(arena, key, found, published=True)
-    arena.ledger.bump("tile_region_normalization_early_hits")
+    arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_EARLY_HITS)
     return found
 
 
@@ -139,17 +143,17 @@ def _publish(
     _validate_key(arena, key)
     _validate_value(arena, key, value, published=True)
     found = arena._memo.get(key)
-    arena.ledger.bump("tile_region_normalization_publication_requests")
+    arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not NormalizedRegionResult:
             raise TypeError("normalized region memo contains another value sort")
         _validate_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("clipped region already has another canonical result")
-        arena.ledger.bump("tile_region_normalization_late_duplicates")
+        arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_LATE_DUPLICATES)
         return found, False
     publish_indexed_result(arena, key, value)
-    arena.ledger.bump("tile_region_normalization_publications")
+    arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_PUBLICATIONS)
     return value, True
 
 
@@ -190,7 +194,7 @@ def normalize_cached_region(
         # The scheduler registry is the authenticated application index.  Count
         # the one exact lookup, including a stale-ID failure, without walking
         # every unrelated execution root on each cold or warm region request.
-        arena.ledger.bump("tile_region_application_validation_visits")
+        arena.ledger.bump(_tiles_keys.TILE_REGION_APPLICATION_VALIDATION_VISITS)
         live = validate_application_dependencies(
             dependencies.applications,
             arena.ledger,

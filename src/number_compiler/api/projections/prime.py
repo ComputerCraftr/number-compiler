@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.api.elementary_payloads import ScalarTermPayload
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
 
 if TYPE_CHECKING:
@@ -25,14 +26,14 @@ def project(compiler: NumberCompiler, query: PrimeTermQuery) -> ProjectedNumberT
         shared_cache=compiler._shared_cache,
     )
     return ProjectedNumberTerm(
-        "prime",
+        FamilyId.PRIME,
         query.index,
         query.start,
         None,
-        SymbolicExpression("prime", query.index, query.start),
+        SymbolicExpression(FamilyId.PRIME, query.index, query.start),
         ScalarTermPayload(value),
         ProjectionMetrics(
-            "prime",
+            FamilyId.PRIME,
             query.index,
             metrics.descent_rounds + metrics.expansion_rounds,
             metrics.projection_work,

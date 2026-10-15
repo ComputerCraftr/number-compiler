@@ -551,7 +551,7 @@ def balanced_scaling(
                 str(max(4096, 2 * steps)),
             ]
             if mahler:
-                arguments += ["--info", "mahler"]
+                arguments += ["--info", "arithmetic.mahler"]
         request = parse_request(arguments)
         assert request is not None
         if mode == "process-warm":

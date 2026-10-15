@@ -65,6 +65,10 @@ from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroKey,
     PrimitiveMacroObservation,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -225,7 +229,7 @@ def _admit_head_binding(self: DiamondRuntime, expression: ExprID) -> bool:
     allowed, visits, peak = function_program_admission(
         self.higher.expressions, expression
     )
-    self.ledger.bump("higher_head_binding_admission_visits", visits)
+    self.ledger.bump(_execution_keys.HIGHER_HEAD_BINDING_ADMISSION_VISITS, visits)
     name = "higher_head_binding_admission_workspace_peak"
     self.ledger.bump(name, max(0, peak - self.ledger.counters.get(name, 0)))
     return allowed
@@ -234,7 +238,7 @@ def _admit_head_binding(self: DiamondRuntime, expression: ExprID) -> bool:
 def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
     if isinstance(task, (PrimitiveMacroKey, PrimitiveMacroObservation)):
         if self.primitive_macros is None:
-            self.ledger.bump("primitive_macro_requests")
+            self.ledger.bump(_shared_keys.PRIMITIVE_MACRO_REQUESTS)
             return None
         return self.primitive_macros.probe(task)
     if isinstance(task, (CompileStructuredExpression, StructuredExpressionTask)):
@@ -264,14 +268,14 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
     if isinstance(task, LowerFinite):
         expression = self.higher.expressions.node(task.expression)
         if expression.kind in ("literal", "symbol"):
-            self.ledger.bump("higher_scalar_constant_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SCALAR_CONSTANT_HITS)
             return expression.value
         return None
     if isinstance(task, ResolveExpr):
-        self.ledger.bump("higher_head_requests")
+        self.ledger.bump(_execution_keys.HIGHER_HEAD_REQUESTS)
         expression = self.higher.expressions.node(task.expression)
         if expression.kind not in ("call", "anchor", "continuation", "apply"):
-            self.ledger.bump("higher_head_identity_hits")
+            self.ledger.bump(_execution_keys.HIGHER_HEAD_IDENTITY_HITS)
             return task.expression
         if type(expression.sort) is SymbolSort or not expression.free_ports:
             return None
@@ -279,24 +283,24 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
             return None
         head = self.expression_heads.get(task)
         if head is not None:
-            self.ledger.bump("higher_head_cache_hits")
+            self.ledger.bump(_execution_keys.HIGHER_HEAD_CACHE_HITS)
         return head
     if isinstance(task, PairSummary):
         return self.pair_macros.cache_probe(task.action, task.cell)
     if isinstance(task, SpatialSummary):
-        self.ledger.bump("primitive_spatial_requests")
+        self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_REQUESTS)
         found_spatial = self.spatial.bindings.get(task)
         if found_spatial is not None:
-            self.ledger.bump("primitive_spatial_cache_hits")
+            self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_CACHE_HITS)
         return found_spatial
     if isinstance(task, ContextObservation):
-        self.ledger.bump("context_observation_requests")
+        self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_REQUESTS)
         context_result = self.pair_macros.contexts.observations.get(task)
         if context_result is not None:
-            self.ledger.bump("context_observation_cache_hits")
+            self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_CACHE_HITS)
         return context_result
     if isinstance(task, OutputFunction):
-        self.ledger.bump("output_function_requests")
+        self.ledger.bump(_execution_keys.OUTPUT_FUNCTION_REQUESTS)
         function = self.outputs.bindings.get(task)
         self.ledger.bump(
             "output_function_cache_hits"
@@ -305,7 +309,7 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
         )
         return function
     if isinstance(task, Output):
-        self.ledger.bump("scalar_observation_requests")
+        self.ledger.bump(_execution_keys.SCALAR_OBSERVATION_REQUESTS)
         return None
     name = (
         "initial_state"
@@ -334,8 +338,8 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
 
 def _canonical_task(self: DiamondRuntime, task: Task) -> Task:
     visits = self._validate(task)
-    self.ledger.bump("scheduler_admission_requests")
-    self.ledger.bump("scheduler_admission_source_visits", visits)
+    self.ledger.bump(_execution_keys.SCHEDULER_ADMISSION_REQUESTS)
+    self.ledger.bump(_execution_keys.SCHEDULER_ADMISSION_SOURCE_VISITS, visits)
     if isinstance(task, HigherUnarySummary) and task.side == 1:
         radius = self.resets.radius(task.action)
         if radius is not None and radius > 0:
@@ -343,8 +347,11 @@ def _canonical_task(self: DiamondRuntime, task: Task) -> Task:
             previous_level = self.cells.node(task.cell).level
             if previous_level > level:
                 prefix = self.cells.slice(task.cell, 0, level)
-                self.ledger.bump("higher_source_prefix_normalizations")
-                self.ledger.bump("higher_source_levels_elided", previous_level - level)
+                self.ledger.bump(_execution_keys.HIGHER_SOURCE_PREFIX_NORMALIZATIONS)
+                self.ledger.bump(
+                    _execution_keys.HIGHER_SOURCE_LEVELS_ELIDED,
+                    previous_level - level,
+                )
                 return HigherUnarySummary(task.action, prefix, task.side)
         return task
     if not isinstance(task, (Transfer, ResetTransfer)) or task.side != 1:
@@ -368,12 +375,15 @@ def _canonical_task(self: DiamondRuntime, task: Task) -> Task:
                 provider = ImageBinding(
                     provider.action, cell, provider.left, provider.right
                 )
-                self.ledger.bump("synchronizing_source_prefix_normalizations")
                 self.ledger.bump(
-                    "synchronizing_source_levels_elided", previous_level - level
+                    _execution_keys.SYNCHRONIZING_SOURCE_PREFIX_NORMALIZATIONS
+                )
+                self.ledger.bump(
+                    _execution_keys.SYNCHRONIZING_SOURCE_LEVELS_ELIDED,
+                    previous_level - level,
                 )
         if type(task) is Transfer:
-            self.ledger.bump("synchronizing_transfer_normalizations")
+            self.ledger.bump(_execution_keys.SYNCHRONIZING_TRANSFER_NORMALIZATIONS)
         return ResetTransfer(provider, task.action, task.side)
     return task
 
@@ -448,4 +458,4 @@ def _fold_substitution(
             provider,
             prior.anchor,
         )
-        self.ledger.bump("spatial_substitution_folds")
+        self.ledger.bump(_execution_keys.SPATIAL_SUBSTITUTION_FOLDS)

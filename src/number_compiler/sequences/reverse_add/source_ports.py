@@ -27,6 +27,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_no_growth,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 
@@ -50,9 +51,13 @@ class _QueryWorkspace:
 
     def _note_peak(self) -> None:
         count = len(self.stack) + len(self.created) + len(self.pruned)
-        peak = self.ledger.counters.get("reverse_source_ports_workspace_peak", 0)
+        peak = self.ledger.counters.get(
+            _reverse_add_keys.REVERSE_SOURCE_PORTS_WORKSPACE_PEAK, 0
+        )
         if count > peak:
-            self.ledger.bump("reverse_source_ports_workspace_peak", count - peak)
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_PORTS_WORKSPACE_PEAK, count - peak
+            )
 
     def push(self, frame: _IntervalFrame) -> None:
         self.ledger.reserve(self.owner, nodes=1)
@@ -118,7 +123,9 @@ class _QueryWorkspace:
             if key in cache:
                 del cache[key]
                 self.forget(key)
-                self.ledger.bump("reverse_source_ports_identity_children_pruned")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_IDENTITY_CHILDREN_PRUNED
+                )
 
     def close(self) -> None:
         nodes = len(self.stack) + len(self.created) + len(self.pruned)
@@ -150,13 +157,18 @@ class SourceCarryPorts:
         if type(source) is not ExactSource or type(ledger) is not ResourceLedger:
             raise TypeError("source carry ports require an exact source and ledger")
         coordinates = 2 * len(source.digits)
-        ledger.bump("reverse_source_validation_coordinates", coordinates)
-        ledger.bump("reverse_source_ports_validation_coordinates", coordinates)
+        ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_VALIDATION_COORDINATES, coordinates
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_PORTS_VALIDATION_COORDINATES,
+            coordinates,
+        )
         # Keep the established source-pullback metrics present while the new
         # interval implementation records the same work at its actual leaves.
-        ledger.bump("reverse_source_pullback_pair_reads", 0)
-        ledger.bump("reverse_source_pullback_predecessor_search", 0)
-        ledger.bump("reverse_source_length_pair_reads", 0)
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PULLBACK_PAIR_READS, 0)
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PULLBACK_PREDECESSOR_SEARCH, 0)
+        ledger.bump(_reverse_add_keys.REVERSE_SOURCE_LENGTH_PAIR_READS, 0)
         source.__post_init__()
         if not source.digits:
             raise ValueError("source carry ports require nonempty original digits")
@@ -261,11 +273,11 @@ class SourceCarryPorts:
             or self._workspace_owner != self._workspace_authority
         ):
             raise ValueError("source carry port binding was altered or is foreign")
-        self._ledger.bump("reverse_source_ports_binding_checks")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_BINDING_CHECKS)
 
     def _raw_first_pair(self, position: int) -> int:
-        self._ledger.bump("reverse_source_ports_source_reads", 2)
-        self._ledger.bump("reverse_source_pullback_pair_reads")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_SOURCE_READS, 2)
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PULLBACK_PAIR_READS)
         digits = self._source.digits
         return digits[position] + digits[self._width - 1 - position]
 
@@ -283,7 +295,7 @@ class SourceCarryPorts:
         if found is not None:
             if type(found) is not CarryFn:
                 raise ValueError("source carry interval cache was altered")
-            self._ledger.bump("reverse_source_ports_interval_hits")
+            self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_INTERVAL_HITS)
             return found
         return None
 
@@ -302,17 +314,23 @@ class SourceCarryPorts:
             parent_start = start - start % parent_span
             if parent_start + parent_span > extent:
                 break
-            self._ledger.bump("reverse_source_ports_identity_ancestor_probes")
+            self._ledger.bump(
+                _reverse_add_keys.REVERSE_SOURCE_PORTS_IDENTITY_ANCESTOR_PROBES
+            )
             ancestor = self._cache.get((layer, parent_start, parent_span))
             if ancestor is not None:
                 if type(ancestor) is not CarryFn:
                     raise ValueError("source carry interval cache was altered")
                 if ancestor is CarryFn.ID:
-                    self._ledger.bump("reverse_source_ports_identity_ancestor_hits")
+                    self._ledger.bump(
+                        _reverse_add_keys.REVERSE_SOURCE_PORTS_IDENTITY_ANCESTOR_HITS
+                    )
                     return CarryFn.ID
                 # A reset summary says nothing about a proper subinterval. A
                 # valid identity ancestor cannot exist above a reset interval.
-                self._ledger.bump("reverse_source_ports_reset_ancestor_rejections")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_RESET_ANCESTOR_REJECTIONS
+                )
                 break
             parent_span <<= 1
         return None
@@ -339,7 +357,7 @@ class SourceCarryPorts:
                 if type(found) is not CarryFn or found is not CarryFn.ID:
                     raise ValueError("identity carry interval has a nonidentity child")
                 workspace.prune(child)
-        self._ledger.bump("reverse_source_ports_interval_publications")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_INTERVAL_PUBLICATIONS)
 
     def _first_interval(self, start: int, span: int) -> CarryFn:
         return self._carry_interval(
@@ -376,7 +394,9 @@ class SourceCarryPorts:
                     workspace.pop()
                     continue
                 _, current_start, current_span = frame.key
-                self._ledger.bump("reverse_source_ports_postorder_frames")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_POSTORDER_FRAMES
+                )
                 if current_span == 1:
                     result = leaf(current_start)
                     self._publish(workspace, frame.key, result)
@@ -401,16 +421,20 @@ class SourceCarryPorts:
                     result = compose_carry_fn(after, before)
                 else:
                     result = after
-                    self._ledger.bump("reverse_source_ports_reset_shortcuts")
+                    self._ledger.bump(
+                        _reverse_add_keys.REVERSE_SOURCE_PORTS_RESET_SHORTCUTS
+                    )
                 self._publish(workspace, frame.key, result)
-                self._ledger.bump("reverse_source_ports_interval_compositions")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_INTERVAL_COMPOSITIONS
+                )
                 workspace.pop()
             workspace.commit_pruning(self._cache)
         except BaseException:
             while workspace.created:
                 key = workspace.pop_created()
                 del self._cache[key]
-            self._ledger.bump("reverse_source_ports_failed_queries")
+            self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_FAILED_QUERIES)
             raise
         finally:
             workspace.close()
@@ -423,9 +447,11 @@ class SourceCarryPorts:
         effect = CarryFn.ID
         for position, span in right_dyadic_blocks(start, stop):
             effect = compose_carry_fn(effect, self._first_interval(position, span))
-            self._ledger.bump("reverse_source_ports_prefix_blocks")
+            self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_PREFIX_BLOCKS)
             if effect is not CarryFn.ID:
-                self._ledger.bump("reverse_source_ports_prefix_reset_shortcuts")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_PREFIX_RESET_SHORTCUTS
+                )
                 break
         return effect
 
@@ -433,7 +459,7 @@ class SourceCarryPorts:
         if type(boundary) is not int or not 0 <= boundary <= self._width:
             raise IndexError(boundary)
         effect = self._first_range(0, boundary)
-        self._ledger.bump("reverse_source_ports_layer_1_carry_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_LAYER_1_CARRY_QUERIES)
         return apply_carry_fn(effect, 0)
 
     def carry(self, boundary: int) -> int:
@@ -478,7 +504,9 @@ class SourceCarryPorts:
                 self._ledger.release(self._workspace_owner, nodes=1)
                 if start >= self._width:
                     continue
-                self._ledger.bump("reverse_source_ports_stream_region_visits")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_STREAM_REGION_VISITS
+                )
                 if not neutral and start + span <= self._width:
                     neutral = self._exact_cached((1, start, span)) is CarryFn.ID
                 if span == 1:
@@ -510,7 +538,7 @@ class SourceCarryPorts:
                 stack.clear()
 
     def _raw_second_pair(self, position: int, growth: int) -> int:
-        self._ledger.bump("reverse_source_length_pair_reads")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_LENGTH_PAIR_READS)
         base = self._source.base
         if base == 10:
             domain, alpha, epsilon, _ = self._second_decimal_cocycle(position, growth)
@@ -540,7 +568,7 @@ class SourceCarryPorts:
             )
         if not 0 <= result <= 2 * base - 2:
             raise ValueError("second source pair left its radix")
-        self._ledger.bump("reverse_source_ports_second_pair_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_SECOND_PAIR_QUERIES)
         return result
 
     def _first_output_channels(self, position: int, growth: int) -> tuple[int, int]:
@@ -559,7 +587,7 @@ class SourceCarryPorts:
     def _second_decimal_cocycle(
         self, position: int, growth: int
     ) -> tuple[CarryFn, int, int, int]:
-        self._ledger.bump("reverse_source_ports_crt_threshold_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_CRT_THRESHOLD_QUERIES)
         return decimal_add_cocycle(
             self._first_output_channels(position, growth),
             self._first_output_channels(self._width + growth - 1 - position, growth),
@@ -614,9 +642,13 @@ class SourceCarryPorts:
             for left, right in zip(forward, reflected, strict=True):
                 self._check_open()
                 domain, alpha, epsilon, _ = decimal_add_cocycle(left, right)
-                self._ledger.bump("reverse_source_length_pair_reads")
-                self._ledger.bump("reverse_source_ports_crt_threshold_queries")
-                self._ledger.bump("reverse_source_ports_second_pair_queries")
+                self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_LENGTH_PAIR_READS)
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_CRT_THRESHOLD_QUERIES
+                )
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_SECOND_PAIR_QUERIES
+                )
                 yield decimal_cocycle_value(domain, alpha, epsilon)
 
     def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
@@ -639,9 +671,11 @@ class SourceCarryPorts:
             effect = compose_carry_fn(
                 effect, self._second_interval(position, span, extent)
             )
-            self._ledger.bump("reverse_source_ports_prefix_blocks")
+            self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_PREFIX_BLOCKS)
             if effect is not CarryFn.ID:
-                self._ledger.bump("reverse_source_ports_prefix_reset_shortcuts")
+                self._ledger.bump(
+                    _reverse_add_keys.REVERSE_SOURCE_PORTS_PREFIX_RESET_SHORTCUTS
+                )
                 break
         return effect
 
@@ -649,7 +683,7 @@ class SourceCarryPorts:
         if type(boundary) is not int or not 0 <= boundary <= extent:
             raise IndexError(boundary)
         effect = self._second_range(0, boundary, extent)
-        self._ledger.bump("reverse_source_ports_layer_2_carry_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_LAYER_2_CARRY_QUERIES)
         return apply_carry_fn(effect, 0)
 
     def range_transfer(
@@ -679,7 +713,7 @@ class SourceCarryPorts:
             raise IndexError((low, high))
         if chart.slope == -1:
             low, high = extent - high, extent - low
-        self._ledger.bump("reverse_source_ports_range_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_RANGE_QUERIES)
         if layer == 1:
             return self._first_range(low, high)
         return self._second_range(low, high, extent)
@@ -693,7 +727,7 @@ class SourceCarryPorts:
         self._check_open()
         first_width = self._width + self._first_prefix(self._width)
         result = first_width + self._second_prefix(first_width, first_width)
-        self._ledger.bump("reverse_source_ports_second_width_queries")
+        self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_SECOND_WIDTH_QUERIES)
         return result
 
     def dispose(self) -> None:

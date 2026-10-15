@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Hashable
 from dataclasses import dataclass
 from math import prod
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
@@ -24,7 +24,11 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+
+PRIME_SUCCESSOR_ACTION_TAG: Final[str] = "prime-successor-action-v1"
+PRIME_SUCCESSOR_WHEEL_VERSION: Final[str] = "successor-wheel-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +41,7 @@ class PrimeSuccessorActionDescriptor:
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return (
-            "prime-successor-action-v1",
+            PRIME_SUCCESSOR_ACTION_TAG,
             self.parent_factors,
             self.parent_period,
             self.fresh_prime,
@@ -642,7 +646,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
     """Connect fresh-prime actions to the shared chronological image owner."""
 
     family = "prime"
-    semantic_version = "successor-wheel-v2"
+    semantic_version = PRIME_SUCCESSOR_WHEEL_VERSION
 
     def __init__(self, arena: PrimeSuccessorActionArena) -> None:
         if type(arena) is not PrimeSuccessorActionArena:
@@ -653,7 +657,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
     def _charge(self) -> None:
         self.arena._check_open()
         self.arena.rank.charge()
-        self.ledger.bump("prime_successor_scheduler_work")
+        self.ledger.bump(_prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK)
 
     def _check_capacity(self, additional: int) -> None:
         maximum = self.arena.rank.max_states
@@ -775,7 +779,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             payload.surviving_values + effect.surviving_values,
         )
         if node.primitive:
-            self.ledger.bump("prime_partial_successor_filters")
+            self.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_FILTERS)
         self._check_capacity(4)
         return SourceImageCandidate(
             result,
@@ -819,7 +823,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             payload.deleted_survivors + effect.deleted_survivors,
             payload.surviving_values + effect.surviving_values,
         )
-        self.ledger.bump("prime_partial_successor_filters")
+        self.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_FILTERS)
         self._check_capacity(4)
         return SourceImageCandidate(
             result,
@@ -934,7 +938,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         payload = cast(PrimeSuccessorImagePayload, image.payload)
         if demand.name == "effect" and not demand.parameters:
             self._check_capacity(2)
-            self.ledger.bump("prime_successor_image_effect_projections")
+            self.ledger.bump(_prime_keys.PRIME_SUCCESSOR_IMAGE_EFFECT_PROJECTIONS)
             return SourceImageProjection(
                 PrimeSuccessorPortEffect(
                     payload.entering_phase,
@@ -954,7 +958,9 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             # the admitted support; only interior queries need count descent.
             width = self.arena.node(payload.action).width
             if stop == 0 or stop == width:
-                self.ledger.bump("prime_successor_image_endpoint_rank_projections")
+                self.ledger.bump(
+                    _prime_keys.PRIME_SUCCESSOR_IMAGE_ENDPOINT_RANK_PROJECTIONS
+                )
                 return SourceImageProjection(
                     0 if stop == 0 else payload.surviving_values
                 )

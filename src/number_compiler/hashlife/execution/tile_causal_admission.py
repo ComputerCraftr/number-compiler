@@ -9,6 +9,9 @@ from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.resources.causal_workspace import CausalTaskWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def admit_run_actions(
@@ -33,7 +36,7 @@ def admit_run_actions(
             if tasks.action_is_admitted(token, current):
                 continue
             visits += 1
-            ledger.bump("tile_causal_action_admission_visits")
+            ledger.bump(_execution_keys.TILE_CAUSAL_ACTION_ADMISSION_VISITS)
             adapter.validate_action(current)
             record = adapter._action_record(current)
             tasks.admit_action(token, current, record)

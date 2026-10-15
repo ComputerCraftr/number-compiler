@@ -32,6 +32,9 @@ from number_compiler.hashlife.execution.source_image_seals import (
     _require_immutable_key,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class ProviderFieldImageAdapter(Protocol):
@@ -114,7 +117,7 @@ class _ProviderImageWork:
     ]:
         frame = self.stack.pop()
         self.ledger.release(self.owner, entries=1, nodes=1)
-        self.ledger.bump("provider_field_image_frame_visits")
+        self.ledger.bump(_execution_keys.PROVIDER_FIELD_IMAGE_FRAME_VISITS)
         return frame
 
     def remember(
@@ -195,9 +198,9 @@ class ProviderFieldImageExecutor:
             root.context,
         )
         cached = self.images.probe(root_key)
-        self.ledger.bump("provider_field_image_requests")
+        self.ledger.bump(_execution_keys.PROVIDER_FIELD_IMAGE_REQUESTS)
         if cached is not None:
-            self.ledger.bump("provider_field_image_early_hits")
+            self.ledger.bump(_execution_keys.PROVIDER_FIELD_IMAGE_EARLY_HITS)
             return cached
 
         work = _ProviderImageWork(self.ledger, self._workspace_owner)
@@ -294,7 +297,7 @@ class ProviderFieldImageExecutor:
                 work.remember(
                     (current, current_geometry), self.images.publish(key, node)
                 )
-                self.ledger.bump("provider_field_image_evaluations")
+                self.ledger.bump(_execution_keys.PROVIDER_FIELD_IMAGE_EVALUATIONS)
             return work.built[provider, geometry]
         finally:
             work.close()
@@ -308,19 +311,19 @@ class ProviderFieldImageExecutor:
         context = provider.context
         if context is None:
             return
-        self.ledger.bump("provider_field_context_validation_attempts")
+        self.ledger.bump(_execution_keys.PROVIDER_FIELD_CONTEXT_VALIDATION_ATTEMPTS)
         validator = getattr(self.adapter, "validate_context", None)
         if not callable(validator):
-            self.ledger.bump("provider_field_context_validation_failures")
+            self.ledger.bump(_execution_keys.PROVIDER_FIELD_CONTEXT_VALIDATION_FAILURES)
             raise TypeError(
                 "context-qualified provider execution requires context validation"
             )
         try:
             validator(context, complete, provider, geometry)
         except BaseException:
-            self.ledger.bump("provider_field_context_validation_failures")
+            self.ledger.bump(_execution_keys.PROVIDER_FIELD_CONTEXT_VALIDATION_FAILURES)
             raise
-        self.ledger.bump("provider_field_context_validation_evaluations")
+        self.ledger.bump(_execution_keys.PROVIDER_FIELD_CONTEXT_VALIDATION_EVALUATIONS)
 
     def _child_contexts(
         self,
@@ -331,13 +334,19 @@ class ProviderFieldImageExecutor:
         derive = getattr(self.adapter, "child_contexts", None)
         if not callable(derive):
             if provider.context is not None:
-                self.ledger.bump("provider_field_child_context_derivation_attempts")
-                self.ledger.bump("provider_field_child_context_derivation_failures")
+                self.ledger.bump(
+                    _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_ATTEMPTS
+                )
+                self.ledger.bump(
+                    _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_FAILURES
+                )
                 raise TypeError(
                     "context-qualified provider execution requires explicit child contexts"
                 )
             return None, None
-        self.ledger.bump("provider_field_child_context_derivation_attempts")
+        self.ledger.bump(
+            _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_ATTEMPTS
+        )
         try:
             result = derive(complete, provider, geometry)
             if type(result) is not tuple or len(result) != 2:
@@ -348,9 +357,13 @@ class ProviderFieldImageExecutor:
                 if context is not None:
                     _require_immutable_key(context, "provider child image context")
         except BaseException:
-            self.ledger.bump("provider_field_child_context_derivation_failures")
+            self.ledger.bump(
+                _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_FAILURES
+            )
             raise
-        self.ledger.bump("provider_field_child_context_derivation_evaluations")
+        self.ledger.bump(
+            _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_EVALUATIONS
+        )
         return result
 
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 from number_compiler.hashlife.execution.dyadic_return_records import _SourceNode
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    ENTRY_26847_PHASES,
+    BoundaryActionIdentity,
+)
 from number_compiler.sequences.collatz.boundary_macro_prefixes import (
     _publish_boundary_macro_prefixes,
     _slice_action,
@@ -55,8 +60,8 @@ def _assert_cached_prefix(cache: CollatzDyadicMacros, source: int, width: int) -
     assert cell.odd_symbols == sum(value & 1 for value in trace[:-1])
 
 
-def _high_fiber_source(family: str, repetitions: int) -> int:
-    if family == "0563":
+def _high_fiber_source(identity: BoundaryActionIdentity, repetitions: int) -> int:
+    if identity == ENTRY_0563:
         precision = 2 * repetitions + 2
         modulus = 1 << precision
         residue = (-2 + (1 << (2 * repetitions + 1))) % modulus
@@ -71,17 +76,17 @@ def _high_fiber_source(family: str, repetitions: int) -> int:
 
 def test_phase_zero_edge_actions_preserve_both_clocks_and_width_extrema() -> None:
     cases = (
-        (30, 5, "0563", 1, 35),
-        (30, 9, "0563", 2, 80),
-        (70, 5, "0563", 1, 80),
-        (112, 6, "26847", 1, 11),
-        (592, 11, "26847", 2, 11),
+        (30, 5, ENTRY_0563, 1, 35),
+        (30, 9, ENTRY_0563, 2, 80),
+        (70, 5, ENTRY_0563, 1, 80),
+        (112, 6, ENTRY_26847_PHASES[0], 1, 11),
+        (592, 11, ENTRY_26847_PHASES[0], 2, 11),
     )
-    for source, ticks, family, repetitions, endpoint in cases:
+    for source, ticks, identity, repetitions, endpoint in cases:
         plan = admit_routed_boundary_macro_plan(source, ticks)
         assert plan is not None
-        assert (plan.family, plan.repetitions, plan.physical_ticks) == (
-            family,
+        assert (plan.identity, plan.repetitions, plan.physical_ticks) == (
+            identity,
             repetitions,
             ticks,
         )
@@ -104,8 +109,8 @@ def test_single_rotated_return_does_not_preempt_longer_powered_routes() -> None:
     assert admit_routed_boundary_macro_plan(7, 32) is None
     plan = admit_routed_boundary_macro_plan(7, 2)
     assert plan is not None
-    assert (plan.family, plan.repetitions, plan.physical_ticks) == (
-        "26847P4",
+    assert (plan.identity, plan.repetitions, plan.physical_ticks) == (
+        ENTRY_26847_PHASES[4],
         1,
         2,
     )
@@ -120,9 +125,9 @@ def test_macro_source_routing_covers_all_twenty_last_digit_classes() -> None:
         macro = select_admitted_boundary_macro(plan)
         validate_boundary_macro(macro)
         assert macro.endpoint == _physical_trace(source, macro.physical_ticks)[-1]
-        if macro.family == "0563":
+        if macro.identity == ENTRY_0563:
             assert source % 40 == 30
-        elif (phase := boundary_macro_26847_phase(macro.family)) is not None:
+        elif (phase := boundary_macro_26847_phase(macro.identity)) is not None:
             assert source % (160 >> phase) == 112 >> phase
 
 
@@ -142,13 +147,13 @@ def test_scheduler_completes_exact_prefixes_from_all_last_digit_classes() -> Non
 
 def test_scheduler_powers_rotated_26847_entries_and_partial_horizons() -> None:
     phases = (
-        (0, 592, 11, "26847"),
-        (1, 296, 10, "26847P1"),
-        (2, 148, 9, "26847P2"),
-        (3, 74, 8, "26847P3"),
-        (4, 37, 7, "26847P4"),
+        (0, 592, 11, ENTRY_26847_PHASES[0]),
+        (1, 296, 10, ENTRY_26847_PHASES[1]),
+        (2, 148, 9, ENTRY_26847_PHASES[2]),
+        (3, 74, 8, ENTRY_26847_PHASES[3]),
+        (4, 37, 7, ENTRY_26847_PHASES[4]),
     )
-    for _, rotated, complete_ticks, family in phases:
+    for _, rotated, complete_ticks, identity in phases:
         full = compile_collatz_temporal_run_quotient(
             rotated,
             complete_ticks,
@@ -158,7 +163,7 @@ def test_scheduler_powers_rotated_26847_entries_and_partial_horizons() -> None:
         )
         assert full.endpoint == _physical_trace(rotated, complete_ticks)[-1]
         assert full.first_boundary_macro is not None
-        assert full.first_boundary_macro.family == family
+        assert full.first_boundary_macro.identity == identity
         partial_ticks = complete_ticks - 1
         partial = compile_collatz_temporal_run_quotient(
             rotated,
@@ -170,7 +175,7 @@ def test_scheduler_powers_rotated_26847_entries_and_partial_horizons() -> None:
 
 
 def test_large_rotated_guard_fibers_publish_exact_prefix_grammars() -> None:
-    root = _high_fiber_source("26847", 12)
+    root = _high_fiber_source(ENTRY_26847_PHASES[0], 12)
     for phase in range(5):
         source = root >> phase
         plan = admit_routed_boundary_macro_plan(source, 128)
@@ -202,7 +207,7 @@ def test_rotated_26847_phases_do_not_inherit_the_phase_zero_guard() -> None:
     rotated_sources = (56, 28, 14, 7, 22)
     for source in rotated_sources:
         plan = admit_routed_boundary_macro_plan(source, 32)
-        assert plan is None or plan.family != "26847"
+        assert plan is None or plan.identity != ENTRY_26847_PHASES[0]
         if plan is not None:
             macro = select_admitted_boundary_macro(plan)
             validate_boundary_macro(macro)
@@ -210,7 +215,7 @@ def test_rotated_26847_phases_do_not_inherit_the_phase_zero_guard() -> None:
 
 
 def test_every_rotated_grammar_slice_matches_the_literal_normalized_trace() -> None:
-    root = _high_fiber_source("26847", 3)
+    root = _high_fiber_source(ENTRY_26847_PHASES[0], 3)
     for phase in range(5):
         source = root >> phase
         plan = admit_routed_boundary_macro_plan(source, 16 - phase)
@@ -225,10 +230,10 @@ def test_every_rotated_grammar_slice_matches_the_literal_normalized_trace() -> N
 
 
 def test_scheduler_routes_exact_cylinder_guards_for_new_cycles() -> None:
-    for family in ("0563", "26847"):
-        source = _high_fiber_source(family, 30)
+    for identity in (ENTRY_0563, ENTRY_26847_PHASES[0]):
+        source = _high_fiber_source(identity, 30)
         plan = admit_routed_boundary_macro_plan(source, 128)
-        assert plan is not None and plan.family == family
+        assert plan is not None and plan.identity == identity
         macro = select_admitted_boundary_macro(plan)
         validate_boundary_macro(macro)
         assert macro.endpoint == _physical_trace(source, macro.physical_ticks)[-1]
@@ -261,11 +266,11 @@ def test_unproductive_border_guard_preserves_high_entropy_cylinder_route() -> No
 
 
 def test_prefix_cache_publishes_powered_edge_grammars() -> None:
-    for family, repetitions in (("0563", 30), ("26847", 12)):
-        source = _high_fiber_source(family, repetitions)
-        ticks = 4 * repetitions + 1 if family == "0563" else 5 * repetitions + 1
+    for identity, repetitions in ((ENTRY_0563, 30), (ENTRY_26847_PHASES[0], 12)):
+        source = _high_fiber_source(identity, repetitions)
+        ticks = 4 * repetitions + 1 if identity == ENTRY_0563 else 5 * repetitions + 1
         macro = select_boundary_macro(source, ticks, minimum_repetitions=1)
-        assert macro is not None and macro.family == family
+        assert macro is not None and macro.identity == identity
         assert macro.repetitions == repetitions
         ledger = ResourceLedger()
         scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
@@ -285,8 +290,8 @@ def test_prefix_cache_publishes_powered_edge_grammars() -> None:
 
 
 def test_run_executor_consumes_edge_macro_with_demanded_observers() -> None:
-    cases = ((30, 9, "0563", 80), (592, 11, "26847", 11))
-    for source, ticks, family, endpoint in cases:
+    cases = ((30, 9, ENTRY_0563, 80), (592, 11, ENTRY_26847_PHASES[0], 11))
+    for source, ticks, identity, endpoint in cases:
         result = compile_collatz_temporal_run_quotient(
             source,
             ticks,
@@ -301,7 +306,7 @@ def test_run_executor_consumes_edge_macro_with_demanded_observers() -> None:
         assert result.endpoint == endpoint
         assert result.run_actions == 1
         assert result.first_boundary_macro is not None
-        assert result.first_boundary_macro.family == family
+        assert result.first_boundary_macro.identity == identity
         assert result.normalized_symbols + result.phase == result.division_ticks
         assert result.joint_action is not None
         assert result.joint_action.endpoint == endpoint

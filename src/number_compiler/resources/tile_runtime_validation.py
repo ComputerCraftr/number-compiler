@@ -20,6 +20,9 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     causal_interface_snapshot,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -205,7 +208,7 @@ def valid_source_root_match_record(
             2,
             2,
             "unsigned-radix-cell-with-explicit-blank",
-            "canonical-tile-alphabet-v1",
+            CANONICAL_TILE_ALPHABET_VERSION,
         )
         return (
             alphabet == expected

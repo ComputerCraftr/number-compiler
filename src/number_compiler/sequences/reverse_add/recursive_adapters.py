@@ -44,6 +44,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.field_action import (
     ReverseFieldActionArena,
 )
@@ -181,7 +182,9 @@ class _ReverseRecursiveFieldAdapter:
                 self._source_extents[current] = (
                     0 if record.uniform_symbol == self.blank else record.width
                 )
-                self.ledger.bump("reverse_uniform_source_extent_resolutions")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_UNIFORM_SOURCE_EXTENT_RESOLUTIONS
+                )
                 continue
             if record.level == 0:
                 if record.source_tile.symbol is None:
@@ -283,7 +286,7 @@ class _ReverseRecursiveFieldAdapter:
             raise AssertionError("reverse completed-child parent width mismatch")
         if macro.source_extent != self._source_extent(source):
             raise AssertionError("reverse completed-child source extent mismatch")
-        self.ledger.bump("reverse_recursive_completed_child_joins")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_COMPLETED_CHILD_JOINS)
         return self._candidate(macro)
 
     def _composer(self, action: FieldCellActionID) -> HigherSpatialMacroComposer:
@@ -460,7 +463,7 @@ class _ReverseProviderAdapter:
             raise ValueError("reverse provider leaf substitution received a parent")
         if self.signature(complete, geometry) != signature:
             raise ValueError("reverse provider leaf has another complete signature")
-        self.core.ledger.bump("reverse_provider_leaf_substitutions")
+        self.core.ledger.bump(_reverse_add_keys.REVERSE_PROVIDER_LEAF_SUBSTITUTIONS)
         return self.core._compile(complete, provider.source)
 
     def join(
@@ -483,7 +486,7 @@ class _ReverseProviderAdapter:
         left_width = self.core.sources.resolve(left_source).width
         left_extent = min(provider.active_extent, left_width)
         right_extent = max(0, provider.active_extent - left_width)
-        self.core.ledger.bump("reverse_provider_parent_substitutions")
+        self.core.ledger.bump(_reverse_add_keys.REVERSE_PROVIDER_PARENT_SUBSTITUTIONS)
         return self.core._join_completed(
             complete,
             provider.source,

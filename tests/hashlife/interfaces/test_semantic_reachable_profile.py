@@ -75,6 +75,7 @@ def test_binding_is_lazy_and_anchor_never_builds_continuation() -> None:
     assert runtime.ledger.counters["semantic_reachable_decoder_table_cells"] == 1234
 
 
+@pytest.mark.validation  # Exhaust every reachable ordinal for representative columns.
 def test_continuation_fixed_table_and_invalid_codes() -> None:
     _, arena, profile, structures, codec = setup()
     function = arena.component(codec, 1, structures)

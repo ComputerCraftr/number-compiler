@@ -18,8 +18,14 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.execution.diamond_law_contracts import (
+    COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW,
+)
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -31,7 +37,7 @@ if TYPE_CHECKING:
 class RightResetCertificate:
     action: ActionProgramID
     radius: int | None
-    law: str = "complete-right-boundary-synchronization-v1"
+    law: str = COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW
 
     def __post_init__(self) -> None:
         if (
@@ -39,7 +45,7 @@ class RightResetCertificate:
             or self.action.kind != "diamond-action"
             or self.radius is not None
             and (type(self.radius) is not int or self.radius < 0)
-            or self.law != "complete-right-boundary-synchronization-v1"
+            or self.law != COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW
         ):
             raise ValueError("invalid complete right-state reset certificate")
 
@@ -66,7 +72,7 @@ class RightResetCertificates:
             peak = max(peak, len(pending))
             current, ready = pending.pop()
             if current in self.certificates:
-                self.ledger.bump("right_reset_certificate_hits")
+                self.ledger.bump(_interfaces_keys.RIGHT_RESET_CERTIFICATE_HITS)
                 continue
             node = actions.resolve(current)
             if node.kind == "compose" and not ready:
@@ -105,11 +111,16 @@ class RightResetCertificates:
             except BaseException:
                 self.ledger.release(owner, entries=1, nodes=1)
                 raise
-            self.ledger.bump("right_reset_certificate_evaluations")
-        self.ledger.bump("right_reset_requests")
-        self.ledger.bump("right_reset_dag_visits", visits)
-        previous_peak = self.ledger.counters.get("right_reset_stack_peak", 0)
-        self.ledger.bump("right_reset_stack_peak", max(0, peak - previous_peak))
+            self.ledger.bump(_interfaces_keys.RIGHT_RESET_CERTIFICATE_EVALUATIONS)
+        self.ledger.bump(_interfaces_keys.RIGHT_RESET_REQUESTS)
+        self.ledger.bump(_interfaces_keys.RIGHT_RESET_DAG_VISITS, visits)
+        previous_peak = self.ledger.counters.get(
+            _interfaces_keys.RIGHT_RESET_STACK_PEAK, 0
+        )
+        self.ledger.bump(
+            _interfaces_keys.RIGHT_RESET_STACK_PEAK,
+            max(0, peak - previous_peak),
+        )
         return self.certificates[action].radius
 
     def _primitive_radius(self, action: ActionProgramID) -> int | None:
@@ -121,10 +132,10 @@ class RightResetCertificates:
             return 0
         for symbol in range(primitive.blank + 1):
             target = primitive.advance(BoundarySide.RIGHT, 0, symbol)
-            self.ledger.bump("right_reset_primitive_checks")
+            self.ledger.bump(_interfaces_keys.RIGHT_RESET_PRIMITIVE_CHECKS)
             for state in range(1, primitive.right_count):
                 actual = primitive.advance(BoundarySide.RIGHT, state, symbol)
-                self.ledger.bump("right_reset_primitive_checks")
+                self.ledger.bump(_interfaces_keys.RIGHT_RESET_PRIMITIVE_CHECKS)
                 if actual != target:
                     return None
         return 1

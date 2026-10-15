@@ -22,6 +22,9 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     _Circuit,
     substitute_boolean,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 def divmod_atoms(
@@ -69,7 +72,7 @@ def divmod_atoms(
         valid,
     )
     result = arena._publish(circuit, (quot, rem))
-    arena.ledger.bump("semantic_atom_division_bits", len(bits))
+    arena.ledger.bump(_interfaces_keys.SEMANTIC_ATOM_DIVISION_BITS, len(bits))
     return result[0], result[1]
 
 
@@ -107,11 +110,13 @@ def substitute_many(
         if result is not None:
             arena.resolve(result)
     hit_count = sum(result is not None for result in cached)
-    arena.ledger.bump("semantic_bit_composition_requests", len(functions))
-    arena.ledger.bump("semantic_bit_composition_hits", hit_count)
+    arena.ledger.bump(
+        _interfaces_keys.SEMANTIC_BIT_COMPOSITION_REQUESTS, len(functions)
+    )
+    arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_HITS, hit_count)
     if all(result is not None for result in cached):
         resolved = tuple(result for result in cached if result is not None)
-        arena.ledger.bump("semantic_bit_batch_composition_hits")
+        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_COMPOSITION_HITS)
         return resolved
     seen = set()
     missing_list = []
@@ -144,8 +149,11 @@ def substitute_many(
                     circuit.conjunction(replacement_valid, valid),
                 )
             )
-        arena.ledger.bump("semantic_bit_composition_evaluations", len(missing))
-        arena.ledger.bump("semantic_bit_batch_composition_evaluations")
+        arena.ledger.bump(
+            _interfaces_keys.SEMANTIC_BIT_COMPOSITION_EVALUATIONS,
+            len(missing),
+        )
+        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_COMPOSITION_EVALUATIONS)
         published = arena._publish(
             circuit,
             tuple(pending),
@@ -193,7 +201,7 @@ def restrict_many(
                     ),
                 )
             )
-        arena.ledger.bump("semantic_bit_batch_restriction_evaluations")
+        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_RESTRICTION_EVALUATIONS)
         return arena._publish(circuit, tuple(pending))
     except BaseException:
         circuit.tx.close()

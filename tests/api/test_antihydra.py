@@ -199,15 +199,15 @@ def test_tangent_is_bound_and_full_match_requires_refinement() -> None:
 @pytest.mark.parametrize(
     "kind",
     (
-        "clock",
-        "tape",
-        "hasse",
-        "tropical",
-        "twisted",
-        "modular",
-        "spacetime",
-        "mahler",
-        "hensel",
+        "temporal.clock",
+        "spatial.tape",
+        "arithmetic.hasse",
+        "arithmetic.tropical",
+        "arithmetic.twisted",
+        "arithmetic.modular",
+        "temporal.spacetime",
+        "arithmetic.mahler",
+        "arithmetic.hensel",
     ),
 )
 def test_cli_real_execution(kind: str, capsys: pytest.CaptureFixture[str]) -> None:
@@ -247,8 +247,8 @@ def test_cli_factor_and_source_rejection(capsys: pytest.CaptureFixture[str]) -> 
                 "4",
                 "--no-value",
                 "--info",
-                "factor",
-                "--width",
+                "arithmetic.factor",
+                "--spatial-width",
                 "3",
                 "--modulus",
                 "9",
@@ -258,7 +258,7 @@ def test_cli_factor_and_source_rejection(capsys: pytest.CaptureFixture[str]) -> 
         )
         == 0
     )
-    data = json.loads(capsys.readouterr().out)["info"]["factor"]["value"]
+    data = json.loads(capsys.readouterr().out)["info"]["arithmetic.factor"]["value"]
     assert data["factor"] == 3 and data["factor_target"] == 9
     with pytest.raises(SystemExit) as rejected:
         main(["antihydra", "--nth", "1", "--seed", "7"])

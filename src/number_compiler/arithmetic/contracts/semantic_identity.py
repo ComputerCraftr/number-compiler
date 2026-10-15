@@ -3,15 +3,58 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from hashlib import sha256
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+class SemanticIdentityDomain(StrEnum):
+    """Named construction domains for the shared semantic identity carrier.
+
+    The constructor's first argument is a provenance label; the canonical
+    digest is derived only from ``behavior``. Keeping these labels in an enum
+    prevents call sites from inventing near-duplicate cache-domain strings
+    without changing the serialized behavior or identity equality.
+    """
+
+    ANONYMOUS = ""
+    ACTION_PROGRAM = "action-program"
+    COMPOSED_BLOCK_DEFINITION = "composed-block-definition"
+    PRIMITIVE_BEHAVIOR = "primitive-behavior"
+    PRIMITIVE_BEHAVIOR_QUOTIENT = "primitive-behavior-quotient"
+    PRIMITIVE_BEHAVIOR_TABLE = "primitive-behavior-table"
+    PRIMITIVE_MACRO = "primitive-macro"
+    REVERSE_ADD_SOURCE_CARRY = "reverse-add-source-carry-v1"
+    REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE = "reverse-add-primitive-cylinder-clause-v1"
+    REVERSE_CENTERED_RADIAL_ACTION = "reverse-centered-radial-action-v1"
+    REVERSE_COORDINATE_PROGRAM = "reverse-coordinate-program-v1"
+    REVERSE_FIELD_OCCURRENCE = "reverse-field-occurrence"
+    SEMANTIC_INTERFACE = "semantic-interface"
+    TILE_INTERFACE = "tile-interface"
+
+
+@dataclass(frozen=True, slots=True, eq=False, init=False)
 class SemanticIdentity:
     digest: str
     behavior: tuple[object, ...]
 
+    def __init__(
+        self,
+        digest: str | SemanticIdentityDomain,
+        behavior: tuple[object, ...],
+    ) -> None:
+        # Call sites may supply a named construction domain. Normalize it at
+        # this boundary before validation so the retained digest remains an
+        # exact built-in string throughout the identity DAG.
+        if type(digest) is SemanticIdentityDomain:
+            digest = digest.value
+        elif type(digest) is not str:
+            raise TypeError("semantic identity domain must be a named enum or string")
+        object.__setattr__(self, "digest", digest)
+        object.__setattr__(self, "behavior", behavior)
+        self.__post_init__()
+
     def __post_init__(self) -> None:
+        """Derive the digest and validate the immutable behavior structure."""
         object.__setattr__(self, "digest", self._canonical_digest())
 
     def validate(self) -> None:
@@ -211,4 +254,4 @@ def _tuple_digest(value: tuple[object, ...], children: dict[int, bytes]) -> byte
     return digest.digest()
 
 
-__all__ = ["SemanticIdentity", "SemanticIdentityValidator"]
+__all__ = ["SemanticIdentity", "SemanticIdentityDomain", "SemanticIdentityValidator"]

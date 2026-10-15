@@ -19,6 +19,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
 )
 from number_compiler.projection.microblock_cache import ExactMicroblock, MicroblockKey
+from number_compiler.resources.ledger import ResourceScope
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -64,7 +65,7 @@ def test_exact_microblock_payload_under_an_unrelated_role_is_rejected() -> None:
 def test_spoofed_exact_microblock_role_without_cache_owner_is_rejected() -> None:
     term = PoweredCollatzTerm(0x91AD, 3)
     owner = term._ledger.register(
-        "forged-microblock-owner", "exact_microblock", "INDEX_OWNED"
+        "forged-microblock-owner", "exact_microblock", ResourceScope.INDEX_OWNED
     )
     storage: LedgerDict[object, object]
     storage = term._ledger.make_dict(owner)

@@ -1,7 +1,8 @@
 theory Antihydra_Mahler_Associated_Action
   imports "Associated_Action_Core.Associated_Action_Pullback"
     "Antihydra.Antihydra_Mahler_Skew"
-    "Shared_Growth_Arithmetic.Homogeneous_Growth_Scale"
+    "Shared_Growth_Arithmetic.Radial_Sturmian"
+    "Shared_Growth_Arithmetic.Affine_High_Digits"
 begin
 
 text \<open>The production Mahler consumer indexes its bit actions by the
@@ -46,6 +47,61 @@ definition mahler_nf_action :: "mahler_nf \<Rightarrow> associated_action" where
         of_int (mahler_nf_den (nf_R A)),
      action_cap = map_option
        (\<lambda>C. of_int C / of_int (mahler_nf_den (nf_R A))) (nf_C A)\<rparr>"
+
+text \<open>This conditional projection exposes signed high digits for an
+integer endpoint already supplied by the caller. The equation connects the
+Mahler normal form's integer gain, offset, and denominator to that endpoint;
+it does not authenticate the input or admit a source occurrence.\<close>
+
+theorem mahler_nf_affine_high_digits:
+  fixes A :: mahler_nf and source target :: int and cut_bit width i :: nat
+  assumes endpoint:
+      "mahler_nf_den (nf_R A) * target =
+        mahler_nf_gain (nf_R A) * source + nf_B A"
+      and after_nonnegative: "0 \<le> target"
+      and before_nonnegative:
+        "0 \<le> affine_corrected_endpoint target (nf_B A) (nf_R A+2)"
+      and position: "i < width"
+  defines "before \<equiv>
+      affine_corrected_endpoint target (nf_B A) (nf_R A+2)"
+  shows "before =
+      (mahler_nf_gain (nf_R A) * source) div (2::int)^(nf_R A+2)"
+    and "affine_signed_high_carry target before cut_bit =
+      target div (2::int)^cut_bit -
+        ((mahler_nf_gain (nf_R A) * source) div
+          (2::int)^(nf_R A+2)) div (2::int)^cut_bit"
+    and "affine_high_xor_mask (nat target) (nat before) cut_bit width ! i =
+      (affine_binary_digit (nat target) (cut_bit+i) \<noteq>
+        affine_binary_digit
+          (nat ((mahler_nf_gain (nf_R A) * source) div
+            (2::int)^(nf_R A+2))) (cut_bit+i))"
+proof -
+  have endpoint_power:
+    "(2::int)^(nf_R A+2) * target =
+      mahler_nf_gain (nf_R A) * source + nf_B A"
+    using endpoint by (simp add: mahler_nf_den_def)
+  show before:
+    "before =
+      (mahler_nf_gain (nf_R A) * source) div (2::int)^(nf_R A+2)"
+    using affine_endpoint_floor_correction[OF endpoint_power]
+    by (simp add: before_def affine_corrected_endpoint_def
+        affine_ceiling_shift_def)
+  show "affine_signed_high_carry target before cut_bit =
+      target div (2::int)^cut_bit -
+        ((mahler_nf_gain (nf_R A) * source) div
+          (2::int)^(nf_R A+2)) div (2::int)^cut_bit"
+    using affine_high_digit_transport(2)[OF endpoint_power
+        after_nonnegative before_nonnegative position]
+    by (simp add: before_def)
+  show "affine_high_xor_mask (nat target) (nat before) cut_bit width ! i =
+      (affine_binary_digit (nat target) (cut_bit+i) \<noteq>
+        affine_binary_digit
+          (nat ((mahler_nf_gain (nf_R A) * source) div
+            (2::int)^(nf_R A+2))) (cut_bit+i))"
+    using affine_high_digit_transport(3)[OF endpoint_power
+        after_nonnegative before_nonnegative position]
+    by (simp add: before_def)
+qed
 
 definition mahler_nf_then :: "mahler_nf \<Rightarrow> mahler_nf \<Rightarrow> mahler_nf" where
   "mahler_nf_then A B =
@@ -116,6 +172,27 @@ lemma mahler_nf_growth_projection_radix_slope:
   by (simp add: homogeneous_growth_radix_slope_def
       mahler_nf_extent_projection algebra_simps)
 
+corollary mahler_nf_action_radial_phase:
+  "frac (ln (of_rat (action_scale (mahler_nf_action A))) / ln 2) =
+    radial_phase (nf_R A)"
+proof -
+  have live_scale:
+    "action_scale (mahler_nf_action A) =
+      homogeneous_growth_ratio (mahler_nf_growth_projection A)"
+    by (rule mahler_nf_live_scale_exact)
+  have scale:
+    "of_rat (action_scale (mahler_nf_action A)) =
+      (3::real)^nf_R A / 2^nf_R A"
+    using live_scale
+    by (simp add: mahler_nf_extent_projection homogeneous_growth_ratio_def
+        of_rat_divide of_rat_power)
+  have phase:
+    "frac (ln ((3::real)^nf_R A / 2^nf_R A) / ln 2) =
+      radial_phase (nf_R A)"
+    by (rule radial_phase_dyadic_transport)
+  show ?thesis using scale phase by simp
+qed
+
 lemma mahler_nf_then_identity:
   "mahler_nf_then mahler_nf_identity A = A"
   "mahler_nf_then A mahler_nf_identity = A"
@@ -148,6 +225,22 @@ theorem mahler_nf_action_then:
         min_mult_distrib_left min_mult_distrib_right
         min_divide_distrib_right
         algebra_simps split: option.splits)
+
+text \<open>The integer source-action composition carries the finite cap through
+the same min-plus join as the affine offset. This equation is the concrete
+normal-form rule used by temporal powering; it preserves the cap rather than
+replacing it with a homogeneous scale observation.\<close>
+
+lemma mahler_nf_minplus_cap_exact:
+  fixes A B :: mahler_nf and Ca Cb :: int
+  assumes cap_A: "nf_C A = Some Ca" and cap_B: "nf_C B = Some Cb"
+  shows "action_cap (mahler_nf_action (mahler_nf_then A B)) =
+    Some (of_int (min
+      (3^(nf_R B) * Ca + 2^(nf_R A) * nf_B B)
+      (2^(nf_R A) * Cb)) /
+      of_int (mahler_nf_den (nf_R A + nf_R B)))"
+  using cap_A cap_B
+  by (simp add: mahler_nf_action_def mahler_nf_then_def mahler_nf_den_def)
 
 lemma mahler_bit_action_negative_unsaturated:
   assumes "e < 2" "x < 0"
@@ -417,10 +510,12 @@ qed
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms mahler_bit_action_admitted mahler_nf_action_admitted
+      mahler_nf_affine_high_digits
       mahler_nf_then_identity mahler_nf_identity_action mahler_nf_action_then
       mahler_temporal_growth_extent_pair mahler_nf_extent_projection
       mahler_nf_growth_projection_then mahler_nf_live_scale_exact
       mahler_nf_growth_power_exact mahler_nf_growth_projection_radix_slope
+      mahler_nf_action_radial_phase
       mahler_bit_action_negative_unsaturated
       mahler_negative_cap_preserved mahler_negative_cap_fold
       mahler_centered_11_actual_tail_cap

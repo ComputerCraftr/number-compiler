@@ -6,6 +6,7 @@ from collections.abc import Hashable
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.execution.source_bound_images import SourceImageBinding
+from number_compiler.resources.metric_keys import comma as _comma_keys
 
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.image_adapter import _CommaImageAdapter
@@ -62,10 +63,10 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
         invalid.append(PayloadAuditEntry(owner, value))
 
     def charge_boundary_audit_component() -> None:
-        ledger.bump("comma_boundary_explicit_audit_component_checks")
+        ledger.bump(_comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_COMPONENT_CHECKS)
 
     def charge_boundary_audit_bits(bits: int) -> None:
-        ledger.bump("comma_boundary_explicit_audit_operand_bits", bits)
+        ledger.bump(_comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_OPERAND_BITS, bits)
 
     aliases = (
         (arena._owner, "_audit_action_nodes", arena._nodes),

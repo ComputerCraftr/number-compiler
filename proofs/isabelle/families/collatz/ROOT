@@ -1,10 +1,11 @@
 session Collatz_Cylinder_Refinement in temporal_collatz = Shared_S_Arithmetic +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_Carry_Dynamics
+  sessions Shared_Carry_Dynamics Shared_Growth_Arithmetic
   theories
     Collatz_Clock_Jumps
     Collatz_Cylinder_Constructor
     Collatz_Physical_Cylinder_Lift
+    Collatz_Skew_Cylinder_Temporal_Squaring
     Collatz_Boundary_Macros
     Collatz_Border_Return_Refinement
     Collatz_Edge_Digit_Cycle_Refinement

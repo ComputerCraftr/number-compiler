@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.adic_morphism import PadicAffineMorphism
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.field_action import (
     CollatzActionGeometry,
     CollatzCharacterAction,
@@ -87,7 +88,7 @@ def build_collatz_runtime_action(
     output = programs.resolve(actions.resolve(powered).output_morphism)
     if output.exponent != steps:
         raise AssertionError("Collatz action construction lost its output exponent")
-    ledger.bump("collatz_runtime_action_builds")
+    ledger.bump(_collatz_keys.COLLATZ_RUNTIME_ACTION_BUILDS)
     return CollatzRuntimeActionBundle(programs, defects, actions, primitive, powered)
 
 

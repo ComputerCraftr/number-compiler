@@ -9,7 +9,7 @@ is rebuilt.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -17,6 +17,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 
 
 _ASSOCIATED_ACTION_PUBLISHER = object()
-_ASSOCIATED_ACTION_CACHE_VERSION = "complete-action-v2-exact-inputs"
+_ASSOCIATED_ACTION_CACHE_VERSION: Final[str] = "complete-action-v2-exact-inputs"
 
 
 def _build_action(
@@ -137,7 +138,9 @@ def _matches_admitted_transfer(
             abs(value).bit_length()
             for value in (cap.numerator, cap.denominator, 2 * lower)
         )
-    ledger.bump("mahler_hashlife_action_validation_operand_bits", operand_bits)
+    ledger.bump(
+        _antihydra_keys.MAHLER_HASHLIFE_ACTION_VALIDATION_OPERAND_BITS, operand_bits
+    )
     return (
         scale.numerator * lower == upper * scale.denominator
         and offset.numerator * lower == offset_numerator * offset.denominator
@@ -157,9 +160,9 @@ def cached_associated_action(
     transfer = workspace.summary().transfer
     source = workspace.source_node(workspace.root_source)
     ledger = workspace.ledger
-    ledger.bump("mahler_source_composed_image_reads")
+    ledger.bump(_antihydra_keys.MAHLER_SOURCE_COMPOSED_IMAGE_READS)
     ledger.bump(
-        "mahler_source_arithmetic_operand_bits",
+        _antihydra_keys.MAHLER_SOURCE_ARITHMETIC_OPERAND_BITS,
         transfer.upper.bit_length()
         + abs(transfer.offset).bit_length()
         + transfer.lower.bit_length(),
@@ -168,7 +171,7 @@ def cached_associated_action(
     if normal is not None:
         extent, offset_hat, cap_hat = normal
         denominator = 1 << (extent + 2)
-        ledger.bump("mahler_hashlife_source_action_projections")
+        ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_SOURCE_ACTION_PROJECTIONS)
         return SaturatingAffineAction(
             ExactRational(transfer.upper, transfer.lower),
             ExactRational(offset_hat, denominator),
@@ -206,7 +209,7 @@ def cached_associated_action(
         return _build_action(*args)
     cache = get_process_cache()
     if not cache.enabled:
-        ledger.bump("mahler_hashlife_action_disabled_bypasses")
+        ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_DISABLED_BYPASSES)
         return _build_action(*args)
     qualification = cast(
         tuple[ImmutableValue, ...],
@@ -222,7 +225,7 @@ def cached_associated_action(
         ),
     )
     ledger.bump(
-        "mahler_hashlife_action_key_operand_bits",
+        _antihydra_keys.MAHLER_HASHLIFE_ACTION_KEY_OPERAND_BITS,
         args[0].bit_length()
         + args[1].bit_length()
         + transfer.upper.bit_length()
@@ -236,15 +239,15 @@ def cached_associated_action(
             qualification,
         )
     except BlockContextBudgetExceeded:
-        ledger.bump("mahler_hashlife_action_bypasses")
+        ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_BYPASSES)
         return _build_action(*args)
     with lease:
-        ledger.bump("mahler_hashlife_action_lookups")
+        ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_LOOKUPS)
         try:
             found = lease.get_issued((), _ASSOCIATED_ACTION_PUBLISHER)
         except CacheRecordIssuerMismatch:
-            ledger.bump("mahler_hashlife_action_admission_rejections")
-            ledger.bump("mahler_hashlife_failed_work")
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_ADMISSION_REJECTIONS)
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_FAILED_WORK)
             raise
         if found is not MISSING:
             try:
@@ -256,19 +259,19 @@ def cached_associated_action(
                         "Mahler cached action differs from the admitted transfer"
                     )
             except (TypeError, ValueError, ArithmeticError):
-                ledger.bump("mahler_hashlife_action_admission_rejections")
-                ledger.bump("mahler_hashlife_failed_work")
+                ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_ADMISSION_REJECTIONS)
+                ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_FAILED_WORK)
                 raise
             # This immutable value is a pure action, not a source occurrence.
             # Exact constructor inputs qualify reuse; the caller has already
             # authenticated the receiving image at the projection boundary.
-            ledger.bump("mahler_hashlife_action_process_hits")
-            ledger.bump("mahler_hashlife_action_exact_hits")
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_PROCESS_HITS)
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_EXACT_HITS)
             return action
-        ledger.bump("mahler_hashlife_action_misses")
+        ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_MISSES)
         action = _build_action(*args)
         if lease.put_issued((), _encode(action), _ASSOCIATED_ACTION_PUBLISHER):
-            ledger.bump("mahler_hashlife_action_publications")
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_PUBLICATIONS)
         else:
-            ledger.bump("mahler_hashlife_action_bypasses")
+            ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_BYPASSES)
         return action

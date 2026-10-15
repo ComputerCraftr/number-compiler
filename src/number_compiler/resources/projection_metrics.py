@@ -9,6 +9,12 @@ from number_compiler.resources.metric_collection import (
     collect_ledger_metrics,
     ledger_fields_from,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_contracts as _contracts_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.metric_records import HashLifeProjectionMetrics
 from number_compiler.resources.metric_registry import normalized_role as _role
 from number_compiler.resources.metric_replace import replace_metric
@@ -159,7 +165,9 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         dyadic_forest_chunks=geometry["forest_chunks"],
         dyadic_max_level=geometry["max_level"],
         peak_live_tile_roots=tile_nodes,
-        tile_observations=ledger.resource_work_counters.get("source_leaf_reads", 0),
+        tile_observations=ledger.resource_work_counters.get(
+            _contracts_keys.SOURCE_LEAF_READS, 0
+        ),
         canonical_tile_arena_nodes=tile_nodes,
         canonical_tile_arena_nodes_index_build=tile_nodes,
         canonical_tile_arena_nodes_query=0,
@@ -195,11 +203,13 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
             temporal_parent_late_duplicate_reductions=action_aliases,
             bounded_application_action_compositions=action_evaluations,
             scheduler_transitions=ledger.resource_work_counters.get(
-                "tile_causal_frames", 0
+                _execution_keys.TILE_CAUSAL_FRAMES, 0
             )
             + ledger.tile_temporal_complete_frames,
             scheduler_workspace_peak=max(
-                ledger.resource_work_counters.get("tile_causal_workspace_peak", 0),
+                ledger.resource_work_counters.get(
+                    _execution_keys.TILE_CAUSAL_WORKSPACE_PEAK, 0
+                ),
                 ledger.tile_scheduler_workspace_peak,
                 ledger.tile_fused_workspace_peak,
             ),

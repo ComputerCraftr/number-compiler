@@ -66,13 +66,9 @@ def audit_registered_payloads(
     )
 
     execution_roots = tuple(ledger.iter_execution_roots())
-    root_signature = ledger.audit_root_signature() if not fresh else None
+    root_signature = ledger.audit_root_signature()
     if not fresh:
         cached = ledger.cached_payload_audit(root_signature)
-        if type(cached) is PayloadAudit:
-            return cached
-    elif not execution_roots:
-        cached = ledger.cached_payload_audit()
         if type(cached) is PayloadAudit:
             return cached
     contract_audit = ledger.audit_payload_contracts()
@@ -994,6 +990,10 @@ def audit_registered_payloads(
             unknown.add(identity)
     behaviors.finish()
     result = PayloadAudit(len(forbidden), len(huge), len(unknown))
-    if not fresh or not execution_roots:
+    # A fresh audit always walks nested records, even when a previous snapshot
+    # matches the shallow root signature. Keep its result for ordinary metric
+    # snapshots; their contract is the most recent deep audit plus tracked
+    # ledger/root changes, while explicit audits always recheck nested fields.
+    if ledger.audit_root_signature() == root_signature:
         ledger.cache_payload_audit(audit_version, result, root_signature)
     return result

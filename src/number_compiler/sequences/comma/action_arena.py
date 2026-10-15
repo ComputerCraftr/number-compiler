@@ -14,6 +14,7 @@ from typing import cast
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
@@ -159,28 +160,28 @@ class CommaActionArena:
         self._boundary_nodes: LedgerList[object] = ledger.make_list(
             self._boundary_node_owner, append_only=False
         )
-        self.ledger.bump("comma_transfer_phase_terms", 0)
-        self.ledger.bump("comma_cycle_rule_evaluations", 0)
-        self.ledger.bump("comma_evaluated_transitions", 0)
+        self.ledger.bump(_comma_keys.COMMA_TRANSFER_PHASE_TERMS, 0)
+        self.ledger.bump(_comma_keys.COMMA_CYCLE_RULE_EVALUATIONS, 0)
+        self.ledger.bump(_comma_keys.COMMA_EVALUATED_TRANSITIONS, 0)
         self.identity = self._intern(("identity",), _Action("identity", 0))
         self.cycle_reuse = CycleActionReuse(
             ledger, self.charge, self.charge_bits, shared=shared_cache
         )
 
     def charge(self, amount: int = 1) -> None:
-        used = self.ledger.counters.get("comma_work", 0) + self.ledger.counters.get(
-            "comma_certificate_work", 0
-        )
+        used = self.ledger.counters.get(
+            _comma_keys.COMMA_WORK, 0
+        ) + self.ledger.counters.get(_comma_keys.COMMA_CERTIFICATE_WORK, 0)
         if amount > self.max_work - used:
-            self.ledger.bump("comma_budget_refusals")
+            self.ledger.bump(_comma_keys.COMMA_BUDGET_REFUSALS)
             raise ValueError("comma construction exceeds --max-comma-work")
-        self.ledger.bump("comma_work", amount)
+        self.ledger.bump(_comma_keys.COMMA_WORK, amount)
 
     def charge_bits(self, bits: int) -> None:
-        self.ledger.bump("comma_operand_bit_work", bits)
+        self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, bits)
 
     def _intern(self, key: tuple[object, ...], node: _Action) -> CommaActionID:
-        self.ledger.bump("comma_action_requests")
+        self.ledger.bump(_comma_keys.COMMA_ACTION_REQUESTS)
         old = self._keys.get(key)
         if old is not None:
             existing = self.node(old)
@@ -197,9 +198,9 @@ class CommaActionArena:
                 raise ValueError("comma action key aliases a different effect")
             self.charge()
             self.charge_bits(max(1, node.steps.bit_length()))
-            self.ledger.bump("comma_action_hits")
+            self.ledger.bump(_comma_keys.COMMA_ACTION_HITS)
             return old
-        self.ledger.bump("comma_action_misses")
+        self.ledger.bump(_comma_keys.COMMA_ACTION_MISSES)
         self.charge()
         self.charge_bits(
             max(1, node.steps.bit_length())
@@ -230,7 +231,7 @@ class CommaActionArena:
             self.ledger.release(self._key_owner, entries=1)
             self.ledger.release(self._snapshot_owner, entries=1)
             raise
-        self.ledger.bump("comma_action_publications")
+        self.ledger.bump(_comma_keys.COMMA_ACTION_PUBLICATIONS)
         return identifier
 
     def node(self, identifier: CommaActionID) -> _Action:
@@ -256,8 +257,8 @@ class CommaActionArena:
         self.charge(5)
         transfer = cycle_transfer(leading, digit)
         self.charge_bits(5 * 128)
-        self.ledger.bump("comma_transfer_constructions")
-        self.ledger.bump("comma_cycle_rule_evaluations")
+        self.ledger.bump(_comma_keys.COMMA_TRANSFER_CONSTRUCTIONS)
+        self.ledger.bump(_comma_keys.COMMA_CYCLE_RULE_EVALUATIONS)
         return transfer
 
     def one_cycle(self, leading: int, digit: int) -> CommaActionID:
@@ -416,7 +417,7 @@ class CommaActionArena:
         found = self._boundary_templates.get(state)
         if found is not None:
             self.charge()
-            self.ledger.bump("comma_boundary_seal_checks")
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_SEAL_CHECKS)
             seal = self._boundary_seals.get(state)
             header = _template_header(found)
             self.charge_bits(
@@ -428,9 +429,9 @@ class CommaActionArena:
                     "comma boundary template publication was altered "
                     "(snapshot mismatch)"
                 )
-            self.ledger.bump("comma_boundary_template_hits")
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_TEMPLATE_HITS)
             return found
-        self.ledger.bump("comma_boundary_template_misses")
+        self.ledger.bump(_comma_keys.COMMA_BOUNDARY_TEMPLATE_MISSES)
         template = construct_macro(
             state, charge=self.charge, charge_bits=self.charge_bits
         )
@@ -507,17 +508,21 @@ class CommaActionArena:
                 self._boundary_node_owner, entries=retained, nodes=retained
             )
             raise
-        self.ledger.bump("comma_boundary_template_publications")
-        self.ledger.bump("comma_boundary_template_retained_nodes", retained)
-        self.ledger.bump("comma_boundary_seal_retained_slots", seal_node_count + 1)
-        self.ledger.bump("comma_boundary_seal_retained_integer_bits", seal_integer_bits)
+        self.ledger.bump(_comma_keys.COMMA_BOUNDARY_TEMPLATE_PUBLICATIONS)
+        self.ledger.bump(_comma_keys.COMMA_BOUNDARY_TEMPLATE_RETAINED_NODES, retained)
+        self.ledger.bump(
+            _comma_keys.COMMA_BOUNDARY_SEAL_RETAINED_SLOTS, seal_node_count + 1
+        )
+        self.ledger.bump(
+            _comma_keys.COMMA_BOUNDARY_SEAL_RETAINED_INTEGER_BITS, seal_integer_bits
+        )
         return template
 
     def _boundary_read_guard(
         self, state: BoundaryState, template: MacroTemplate
     ) -> Callable[[str, int], None]:
         self.charge()
-        self.ledger.bump("comma_boundary_seal_checks")
+        self.ledger.bump(_comma_keys.COMMA_BOUNDARY_SEAL_CHECKS)
         seal = self._boundary_seals.get(state)
         header = _template_header(template)
         self.charge_bits(
@@ -531,7 +536,7 @@ class CommaActionArena:
 
         def verify(kind: str, index: int) -> None:
             self.charge()
-            self.ledger.bump("comma_boundary_seal_checks")
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_SEAL_CHECKS)
             if kind == "fragment":
                 expected = cast(tuple[object, ...], seal[1])[index]
             elif kind == "weight":

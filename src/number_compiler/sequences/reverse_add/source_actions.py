@@ -11,6 +11,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ExactSource,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.stores import LedgerList
 
 
@@ -158,7 +159,9 @@ class ReverseActionArena:
             value //= base
             if not value:
                 break
-        self.ledger.bump("reverse_source_original_digit_decodes", len(digits))
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_SOURCE_ORIGINAL_DIGIT_DECODES, len(digits)
+        )
         exact = ExactSource(tuple(digits), base, orbit="reverse-add")
         record = _ReverseSourceRecord(exact)
         handle = ReverseSource(self.owner, self._SOURCE_KIND, 0)

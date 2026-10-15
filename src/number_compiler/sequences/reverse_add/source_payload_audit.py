@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence, Sized
-from hashlib import sha256
 from typing import cast
 
 from number_compiler.resources.ledger import (
@@ -76,7 +75,10 @@ def audit_reverse_source_payloads(
         OriginalSourceConstruction,
     )
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+    from number_compiler.arithmetic.contracts.semantic_identity import (
+        SemanticIdentity,
+        SemanticIdentityDomain,
+    )
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
     from number_compiler.hashlife.actions.field_actions import (
         FieldCellActionID,
@@ -102,6 +104,9 @@ def audit_reverse_source_payloads(
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.sequences.reverse_add.higher_interface import (
         ReverseHigherInterfaceCompilation,
+    )
+    from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
+        SourceGuardedGTBankAction,
     )
     from number_compiler.sequences.reverse_add.q19_output import (
         ReversePairOutputOccurrence,
@@ -215,7 +220,7 @@ def audit_reverse_source_payloads(
         authority = getattr(root, "_authority", None)
         valid &= (
             type(authority) is tuple
-            and len(authority) == 10
+            and len(authority) == 11
             and authority[0] is ledger
             and authority[1] is actions
             and authority[2] is root.source
@@ -225,6 +230,7 @@ def audit_reverse_source_payloads(
             and authority[6] == root.steps
             and authority[7] == root.base
             and authority[9] is root._request_binding
+            and authority[10] is root._pointed_gt_banks
             and type(root._request_binding) is tuple
             and len(root._request_binding) == 3
             and all(type(value) is int for value in root._request_binding)
@@ -240,6 +246,7 @@ def audit_reverse_source_payloads(
             (actions._normal, "reverse_source_action_normal_form"),
             (actions._sources, "reverse_original_source"),
             (actions._workspace, "reverse_source_action_workspace"),
+            (root._pointed_gt_banks, "reverse_source_pointed_gt_bank"),
         )
         stores_valid = True
         for store, role in stores:
@@ -251,6 +258,36 @@ def audit_reverse_source_payloads(
                 if data is not None:
                     approved.add(id(data) if type(store) is OwnedMemo else id(store))
         valid &= stores_valid
+        for bank_key, bank_action in root._pointed_gt_banks.items():
+            recognized.update((id(bank_key), id(bank_action)))
+            action_owner = root.adapter._q19_owner
+            action_valid = (
+                type(bank_key) is tuple
+                and len(bank_key) == 3
+                and type(bank_key[0]) is ReverseSource
+                and bank_key[0] is root.source
+                and type(bank_key[1]) is int
+                and type(bank_key[2]) is int
+                and type(bank_action) is SourceGuardedGTBankAction
+                and bank_action.owner is action_owner
+                and bank_action.source.owner
+                is getattr(action_owner, "_authority", None)
+                and action_owner is not None
+                and bank_action.source is action_owner.initial
+                and bank_action.steps == bank_key[1] == root.steps
+                and bank_action.coordinate == bank_key[2]
+            )
+            if action_valid:
+                try:
+                    bank_action._validate()
+                except (AttributeError, TypeError, ValueError):
+                    action_valid = False
+            if action_valid:
+                approved.update((id(bank_key), id(bank_action)))
+            else:
+                valid = False
+                invalid.add((root._pointed_gt_banks.owner, id(bank_key)))
+                invalid.add((root._pointed_gt_banks.owner, id(bank_action)))
         action_size = len(actions._nodes)
 
         def action_handle_valid(
@@ -604,9 +641,7 @@ def audit_reverse_source_payloads(
                             )
                             expected_identity = (
                                 SemanticIdentity(
-                                    sha256(
-                                        repr(expected_behavior).encode()
-                                    ).hexdigest(),
+                                    SemanticIdentityDomain.ANONYMOUS,
                                     expected_behavior,
                                 )
                                 if kernel_digest is not None
@@ -834,7 +869,7 @@ def audit_reverse_source_payloads(
                     )
                     if pair_output is not None:
                         q19_owner = root.adapter._q19_owner
-                        cached_valid &= (
+                        if (
                             type(q19_owner) is ReversePairQ19OutputOwner
                             and type(pair_output) is ReversePairOutputOccurrence
                             and type(source) is ExactSource
@@ -843,11 +878,13 @@ def audit_reverse_source_payloads(
                             and q19_owner._digits is source.digits
                             and pair_output.temporal_steps
                             == actions.node(expected_action).steps
-                            and q19_owner._issued.get(
-                                (pair_output.root, pair_output.temporal_steps)
-                            )
-                            is pair_output
-                        )
+                        ):
+                            try:
+                                q19_owner.validate_issued_occurrence(pair_output)
+                            except (TypeError, ValueError):
+                                cached_valid = False
+                        else:
+                            cached_valid = False
             if not cached_valid:
                 valid = False
                 invalid.add((owner, id(cached_image)))
@@ -908,6 +945,11 @@ def audit_reverse_source_owner(
                 root.adapter._recursive_occurrences.owner,
                 "_audit_recursive_occurrences",
                 "reverse_recursive_occurrence_binding",
+            ),
+            PayloadAuditStoreBinding(
+                root._pointed_gt_banks.owner,
+                "_audit_pointed_gt_banks",
+                "reverse_source_pointed_gt_bank",
             ),
             *nested_source_store_bindings(root),
         )

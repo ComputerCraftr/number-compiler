@@ -9,6 +9,9 @@ from number_compiler.hashlife.execution.continuations.concrete_port_records impo
     Residual,
     ResidualBindingID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
@@ -72,7 +75,7 @@ def intern_residual(
     validate_residual(scheduler, record)
     found = scheduler._residual_keys.get(record)
     if found is not None:
-        scheduler.ledger.bump("concrete_residual_alias_hits")
+        scheduler.ledger.bump(_execution_keys.CONCRETE_RESIDUAL_ALIAS_HITS)
         return scheduler._residual_id(found)
     scheduler.ledger.reserve_many(
         (
@@ -84,7 +87,7 @@ def intern_residual(
     scheduler._next_residual += 1
     scheduler._residuals[local_id] = record
     scheduler._residual_keys[record] = local_id
-    scheduler.ledger.bump("concrete_residual_publications")
+    scheduler.ledger.bump(_execution_keys.CONCRETE_RESIDUAL_PUBLICATIONS)
     return scheduler._residual_id(local_id)
 
 

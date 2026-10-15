@@ -9,10 +9,10 @@ number-compiler --list-families
 number-compiler reverse-add --seed 196 --nth 8
 number-compiler collatz --nth 8 --seed 27
 number-compiler collatz --nth-power10 6 --seed 27
-number-compiler antihydra --nth 64 --info ledger --info clock
+number-compiler antihydra --nth 64 --info safety.ledger --info temporal.clock
 number-compiler a367620 --nth 1
-number-compiler fermat --nth 3 --no-value --info primality --format json
-number-compiler mersenne --nth 131 --no-value --info primality --info factor --format json
+number-compiler fermat --nth 3 --no-value --info number-theory.primality --format json
+number-compiler mersenne --nth 131 --no-value --info number-theory.primality --info number-theory.factor --format json
 ```
 
 Execution uses immutable family-specific queries; presentation stays in the CLI:
@@ -31,9 +31,9 @@ The public Python entry points are exported from `number_compiler`. See the
 [CLI reference](docs/cli.md) and [metrics reference](docs/metrics.md) for current usage and accounting.
 
 Each family owns its command: `FAMILY --nth N` emits the candidate or term, while
-`--no-value --info primality` requests the admitted compact primality route.
+`--no-value --info number-theory.primality` requests the admitted compact primality route.
 It reports `unknown` and exits 3 when that route cannot decide. Pépin and
-Lucas–Lehmer are available only as research oracles. Add `--info factor` to
+Lucas–Lehmer are available only as research oracles. Add `--info number-theory.factor` to
 request a separately budgeted étale coefficient witness; a proper divisor proves
 composite, while a non-split does not prove prime. `--max-candidate-bits` bounds
 candidate size before theorem work.

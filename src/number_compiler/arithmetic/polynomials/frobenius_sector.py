@@ -20,12 +20,17 @@ no innovation, output, carry, digit, or source-binding field.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 from number_compiler.arithmetic.polynomials.cyclotomic import is_power_of_two
 
 MAX_REVERSE_FROBENIUS_CLASSES = 8
 MAX_REVERSE_FROBENIUS_BITS = 64
-_GROWTH_CERTIFICATE_VERSION = "base-block-symmetric-outer-growth-v1"
+_GROWTH_CERTIFICATE_VERSION: Final[str] = "base-block-symmetric-outer-growth-v1"
+GROWTH_LEADING_ONE_LAW: Final[str] = "growth-leading-one-v1"
+REVERSE_GROWTH_RUN_CERTIFICATE_TAG: Final[str] = "reverse-growth-run-certificate-v1"
+REVERSE_FROBENIUS_SOURCE_BOUND_TAG: Final[str] = "reverse-frobenius-source-bound-v2"
+REVERSE_FROBENIUS_PLAN_TAG: Final[str] = "reverse-frobenius-plan-v2"
 _MAX_CERTIFIED_GROWTH_BASE = 64
 _DECIMAL_OUTER_SUCCESSORS = tuple(
     (symbol, 1 + symbol - 10 * int(symbol >= 10)) for symbol in range(9, 19)
@@ -86,7 +91,7 @@ class ReverseGrowthRunCertificate:
             or type(self.initial_carry) is not int
             or self.initial_carry != 0
             or type(self.normalization_law) is not str
-            or self.normalization_law != "growth-leading-one-v1"
+            or self.normalization_law != GROWTH_LEADING_ONE_LAW
         ):
             raise ValueError("growth-run certificate differs from the kernel law")
         transitions = dict(expected_edges)
@@ -114,13 +119,13 @@ class ReverseGrowthRunCertificate:
             ),
             True,
             0,
-            "growth-leading-one-v1",
+            GROWTH_LEADING_ONE_LAW,
         )
 
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return (
-            "reverse-growth-run-certificate-v1",
+            REVERSE_GROWTH_RUN_CERTIFICATE_TAG,
             self.base,
             self.kernel_behavior,
             self.version,
@@ -140,7 +145,7 @@ DECIMAL_REVERSE_GROWTH_CERTIFICATE = ReverseGrowthRunCertificate(
     _DECIMAL_OUTER_SUCCESSORS,
     True,
     0,
-    "growth-leading-one-v1",
+    GROWTH_LEADING_ONE_LAW,
 )
 
 
@@ -168,7 +173,7 @@ def validate_decimal_growth_certificate(
         or type(certificate.initial_carry) is not int
         or certificate.initial_carry != 0
         or type(certificate.normalization_law) is not str
-        or certificate.normalization_law != "growth-leading-one-v1"
+        or certificate.normalization_law != GROWTH_LEADING_ONE_LAW
     ):
         raise ValueError("decimal growth certificate differs from its kernel proof")
 
@@ -239,7 +244,7 @@ class FrobeniusSectorSourceBound:
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return (
-            "reverse-frobenius-source-bound-v2",
+            REVERSE_FROBENIUS_SOURCE_BOUND_TAG,
             self.classes,
             self.bits,
             self.steps,
@@ -400,7 +405,7 @@ class ReverseFrobeniusPlan:
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return (
-            "reverse-frobenius-plan-v2",
+            REVERSE_FROBENIUS_PLAN_TAG,
             self.maximum_classes,
             self.bits,
             self.steps,

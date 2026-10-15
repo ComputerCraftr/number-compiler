@@ -9,6 +9,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
 )
@@ -415,17 +416,17 @@ def _consume_mixed_macro(
             applied_mixed_action(macros)
         else:
             remember_mixed_action(macros, macro, scratch)
-    ledger.bump("collatz_physical_temporal_mixed_clock_macro_actions")
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_MIXED_CLOCK_MACRO_ACTIONS)
     ledger.bump(
-        "collatz_physical_temporal_mixed_clock_macro_repetitions",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_MIXED_CLOCK_MACRO_REPETITIONS,
         macro.repetitions,
     )
     ledger.bump(
-        "collatz_physical_temporal_mixed_clock_macro_physical_ticks",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_MIXED_CLOCK_MACRO_PHYSICAL_TICKS,
         macro.physical_ticks,
     )
     ledger.bump(
-        "collatz_physical_temporal_run_operand_bits",
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
         source.bit_length()
         + macro.endpoint.bit_length()
         + macro.fields.gain.bit_length()

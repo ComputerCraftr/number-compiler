@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.metric_collection import ledger_fields_from
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_replace import replace_metric
 
@@ -132,7 +133,7 @@ def collect_behavior_metrics(index: HashLifeBlockIndex) -> HashLifeBehaviorMetri
         "primitive_step_evaluations",
         "action_compositions",
         "action_applications",
-        "nonlinear_branch_evaluations",
+        _reverse_add_keys.NONLINEAR_BRANCH_EVALUATIONS,
         "exact_endpoint_entries",
         "query_requests",
         "quotient_builds",

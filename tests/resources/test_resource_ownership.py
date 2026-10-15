@@ -17,6 +17,7 @@ from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.production_ast import ProductionASTGraph
 
 
 @pytest.mark.parametrize("factory", [dict, list, set])
@@ -273,14 +274,14 @@ def test_structural_gate_distinguishes_retained_stores_from_transient_locals() -
     assert _persistent_store_violations(cached_method_tree, {"Owner"})
 
 
-def test_execution_owners_allocate_persistent_stores_only_through_factories() -> None:
+def test_execution_owners_allocate_persistent_stores_only_through_factories(
+    production_ast_graph: ProductionASTGraph,
+) -> None:
     root = repository_root() / "src/number_compiler"
     violations: dict[str, list[int]] = {}
     examined = 0
     for source_root in (root, repository_root() / "devtools" / "verification"):
-        for path in source_root.rglob("*.py"):
-            text = path.read_text()
-            tree = ast.parse(text, filename=str(path))
+        for path, tree in production_ast_graph.under(source_root).items():
             classes = set()
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ClassDef):

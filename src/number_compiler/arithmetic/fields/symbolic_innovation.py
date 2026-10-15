@@ -32,6 +32,9 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 MAX_PRIMITIVE_IDENTITY_UNITS = 256
@@ -290,7 +293,7 @@ class SymbolicInnovationArena:
         self._keys[node] = self._copy_ref(result)
         if isinstance(node, _Interval):
             self.ledger.bump(
-                "symbolic_innovation_interval_retained_bits",
+                _fields_keys.SYMBOLIC_INNOVATION_INTERVAL_RETAINED_BITS,
                 max(1, node.length.bit_length()),
             )
         return self._copy_ref(result)
@@ -378,7 +381,7 @@ class SymbolicInnovationArena:
             if type(coefficient) is not int:
                 raise TypeError("innovation coefficients must be exact integers")
             node = self.resolve(reference)
-            self.ledger.bump("symbolic_innovation_normalization_visits")
+            self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_NORMALIZATION_VISITS)
             if coefficient == 0 or isinstance(node, _Zero):
                 continue
             if isinstance(node, _Scale):
@@ -545,7 +548,7 @@ class SymbolicInnovationArena:
             raise TypeError("symbolic substitution requires two affine actions")
         self.resolve(before.innovation)
         self.resolve(after.innovation)
-        self.ledger.bump("symbolic_innovation_substitutions")
+        self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_SUBSTITUTIONS)
         return SymbolicRadialInnovation(
             before.multiplier.then(after.multiplier),
             self.add(
@@ -669,7 +672,7 @@ class SymbolicInnovationArena:
             finally:
                 self.ledger.release(memo.owner, nodes=units)
             self.ledger.bump(
-                "symbolic_innovation_projection_metadata_addition_bits",
+                _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_METADATA_ADDITION_BITS,
                 max(result[0].bit_length(), result[1].bit_length(), 1),
             )
             return result
@@ -690,7 +693,9 @@ class SymbolicInnovationArena:
                 while summaries.get(current) is None:
                     # Charge before validation so foreign, stale, and otherwise
                     # failed requests remain visible as completed work.
-                    self.ledger.bump("symbolic_innovation_projection_dependency_visits")
+                    self.ledger.bump(
+                        _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_DEPENDENCY_VISITS
+                    )
                     node = self.resolve(current)
                     self.ledger.reserve(memo.owner, entries=1, nodes=1)
                     try:
@@ -707,13 +712,13 @@ class SymbolicInnovationArena:
                             node.multiplier.growth,
                         )
                         self.ledger.bump(
-                            "symbolic_innovation_projection_radial_zero_checks"
+                            _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_RADIAL_ZERO_CHECKS
                         )
                         if power_two_cyclotomic_transport(
                             order // 2, prefix_no_growth, prefix_growth
                         ).annihilated(bits):
                             self.ledger.bump(
-                                "symbolic_innovation_projection_pruned_occurrences"
+                                _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_PRUNED_OCCURRENCES
                             )
                             root_node = chain[0][1]
                             self.ledger.release(
@@ -758,7 +763,7 @@ class SymbolicInnovationArena:
                             growth,
                         )
                         self.ledger.bump(
-                            "symbolic_innovation_projection_radial_zero_checks"
+                            _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_RADIAL_ZERO_CHECKS
                         )
                         dead = dead or power_two_cyclotomic_transport(
                             order // 2, no_growth, growth
@@ -804,7 +809,9 @@ class SymbolicInnovationArena:
                 except BaseException:
                     self.ledger.release(memo.owner, entries=1, nodes=1)
                     raise
-                self.ledger.bump("symbolic_innovation_projection_workspace_frames")
+                self.ledger.bump(
+                    _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_WORKSPACE_FRAMES
+                )
 
             active_frames = 0
             push_frame(action.innovation, False, None)
@@ -830,7 +837,9 @@ class SymbolicInnovationArena:
                         node,
                     ) = suffix_summary(reference)
                     if dead:
-                        self.ledger.bump("symbolic_innovation_projection_visits")
+                        self.ledger.bump(
+                            _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_VISITS
+                        )
                         memo[reference] = tuple(ring.zero)
                         self.ledger.release(memo.owner, entries=1, nodes=1)
                         active_frames = 0
@@ -869,7 +878,7 @@ class SymbolicInnovationArena:
                     self.ledger.release(memo.owner, entries=1, nodes=1)
                     active_frames = 0
                     continue
-                self.ledger.bump("symbolic_innovation_projection_visits")
+                self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PROJECTION_VISITS)
                 if isinstance(node, _Zero):
                     result = ring.zero
                 elif isinstance(node, _Atom):
@@ -898,11 +907,11 @@ class SymbolicInnovationArena:
                     remainder = node.length % order
                     degree = ring.degree
                     self.ledger.bump(
-                        "symbolic_innovation_interval_projection_operand_bits",
+                        _fields_keys.SYMBOLIC_INNOVATION_INTERVAL_PROJECTION_OPERAND_BITS,
                         max(1, node.length.bit_length()),
                     )
                     self.ledger.bump(
-                        "symbolic_innovation_interval_projection_coefficients",
+                        _fields_keys.SYMBOLIC_INNOVATION_INTERVAL_PROJECTION_COEFFICIENTS,
                         degree,
                     )
                     result = tuple(

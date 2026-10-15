@@ -32,6 +32,9 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceCellID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -93,7 +96,7 @@ class GenericHigherActionSchema:
         self.runtime.actions.resolve(root)
         found = self._keys.get(root)
         if found is not None:
-            self.ledger.bump("generic_higher_action_early_hits")
+            self.ledger.bump(_execution_keys.GENERIC_HIGHER_ACTION_EARLY_HITS)
             return self._handle(found)
         order: list[ActionProgramID] = []
         seen: set[ActionProgramID] = set()
@@ -143,7 +146,7 @@ class GenericHigherActionSchema:
         for action, record in zip(order, records, strict=True):
             self._keys[action] = len(self._nodes)
             self._nodes.append(record)
-        self.ledger.bump("generic_higher_action_publications", count)
+        self.ledger.bump(_execution_keys.GENERIC_HIGHER_ACTION_PUBLICATIONS, count)
         return self._handle(self._keys[root])
 
     def validate_action(self, action: FieldCellActionID) -> None:
@@ -275,7 +278,7 @@ class GenericHigherRuntime:
         self.runtime.actions.resolve(action)
         projected = self._action(action)
         if self.schema.kind(projected) == "identity":
-            self.ledger.bump("higher_point_observations")
+            self.ledger.bump(_execution_keys.HIGHER_POINT_OBSERVATIONS)
             return self.sources.binding_read(self.source, coordinate)
         return self.machine.point_structural(projected, self.source, coordinate)
 
@@ -319,7 +322,7 @@ class GenericHigherRuntime:
         self.runtime.actions.resolve(action)
         self.runtime.actions.resolve(observer)
         projected, observed = self._action(action), self._action(observer)
-        self.ledger.bump("higher_width_observations")
+        self.ledger.bump(_execution_keys.HIGHER_WIDTH_OBSERVATIONS)
         if not maxwidth:
             return 0
         left = evaluate_operation(self.semantics, "initial", projected, 0, ())
@@ -331,7 +334,7 @@ class GenericHigherRuntime:
         for index, cell in enumerate(prefix):
             contexts.append(_WidthCell(start, cell, left))
             start += self.sources.resolve(cell).width
-            self.ledger.bump("parametric_width_forest_visits")
+            self.ledger.bump(_execution_keys.PARAMETRIC_WIDTH_FOREST_VISITS)
             if index + 1 < len(prefix):
                 left = self._transfer(projected, cell, left, 0)
         counter = "parametric_width_contexts_peak"
@@ -343,7 +346,7 @@ class GenericHigherRuntime:
             right = self._transfer(projected, cell, right, 1)
         for context in reversed(contexts):
             start, cell, left = context.start, context.cell, context.left
-            self.ledger.bump("parametric_width_parent_visits")
+            self.ledger.bump(_execution_keys.PARAMETRIC_WIDTH_PARENT_VISITS)
             if not self._active(projected, observed, cell, left, right, incoming):
                 right = self._transfer(projected, cell, right, 1)
                 continue
@@ -351,7 +354,7 @@ class GenericHigherRuntime:
                 low, high = self.sources.children(cell)
                 middle = start + self.sources.resolve(low).width
                 middle_left = self._transfer(projected, low, left, 0)
-                self.ledger.bump("parametric_width_descent_steps")
+                self.ledger.bump(_execution_keys.PARAMETRIC_WIDTH_DESCENT_STEPS)
                 if self._active(
                     projected, observed, high, middle_left, right, incoming
                 ):

@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING, Literal
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import (
@@ -76,22 +79,25 @@ def compile_truth_function(
         )
         if admissible and depth < len(coordinates):
             frames.append((depth, None))
-            arena.ledger.bump("diamond_kernel_shannon_branches")
-            peak = arena.ledger.counters.get("diamond_kernel_shannon_peak_frames", 0)
+            arena.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_SHANNON_BRANCHES)
+            peak = arena.ledger.counters.get(
+                _interfaces_keys.DIAMOND_KERNEL_SHANNON_PEAK_FRAMES, 0
+            )
             arena.ledger.bump(
-                "diamond_kernel_shannon_peak_frames", max(0, len(frames) - peak)
+                _interfaces_keys.DIAMOND_KERNEL_SHANNON_PEAK_FRAMES,
+                max(0, len(frames) - peak),
             )
             depth += 1
             continue
         if admissible:
-            arena.ledger.bump("diamond_kernel_shannon_leaf_evaluations")
+            arena.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_SHANNON_LEAF_EVALUATIONS)
             value = (
                 primitive.advance(side, values[0], values[1])
                 if operation == "advance"
                 else primitive.emit(*values)
             )
         else:
-            arena.ledger.bump("diamond_kernel_invalid_subtrees")
+            arena.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_INVALID_SUBTREES)
             value = 0
         result = tuple((value >> bit) & 1 for bit in range(output_width))
         while frames:
@@ -111,7 +117,9 @@ def compile_truth_function(
                         arena.functions._intern(variable, low, high)
                         for low, high in zip(lower, result, strict=True)
                     )
-                    arena.ledger.bump("diamond_kernel_ordered_function_joins")
+                    arena.ledger.bump(
+                        _interfaces_keys.DIAMOND_KERNEL_ORDERED_FUNCTION_JOINS
+                    )
                 else:
                     result = tuple(
                         arena.functions._resolve(

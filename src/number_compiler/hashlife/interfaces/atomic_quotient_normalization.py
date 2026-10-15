@@ -20,6 +20,9 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
 )
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
@@ -45,7 +48,7 @@ def _existing_mask(
             if identity in done:
                 continue
             node = functions.nodes[identity]
-            arena.ledger.bump("quotient_atomic_mask_validation_nodes")
+            arena.ledger.bump(_interfaces_keys.QUOTIENT_ATOMIC_MASK_VALIDATION_NODES)
             if node.terminal is not None:
                 leaf = node.terminal
                 normalized = SemanticNode(

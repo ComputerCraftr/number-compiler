@@ -9,34 +9,49 @@ clock alone.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import TypeVar, cast
+from collections.abc import Callable, Iterator
+from typing import cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    double_reverse as _double_reverse_keys,
+)
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
-    PayloadAuditEntry,
     PayloadAuditStoreBinding,
 )
+from number_compiler.sequences.double_reverse.boundary_cycles import (
+    candidate_component,
+)
+from number_compiler.sequences.double_reverse.stencil_moore import (
+    DIGIT_STENCIL_MOORE,
+    stencil_cell,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_audit import (
+    audit_double_reverse_temporal_actions,
+)
 from number_compiler.sequences.double_reverse.temporal_hashlife_slp import (
-    _existing_concat,
-    _existing_part,
     _existing_symbol_at,
 )
-
-_Key = TypeVar("_Key")
-_Value = TypeVar("_Value")
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    DoubleReversePortAction,
+    DoubleReverseSLPID,
+    DoubleReverseSourcePrefix,
+    IssuedDoubleReversePortAction,
+    IssuedDoubleReverseSourcePrefix,
+    PointedDigitStencil,
+    UncertifiedPointedStencilError,
+    source_prefix_binding,
+    temporal_action_binding,
+)
 
 
 def two_step_cell(left: int, digit: int, right: int) -> int:
     """Exact local carry law for two physical reverse/double transitions."""
-    first_carry = int(left >= 5)
-    second_carry = int((2 * right + int(digit >= 5)) % 10 >= 5)
-    return (4 * digit + 2 * first_carry + second_carry) % 10
+    return stencil_cell(left, digit, right)
 
 
 def edge_phase(upper: tuple[int, int], lower: tuple[int, int]) -> int | None:
@@ -68,329 +83,12 @@ def growth_ports(phase: int, steps: int) -> tuple[int, int]:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class DoubleReverseSLPID(ArenaHandle):
-    """Typed root handle for one double-reverse SLP arena generation."""
-
-    def __post_init__(self) -> None:
-        ArenaHandle.__post_init__(self)
-        if self.kind != "double_reverse_slp":
-            raise ValueError("invalid double-reverse SLP handle kind")
-
-
-@dataclass(frozen=True, slots=True)
-class DoubleReversePortAction:
-    """A powered output grammar and its exact source and boundary seams."""
-
-    source: DoubleReverseSLPID
-    target: DoubleReverseSLPID
-    steps: int
-    phase_in: int
-    phase_out: int
-    left_births: int
-    right_births: int
-
-    def then(self, other: DoubleReversePortAction) -> DoubleReversePortAction:
-        """Compose only actions whose exact output root feeds the next input."""
-        if type(other) is not DoubleReversePortAction:
-            raise TypeError("temporal composition requires a guarded port action")
-        if self.target != other.source:
-            raise ValueError("temporal action source-root seam mismatch")
-        if self.phase_out != other.phase_in:
-            raise ValueError("temporal action border-phase seam mismatch")
-        return DoubleReversePortAction(
-            self.source,
-            other.target,
-            self.steps + other.steps,
-            self.phase_in,
-            other.phase_out,
-            self.left_births + other.left_births,
-            self.right_births + other.right_births,
-        )
-
-
-def temporal_action_node_cost(key: object, action: object) -> int:
-    """Charge exact integer limbs for the retained action and its scoped key."""
-    if type(key) is not tuple or len(key) != 3:
-        raise ValueError("malformed temporal action memo entry")
-    coordinates = cast(tuple[object, ...], key)
-    if any(type(value) is not int or value < 0 for value in coordinates):
-        raise ValueError("malformed temporal action memo key")
-    exact_coordinates = cast(tuple[int, int, int], coordinates)
-    if type(action) is not DoubleReversePortAction:
-        raise ValueError("malformed temporal action memo payload")
-    exact_action = action
-    integers = (
-        *exact_coordinates,
-        exact_action.source.local_id,
-        exact_action.target.local_id,
-        exact_action.steps,
-        exact_action.phase_in,
-        exact_action.phase_out,
-        exact_action.left_births,
-        exact_action.right_births,
-    )
-    if any(type(value) is not int or value < 0 for value in integers):
-        raise ValueError("malformed temporal action coordinates")
-    return 8 + sum(max(1, (value.bit_length() + 63) // 64) for value in integers)
-
-
-def _memo_account_is_exact(
-    ledger: ResourceLedger,
-    memo: OwnedMemo[_Key, _Value],
-    owner: int,
-    container: object,
-    *,
-    role: str,
-) -> bool:
-    account = ledger._account(owner)
-    return (
-        memo.ledger is ledger
-        and memo.owner == owner
-        and memo._data is container
-        and account.container is container
-        and account.role == role
-        and not account.disposed
-        and memo.nodes_per_entry == 1
-        and memo.node_cost is None
-        and memo._dynamic_nodes == 0
-        and account.entries == len(memo)
-        and account.nodes == len(memo)
-    )
-
-
-def _audit_temporal_slice_store(
-    root: DoubleReverseTemporalHashlife,
-) -> tuple[list[PayloadAuditEntry], list[PayloadAuditEntry]]:
-    memo = root._slices
-    approved: list[PayloadAuditEntry] = []
-    invalid: list[PayloadAuditEntry] = []
-    container = root._audit_slices
-    if not _memo_account_is_exact(
-        root.ledger, memo, memo.owner, container, role="double_reverse_temporal_memo"
-    ):
-        raise ValueError("2rev10 temporal slice owner is invalid")
-    for key, value in memo.items():
-        valid = (
-            type(key) is tuple
-            and len(key) == 3
-            and all(type(item) is int for item in key)
-            and type(value) is int
-        )
-        if valid:
-            source, begin, end = key
-            valid = (
-                0 <= source < len(root.arena.nodes)
-                and 0 <= begin < end <= root.arena.nodes[source].length
-                and not (begin == 0 and end == root.arena.nodes[source].length)
-                and 0 <= value < len(root.arena.nodes)
-            )
-            if valid:
-                expected = _existing_part(root.arena, source, begin, end)
-                valid = (
-                    expected == value and root.arena.nodes[value].length == end - begin
-                )
-        destination = approved if valid else invalid
-        destination.extend(
-            (
-                PayloadAuditEntry(memo.owner, key),
-                PayloadAuditEntry(memo.owner, value),
-            )
-        )
-    return approved, invalid
-
-
-def _audit_temporal_cone_store(
-    root: DoubleReverseTemporalHashlife,
-) -> tuple[list[PayloadAuditEntry], list[PayloadAuditEntry]]:
-    memo = root._cone
-    approved: list[PayloadAuditEntry] = []
-    invalid: list[PayloadAuditEntry] = []
-    if not _memo_account_is_exact(
-        root.ledger,
-        memo,
-        memo.owner,
-        root._audit_cones,
-        role="double_reverse_temporal_memo",
-    ):
-        raise ValueError("2rev10 temporal cone owner is invalid")
-
-    rows = list(memo.items())
-    rows.sort(
-        key=lambda row: (
-            row[0][1]
-            if type(row[0]) is tuple and len(row[0]) == 2 and type(row[0][1]) is int
-            else -1,
-            row[0][0]
-            if type(row[0]) is tuple and len(row[0]) == 2 and type(row[0][0]) is int
-            else -1,
-        )
-    )
-    verified: dict[tuple[int, int], int] = {}
-    for key, value in rows:
-        valid = (
-            type(key) is tuple
-            and len(key) == 2
-            and all(type(item) is int for item in key)
-            and type(value) is int
-        )
-        if valid:
-            block, steps = key
-            valid = (
-                0 <= block < len(root.arena.nodes)
-                and type(steps) is int
-                and steps > 0
-                and steps <= root.max_steps
-                and steps & (steps - 1) == 0
-                and root.arena.nodes[block].length == 4 * steps
-                and 0 <= value < len(root.arena.nodes)
-                and root.arena.nodes[value].length == 2 * steps
-            )
-            if valid and steps == 1:
-                read_digits = tuple(
-                    _existing_symbol_at(
-                        root.arena,
-                        block,
-                        index,
-                        on_visit=root._payload_audit_boundary_visit,
-                    )
-                    for index in range(4)
-                )
-                valid = all(
-                    type(digit) is int and 0 <= digit <= 9 for digit in read_digits
-                )
-                digits = cast(tuple[int, int, int, int], read_digits)
-                left = (
-                    root.arena._term.get(two_step_cell(digits[0], digits[1], digits[2]))
-                    if valid
-                    else None
-                )
-                right = (
-                    root.arena._term.get(two_step_cell(digits[1], digits[2], digits[3]))
-                    if valid
-                    else None
-                )
-                expected = (
-                    None
-                    if left is None or right is None
-                    else _existing_concat(root.arena, left, right)
-                )
-                valid = expected == value
-            elif valid:
-                half = steps // 2
-                child_blocks = (
-                    _existing_part(root.arena, block, 0, 2 * steps),
-                    _existing_part(root.arena, block, steps, 3 * steps),
-                    _existing_part(root.arena, block, 2 * steps, 4 * steps),
-                )
-                child_outputs: list[int] = []
-                for child_block in child_blocks:
-                    if child_block is None:
-                        valid = False
-                        break
-                    child_key = (child_block, half)
-                    child_output = verified.get(child_key)
-                    if child_output is None:
-                        valid = False
-                        break
-                    child_outputs.append(child_output)
-                if valid:
-                    left_middle = _existing_concat(
-                        root.arena, child_outputs[0], child_outputs[1]
-                    )
-                    middle_right = _existing_concat(
-                        root.arena, child_outputs[1], child_outputs[2]
-                    )
-                    if left_middle is None or middle_right is None:
-                        valid = False
-                    else:
-                        left_result = verified.get((left_middle, half))
-                        right_result = verified.get((middle_right, half))
-                        expected = (
-                            None
-                            if left_result is None or right_result is None
-                            else _existing_concat(root.arena, left_result, right_result)
-                        )
-                        valid = expected == value
-        if valid:
-            verified[key] = value
-        destination = approved if valid else invalid
-        destination.extend(
-            (
-                PayloadAuditEntry(memo.owner, key),
-                PayloadAuditEntry(memo.owner, value),
-            )
-        )
-    return approved, invalid
-
-
-def audit_double_reverse_temporal_actions(
-    ledger_value: object, root_value: object
+def _audit_temporal_hashlife_payloads(
+    ledger: object, root: object
 ) -> PayloadAuditContribution:
-    """Validate action records and the exact dynamic accounting of their memo."""
-    if type(ledger_value) is not ResourceLedger:
-        raise TypeError("2rev10 temporal auditor received a foreign ledger")
-    if type(root_value) is not DoubleReverseTemporalHashlife:
-        raise TypeError("2rev10 temporal auditor received a foreign owner")
-    ledger = ledger_value
-    root = root_value
-    memo = root._actions
-    account = ledger._account(memo.owner)
-    cost_nodes = 0
-    approved: list[PayloadAuditEntry] = []
-    invalid: list[PayloadAuditEntry] = []
-    valid_owner = (
-        root.ledger is ledger
-        and memo.ledger is ledger
-        and memo._data is root._audit_actions
-        and account.container is root._audit_actions
-        and account.role == "double_reverse_temporal_memo"
-        and not account.disposed
-        and memo.node_cost is temporal_action_node_cost
-        and memo.nodes_per_entry == 0
-        and memo._dynamic_nodes == account.nodes
-        and account.entries == len(memo)
+    return audit_double_reverse_temporal_actions(
+        ledger, root, DoubleReverseTemporalHashlife
     )
-    if not valid_owner:
-        raise ValueError("2rev10 temporal action owner is invalid")
-
-    for key, action in memo.items():
-        valid = (
-            type(key) is tuple
-            and len(key) == 3
-            and all(type(value) is int and value >= 0 for value in key)
-            and type(action) is DoubleReversePortAction
-            and key == (action.source.local_id, action.steps, action.phase_in)
-        )
-        if valid:
-            try:
-                root._validate_action(action, audit=True)
-                cost_nodes += memo._entry_nodes(key, action)
-            except (
-                ArithmeticError,
-                AttributeError,
-                IndexError,
-                KeyError,
-                TypeError,
-                ValueError,
-            ):
-                valid = False
-        destination = approved if valid else invalid
-        destination.extend(
-            (
-                PayloadAuditEntry(memo.owner, key),
-                PayloadAuditEntry(memo.owner, action),
-            )
-        )
-    if cost_nodes != account.nodes:
-        raise ValueError("2rev10 temporal action accounting is inconsistent")
-    slice_approved, slice_invalid = _audit_temporal_slice_store(root)
-    cone_approved, cone_invalid = _audit_temporal_cone_store(root)
-    approved.extend(slice_approved)
-    approved.extend(cone_approved)
-    invalid.extend(slice_invalid)
-    invalid.extend(cone_invalid)
-    return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 
 class DoubleReverseTemporalHashlife:
@@ -401,14 +99,20 @@ class DoubleReverseTemporalHashlife:
         "_actions",
         "_audit_actions",
         "_audit_cones",
+        "_audit_prefixes",
         "_audit_slices",
         "_cone",
+        "_prefix_binding_snapshot",
+        "_prefix_issued",
+        "_prefixes",
         "_slices",
+        "_source_advancer",
         "arena",
         "issuer",
         "ledger",
         "max_steps",
         "scratch_owner",
+        "source_root",
     )
 
     def __init__(
@@ -419,7 +123,9 @@ class DoubleReverseTemporalHashlife:
         scratch_owner: int,
         cone_memo: OwnedMemo[tuple[int, int], int],
         slice_memo: OwnedMemo[tuple[int, int, int], int],
-        action_memo: OwnedMemo[tuple[int, int, int], DoubleReversePortAction],
+        action_memo: OwnedMemo[tuple[int, int, int], IssuedDoubleReversePortAction],
+        source_prefix_memo: OwnedMemo[int, IssuedDoubleReverseSourcePrefix],
+        source_root: int,
         max_steps: int,
     ) -> None:
         self.arena = arena
@@ -427,12 +133,18 @@ class DoubleReverseTemporalHashlife:
         self.issuer = issuer
         self.scratch_owner = scratch_owner
         self.max_steps = max_steps
+        self.source_root = source_root
         self._cone = cone_memo
         self._slices = slice_memo
         self._actions = action_memo
+        self._prefixes = source_prefix_memo
+        self._source_advancer: Callable[[int], int] | None = None
+        self._prefix_issued: IssuedDoubleReverseSourcePrefix | None = None
+        self._prefix_binding_snapshot: tuple[int | str | None, ...] | None = None
         self._audit_actions = action_memo._data
         self._audit_cones = cone_memo._data
         self._audit_slices = slice_memo._data
+        self._audit_prefixes = source_prefix_memo._data
         ledger.register_execution_root(self)
         ledger.register_payload_audit_contract(
             self,
@@ -453,13 +165,19 @@ class DoubleReverseTemporalHashlife:
                     "_audit_slices",
                     "double_reverse_temporal_memo",
                 ),
+                PayloadAuditStoreBinding(
+                    source_prefix_memo.owner,
+                    "_audit_prefixes",
+                    "double_reverse_temporal_memo",
+                ),
             ),
-            audit_double_reverse_temporal_actions,
+            _audit_temporal_hashlife_payloads,
         )
 
     def dispose_audit_contract(self) -> None:
         """Retire issuer validation before the associated action memo closes."""
         self.ledger.remove_payload_audit_contract(self, "double_reverse")
+        self._source_advancer = None
 
     def _handle(self, root: int) -> DoubleReverseSLPID:
         return DoubleReverseSLPID(self.issuer, "double_reverse_slp", root)
@@ -475,6 +193,88 @@ class DoubleReverseTemporalHashlife:
         """Resolve a local root handle after checking its arena generation."""
         return self._root(handle)
 
+    def source_prefix(self) -> DoubleReverseSourcePrefix | None:
+        """Return this owner's latest exact prefix cursor, if one was issued."""
+        issued = self._prefixes.get(self.source_root)
+        if issued is None:
+            return None
+        if issued is not self._prefix_issued:
+            raise ValueError("2rev10 source-prefix cursor is not owner-issued")
+        return self.validate_source_prefix(issued.entry)
+
+    def validate_source_prefix(self, entry: object) -> DoubleReverseSourcePrefix:
+        """Accept only the exact, sealed cursor previously issued by this owner."""
+        issued = self._prefixes.get(self.source_root)
+        if (
+            type(entry) is not DoubleReverseSourcePrefix
+            or issued is None
+            or issued is not self._prefix_issued
+            or issued.entry is not entry
+        ):
+            raise ValueError("2rev10 source-prefix cursor is not owner-issued")
+        self._validate_source_prefix(issued)
+        return issued.entry
+
+    def _bind_source_advancer(self, advance: Callable[[int], int]) -> None:
+        """Bind the source adapter's exact one-T transition during construction."""
+        if not callable(advance) or self._source_advancer is not None:
+            raise ValueError("2rev10 source transition owner is already bound")
+        self._source_advancer = advance
+
+    def _advance_source_prefix(self) -> DoubleReverseSourcePrefix:
+        """Issue the initial cursor or advance it through the bound exact T map."""
+        current = self.source_prefix()
+        if current is None:
+            target_root = self.source_root
+            physical_steps = 0
+        else:
+            physical_steps = current.physical_steps + 1
+            if physical_steps > min(32, self.max_steps):
+                raise ValueError("2rev10 source-prefix cursor exceeds its horizon")
+            if self._source_advancer is None:
+                raise ValueError("2rev10 source transition owner is unavailable")
+            previous_root = self._root(current.target)
+            target_root = self._source_advancer(previous_root)
+            if type(target_root) is not int or not 0 <= target_root < len(
+                self.arena.nodes
+            ):
+                raise ValueError("2rev10 source transition returned an invalid root")
+        certified_phase = self.certify(target_root)
+        entry = DoubleReverseSourcePrefix(
+            self._handle(self.source_root),
+            self._handle(target_root),
+            physical_steps,
+            certified_phase,
+        )
+        issued = IssuedDoubleReverseSourcePrefix(entry, source_prefix_binding(entry))
+        self._prefixes[self.source_root] = issued
+        self._prefix_issued = issued
+        self._prefix_binding_snapshot = issued.binding
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_PREFIX_CURSOR_PUBLICATIONS
+        )
+        return entry
+
+    def _validate_source_prefix(self, issued: IssuedDoubleReverseSourcePrefix) -> None:
+        if type(issued) is not IssuedDoubleReverseSourcePrefix:
+            raise ValueError("malformed 2rev10 source-prefix owner record")
+        entry = issued.entry
+        if (
+            type(entry) is not DoubleReverseSourcePrefix
+            or self._root(entry.source) != self.source_root
+            or type(entry.physical_steps) is not int
+            or not 0 <= entry.physical_steps <= min(32, self.max_steps)
+            or entry.certified_phase is not None
+            and (
+                type(entry.certified_phase) is not int
+                or entry.certified_phase not in (0, 1, 2, 3)
+            )
+            or issued.binding != source_prefix_binding(entry)
+            or issued.binding != self._prefix_binding_snapshot
+        ):
+            raise ValueError("2rev10 source-prefix cursor binding is stale")
+        self._root(entry.target)
+
     def validate_action(self, action: DoubleReversePortAction) -> None:
         """Validate an action at the scheduler payload trust boundary."""
         self._validate_action(action)
@@ -486,12 +286,38 @@ class DoubleReverseTemporalHashlife:
             raise ValueError("temporal action is foreign or malformed")
         source = self._root(action.source)
         key = (source, action.steps, action.phase_in)
+        self._validate_issued_action(action, self._actions.get(key), audit=audit)
+
+    def _validate_issued_action(
+        self,
+        action: DoubleReversePortAction,
+        issued: object,
+        *,
+        audit: bool = False,
+    ) -> None:
+        if type(action) is not DoubleReversePortAction:
+            raise ValueError("temporal action is foreign or malformed")
         # Shape checks alone are not authority: a forged action can preserve
         # both border pairs and width while naming an incorrect interior.
-        # Only the exact frozen object published by this owner is admissible.
-        if self._actions.get(key) is not action:
+        # The cache wrapper also seals nested handle fields. A frozen action
+        # can otherwise be changed through object.__setattr__ on its handles.
+        if (
+            type(issued) is not IssuedDoubleReversePortAction
+            or issued.action is not action
+            or issued.binding != temporal_action_binding(action)
+        ):
             raise ValueError("temporal action was not published by this owner")
         self._validate_action_shape(action, audit=audit)
+
+    def _issue_action(
+        self, key: tuple[int, int, int], action: DoubleReversePortAction
+    ) -> None:
+        """Publish one action together with its immutable issue-time binding."""
+        issued = IssuedDoubleReversePortAction(action, temporal_action_binding(action))
+        if key != (action.source.local_id, action.steps, action.phase_in):
+            raise ValueError("temporal action key does not match its source")
+        self._validate_action_shape(action)
+        self._actions[key] = issued
 
     def _validate_action_shape(
         self, action: DoubleReversePortAction, *, audit: bool = False
@@ -525,64 +351,88 @@ class DoubleReverseTemporalHashlife:
         """Recognize the closed cylinder from both exact borders."""
         return self._certify(root, audit=False)
 
+    def edge_signature(self, root: int) -> tuple[int, int, int, int] | None:
+        """Read the two-cell boundary without assigning it temporal authority."""
+        if type(root) is not int or not 0 <= root < len(self.arena.nodes):
+            raise ValueError("invalid double-reverse SLP root")
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_CANDIDATE_CLASSIFICATIONS
+        )
+        return self._edge_signature(root, audit=False)
+
+    def candidate_cycle(self, root: int) -> int | None:
+        """Return a candidate SCC index for diagnostics only."""
+        signature = self.edge_signature(root)
+        return None if signature is None else candidate_component(signature)
+
+    def _edge_signature(
+        self, root: int, *, audit: bool
+    ) -> tuple[int, int, int, int] | None:
+        width = self.arena.nodes[root].length
+        if width < 5:
+            return None
+        if audit:
+            values = (
+                _existing_symbol_at(
+                    self.arena,
+                    root,
+                    0,
+                    on_visit=self._payload_audit_boundary_visit,
+                ),
+                _existing_symbol_at(
+                    self.arena,
+                    root,
+                    1,
+                    on_visit=self._payload_audit_boundary_visit,
+                ),
+                _existing_symbol_at(
+                    self.arena,
+                    root,
+                    width - 2,
+                    on_visit=self._payload_audit_boundary_visit,
+                ),
+                _existing_symbol_at(
+                    self.arena,
+                    root,
+                    width - 1,
+                    on_visit=self._payload_audit_boundary_visit,
+                ),
+            )
+            if any(value is None for value in values):
+                return None
+            return cast(tuple[int, int, int, int], values)
+        on_visit = self._boundary_visit
+        return (
+            symbol_at(self.arena, root, 0, on_visit=on_visit),
+            symbol_at(self.arena, root, 1, on_visit=on_visit),
+            symbol_at(self.arena, root, width - 2, on_visit=on_visit),
+            symbol_at(self.arena, root, width - 1, on_visit=on_visit),
+        )
+
     def _certify(self, root: int, *, audit: bool) -> int | None:
         """Classify a cylinder while isolating explicit audit counters."""
         if type(root) is not int or not 0 <= root < len(self.arena.nodes):
             raise ValueError("invalid double-reverse SLP root")
         if audit:
-            self.ledger.bump("double_reverse_payload_audit_boundary_classifications")
-            on_visit = self._payload_audit_boundary_visit
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PAYLOAD_AUDIT_BOUNDARY_CLASSIFICATIONS
+            )
         else:
-            self.ledger.bump("double_reverse_boundary_classifications")
-            on_visit = self._boundary_visit
-        width = self.arena.nodes[root].length
-        if width < 5:
-            return None
-        if audit:
-            upper_left = _existing_symbol_at(
-                self.arena, root, 0, on_visit=self._payload_audit_boundary_visit
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_CLASSIFICATIONS
             )
-            upper_right = _existing_symbol_at(
-                self.arena, root, 1, on_visit=self._payload_audit_boundary_visit
-            )
-            lower_left = _existing_symbol_at(
-                self.arena,
-                root,
-                width - 2,
-                on_visit=self._payload_audit_boundary_visit,
-            )
-            lower_right = _existing_symbol_at(
-                self.arena,
-                root,
-                width - 1,
-                on_visit=self._payload_audit_boundary_visit,
-            )
-            if any(
-                digit is None
-                for digit in (upper_left, upper_right, lower_left, lower_right)
-            ):
-                return None
-            return edge_phase(
-                (cast(int, upper_left), cast(int, upper_right)),
-                (cast(int, lower_left), cast(int, lower_right)),
-            )
-        upper = (
-            symbol_at(self.arena, root, 0, on_visit=on_visit),
-            symbol_at(self.arena, root, 1, on_visit=on_visit),
-        )
-        lower = (
-            symbol_at(self.arena, root, width - 2, on_visit=on_visit),
-            symbol_at(self.arena, root, width - 1, on_visit=on_visit),
-        )
-        return edge_phase(upper, lower)
+        signature = self._edge_signature(root, audit=audit)
+        return None if signature is None else edge_phase(signature[:2], signature[2:])
 
     def _boundary_visit(self) -> None:
         """Count each SLP node read while classifying a cylinder boundary."""
-        self.ledger.bump("double_reverse_boundary_node_visits")
+        self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_NODE_VISITS)
 
     def _payload_audit_boundary_visit(self) -> None:
         """Separate explicit audit traversal from production execution work."""
-        self.ledger.bump("double_reverse_payload_audit_boundary_visits")
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_PAYLOAD_AUDIT_BOUNDARY_VISITS
+        )
 
     def part(self, root: int, begin: int, end: int) -> int:
         """Iteratively slice a compressed SLP without spelling repeats."""
@@ -711,9 +561,11 @@ class DoubleReverseTemporalHashlife:
                     cached = self._cone.get(key)
                     if cached is not None:
                         values.append(cached)
-                        self.ledger.bump("double_reverse_hashlife_cone_hits")
+                        self.ledger.bump(
+                            _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONE_HITS
+                        )
                         continue
-                    self.ledger.bump("double_reverse_hashlife_cones")
+                    self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONES)
                     if time_steps == 1:
                         a, b, c, d = (symbol_at(self.arena, block, i) for i in range(4))
                         result = self.arena.word(
@@ -771,7 +623,9 @@ class DoubleReverseTemporalHashlife:
 
         def select_tiles() -> Iterator[int]:
             for tile_index in range(count):
-                self.ledger.bump("double_reverse_hashlife_tile_selections")
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_TILE_SELECTIONS
+                )
                 block = self.part(
                     padded,
                     tile_index * span,
@@ -813,8 +667,10 @@ class DoubleReverseTemporalHashlife:
         expected_phase = (phase + 2 * steps) % 4
         if self.certify(result) != expected_phase:
             raise AssertionError("2rev10 temporal cone lost its certified border")
-        self.ledger.bump("double_reverse_hashlife_powered_t2_steps", steps)
-        self.ledger.bump("double_reverse_hashlife_power_chunks")
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS, steps
+        )
+        self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS)
         return result
 
     def _power_action(
@@ -831,14 +687,21 @@ class DoubleReverseTemporalHashlife:
         ):
             raise ValueError("temporal port action requires a power of two")
         key = (root, steps, phase)
-        cached = self._actions.get(key)
-        if cached is not None:
-            self._validate_action(cached)
+        issued = self._actions.get(key)
+        if issued is not None:
+            if type(issued) is not IssuedDoubleReversePortAction:
+                raise ValueError("temporal action memo payload is malformed")
+            cached = issued.action
+            self._validate_issued_action(cached, issued)
             if cached.source != self._handle(root) or cached.phase_in != phase:
                 raise ValueError("cached 2rev10 action belongs to another source")
-            self.ledger.bump("double_reverse_temporal_port_action_cache_hits")
-            self.ledger.bump("double_reverse_hashlife_powered_t2_steps", steps)
-            self.ledger.bump("double_reverse_hashlife_power_chunks")
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_CACHE_HITS
+            )
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS, steps
+            )
+            self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS)
             return cached
         if self.certify(root) != phase:
             raise ValueError("uncertified source for temporal port action")
@@ -853,9 +716,10 @@ class DoubleReverseTemporalHashlife:
             left,
             right,
         )
-        self._actions[key] = action
-        self._validate_action(action)
-        self.ledger.bump("double_reverse_temporal_port_action_publications")
+        self._issue_action(key, action)
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_PUBLICATIONS
+        )
         return action
 
     def advance_action(
@@ -871,12 +735,20 @@ class DoubleReverseTemporalHashlife:
             or self.certify(root) != phase
         ):
             raise ValueError("uncertified 2rev10 source cylinder")
-        cached = self._actions.get((root, steps, phase))
-        if cached is not None:
-            self._validate_action(cached)
-            self.ledger.bump("double_reverse_temporal_port_action_cache_hits")
-            self.ledger.bump("double_reverse_hashlife_powered_t2_steps", steps)
-            self.ledger.bump("double_reverse_hashlife_power_chunks")
+        key = (root, steps, phase)
+        issued = self._actions.get(key)
+        if issued is not None:
+            if type(issued) is not IssuedDoubleReversePortAction:
+                raise ValueError("temporal action memo payload is malformed")
+            cached = issued.action
+            self._validate_issued_action(cached, issued)
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_CACHE_HITS
+            )
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS, steps
+            )
+            self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS)
             return cached
         combined = DoubleReversePortAction(
             self._handle(root), self._handle(root), 0, phase, phase, 0, 0
@@ -888,16 +760,139 @@ class DoubleReverseTemporalHashlife:
                     self._root(combined.target), power, combined.phase_out
                 )
                 combined = combined.then(next_action)
-        self._validate_action_shape(combined)
         if combined.steps != steps:
             raise AssertionError("powered action does not represent requested span")
-        action_was_published = self._actions.get((root, steps, phase)) is not None
-        self._actions[(root, steps, phase)] = combined
-        self._validate_action(combined)
-        if not action_was_published:
-            self.ledger.bump("double_reverse_temporal_port_action_publications")
+        existing = self._actions.get(key)
+        if existing is not None:
+            if type(existing) is not IssuedDoubleReversePortAction:
+                raise ValueError("temporal action memo payload is malformed")
+            self._validate_issued_action(existing.action, existing)
+            if existing.action != combined:
+                raise AssertionError(
+                    "cached powered action differs from its composition"
+                )
+            return existing.action
+        self._issue_action(key, combined)
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_PUBLICATIONS
+        )
         return combined
 
     def advance(self, root: int, steps: int, phase: int) -> int:
         """Return only the endpoint grammar from the complete action."""
         return self._root(self.advance_action(root, steps, phase).target)
+
+    def _pointed_source_window(self, root: int, origin: int, radius: int) -> int:
+        """Build the exact zero-extended causal interval around one source cell."""
+        width = self.arena.nodes[root].length
+        length = 2 * radius + 1
+        begin = origin - radius
+        end = begin + length
+        left_zeros = min(length, max(0, -begin))
+        right_zeros = min(length - left_zeros, max(0, end - width))
+        middle = length - left_zeros - right_zeros
+        with self.ledger.reservation(self.scratch_owner, entries=8, nodes=8):
+            fragments: list[int] = []
+            zero = self.arena.terminal(0)
+            if left_zeros:
+                fragments.append(self.arena.repeat(zero, left_zeros))
+            if middle:
+                first = max(0, begin)
+                fragments.append(self.part(root, first, first + middle))
+            if right_zeros:
+                fragments.append(self.arena.repeat(zero, right_zeros))
+            window = self.arena.concat_many(fragments)
+        if self.arena.nodes[window].length != length:
+            raise AssertionError("pointed stencil window omitted its causal halo")
+        return window
+
+    def _advance_pointed_window(self, window: int, steps: int) -> int:
+        """Apply one dyadic F chunk and retain only its exact future cone."""
+        width = self.arena.nodes[window].length
+        if steps < 1 or steps & (steps - 1) or width <= 2 * steps:
+            raise ValueError("pointed stencil needs a complete dyadic causal halo")
+        output_width = width - 2 * steps
+        span = 2 * steps
+        count = (output_width + span - 1) // span
+        if count > 2:
+            raise ValueError("pointed stencil requires largest-power-first chunks")
+        with self.ledger.reservation(self.scratch_owner, entries=8, nodes=8):
+            zero_pad = self.arena.repeat(self.arena.terminal(0), 2 * steps)
+            padded = self.arena.concat(window, zero_pad)
+            tile_roots: list[int] = []
+            for tile_index in range(count):
+                block = self.part(
+                    padded, tile_index * span, tile_index * span + 4 * steps
+                )
+                tile_roots.append(self._cone_step(block, steps))
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_TILES
+                )
+            joined = self.arena.concat_many(tile_roots)
+            result = self.part(joined, 0, output_width)
+        if self.arena.nodes[result].length != output_width:
+            raise AssertionError("pointed stencil lost requested coordinates")
+        return result
+
+    def pointed_stencil(
+        self, root: int, steps: int, phase: int, msd_index: int
+    ) -> PointedDigitStencil:
+        """Return one exact output cell without producing its full endpoint."""
+        if (
+            type(root) is not int
+            or not 0 <= root < len(self.arena.nodes)
+            or type(steps) is not int
+            or not 1 <= steps <= self.max_steps // 2
+            or type(phase) is not int
+            or phase not in (0, 1, 2, 3)
+            or type(msd_index) is not int
+            or self.certify(root) != phase
+        ):
+            raise ValueError("pointed stencil requires a certified source cylinder")
+        left, right = growth_ports(phase, steps)
+        width = self.arena.nodes[root].length + left + right
+        if not 0 <= msd_index < width:
+            raise IndexError(msd_index)
+        center = msd_index - left
+        window = self._pointed_source_window(root, center, steps)
+        for bit in range(steps.bit_length() - 1, -1, -1):
+            power = 1 << bit
+            if steps & power:
+                window = self._advance_pointed_window(window, power)
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
+                    power,
+                )
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS
+                )
+        if self.arena.nodes[window].length != 1:
+            raise AssertionError("pointed Hashlife did not isolate one digit")
+        digit = symbol_at(self.arena, window, 0)
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS
+        )
+        return PointedDigitStencil(
+            self._handle(root),
+            steps,
+            phase,
+            (phase + 2 * steps) % 4,
+            width,
+            msd_index,
+            digit,
+            int(digit >= 5),
+            digit % 5,
+            DIGIT_STENCIL_MOORE["joint"].classes[digit],
+        )
+
+
+__all__ = [
+    "DoubleReversePortAction",
+    "DoubleReverseSLPID",
+    "DoubleReverseTemporalHashlife",
+    "PointedDigitStencil",
+    "UncertifiedPointedStencilError",
+    "edge_phase",
+    "growth_ports",
+    "two_step_cell",
+]

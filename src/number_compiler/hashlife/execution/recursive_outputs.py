@@ -29,6 +29,10 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import record_indexed_node, reserve_indexed_id
 
 
@@ -304,13 +308,13 @@ class RecursiveCoordinateMorphismArena:
             self._validate_action(record.action)
         found = self._keys.get(record)
         if found is not None:
-            self.ledger.bump("recursive_output_alias_hits")
+            self.ledger.bump(_execution_keys.RECURSIVE_OUTPUT_ALIAS_HITS)
             return self._handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, record)
-        self.ledger.bump("output_morphism_publications")
+        self.ledger.bump(_execution_keys.OUTPUT_MORPHISM_PUBLICATIONS)
         return self._handle(local_id)
 
     def leaf(self, interface: LocalInterfaceID) -> CoordinateOutputMorphismID:
@@ -386,7 +390,7 @@ class RecursiveCoordinateMorphismArena:
             action = self._compose_actions(original.action, action)
             self._validate_action(action)
             provider = original.provider
-            self.ledger.bump("recursive_output_temporal_normalizations")
+            self.ledger.bump(_execution_keys.RECURSIVE_OUTPUT_TEMPORAL_NORMALIZATIONS)
         else:
             if self._complete_temporal_action is None:
                 raise RuntimeError("temporal action completion was not configured")
@@ -427,7 +431,9 @@ class RecursiveCoordinateMorphismArena:
         right: BoundaryValue,
     ) -> int:
         """Evaluate one coordinate by an iterative one-branch descent."""
-        return self._observe(output, coordinate, left, right, "output_morphism_visits")
+        return self._observe(
+            output, coordinate, left, right, _shared_keys.OUTPUT_MORPHISM_VISITS
+        )
 
     def observe_extent(
         self,
@@ -451,10 +457,13 @@ class RecursiveCoordinateMorphismArena:
                 self._stream_owner, entries=1, nodes=_STREAM_FRAME_NODES
             )
             raise
-        peak = self.ledger.counters.get("recursive_output_stream_frame_peak", 0)
+        peak = self.ledger.counters.get(
+            _execution_keys.RECURSIVE_OUTPUT_STREAM_FRAME_PEAK, 0
+        )
         if len(self._stream_frames) > peak:
             self.ledger.bump(
-                "recursive_output_stream_frame_peak", len(self._stream_frames) - peak
+                _execution_keys.RECURSIVE_OUTPUT_STREAM_FRAME_PEAK,
+                len(self._stream_frames) - peak,
             )
         return key
 
@@ -487,7 +496,7 @@ class RecursiveCoordinateMorphismArena:
         root = self.resolve(output)
         if not self._spatially_complete(root):
             raise TypeError("streaming requires a completed spatial image")
-        self.ledger.bump("recursive_output_stream_requests")
+        self.ledger.bump(_execution_keys.RECURSIVE_OUTPUT_STREAM_REQUESTS)
         top: int | None = None
         try:
             if start < stop:
@@ -510,7 +519,9 @@ class RecursiveCoordinateMorphismArena:
                         self._component(pending_left, "boundary_left"),
                         self._inputs(pending_left, incoming_left, incoming_right),
                     )
-                    self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                    self.ledger.bump(
+                        _execution_keys.RECURSIVE_OUTPUT_STREAM_BOUNDARY_EVALUATIONS
+                    )
                     self._stream_frames[top] = (
                         current,
                         lo,
@@ -521,7 +532,7 @@ class RecursiveCoordinateMorphismArena:
                         None,
                     )
                 node = self.resolve(current)
-                self.ledger.bump("recursive_output_stream_node_visits")
+                self.ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS)
                 if isinstance(node, RecursiveOutputTemporal):
                     raise TypeError("streaming requires a completed spatial image")
                 if isinstance(node, RecursiveOutputBranch):
@@ -557,7 +568,9 @@ class RecursiveCoordinateMorphismArena:
                                 node.right_interface, incoming_left, incoming_right
                             ),
                         )
-                        self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                        self.ledger.bump(
+                            _execution_keys.RECURSIVE_OUTPUT_STREAM_BOUNDARY_EVALUATIONS
+                        )
                         top = self._push_stream(
                             (
                                 node.left,
@@ -578,9 +591,11 @@ class RecursiveCoordinateMorphismArena:
                         coordinate,
                         incoming_left,
                         incoming_right,
-                        "output_morphism_visits",
+                        _shared_keys.OUTPUT_MORPHISM_VISITS,
                     )
-                    self.ledger.bump("recursive_output_stream_emitted_digits")
+                    self.ledger.bump(
+                        _shared_keys.RECURSIVE_OUTPUT_STREAM_EMITTED_DIGITS
+                    )
                     yield value
                 top = self._pop_stream(top)
         finally:
@@ -611,7 +626,7 @@ class RecursiveCoordinateMorphismArena:
                 result = self._read_source(node.source)
                 if type(result) is not int:
                     raise ValueError("source-backed output returned another alphabet")
-                self.ledger.bump("source_leaf_visits")
+                self.ledger.bump(_execution_keys.SOURCE_LEAF_VISITS)
                 return result
             if isinstance(node, RecursiveOutputBindingSource):
                 if self._read_source_binding is None:
@@ -621,7 +636,7 @@ class RecursiveCoordinateMorphismArena:
                 result = self._read_source_binding(node.source, offset)
                 if type(result) is not int:
                     raise ValueError("source-binding output returned another alphabet")
-                self.ledger.bump("source_leaf_visits")
+                self.ledger.bump(_execution_keys.SOURCE_LEAF_VISITS)
                 return result
             if isinstance(node, RecursiveOutputTemporal):
                 if self._evaluate_temporal is None:
@@ -672,8 +687,8 @@ class RecursiveCoordinateMorphismArena:
                 current = node.right
                 offset -= node.left_width
             self.ledger.bump(
-                "spatial_observation_descents"
-                if metric == "output_morphism_visits"
+                _execution_keys.SPATIAL_OBSERVATION_DESCENTS
+                if metric == _shared_keys.OUTPUT_MORPHISM_VISITS
                 else "extent_selector_spatial_descents"
             )
 

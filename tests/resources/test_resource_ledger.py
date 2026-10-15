@@ -6,7 +6,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
@@ -46,7 +46,7 @@ def test_zero_budget_rejects_before_any_mutation(dimension: str) -> None:
 
 def test_combined_reservation_is_atomic_and_owner_release_is_checked() -> None:
     ledger = ResourceLedger(max_nodes=2, max_cache_entries=3)
-    first = ledger.register("source", "EXACT_SOURCE", "INDEX_OWNED")
+    first = ledger.register("source", "EXACT_SOURCE", ResourceScope.INDEX_OWNED)
     second = ledger.register("program", "ACTION_PROGRAM")
     ledger.reserve(first, entries=1, nodes=1)
     assert_rejected_atomically(
@@ -420,21 +420,21 @@ def test_payload_audit_cache_is_reused_and_invalidated_by_store_mutations() -> N
     owner = ledger.register("audited", "query_memo")
     store: LedgerDict[object, object]
     store = ledger.make_dict(owner)
-    first = audit_registered_payloads(ledger)
-    assert audit_registered_payloads(ledger) is first
+    first = audit_registered_payloads(ledger, fresh=False)
+    assert audit_registered_payloads(ledger, fresh=False) is first
 
     ledger.reserve(owner, entries=1)
     store[0] = "bounded"
-    second = audit_registered_payloads(ledger)
+    second = audit_registered_payloads(ledger, fresh=False)
     assert second is not first
-    assert audit_registered_payloads(ledger) is second
+    assert audit_registered_payloads(ledger, fresh=False) is second
 
     # Adversarial tests intentionally bypass the public store wrapper. The
     # tracked backing container still invalidates previously cached evidence.
     version = ledger.mutation_version
     store._data[0] = b"future-payload"
     assert ledger.mutation_version > version
-    third = audit_registered_payloads(ledger)
+    third = audit_registered_payloads(ledger, fresh=False)
     assert third is not second
     assert third.forbidden_future_payloads > 0
 
@@ -476,7 +476,7 @@ def test_public_metrics_reuse_audits_until_a_registered_store_mutates() -> None:
     assert first_payload is not None
     assert first_ownership is not None
 
-    second = collect_ledger_metrics(ledger)
+    second = collect_ledger_metrics(ledger, audit_payloads=False)
     assert ledger.cached_payload_audit() is first_payload
     assert ledger.cached_ownership_audit() is first_ownership
     assert second.resource_inventory == first.resource_inventory
@@ -485,10 +485,14 @@ def test_public_metrics_reuse_audits_until_a_registered_store_mutates() -> None:
     store[0] = "bounded"
     assert ledger.cached_payload_audit() is None
     assert ledger.cached_ownership_audit() is None
-    third = collect_ledger_metrics(ledger)
-    assert ledger.cached_payload_audit() is not first_payload
+    third = collect_ledger_metrics(ledger, audit_payloads=False)
+    assert ledger.cached_payload_audit() is None
     assert ledger.cached_ownership_audit() is not first_ownership
     assert third.resource_ledger_entries == first.resource_ledger_entries + 1
+
+    refreshed = collect_ledger_metrics(ledger)
+    assert ledger.cached_payload_audit() is not first_payload
+    assert refreshed.resource_audit_complete == 1
 
 
 def test_explicit_live_root_audit_bypasses_public_metrics_cache() -> None:

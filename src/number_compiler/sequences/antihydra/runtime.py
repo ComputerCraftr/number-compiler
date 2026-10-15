@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypeVar
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
 )
@@ -229,10 +230,10 @@ class AntihydraArithmeticTerm:
         )
         self.ledger = self.engine.ledger
         initialize_output_stream_metrics(self.ledger, "antihydra_output_stream")
-        self.ledger.bump("antihydra_digit_conversion_requests", 0)
-        self.ledger.bump("antihydra_digit_conversion_emitted_digits", 0)
-        self.ledger.bump("antihydra_digit_conversion_operand_bits", 0)
-        self.ledger.bump("antihydra_digit_conversion_failures", 0)
+        self.ledger.bump(_shared_keys.ANTIHYDRA_DIGIT_CONVERSION_REQUESTS, 0)
+        self.ledger.bump(_shared_keys.ANTIHYDRA_DIGIT_CONVERSION_EMITTED_DIGITS, 0)
+        self.ledger.bump(_shared_keys.ANTIHYDRA_DIGIT_CONVERSION_OPERAND_BITS, 0)
+        self.ledger.bump(_shared_keys.ANTIHYDRA_DIGIT_CONVERSION_FAILURES, 0)
         term_serial = self.engine.term_serial
         self.engine.term_serial += 1
         self.segment_owner = self.ledger.register(

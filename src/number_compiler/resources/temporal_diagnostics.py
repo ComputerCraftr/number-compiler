@@ -9,323 +9,43 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 
 from number_compiler.resources.cellular_diagnostics import (
-    CellularTemporalWork,
     collect_cellular_work,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
+from number_compiler.resources.metric_keys import api as _api_keys
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
+from number_compiler.resources.metric_keys import comma as _comma_keys
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.reuse_diagnostics import (
-    CompleteActionReuse,
     TemporalReuseLane,
     collect_complete_action_reuse,
 )
-
-METRICS_SCHEMA_VERSION = 8
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalConstruction:
-    """Scheduler work; composite application is not source-discovery work."""
-
-    postorder_frames: int | None = None
-    primitive_applications: int | None = None
-    chronological_compositions: int | None = None
-    composite_applications: int | None = None
-    demanded_composite_applications: int | None = None
-    source_image_publications: int | None = None
-    source_image_adapter_registrations: int | None = None
-    arithmetic_result_publications: int | None = None
-    bootstrap_admission_steps: int | None = None
-    reverse_pair_steps: int | None = None
-    reverse_pair_sections: int | None = None
-    reverse_successor_rows: int | None = None
-    reverse_successor_bootstrap_rows: int | None = None
-    reverse_successor_spatial_bits: int | None = None
-    reverse_successor_pair_symbols: int | None = None
-    reverse_successor_event_symbols: int | None = None
-    reverse_successor_transport_updates: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalStreamDemand:
-    """Output emission measurements, kept distinct from jump construction."""
-
-    requests: int | None = None
-    node_visits: int | None = None
-    emitted: int | None = None
-    boundary_evaluations: int | None = None
-    frame_peak: int | None = None
-    cancellations: int | None = None
-    failures: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalRenderingWork:
-    """Complete CLI text rendering, separate from internal native digit streams."""
-
-    requests: int | None = None
-    emitted_digits: int | None = None
-    failures: int | None = None
-    integer_conversion_operand_bits: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalDemand:
-    """Term query counts; absent exact counters are not inferred from output."""
-
-    point_requests: int | None = None
-    length_requests: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalObservations:
-    """Family observation and forbidden replay work, in original units."""
-
-    arithmetic_returns: int | None = None
-    arithmetic_result_validation_blocks: int | None = None
-    arithmetic_result_validation_reconstructions: int | None = None
-    arithmetic_result_validation_operand_bits: int | None = None
-    mahler_source_composed_image_reads: int | None = None
-    mahler_associated_action_demands: int | None = None
-    mahler_root_shell_projections: int | None = None
-    mahler_root_shell_operand_bits: int | None = None
-    physical_roof_evaluations: int | None = None
-    query_observer_reuses: int | None = None
-    higher_concrete_operation_evaluations: int | None = None
-    higher_action_continuation_requests: int | None = None
-    reverse_recursive_pair_width_cache_hits: int | None = None
-    reverse_recursive_pair_width_cache_misses: int | None = None
-    reverse_recursive_pair_width_publications: int | None = None
-    reverse_recursive_pair_width_descents: int | None = None
-    reverse_recursive_pair_width_failures: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalGrowthReadout:
-    """Demanded homogeneous arithmetic, never endpoint-growth work."""
-
-    work: int | None = None
-    operand_bits: int | None = None
-    precision_bits: int | None = None
-    refinements: int | None = None
-    exact_rational_cases: int | None = None
-    bounded_exact_ratio_cases: int | None = None
-    identity_shortcuts: int | None = None
-    log_constant_hits: int | None = None
-    cf_requests: int | None = None
-    cf_budget_refusals: int | None = None
-    order_hits: int | None = None
-    budget_refusals: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalFamilyWork:
-    """One arithmetic owner's finite source-discovery measurements."""
-
-    counter_prefix: str
-    action_requests: int | None
-    action_hits: int | None
-    action_misses: int | None
-    action_publications: int
-    macro_requests: int | None
-    bounded_base_steps: int | None
-    macro_compositions: int | None
-    operand_bits: tuple[tuple[str, int], ...]
-    transient_leaf_steps: int | None = None
-    balanced_effect_compositions: int | None = None
-    balanced_macro_compositions: int | None = None
-    saturated_support_publications: int | None = None
-    composite_cutover_chunks: int | None = None
-    composite_cutover_publications: int | None = None
-    balanced_effect_memo_lookups: int | None = None
-    balanced_effect_memo_hits: int | None = None
-    balanced_effect_memo_misses: int | None = None
-    balanced_effect_memo_publications: int | None = None
-    balanced_effect_memo_evictions: int | None = None
-    finite_block_lookups: int | None = None
-    finite_block_hits: int | None = None
-    finite_block_misses: int | None = None
-    finite_block_publications: int | None = None
-    finite_block_evictions: int | None = None
-    finite_block_cold_atoms: int | None = None
-    finite_block_cold_steps: int | None = None
-    run_actions: int | None = None
-    zero_run_pumps: int | None = None
-    one_run_pumps: int | None = None
-    cycle_pumps: int | None = None
-    represented_cycle_repetitions: int | None = None
-    run_contraction_publications: int | None = None
-    run_routes: int | None = None
-    balanced_routes: int | None = None
-    punctured_event_actions: int | None = None
-    punctured_event_symbols: int | None = None
-    guarded_template_lookups: int | None = None
-    guarded_template_hits: int | None = None
-    guarded_template_misses: int | None = None
-    guarded_template_publications: int | None = None
-    guarded_template_bypasses: int | None = None
-    guarded_prefix_macro_requests: int | None = None
-    guarded_prefix_root_candidates: int | None = None
-    guarded_prefix_global_root_candidates: int | None = None
-    guarded_prefix_slice_candidates: int | None = None
-    guarded_prefix_action_operand_bits: int | None = None
-    guarded_prefix_source_operand_bits: int | None = None
-    guarded_prefix_publications: int | None = None
-    guarded_prefix_budget_bypasses: int | None = None
-    root_checkpoint_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
-    border_return_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalCommaWork:
-    """Guarded comma construction; represented cycles are not executed work."""
-
-    operations: int | None = None
-    binary_compositions: int | None = None
-    transfer_constructions: int | None = None
-    transfer_phase_terms: int | None = None
-    cycle_rule_evaluations: int | None = None
-    child_candidate_checks: int | None = None
-    seam_predicate_check_bound: int | None = None
-    operand_bits: int | None = None
-    represented_phase_cycles: int | None = None
-    powered_image_applications: int | None = None
-    represented_transitions: int | None = None
-    evaluated_transitions: int | None = None
-    seam_steps: int | None = None
-    relative_guard_checks: int | None = None
-    relative_cycle_rebindings: int | None = None
-    boundary_template_hits: int | None = None
-    boundary_template_misses: int | None = None
-    boundary_template_publications: int | None = None
-    boundary_template_retained_nodes: int | None = None
-    boundary_seal_checks: int | None = None
-    boundary_explicit_audit_component_checks: int | None = None
-    boundary_explicit_audit_operand_bits: int | None = None
-    boundary_seal_retained_slots: int | None = None
-    boundary_seal_retained_integer_bits: int | None = None
-    boundary_prefix_applications: int | None = None
-    boundary_represented_transitions: int | None = None
-    stream_requests: int | None = None
-    stream_emitted_digits: int | None = None
-    stream_workspace_peak_slots: int | None = None
-    stream_workspace_peak_integer_bits: int | None = None
-    certificate_operations: int | None = None
-    certificate_sector_entries: int | None = None
-    certificate_boundary_classifications: int | None = None
-    certificate_candidate_digit_trials: int | None = None
-    certificate_operand_bits: int | None = None
-    certificate_read_bytes: int | None = None
-    certificate_uncompressed_bytes: int | None = None
-    certificate_frontier_peak: int | None = None
-    certificate_local_hits: int | None = None
-    certificate_cache_hits: int | None = None
-    certificate_cache_misses: int | None = None
-    certificate_cache_bypasses: int | None = None
-    certificate_cache_publications: int | None = None
-    budget_refusals: int | None = None
-    certificate_budget_refusals: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalResources:
-    """Whole-ledger retention; these counts are never attributed to one lane."""
-
-    entries: int | None = None
-    nodes: int | None = None
-    peak_entries: int | None = None
-    peak_nodes: int | None = None
-    audit_complete: bool | None = None
-    accounting_mismatch: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalReportingWork:
-    """Measured reporting traversal, separate from computational work."""
-
-    captured_counter_items: int | None = None
-    captured_mapping_bytes: int | None = None
-    projected_counter_items: int | None = None
-    inspected_inventory_rows: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalMacrocellWork:
-    """Semantic interning and occurrence application are separate reuse lanes.
-
-    ``max_level`` is log2 of represented family transitions (D8 is level 3),
-    never an archive-specific level relative to its bootstrap size. A semantic
-    hit alone makes no claim that occurrence construction was avoided.
-    """
-
-    family: str
-    index_unit: str
-    cache_scope: str
-    semantic: TemporalReuseLane
-    occurrence: TemporalReuseLane
-    source_action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    joint_action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    mixed_action: CompleteActionReuse = field(default_factory=CompleteActionReuse)
-    outer_observer: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    width_projection: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    outer_observer_scope: str | None = None
-    merges: int | None = None
-    max_level: int | None = None
-    primitive_steps: int | None = None
-    spatial_leaf_visits: int | None = None
-    operand_bits: int | None = None
-    key_operand_bits: int | None = None
-    cold_child_discoveries: int | None = None
-    coefficient_compositions: int | None = None
-    occurrence_frontier_joins: int | None = None
-    gain_local_hits: int | None = None
-    gain_process_hits: int | None = None
-    gain_key_operand_bits: int | None = None
-    gain_construction_operand_bits: int | None = None
-    gain_validation_operand_bits: int | None = None
-    gain_bypasses: int | None = None
-    capacity_bypasses: int | None = None
-    output_region_visits: int | None = None
-    emitted_digits: int | None = None
-    failed_work: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalAffineWidth:
-    """Charged exact width comparisons, distinct from growth or emitted digits."""
-
-    requests: int | None = None
-    operand_bits: int | None = None
-    interval_checks: int | None = None
-    refinements: int | None = None
-    exact_boundaries: int | None = None
-    failures: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalExecutionDiagnostics:
-    """Compact schema-eight view beside the preserved raw work counters."""
-
-    schema_version: int = METRICS_SCHEMA_VERSION
-    action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    application: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    projection: TemporalReuseLane = field(default_factory=TemporalReuseLane)
-    construction: TemporalConstruction = TemporalConstruction()
-    demand: TemporalDemand = TemporalDemand()
-    stream: TemporalStreamDemand = TemporalStreamDemand()
-    observations: TemporalObservations = TemporalObservations()
-    growth_readout: TemporalGrowthReadout = TemporalGrowthReadout()
-    affine_width: TemporalAffineWidth = TemporalAffineWidth()
-    family_work: tuple[TemporalFamilyWork, ...] = ()
-    macrocells: tuple[TemporalMacrocellWork, ...] = ()
-    comma: TemporalCommaWork = TemporalCommaWork()
-    cellular: tuple[CellularTemporalWork, ...] = ()
-    resources: TemporalResources = TemporalResources()
-    reporting: TemporalReportingWork = TemporalReportingWork()
-    rendering: TemporalRenderingWork = TemporalRenderingWork()
-
+from number_compiler.resources.temporal_diagnostic_records import (
+    METRICS_SCHEMA_VERSION,
+    TemporalAffineWidth,
+    TemporalCommaWork,
+    TemporalConstruction,
+    TemporalDemand,
+    TemporalExecutionDiagnostics,
+    TemporalFamilyWork,
+    TemporalGrowthReadout,
+    TemporalMacrocellWork,
+    TemporalObservations,
+    TemporalRenderingWork,
+    TemporalReportingWork,
+    TemporalResources,
+    TemporalStreamDemand,
+)
 
 _ACTION_PREFIXES = (
     "antihydra_arithmetic",
@@ -446,18 +166,19 @@ def _stream_demand(counters: Mapping[str, int]) -> TemporalStreamDemand:
         emitted=values["emitted_digits"],
         cancellations=values["cancellations"],
         failures=values["failures"],
-        node_visits=_count(counters, "recursive_output_stream_node_visits"),
+        node_visits=_count(counters, _shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS),
         boundary_evaluations=_count(
-            counters, "recursive_output_stream_boundary_evaluations"
+            counters,
+            _execution_keys.RECURSIVE_OUTPUT_STREAM_BOUNDARY_EVALUATIONS,
         ),
-        frame_peak=_count(counters, "recursive_output_stream_frame_peak"),
+        frame_peak=_count(counters, _execution_keys.RECURSIVE_OUTPUT_STREAM_FRAME_PEAK),
     )
 
 
 def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
     """Sum refused publications from the instrumented stores, once per attempt."""
     if family == "comma":
-        return _count(counters, "comma_hashlife_capacity_bypasses")
+        return _count(counters, _comma_keys.COMMA_HASHLIFE_CAPACITY_BYPASSES)
     kinds = (
         ("action", "source_action")
         if family == "mahler"
@@ -572,7 +293,7 @@ def collect_temporal_diagnostics(
     for name, value in counters.items():
         if type(value) is not int or value < 0:
             raise ValueError("temporal diagnostics require exact nonnegative counters")
-        if name.endswith("operand_bits") or name == "comma_operand_bit_work":
+        if name.endswith("operand_bits") or name == _comma_keys.COMMA_OPERAND_BIT_WORK:
             for prefix in _ACTION_PREFIXES:
                 if name.startswith(f"{prefix}_"):
                     operand_bits[prefix].append((name, value))
@@ -594,9 +315,13 @@ def collect_temporal_diagnostics(
     # Source-image publication includes origins and applications.  They are
     # disjoint, so subtraction is exact; projection publication has its own
     # owner and is never included here.
-    source_publications = _count(counters, "source_image_publications")
-    origin_publications = _count(counters, "source_image_origin_publications")
-    application_publications = _count(counters, "source_image_application_publications")
+    source_publications = _count(counters, _execution_keys.SOURCE_IMAGE_PUBLICATIONS)
+    origin_publications = _count(
+        counters, _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS
+    )
+    application_publications = _count(
+        counters, _execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS
+    )
     if (
         source_publications is not None
         and origin_publications is not None
@@ -713,26 +438,40 @@ def collect_temporal_diagnostics(
             ),
         ),
         application=TemporalReuseLane(
-            requests=_count(counters, "source_image_application_requests"),
-            attempts=_count(counters, "source_image_application_attempts"),
-            exact_hits=_count(counters, "source_image_application_hits"),
-            transported_hits=_count(counters, "source_image_relative_transfer_hits"),
-            misses=_count(counters, "source_image_application_misses"),
+            requests=_count(
+                counters, _execution_keys.SOURCE_IMAGE_APPLICATION_REQUESTS
+            ),
+            attempts=_count(
+                counters, _execution_keys.SOURCE_IMAGE_APPLICATION_ATTEMPTS
+            ),
+            exact_hits=_count(counters, _execution_keys.SOURCE_IMAGE_APPLICATION_HITS),
+            transported_hits=_count(
+                counters,
+                _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_HITS,
+            ),
+            misses=_count(counters, _execution_keys.SOURCE_IMAGE_APPLICATION_MISSES),
             publications=application_publications,
         ),
         projection=TemporalReuseLane(
-            requests=_count(counters, "source_image_projection_requests"),
-            exact_hits=_count(counters, "source_image_projection_hits"),
-            misses=_count(counters, "source_image_projection_misses"),
-            publications=_count(counters, "source_image_projection_publications"),
+            requests=_count(counters, _execution_keys.SOURCE_IMAGE_PROJECTION_REQUESTS),
+            exact_hits=_count(counters, _execution_keys.SOURCE_IMAGE_PROJECTION_HITS),
+            misses=_count(counters, _execution_keys.SOURCE_IMAGE_PROJECTION_MISSES),
+            publications=_count(
+                counters,
+                _execution_keys.SOURCE_IMAGE_PROJECTION_PUBLICATIONS,
+            ),
         ),
         construction=TemporalConstruction(
-            postorder_frames=_count(counters, "source_image_postorder_frames"),
+            postorder_frames=_count(
+                counters, _execution_keys.SOURCE_IMAGE_POSTORDER_FRAMES
+            ),
             primitive_applications=_count(
-                counters, "source_image_primitive_applications"
+                counters,
+                _execution_keys.SOURCE_IMAGE_PRIMITIVE_APPLICATIONS,
             ),
             chronological_compositions=_count(
-                counters, "source_image_chronological_compositions"
+                counters,
+                _execution_keys.SOURCE_IMAGE_CHRONOLOGICAL_COMPOSITIONS,
             ),
             composite_applications=_count(
                 counters, "source_image_composite_applications"
@@ -742,17 +481,17 @@ def collect_temporal_diagnostics(
             ),
             source_image_publications=source_publications,
             source_image_adapter_registrations=_count(
-                counters, "source_image_adapter_registrations"
+                counters, _execution_keys.SOURCE_IMAGE_ADAPTER_REGISTRATIONS
             ),
             arithmetic_result_publications=_count(
                 counters, "arithmetic_result_publications"
             ),
             bootstrap_admission_steps=bootstrap,
             reverse_pair_steps=_count(
-                counters, "reverse_q19_primitive_pair_applications"
+                counters, _reverse_add_keys.REVERSE_Q19_PRIMITIVE_PAIR_APPLICATIONS
             ),
             reverse_pair_sections=_count(
-                counters, "reverse_q19_pair_output_nodes_visited"
+                counters, _reverse_add_keys.REVERSE_Q19_PAIR_OUTPUT_NODES_VISITED
             ),
             reverse_successor_rows=_count(counters, "reverse_successor_tape_rows"),
             reverse_successor_bootstrap_rows=_count(
@@ -772,41 +511,54 @@ def collect_temporal_diagnostics(
             ),
         ),
         demand=TemporalDemand(
-            point_requests=_count(counters, "temporal_point_requests"),
-            length_requests=_count(counters, "temporal_length_requests"),
+            point_requests=_count(counters, _shared_keys.TEMPORAL_POINT_REQUESTS),
+            length_requests=_count(counters, _shared_keys.TEMPORAL_LENGTH_REQUESTS),
         ),
         stream=_stream_demand(counters),
         rendering=TemporalRenderingWork(
-            requests=_count(counters, "cli_render_requests"),
-            emitted_digits=_count(counters, "cli_render_emitted_digits"),
-            failures=_count(counters, "cli_render_failures"),
+            requests=_count(counters, _api_keys.CLI_RENDER_REQUESTS),
+            emitted_digits=_count(counters, _api_keys.CLI_RENDER_EMITTED_DIGITS),
+            failures=_count(counters, _api_keys.CLI_RENDER_FAILURES),
             integer_conversion_operand_bits=_count(
-                counters, "cli_render_integer_conversion_operand_bits"
+                counters, _api_keys.CLI_RENDER_INTEGER_CONVERSION_OPERAND_BITS
             ),
         ),
         affine_width=TemporalAffineWidth(
-            requests=_count(counters, "affine_width_requests"),
-            operand_bits=_count(counters, "affine_width_operand_bits"),
-            interval_checks=_count(counters, "affine_width_interval_checks"),
-            refinements=_count(counters, "affine_width_refinements"),
-            exact_boundaries=_count(counters, "affine_width_exact_boundaries"),
-            failures=_count(counters, "affine_width_failures"),
+            requests=_count(counters, _fields_keys.AFFINE_WIDTH_REQUESTS),
+            operand_bits=_count(counters, _fields_keys.AFFINE_WIDTH_OPERAND_BITS),
+            interval_checks=_count(counters, _fields_keys.AFFINE_WIDTH_INTERVAL_CHECKS),
+            refinements=_count(counters, _fields_keys.AFFINE_WIDTH_REFINEMENTS),
+            exact_boundaries=_count(
+                counters, _fields_keys.AFFINE_WIDTH_EXACT_BOUNDARIES
+            ),
+            failures=_count(counters, _fields_keys.AFFINE_WIDTH_FAILURES),
         ),
         growth_readout=TemporalGrowthReadout(
-            work=_count(counters, "growth_arithmetic_work"),
-            operand_bits=_count(counters, "growth_arithmetic_operand_bits"),
-            precision_bits=_count(counters, "growth_arithmetic_precision_bits"),
-            refinements=_count(counters, "growth_order_refinements"),
-            exact_rational_cases=_count(counters, "growth_order_exact_rational_cases"),
-            bounded_exact_ratio_cases=_count(
-                counters, "growth_order_bounded_exact_ratio_cases"
+            work=_count(counters, _fields_keys.GROWTH_ARITHMETIC_WORK),
+            operand_bits=_count(counters, _fields_keys.GROWTH_ARITHMETIC_OPERAND_BITS),
+            precision_bits=_count(
+                counters, _fields_keys.GROWTH_ARITHMETIC_PRECISION_BITS
             ),
-            identity_shortcuts=_count(counters, "growth_order_identity_shortcuts"),
-            log_constant_hits=_count(counters, "growth_log_constant_cache_hits"),
-            cf_requests=_count(counters, "growth_cf_key_lookups"),
-            cf_budget_refusals=_count(counters, "growth_cf_budget_refusals"),
-            order_hits=_count(counters, "growth_order_cache_hits"),
-            budget_refusals=_count(counters, "growth_arithmetic_budget_refusals"),
+            refinements=_count(counters, _fields_keys.GROWTH_ORDER_REFINEMENTS),
+            exact_rational_cases=_count(
+                counters, _fields_keys.GROWTH_ORDER_EXACT_RATIONAL_CASES
+            ),
+            bounded_exact_ratio_cases=_count(
+                counters,
+                _fields_keys.GROWTH_ORDER_BOUNDED_EXACT_RATIO_CASES,
+            ),
+            identity_shortcuts=_count(
+                counters, _fields_keys.GROWTH_ORDER_IDENTITY_SHORTCUTS
+            ),
+            log_constant_hits=_count(
+                counters, _fields_keys.GROWTH_LOG_CONSTANT_CACHE_HITS
+            ),
+            cf_requests=_count(counters, _fields_keys.GROWTH_CF_KEY_LOOKUPS),
+            cf_budget_refusals=_count(counters, _fields_keys.GROWTH_CF_BUDGET_REFUSALS),
+            order_hits=_count(counters, _fields_keys.GROWTH_ORDER_CACHE_HITS),
+            budget_refusals=_count(
+                counters, _shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS
+            ),
         ),
         observations=TemporalObservations(
             arithmetic_returns=_count(counters, "arithmetic_returns"),
@@ -820,88 +572,112 @@ def collect_temporal_diagnostics(
                 counters, "arithmetic_result_validation_operand_bits"
             ),
             mahler_source_composed_image_reads=_count(
-                counters, "mahler_source_composed_image_reads"
+                counters, _antihydra_keys.MAHLER_SOURCE_COMPOSED_IMAGE_READS
             ),
             mahler_associated_action_demands=_count(
-                counters, "mahler_associated_action_demands"
+                counters, _antihydra_keys.MAHLER_ASSOCIATED_ACTION_DEMANDS
             ),
             mahler_root_shell_projections=_count(
-                counters, "mahler_root_shell_projections"
+                counters, _antihydra_keys.MAHLER_ROOT_SHELL_PROJECTIONS
             ),
             mahler_root_shell_operand_bits=_count(
-                counters, "mahler_root_shell_operand_bits"
+                counters, _antihydra_keys.MAHLER_ROOT_SHELL_OPERAND_BITS
             ),
             physical_roof_evaluations=_count(counters, "physical_roof_evaluations"),
             query_observer_reuses=_count(counters, "query_observer_reuses"),
             higher_concrete_operation_evaluations=_count(
-                counters, "higher_concrete_operation_evaluations"
+                counters,
+                _execution_keys.HIGHER_CONCRETE_OPERATION_EVALUATIONS,
             ),
             higher_action_continuation_requests=_count(
-                counters, "higher_action_continuation_requests"
+                counters,
+                _execution_keys.HIGHER_ACTION_CONTINUATION_REQUESTS,
             ),
             reverse_recursive_pair_width_cache_hits=_count(
-                counters, "reverse_recursive_pair_width_cache_hits"
+                counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_CACHE_HITS
             ),
             reverse_recursive_pair_width_cache_misses=_count(
-                counters, "reverse_recursive_pair_width_cache_misses"
+                counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_CACHE_MISSES
             ),
             reverse_recursive_pair_width_publications=_count(
-                counters, "reverse_recursive_pair_width_publications"
+                counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_PUBLICATIONS
             ),
             reverse_recursive_pair_width_descents=_count(
-                counters, "reverse_recursive_pair_width_descents"
+                counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_DESCENTS
             ),
             reverse_recursive_pair_width_failures=_count(
-                counters, "reverse_recursive_pair_width_failures"
+                counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_FAILURES
             ),
         ),
         family_work=tuple(families),
         comma=TemporalCommaWork(
-            operations=_count(counters, "comma_work"),
+            operations=_count(counters, _comma_keys.COMMA_WORK),
             binary_compositions=_count(counters, "comma_binary_composition_work"),
-            transfer_constructions=_count(counters, "comma_transfer_constructions"),
-            transfer_phase_terms=_count(counters, "comma_transfer_phase_terms"),
-            cycle_rule_evaluations=_count(counters, "comma_cycle_rule_evaluations"),
-            child_candidate_checks=_count(counters, "comma_child_candidate_checks"),
-            seam_predicate_check_bound=_count(counters, "comma_seam_predicate_checks"),
-            operand_bits=_count(counters, "comma_operand_bit_work"),
-            represented_phase_cycles=_count(counters, "comma_phase_cycles"),
+            transfer_constructions=_count(
+                counters, _comma_keys.COMMA_TRANSFER_CONSTRUCTIONS
+            ),
+            transfer_phase_terms=_count(
+                counters, _comma_keys.COMMA_TRANSFER_PHASE_TERMS
+            ),
+            cycle_rule_evaluations=_count(
+                counters, _comma_keys.COMMA_CYCLE_RULE_EVALUATIONS
+            ),
+            child_candidate_checks=_count(
+                counters, _comma_keys.COMMA_CHILD_CANDIDATE_CHECKS
+            ),
+            seam_predicate_check_bound=_count(
+                counters, _comma_keys.COMMA_SEAM_PREDICATE_CHECKS
+            ),
+            operand_bits=_count(counters, _comma_keys.COMMA_OPERAND_BIT_WORK),
+            represented_phase_cycles=_count(counters, _comma_keys.COMMA_PHASE_CYCLES),
             powered_image_applications=_count(
-                counters, "comma_powered_image_applications"
+                counters, _comma_keys.COMMA_POWERED_IMAGE_APPLICATIONS
             ),
-            represented_transitions=_count(counters, "comma_represented_transitions"),
-            evaluated_transitions=_count(counters, "comma_evaluated_transitions"),
-            seam_steps=_count(counters, "comma_scalar_seam_steps"),
-            relative_guard_checks=_count(counters, "comma_relative_guard_checks"),
+            represented_transitions=_count(
+                counters, _comma_keys.COMMA_REPRESENTED_TRANSITIONS
+            ),
+            evaluated_transitions=_count(
+                counters, _comma_keys.COMMA_EVALUATED_TRANSITIONS
+            ),
+            seam_steps=_count(counters, _comma_keys.COMMA_SCALAR_SEAM_STEPS),
+            relative_guard_checks=_count(
+                counters, _comma_keys.COMMA_RELATIVE_GUARD_CHECKS
+            ),
             relative_cycle_rebindings=_count(
-                counters, "comma_relative_cycle_rebindings"
+                counters, _comma_keys.COMMA_RELATIVE_CYCLE_REBINDINGS
             ),
-            boundary_template_hits=_count(counters, "comma_boundary_template_hits"),
-            boundary_template_misses=_count(counters, "comma_boundary_template_misses"),
+            boundary_template_hits=_count(
+                counters, _comma_keys.COMMA_BOUNDARY_TEMPLATE_HITS
+            ),
+            boundary_template_misses=_count(
+                counters, _comma_keys.COMMA_BOUNDARY_TEMPLATE_MISSES
+            ),
             boundary_template_publications=_count(
-                counters, "comma_boundary_template_publications"
+                counters, _comma_keys.COMMA_BOUNDARY_TEMPLATE_PUBLICATIONS
             ),
             boundary_template_retained_nodes=_count(
-                counters, "comma_boundary_template_retained_nodes"
+                counters, _comma_keys.COMMA_BOUNDARY_TEMPLATE_RETAINED_NODES
             ),
-            boundary_seal_checks=_count(counters, "comma_boundary_seal_checks"),
+            boundary_seal_checks=_count(
+                counters, _comma_keys.COMMA_BOUNDARY_SEAL_CHECKS
+            ),
             boundary_explicit_audit_component_checks=_count(
-                counters, "comma_boundary_explicit_audit_component_checks"
+                counters, _comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_COMPONENT_CHECKS
             ),
             boundary_explicit_audit_operand_bits=_count(
-                counters, "comma_boundary_explicit_audit_operand_bits"
+                counters, _comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_OPERAND_BITS
             ),
             boundary_seal_retained_slots=_count(
-                counters, "comma_boundary_seal_retained_slots"
+                counters, _comma_keys.COMMA_BOUNDARY_SEAL_RETAINED_SLOTS
             ),
             boundary_seal_retained_integer_bits=_count(
-                counters, "comma_boundary_seal_retained_integer_bits"
+                counters, _comma_keys.COMMA_BOUNDARY_SEAL_RETAINED_INTEGER_BITS
             ),
             boundary_prefix_applications=_count(
-                counters, "comma_boundary_prefix_applications"
+                counters, _comma_keys.COMMA_BOUNDARY_PREFIX_APPLICATIONS
             ),
             boundary_represented_transitions=_count(
-                counters, "comma_boundary_represented_transitions"
+                counters, _comma_keys.COMMA_BOUNDARY_REPRESENTED_TRANSITIONS
             ),
             stream_requests=_count(counters, "comma_stream_requests"),
             stream_emitted_digits=_count(counters, "comma_stream_emitted_digits"),
@@ -911,38 +687,46 @@ def collect_temporal_diagnostics(
             stream_workspace_peak_integer_bits=_count(
                 counters, "comma_stream_workspace_peak_integer_bits"
             ),
-            certificate_operations=_count(counters, "comma_certificate_work"),
+            certificate_operations=_count(counters, _comma_keys.COMMA_CERTIFICATE_WORK),
             certificate_sector_entries=_count(
-                counters, "comma_certificate_sector_entries"
+                counters, _comma_keys.COMMA_CERTIFICATE_SECTOR_ENTRIES
             ),
             certificate_boundary_classifications=_count(
-                counters, "comma_certificate_boundary_classifications"
+                counters, _comma_keys.COMMA_CERTIFICATE_BOUNDARY_CLASSIFICATIONS
             ),
             certificate_candidate_digit_trials=_count(
-                counters, "comma_certificate_candidate_digit_trials"
+                counters, _comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS
             ),
             certificate_operand_bits=_count(
-                counters, "comma_certificate_operand_bit_work"
+                counters, _comma_keys.COMMA_CERTIFICATE_OPERAND_BIT_WORK
             ),
-            certificate_read_bytes=_count(counters, "comma_certificate_read_bytes"),
+            certificate_read_bytes=_count(
+                counters, _comma_keys.COMMA_CERTIFICATE_READ_BYTES
+            ),
             certificate_uncompressed_bytes=_count(
-                counters, "comma_certificate_uncompressed_bytes"
+                counters, _comma_keys.COMMA_CERTIFICATE_UNCOMPRESSED_BYTES
             ),
             certificate_frontier_peak=_count(
-                counters, "comma_certificate_frontier_peak"
+                counters, _comma_keys.COMMA_CERTIFICATE_FRONTIER_PEAK
             ),
-            certificate_local_hits=_count(counters, "comma_certificate_local_hits"),
-            certificate_cache_hits=_count(counters, "comma_certificate_cache_hits"),
-            certificate_cache_misses=_count(counters, "comma_certificate_cache_misses"),
+            certificate_local_hits=_count(
+                counters, _comma_keys.COMMA_CERTIFICATE_LOCAL_HITS
+            ),
+            certificate_cache_hits=_count(
+                counters, _comma_keys.COMMA_CERTIFICATE_CACHE_HITS
+            ),
+            certificate_cache_misses=_count(
+                counters, _comma_keys.COMMA_CERTIFICATE_CACHE_MISSES
+            ),
             certificate_cache_bypasses=_count(
-                counters, "comma_certificate_cache_bypasses"
+                counters, _comma_keys.COMMA_CERTIFICATE_CACHE_BYPASSES
             ),
             certificate_cache_publications=_count(
-                counters, "comma_certificate_cache_publications"
+                counters, _comma_keys.COMMA_CERTIFICATE_CACHE_PUBLICATIONS
             ),
-            budget_refusals=_count(counters, "comma_budget_refusals"),
+            budget_refusals=_count(counters, _comma_keys.COMMA_BUDGET_REFUSALS),
             certificate_budget_refusals=_count(
-                counters, "comma_certificate_budget_refusals"
+                counters, _comma_keys.COMMA_CERTIFICATE_BUDGET_REFUSALS
             ),
         ),
         macrocells=_macrocell_work(counters),
@@ -989,3 +773,21 @@ def collect_temporal_diagnostics_snapshot(
             inspected_inventory_rows=0,
         ),
     )
+
+
+__all__ = [
+    "METRICS_SCHEMA_VERSION",
+    "TemporalAffineWidth",
+    "TemporalCommaWork",
+    "TemporalConstruction",
+    "TemporalDemand",
+    "TemporalExecutionDiagnostics",
+    "TemporalFamilyWork",
+    "TemporalGrowthReadout",
+    "TemporalMacrocellWork",
+    "TemporalObservations",
+    "TemporalRenderingWork",
+    "TemporalReportingWork",
+    "TemporalResources",
+    "TemporalStreamDemand",
+]

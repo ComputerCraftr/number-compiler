@@ -17,7 +17,12 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.cache_gc_metrics import record_cache_event, temporal_span
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -258,11 +263,11 @@ def lookup_causal_interface(
     """Return a complete bounded parent before any descendant task executes."""
     _validate_key(arena, key)
     found = arena._memo.get(key)
-    arena.ledger.bump("causal_interface_result_requests")
+    arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_REQUESTS)
     level = arena.tiles.resolve(key.input).level
     span = temporal_span(arena.action_authority, key.action)
     if found is None:
-        record_unattributed_post_eviction_miss(arena.ledger, "interface")
+        record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.INTERFACE)
         record_cache_event(
             arena.tiles._cache_metrics,
             "interface",
@@ -274,7 +279,7 @@ def lookup_causal_interface(
     if type(found) is not CompletedInterfaceResult:
         raise TypeError("causal interface memo contains another value sort")
     _validate_published_value(arena, key, found)
-    arena.ledger.bump("causal_interface_result_early_hits")
+    arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_EARLY_HITS)
     record_cache_event(
         arena.tiles._cache_metrics,
         "interface",
@@ -300,12 +305,12 @@ def publish_causal_interface(
     value = _record(payload)
     _validate_value(arena, key, value)
     value = _seal_record(arena, key, value)
-    arena.ledger.bump("causal_interface_result_publication_requests")
+    arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_PUBLICATION_REQUESTS)
     found = arena._memo.get(key)
     if found is not None:
         if type(found) is not CompletedInterfaceResult or found != value:
             raise ValueError("causal interface already has another complete value")
-        arena.ledger.bump("causal_interface_result_late_duplicates")
+        arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_LATE_DUPLICATES)
         record_cache_event(
             arena.tiles._cache_metrics,
             "interface",
@@ -324,7 +329,7 @@ def publish_causal_interface(
             else value.bound_reverse_output.retained_slots
         ),
     )
-    arena.ledger.bump("causal_interface_result_publications")
+    arena.ledger.bump(_shared_keys.CAUSAL_INTERFACE_RESULT_PUBLICATIONS)
     level = arena.tiles.resolve(key.input).level
     span = temporal_span(arena.action_authority, key.action)
     arena.tiles._cache_metrics.prepare(

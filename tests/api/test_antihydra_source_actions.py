@@ -280,7 +280,9 @@ def test_mahler_source_action_counts_refused_gain_and_wire_writes(
 def test_public_cli_warm_root_skips_both_cold_arithmetic_owners(
     source_cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    request = parse_request(["antihydra", "--nth", "1024", "--info", "mahler"])
+    request = parse_request(
+        ["antihydra", "--nth", "1024", "--info", "arithmetic.mahler"]
+    )
     assert request is not None
     cold = QueryContext(request, NumberCompiler())
     expected = cold.information()

@@ -12,6 +12,7 @@ from dataclasses import fields
 from typing import TYPE_CHECKING, TypeVar
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
@@ -599,7 +600,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             expected_h = chart.addend + chart.multiplier * source.lift
             balance, minimum, completed = summary.delta, summary.minimum, summary.width
             ledger.bump(
-                "antihydra_payload_audit_endpoint_operand_bits",
+                _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_ENDPOINT_OPERAND_BITS,
                 max(1, abs(chart.multiplier).bit_length())
                 + max(1, abs(chart.addend).bit_length())
                 + max(1, source.lift.bit_length()),
@@ -730,7 +731,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             left, right = left + dl, right + dr
             physical_minimum = min(physical_minimum, old_ledger + roof.minimum)
             returns += 1
-            ledger.bump("antihydra_payload_audit_physical_steps")
+            ledger.bump(_antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PHYSICAL_STEPS)
         physical_valid = (
             type(physical) is _PhysicalPublication
             and type(physical.run) is Run

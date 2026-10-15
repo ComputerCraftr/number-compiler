@@ -16,11 +16,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Protocol
+from typing import Final, Protocol
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.functions.finite_observer import (
     canonical_partition,
     partition_equivalent,
@@ -53,7 +56,8 @@ PRIMITIVE_OCCURRENCE_SCHEMA = (
 )
 
 MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES = 1 << 20
-PRIMITIVE_CHANNEL_CONTRACT = "fixed-padded-cell-leaf-v1"
+PRIMITIVE_CHANNEL_CONTRACT: Final[str] = "fixed-padded-cell-leaf-v1"
+PRIMITIVE_BEHAVIOR_QUOTIENT_TAG: Final[str] = "primitive-behavior-quotient-v2"
 
 
 def primitive_behavior_table_slots(left: int, right: int, alphabet: int) -> int:
@@ -330,7 +334,7 @@ def capture_primitive_behavior(
         observations,
     )
     return PrimitiveBehaviorTable(
-        SemanticIdentity("primitive-behavior-table", key),
+        SemanticIdentity(SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_TABLE, key),
         alphabet_size,
         kernel.blank,
         left,
@@ -449,7 +453,7 @@ def minimize_primitive_behavior(
             3 * len(left_reps) * table.alphabet_size * len(right_reps)
         )
     semantic_key = (
-        "primitive-behavior-quotient-v2",
+        PRIMITIVE_BEHAVIOR_QUOTIENT_TAG,
         PRIMITIVE_CHANNEL_CONTRACT,
         PRIMITIVE_CHANNEL_SCHEMA,
         PRIMITIVE_OCCURRENCE_SCHEMA,
@@ -463,7 +467,9 @@ def minimize_primitive_behavior(
     )
     return PrimitiveBehaviorQuotient(
         table.identity,
-        SemanticIdentity("primitive-behavior-quotient", semantic_key),
+        SemanticIdentity(
+            SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_QUOTIENT, semantic_key
+        ),
         table.alphabet_size,
         table.blank,
         left_part,
@@ -627,7 +633,7 @@ def validate_primitive_behavior_quotient(
     )
     _validate_observations(quotient.observations, expected_outputs)
     semantic_key = (
-        "primitive-behavior-quotient-v2",
+        PRIMITIVE_BEHAVIOR_QUOTIENT_TAG,
         PRIMITIVE_CHANNEL_CONTRACT,
         PRIMITIVE_CHANNEL_SCHEMA,
         PRIMITIVE_OCCURRENCE_SCHEMA,

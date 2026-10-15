@@ -132,7 +132,7 @@ at a threshold is not strict descent.
 
 **Implemented:** [saturated_future.py](../../src/number_compiler/sequences/collatz/saturated_future.py)
 binds this arithmetic to the Hensel cylinder and event count.
-`collatz --events N --info safety` consumes the authenticated event publication
+`collatz --events N --info safety.execution` consumes the authenticated event publication
 and reports `all_time_claim: false`. The value is not an authority token.
 
 **Finite evidence:** all `6^6` valuation words over 1..6 give 46,625 cylinders
@@ -318,7 +318,7 @@ cap remain distinct retained consumers.
 Reproduce the finite census and cross-family transport checks:
 
 ```console
-python -m pytest -q -o addopts='' tests/sequences/collatz/test_harmonic_ports.py tests/arithmetic/polynomials/test_primary_jet.py tests/validation/proofs/test_mahler_f5_production_bridge.py
+.venv/bin/python -m devtools.checks.release --suite unit --select tests/validation/research/collatz/test_harmonic_ports.py --select tests/arithmetic/polynomials/test_primary_jet.py --select tests/validation/proofs/test_mahler_f5_production_bridge.py
 isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals
 ```
 
@@ -532,3 +532,133 @@ cycle entry, with logarithmic scheduler overhead. They are not a general
 source-discovery bound or the complete release growth manifest.
 
 [Dated evidence](../sprints/week-of-2026-09-20/collatz.md#exact-cycle-acceleration-measurements).
+
+## Exact radial Sturmian multiplier port
+
+### Scope and authority
+
+An admitted, source-bound Collatz or Antihydra action has a homogeneous
+multiplier `3**H / 2**D`. NC13 already recorded the exponents `(H,D)` but did
+not expose their irrational circle rotation and high binary digits to the
+pumped grammar. This patch adds that *demanded observation*. It does not use
+finite prefix words as new Hashlife identities, discover source cylinders, or
+claim an Antihydra non-halting theorem.
+
+Let `alpha=log_2(3)-1` and `theta_H={H*alpha}`. For `m>=1`, the normalized
+m-bit leading prefix is exactly
+
+    H_m(H) = floor(2**(m-1+theta_H)).
+
+The division exponent `D` changes only the binary order,
+
+    floor(log_2(3**H / 2**D)) = H + floor(H*alpha) - D,
+
+not `theta_H` or `H_m(H)`. The next 3-multiplication has width delta
+`1+w_H`, where
+
+    w_H = floor((H+1)*alpha) - floor(H*alpha) in {0,1}.
+
+For `H>=0`, the second high bit of `3**(H+1)` is `1-w_H`. For a block
+of `q` copies of the `(3/2)` multiplier beginning at `H`, its integer
+order increment is the telescoped sum
+
+    floor((H+q)*alpha) - floor(H*alpha),
+
+with no enumeration of the `q` mechanical symbols. The remaining `m-2`
+high bits are multi-interval codings of the same irrational rotation. They
+are not generally a finite-state Sturmian automaton for arbitrary future
+prefix lengths.
+
+### Exact arithmetic
+
+- `radial_sturmian.py` introduces the additive, powerable
+  `RadialSturmianClock` and the certified `RadialSturmianPacket`.
+- `GrowthArithmeticEvaluator.binary_log_ratio_bounds` uses the existing
+  ledger-owned, fixed-point atanh-series enclosures of logarithms. A binary
+  search compares the certified phase against `log_2(t/2**(m-1))`; uncertain
+  comparisons refine the phase and threshold *independently*. No floating
+  point is used, and no ambiguous bit is guessed.
+- A direct exact integer comparison is allowed only if **all of** `3**H`
+  fits within the requested `m` bits. This is bounded by output size, rather
+  than by the symbolic exponent. Large `H` never triggers an exponential
+  integer construction.
+- Precision and work refusal raise `BlockContextBudgetExceeded`. Evaluator
+  contexts own and close their resources, and the ordinary exponential
+  coefficients are not put into a global oracle table.
+
+### Collatz integration
+
+- `CollatzClockObservers` queries the radial factor from its already
+  authenticated event root. `SArithmeticClock` carries the same port.
+- `SkewQuadraticClock.factors` already powers admitted motifs. Its new
+  radial port is **derived** from its exact `odds/steps` counters rather than
+  a separate, independently updated clock.
+- `UnifiedSkewChain.radial_leading_binary` validates the issued chain and
+  compares the radial exponent port with the quadratic clock when present.
+  It can emit `radial_sturmian` on explicit demand.
+- `CollatzTemporalRunQuotient.radial_leading_binary` uses **full physical
+  run** counts. The unified chain can be a shorter admitted prefix, so it
+  must not silently determine the rotation for later steps in the cycle.
+- Both physical and accelerated `clock` API packets now expose an eight-bit
+  homogeneous radial observation. Each clock demand shares one scoped
+  `GrowthArithmeticEvaluator` between radix-growth and radial queries.
+
+For a consecutive admitted normalized odd run,
+
+    T(x)=(3*x+1)/2,
+    T**q(2**q*a-1) = 3**q*a - 1.
+
+This centered identity explains how a *separate* low-bit borrow port can
+transport the 3-power leading prefix into the affine endpoint. **The
+homogeneous prefix alone is not a certificate of the endpoint prefix**;
+translations can change both high and low bits. The source guard and actual
+carry/borrow consumer retain that responsibility. In particular, this patch
+is not a proof of a globally Moore-minimal Collatz endpoint transducer.
+
+### Antihydra integration
+
+- `MahlerSourceBoundSafetyAction` now exposes the same exact radial exponent
+  clock for the admitted `3**Q/2**Q` source normal form.
+- The Mahler associated-action packet demands the radial prefix from its
+  authenticated arithmetic source and shares one ledger-owned growth
+  evaluator with the existing homogeneous order readout.
+- An explicit check requires the admitted arithmetic transfer's slope to
+  equal the associated Mahler action's rational scale before observing the
+  rotation. Existing min-plus threshold, first-failure index, rooted shell,
+  and independent ledger claims remain unchanged.
+- The output is restricted to the homogeneous multiplier. The centered
+  affine offset and Antihydra Turing-machine reachability **are not**
+  determined by this high-digit clock.
+
+### Verification and remaining work
+
+The tests compare bounded integer powers, independent dyadic shifts, huge
+symbolic exponents, physical/event clocks and admitted Mahler actions. The
+exhaustive arithmetic sweeps retain their original workloads in the validation
+lane. Current guarded receipts are recorded in the weekly implementation record;
+downloaded direct-test counts are not release evidence for this tree.
+
+### Coupled affine high digits and repeated parity words
+
+For an admitted integral endpoint `y=(3**H*x+B)/2**D`, the shared high-digit
+consumer uses `U=y-ceil(B/2**D)`. This is exactly `floor(3**H*x/2**D)`.
+It compares `U` and `y` at one common binary cut, retaining the signed carry
+and XOR mask. The homogeneous multiplier's leading prefix remains a separate
+observation: it is not the leading prefix of `U` unless the source permits
+that identification. These observations require the admitted endpoint and
+are demanded through existing information packets.
+
+A separate source guard powers repeated copies of one admitted parity word.
+For its action `A(x)=(a*x+b)/2**d`, with odd `a` and positive `d`, define
+`D(x)=(2**d-a)*x-b`. Then `D(A(x))=a*D(x)/2**d`. Repeating the word `r`
+times requires `D(x)=0` or `v2(D(x)) >= d*r`. Exact coefficients, represented
+physical ticks and optional quadratic clocks compose under that guard.
+This does not assert that the named decimal selector chooses the same family
+again: the `421` action at source `244` reaches `92`, which fails the next
+`421` family guard even though another copy of the parity word is legal.
+
+The repeat class is a remaining-count weight, with a separate infinite case;
+it is not a globally finite future quotient. An irrational rotation likewise
+cannot be collapsed to a globally finite Moore quotient by retaining a fixed
+number of observed prefix bits. General source discovery, exact offsets and
+family safety still require their own admitted actions.

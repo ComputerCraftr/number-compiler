@@ -3,11 +3,15 @@ from __future__ import annotations
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.reverse_source_payload_audit import (
     ReverseSourcePayloadAudit,
     audit_reverse_source_payloads,
+)
+from number_compiler.sequences.reverse_add.q19_output import (
+    ReversePairQ19OutputOwner,
 )
 from number_compiler.sequences.reverse_add.source_images import (
     MAX_COMPLETED_CHILD_FALLBACK_STEPS,
@@ -83,6 +87,40 @@ def test_repeated_d64_metrics_keep_the_complete_payload_audit() -> None:
     assert first.forbidden_future_payloads == 0
     assert term.metrics().forbidden_future_payloads == 0
     assert term.metrics().resource_audit_complete == 1
+
+
+def test_explicit_metrics_audit_rechecks_nested_issued_border_certificate() -> None:
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(196, 10), base=10)
+    certificate = None
+    original_growth: tuple[int, ...] | None = None
+    try:
+        certificate = owner.certify_border_growth(
+            owner.initial, steps=5, window_digits=1
+        )
+        clean = collect_ledger_metrics(ledger, audit_payloads=True)
+        assert clean.forbidden_future_payloads == 0
+        assert (
+            collect_ledger_metrics(ledger, audit_payloads=False).resource_audit_complete
+            == 1
+        )
+
+        # The retained OwnedMemo value and its live-root signature are
+        # unchanged, so only a fresh explicit audit can see this nested edit.
+        growth_word = certificate.growth_word
+        original_growth = growth_word
+        object.__setattr__(
+            certificate,
+            "growth_word",
+            (1 - growth_word[0],) + growth_word[1:],
+        )
+        poisoned = collect_ledger_metrics(ledger, audit_payloads=True)
+        assert poisoned.forbidden_future_payloads > 0
+    finally:
+        if certificate is not None and original_growth is not None:
+            object.__setattr__(certificate, "growth_word", original_growth)
+        owner.dispose()
+        assert ledger.entries == ledger.nodes == 0
 
 
 def test_completed_width_image_cannot_be_rebound_to_foreign_owner() -> None:
@@ -246,6 +284,12 @@ def test_source_image_rejects_same_owner_q19_occurrence_with_wrong_duration() ->
     audit = _audit(workspace)
     assert id(workspace) not in audit.approved
     object.__setattr__(payload, "pair_output", original)
+    assert id(workspace) in _audit(workspace).approved
+
+    original_width = original.pair_width
+    object.__setattr__(original, "pair_width", original_width + 1)
+    assert id(workspace) not in _audit(workspace).approved
+    object.__setattr__(original, "pair_width", original_width)
     assert id(workspace) in _audit(workspace).approved
     workspace.dispose()
 

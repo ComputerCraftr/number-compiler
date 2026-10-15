@@ -20,6 +20,7 @@ from number_compiler.api.cli_types import (
     QueryRequest,
 )
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import IndexEncoding, ObservationId
 from number_compiler.api.query_types import (
     AntihydraTermQuery,
     AntihydraVerifyQuery,
@@ -147,12 +148,14 @@ def test_query_request_rejects_unregistered_and_selector_mismatched_authority() 
     with pytest.raises(TypeError, match="registered option type"):
         QueryRequest(
             CollatzTermQuery(1, seed=27),
-            observations=CollatzEventObservationOptions(("clock",)),
+            observations=CollatzEventObservationOptions(
+                (ObservationId.TEMPORAL_CLOCK,)
+            ),
         )
     with pytest.raises(TypeError, match="registered option type"):
         QueryRequest(
             CollatzEventQuery(1, seed=27),
-            observations=CollatzTermObservationOptions(("metrics",)),
+            observations=CollatzTermObservationOptions((ObservationId.METRICS,)),
         )
     assert QueryRequest(CollatzTermQuery(1, seed=27), observations=NoObservations())
 
@@ -166,7 +169,9 @@ def test_query_request_rejects_unregistered_and_selector_mismatched_authority() 
         lambda: PresentationOptions(max_output_bits=cast(int, 1.5)),
         lambda: PresentationOptions(format=cast(OutputFormat, "yaml")),
         lambda: PresentationOptions(no_value=cast(bool, 1)),
-        lambda: PresentationOptions(index=IndexPresentation("power10", True)),
+        lambda: PresentationOptions(
+            index=IndexPresentation(cast(IndexEncoding, "power10"), True)
+        ),
     ),
 )
 def test_presentation_options_reject_noncanonical_values(

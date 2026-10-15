@@ -13,6 +13,9 @@ from number_compiler.hashlife.interfaces.semantic_publication import (
     PreparedFunctions,
     prepare_functions,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_structures import (
@@ -139,8 +142,14 @@ class PreparedStructures:
             arena.bits.nodes._rollback_unpublished(bit_node_base)
             self.functions._rollback_stores(function_journal)
             raise
-        ledger.bump("semantic_structure_published_nodes", len(self.nodes))
-        ledger.bump("semantic_structure_factored_nodes_published", len(self.bits))
+        ledger.bump(
+            _interfaces_keys.SEMANTIC_STRUCTURE_PUBLISHED_NODES,
+            len(self.nodes),
+        )
+        ledger.bump(
+            _interfaces_keys.SEMANTIC_STRUCTURE_FACTORED_NODES_PUBLISHED,
+            len(self.bits),
+        )
 
 
 def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStructures:

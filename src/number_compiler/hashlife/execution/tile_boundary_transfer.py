@@ -22,6 +22,9 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class _Host(Protocol):
@@ -87,7 +90,7 @@ def transfer_view(
     host._require_results().validate_shape(action, context.ports, context.wiring)
     if len(context.ports) != 2:
         raise ValueError("primitive boundary transfer requires two finite ports")
-    host.ledger.bump("tile_boundary_transfer_requests")
+    host.ledger.bump(_execution_keys.TILE_BOUNDARY_TRANSFER_REQUESTS)
     children = host.action_children(action)
     width = host.tiles.resolve(view.tile).width
     mirror = host.tiles.mirror(view.tile) if view.orientation else None
@@ -101,7 +104,7 @@ def transfer_view(
         state = context.ports[side]
         while pending:
             current, origin = pending.pop()
-            host.ledger.bump("tile_boundary_transfer_frames")
+            host.ledger.bump(_execution_keys.TILE_BOUNDARY_TRANSFER_FRAMES)
             node = host.tiles.resolve(current)
             end = origin + node.width
             if end <= start or stop <= origin:
@@ -128,19 +131,22 @@ def transfer_view(
                         "boundary_right" if side else "boundary_left",
                         ports,
                     )
-                host.ledger.bump("tile_boundary_transfer_parent_observations")
+                host.ledger.bump(
+                    _execution_keys.TILE_BOUNDARY_TRANSFER_PARENT_OBSERVATIONS
+                )
                 continue
             if node.left is None or node.right is None:
                 raise ValueError("clipped boundary transfer reached a malformed tile")
             left, right = (node.left, origin), (node.right, origin + node.width // 2)
             pending.extend((left, right) if side else (right, left))
-            host.ledger.bump("tile_boundary_transfer_descents")
+            host.ledger.bump(_execution_keys.TILE_BOUNDARY_TRANSFER_DESCENTS)
             previous = host.ledger.counters.get(
-                "tile_boundary_transfer_workspace_peak", 0
+                _execution_keys.TILE_BOUNDARY_TRANSFER_WORKSPACE_PEAK, 0
             )
             if len(pending) > previous:
                 host.ledger.bump(
-                    "tile_boundary_transfer_workspace_peak", len(pending) - previous
+                    _execution_keys.TILE_BOUNDARY_TRANSFER_WORKSPACE_PEAK,
+                    len(pending) - previous,
                 )
         return state
     finally:

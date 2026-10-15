@@ -11,6 +11,10 @@ from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_actions as _actions_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerDict
 
 _DEFAULT_TEMPORAL_COCYCLE_1 = TemporalCocycle()
@@ -149,7 +153,7 @@ def compose_actions(
             or record.blank_right_tail != blank_right_tail
         ):
             raise ValueError("temporal action interner points to another record")
-        self.ledger.bump("tile_temporal_action_hits")
+        self.ledger.bump(_actions_keys.TILE_TEMPORAL_ACTION_HITS)
         return result
     semantic_key: ActionSemanticKey = (
         ("power", result_kernel, repetitions, expected)
@@ -181,7 +185,7 @@ def compose_actions(
         except BaseException:
             self.ledger.release(self._compose_owner, entries=1)
             raise
-        self.ledger.bump("tile_temporal_action_semantic_alias_hits")
+        self.ledger.bump(_actions_keys.TILE_TEMPORAL_ACTION_SEMANTIC_ALIAS_HITS)
         return result
     has_reverse_frobenius = (
         homogeneous
@@ -230,9 +234,9 @@ def compose_actions(
         for owner, entries, nodes in reservations:
             self.ledger.release(owner, entries, nodes)
         raise
-    self.ledger.bump("tile_temporal_action_publications")
+    self.ledger.bump(_shared_keys.TILE_TEMPORAL_ACTION_PUBLICATIONS)
     if self._actions[local_id].reverse_frobenius is not None:
-        self.ledger.bump("reverse_frobenius_plan_compositions")
+        self.ledger.bump(_actions_keys.REVERSE_FROBENIUS_PLAN_COMPOSITIONS)
     return self._handle(local_id)
 
 

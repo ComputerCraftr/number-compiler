@@ -16,6 +16,7 @@ from number_compiler.hashlife.tiles.ordered_boolean_support import (
     OrderedBooleanSupport,
 )
 from number_compiler.hashlife.tiles.temporal_cocycle import TemporalCocycle
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.diamond_cycle import (
     PhysicalCycleProjection,
@@ -274,7 +275,7 @@ def _observe_source_tile(
     kernel._check(right_state, kernel.right_count)
     arena = _physical_support_arena(scheduler)
     if left_state != kernel.initial(BoundarySide.LEFT):
-        scheduler.ledger.bump("collatz_physical_event_source_reads_elided")
+        scheduler.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_EVENT_SOURCE_READS_ELIDED)
         return TemporalCocycle(), arena.identity
     symbol = scheduler.tiles.point(source, 0)
     odd = int(symbol == 1)

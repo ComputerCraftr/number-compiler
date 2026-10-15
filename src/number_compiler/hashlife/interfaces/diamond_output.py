@@ -23,6 +23,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     observation_inputs,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -83,11 +86,11 @@ class DiamondOutputFunctions:
     def constant(self, function: TransferSummaryID) -> int | None:
         kernels = self.runtime.kernels
         expression = kernels.expression(function)
-        self.ledger.bump("primitive_output_constant_checks")
+        self.ledger.bump(_interfaces_keys.PRIMITIVE_OUTPUT_CONSTANT_CHECKS)
         value = 0
         for position, bit in enumerate(expression.bits):
             index = kernels.functions._resolve(bit)
-            self.ledger.bump("primitive_output_constant_bit_checks")
+            self.ledger.bump(_interfaces_keys.PRIMITIVE_OUTPUT_CONSTANT_BIT_CHECKS)
             if index >= 2:
                 return None
             value = self.ledger.observe_arithmetic(value | (index << position))
@@ -98,7 +101,7 @@ class DiamondOutputFunctions:
     def observe(self, function: TransferSummaryID, symbol: int) -> int:
         kernels = self.runtime.kernels
         expression = kernels.expression(function)
-        self.ledger.bump("output_function_observations")
+        self.ledger.bump(_interfaces_keys.OUTPUT_FUNCTION_OBSERVATIONS)
         return kernels.evaluate(
             function, observation_inputs(expression.domain, ORIGINAL_SYMBOL, symbol)
         )

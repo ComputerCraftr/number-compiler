@@ -22,6 +22,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _Builder,
     _Rewrite,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 class StructureConversion:
@@ -120,7 +123,7 @@ class StructureConversion:
             circuit = builder.circuit(a.signature.inputs)
             guard = builder.tx.resign(predicate, circuit.signature)
             valid = builder.tx.choose(guard, a.valid.local_id, b.valid.local_id)
-            arena.ledger.bump("semantic_structure_conversion_choices")
+            arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CONVERSION_CHOICES)
             if a.kind == "atom":
                 assert a.atom is not None and b.atom is not None
                 left, right = builder.bit(a.atom.local_id), builder.bit(b.atom.local_id)
@@ -181,7 +184,7 @@ class StructureConversion:
                 continue
             node = builder.tx.node(identity)
             leaf = node.terminal
-            arena.ledger.bump("semantic_structure_conversion_frames")
+            arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CONVERSION_FRAMES)
             if not ready:
                 children = (node.low, node.high) if leaf is None else leaf.references
                 pending.append((identity, True))

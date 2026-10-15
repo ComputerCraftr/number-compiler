@@ -10,6 +10,7 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
 )
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
     arithmetic_from_word,
@@ -62,8 +63,9 @@ def tape_projection(
             turns, slot = divmod(x, width)
             copies = (hi - lo - 1 - offset) // period + 1
             values[slot] += prime * copies * (-1 if sign == -1 and turns & 1 else 1)
-    result.ledger.counters["tape_projection_cells"] = (
-        result.ledger.counters.get("tape_projection_cells", 0) + len(intervals) * period
+    result.ledger.counters[_antihydra_keys.TAPE_PROJECTION_CELLS] = (
+        result.ledger.counters.get(_antihydra_keys.TAPE_PROJECTION_CELLS, 0)
+        + len(intervals) * period
     )
     return TwistedCylinderProjection(width, sign, tuple(x % modulus for x in values))
 
@@ -208,7 +210,9 @@ class SpaceTimeProjection:
             h, balance, left, right = roof.apply(h, balance)
             head += right - left
             time += left + right
-            self.result.ledger.bump("spacetime_projection_fragment_leaf_returns")
+            self.result.ledger.bump(
+                _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_LEAF_RETURNS
+            )
         expected_h, expected_balance = block.advance(source_h, source_balance)
         if (h, balance) != (expected_h, expected_balance):
             raise ArithmeticError("projection leaf disagrees with arithmetic cylinder")
@@ -282,9 +286,13 @@ class SpaceTimeProjection:
                     fragment = build_projection_fragment(
                         self, occurrence, capacity, section_capacity
                     )
-                    result.ledger.bump("spacetime_projection_fragment_evaluations")
+                    result.ledger.bump(
+                        _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_EVALUATIONS
+                    )
                 self._shift(ports, fragment.typed_ports, record.head, record.time)
-                result.ledger.bump("spacetime_projection_fragment_translations")
+                result.ledger.bump(
+                    _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_TRANSLATIONS
+                )
                 families += fragment.sampled_sweep_classes
             driver.cursor.finish()
         finally:
@@ -342,13 +350,17 @@ class SpaceTimeProjection:
             if image is None:
                 image, samples = self._section(*key)
                 families += samples
-                self.result.ledger.bump("spacetime_section_image_evaluations")
+                self.result.ledger.bump(
+                    _antihydra_keys.SPACETIME_SECTION_IMAGE_EVALUATIONS
+                )
                 if capacity:
                     cache.put(key, image, capacity)
             else:
-                self.result.ledger.bump("spacetime_section_image_hits")
+                self.result.ledger.bump(_antihydra_keys.SPACETIME_SECTION_IMAGE_HITS)
             self._shift(ports, image, head, time, copies)
-            self.result.ledger.bump("spacetime_section_translation_batches")
+            self.result.ledger.bump(
+                _antihydra_keys.SPACETIME_SECTION_TRANSLATION_BATCHES
+            )
         classes.clear()
         return families
 
@@ -416,7 +428,7 @@ class SpaceTimeProjection:
                     classes[translated] = (
                         classes.get(translated, 0) + 1
                     ) % self.modulus
-                    ledger.bump("spacetime_section_class_updates")
+                    ledger.bump(_antihydra_keys.SPACETIME_SECTION_CLASS_UPDATES)
                     if len(classes) == batch_capacity:
                         families += self._flush_section_classes(
                             ports, classes, cache, capacity
@@ -451,8 +463,9 @@ class SpaceTimeProjection:
                 "sampled_sweep_classes": families,
             }
         finally:
-            ledger.counters["spacetime_projection_terms"] = (
-                ledger.counters.get("spacetime_projection_terms", 0) + self.work
+            ledger.counters[_antihydra_keys.SPACETIME_PROJECTION_TERMS] = (
+                ledger.counters.get(_antihydra_keys.SPACETIME_PROJECTION_TERMS, 0)
+                + self.work
             )
             cache.clear()
             ledger.release(owner, entries=batch_capacity, nodes=workspace_nodes)

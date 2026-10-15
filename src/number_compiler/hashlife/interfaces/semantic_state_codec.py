@@ -43,6 +43,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _Builder,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -119,7 +122,7 @@ class StateCodecArena:
         admitted = self._admit(request)
         found = self.records.get(request)
         if found is not None:
-            self.ledger.bump("semantic_state_codec_hits")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_STATE_CODEC_HITS)
             return found
         if (
             self.ledger.max_cache_entries is not None
@@ -243,9 +246,10 @@ class StateCodecArena:
             prepared.reserve_with(((self.records.owner, 1, 1),))
             prepared.publish_reserved()
             self.records._data[request] = result
-            self.ledger.bump("semantic_state_codec_compilations")
+            self.ledger.bump(_interfaces_keys.SEMANTIC_STATE_CODEC_COMPILATIONS)
             self.ledger.bump(
-                "semantic_state_codec_primitive_component_ports", len(ports)
+                _interfaces_keys.SEMANTIC_STATE_CODEC_PRIMITIVE_COMPONENT_PORTS,
+                len(ports),
             )
             return result
         finally:

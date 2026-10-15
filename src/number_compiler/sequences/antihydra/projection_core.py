@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, MutableSequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
@@ -19,6 +19,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
 from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragment,
@@ -32,6 +33,8 @@ from number_compiler.sequences.antihydra.projection_occurrences import (
     ProjectionOccurrenceCursor,
     ProjectionOccurrenceID,
 )
+
+ANTIHYDRA_SECTION_FRAGMENT_VERSION: Final[str] = "section-fragment-v2"
 
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.observers import SpaceTimeProjection
@@ -61,7 +64,7 @@ class _FragmentRecord:
 
 class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
     family = "antihydra"
-    semantic_version = "section-fragment-v2"
+    semantic_version = ANTIHYDRA_SECTION_FRAGMENT_VERSION
 
     def __init__(
         self,
@@ -369,7 +372,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         if exact.offset != 0 or exact.width != block.width or occurrence.image is None:
             raise ValueError("Antihydra primitive requires the admitted block image")
         payload = self._handle(_FragmentRecord(block.width, occurrence.image))
-        self.ledger.bump("spacetime_projection_core_primitive_fragments")
+        self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_CORE_PRIMITIVE_FRAGMENTS)
         return SourceImageCandidate(
             payload,
             block.width,
@@ -435,7 +438,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         classes: dict[tuple[tuple[int, int], int, int], int] = {}
         for section, head, time, copies in image.classes:
             classes[(section, head, time)] = copies
-            self.ledger.bump("spacetime_projection_composed_class_reads")
+            self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_COMPOSED_CLASS_READS)
             if len(classes) == 32:
                 samples += projection._flush_section_classes(
                     ports, classes, workspace, self._section_capacity
@@ -508,7 +511,9 @@ class AntihydraProjectionDriver:
         ).value
         if type(payload) is not AntihydraFragmentID:
             raise TypeError("shared Antihydra projection returned another payload")
-        self.core.ledger.bump("spacetime_projection_fragment_issuance_work")
+        self.core.ledger.bump(
+            _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_ISSUANCE_WORK
+        )
         return self.adapter.finish(payload)
 
     def build(

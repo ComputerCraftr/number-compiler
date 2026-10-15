@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
@@ -530,9 +531,11 @@ class ProjectionOccurrenceCursor:
             minimum = min(minimum, balance - source_balance)
             head += right - left
             time += right + left
-            self.ledger.bump("antihydra_projection_block_image_discovery_steps")
             self.ledger.bump(
-                "antihydra_projection_block_image_operand_bits",
+                _antihydra_keys.ANTIHYDRA_PROJECTION_BLOCK_IMAGE_DISCOVERY_STEPS
+            )
+            self.ledger.bump(
+                _antihydra_keys.ANTIHYDRA_PROJECTION_BLOCK_IMAGE_OPERAND_BITS,
                 h.bit_length() + balance.bit_length() + time.bit_length(),
             )
         if (
@@ -594,10 +597,11 @@ class ProjectionOccurrenceCursor:
             self.ledger.release(self._state_seal_owner, entries=1, nodes=seal_nodes)
             raise
         self.ledger.bump(
-            "antihydra_projection_occurrence_segment_seal_rows", segment_count
+            _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_SEGMENT_SEAL_ROWS,
+            segment_count,
         )
         self._active = True
-        self.ledger.bump("antihydra_projection_occurrence_cursor_begins")
+        self.ledger.bump(_antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_CURSOR_BEGINS)
 
     def next(self) -> ProjectionOccurrenceID | None:
         """Issue the next exact occurrence and advance the private cursor once."""
@@ -620,7 +624,9 @@ class ProjectionOccurrenceCursor:
                         state.segment_seals,
                     )
                 )
-                self.ledger.bump("antihydra_projection_occurrence_terminal_steps")
+                self.ledger.bump(
+                    _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_TERMINAL_STEPS
+                )
             return None
         if not 0 <= state.segment_index < len(segments):
             raise ValueError("projection cursor has another segment position")
@@ -636,7 +642,8 @@ class ProjectionOccurrenceCursor:
             raise ValueError("retained Antihydra projection support was changed")
         block.__post_init__()
         self.ledger.bump(
-            "antihydra_projection_occurrence_validation_steps", block.width
+            _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_VALIDATION_STEPS,
+            block.width,
         )
         if (
             block.residue != state.h % (1 << block.width)
@@ -685,9 +692,11 @@ class ProjectionOccurrenceCursor:
             state.time,
             key,
         )
-        self.ledger.bump("antihydra_projection_occurrence_roof_steps", block.width)
         self.ledger.bump(
-            "antihydra_projection_occurrence_operand_bits",
+            _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_ROOF_STEPS, block.width
+        )
+        self.ledger.bump(
+            _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_OPERAND_BITS,
             state.h.bit_length()
             + state.balance.bit_length()
             + state.head.bit_length()
@@ -731,7 +740,7 @@ class ProjectionOccurrenceCursor:
                 nodes=seal_nodes,
             )
             raise
-        self.ledger.bump("antihydra_projection_occurrence_steps")
+        self.ledger.bump(_antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_STEPS)
         return ProjectionOccurrenceID(self._token, self._KIND, 0)
 
     def materialize_image(
@@ -779,7 +788,7 @@ class ProjectionOccurrenceCursor:
             for owner, entries, nodes in additions:
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             raise
-        self.ledger.bump("antihydra_projection_block_image_publications")
+        self.ledger.bump(_antihydra_keys.ANTIHYDRA_PROJECTION_BLOCK_IMAGE_PUBLICATIONS)
         return replacement
 
     def resolve(self, reference: ProjectionOccurrenceID) -> ProjectionOccurrence:
@@ -834,7 +843,9 @@ class ProjectionOccurrenceCursor:
             )
         ):
             raise ArithmeticError("projection occurrence cursor diverged from its run")
-        self.ledger.bump("antihydra_projection_occurrence_cursor_finishes")
+        self.ledger.bump(
+            _antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_CURSOR_FINISHES
+        )
 
     def clear(self) -> None:
         """Revoke the active generation and release every transient record."""
@@ -856,7 +867,7 @@ class ProjectionOccurrenceCursor:
             nodes=seal_nodes,
         )
         self._active = False
-        self.ledger.bump("antihydra_projection_occurrence_cursor_clears")
+        self.ledger.bump(_antihydra_keys.ANTIHYDRA_PROJECTION_OCCURRENCE_CURSOR_CLEARS)
 
 
 __all__ = [

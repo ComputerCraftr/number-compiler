@@ -18,6 +18,9 @@ from number_compiler.hashlife.tiles.tile_results import (
     _MISSING,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_types import (
@@ -140,7 +143,7 @@ def _has_completed_result_input(
                 raise ValueError("completed-result reverse link is corrupt")
         return False
     finally:
-        self.ledger.bump("completed_result_presence_index_visits", visits)
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PRESENCE_INDEX_VISITS, visits)
 
 
 def _remove_membership(
@@ -177,7 +180,7 @@ def _remove_membership(
             after.following,
         )
     self.ledger.release(self._reverse_owner, entries=removed)
-    self.ledger.bump("completed_result_reverse_index_removals", removed)
+    self.ledger.bump(_tiles_keys.COMPLETED_RESULT_REVERSE_INDEX_REMOVALS, removed)
 
 
 def publish_indexed_result(

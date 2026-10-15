@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass
+from typing import Final
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
@@ -32,6 +33,8 @@ from number_compiler.sequences.collatz.root_germs import (
     RationalPadicRootGerm,
     RationalPadicRootMismatch,
 )
+
+COLLATZ_GERM_FIXED_TAG: Final[str] = "collatz-germ-fixed-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,7 +232,7 @@ class CollatzGermTransitionCache:
             beta_v2 = v2_positive(beta)
             if beta_v2 < alpha_v2:
                 key = (
-                    "collatz-germ-fixed-v2",
+                    COLLATZ_GERM_FIXED_TAG,
                     alpha,
                     beta,
                     source_word_key(germ.suffix),

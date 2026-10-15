@@ -62,6 +62,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.sequences.reverse_add.coordinate_program import (
     ReverseCoordinateProgramArena,
@@ -363,7 +364,7 @@ class ReverseRecursiveTemporalCutover:
             raise AssertionError((occurrence.temporal_steps, temporal_steps))
         self.validate_occurrence(occurrence)
         self.adapter.clear_construction_memos()
-        self.ledger.bump("reverse_recursive_occurrence_publications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_OCCURRENCE_PUBLICATIONS)
         return occurrence
 
     def _base_pair_image(self) -> ReverseRecursiveOccurrence:
@@ -471,7 +472,7 @@ class ReverseRecursiveTemporalCutover:
         result = self._new_occurrence(target, target_action, target_steps, self.extent)
         self.validate_occurrence(result)
         self.adapter.clear_construction_memos()
-        self.ledger.bump("reverse_recursive_provider_applications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_PROVIDER_APPLICATIONS)
         return result
 
     def square_occurrence(
@@ -485,7 +486,7 @@ class ReverseRecursiveTemporalCutover:
             raise AssertionError(
                 "reverse source-relative square changed temporal duration"
             )
-        self.ledger.bump("reverse_recursive_source_relative_squares")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_SOURCE_RELATIVE_SQUARES)
         return result
 
     def pair_width(self, occurrence: ReverseRecursiveOccurrence) -> int:
@@ -495,9 +496,9 @@ class ReverseRecursiveTemporalCutover:
         key = occurrence.image, occurrence.action
         found = self._pair_widths.get(key)
         if found is not None:
-            self.ledger.bump("reverse_recursive_pair_width_cache_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_CACHE_HITS)
             return found
-        self.ledger.bump("reverse_recursive_pair_width_cache_misses")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_CACHE_MISSES)
         try:
             record = self.images.resolve(occurrence.image)
             output = record.output
@@ -510,12 +511,16 @@ class ReverseRecursiveTemporalCutover:
                     high = middle
                 else:
                     low = middle + 1
-                self.ledger.bump("reverse_recursive_pair_width_descents")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_DESCENTS
+                )
             self._pair_widths[key] = low
-            self.ledger.bump("reverse_recursive_pair_width_publications")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_PUBLICATIONS
+            )
             return low
         except BaseException:
-            self.ledger.bump("reverse_recursive_pair_width_failures")
+            self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_FAILURES)
             raise
 
     def digit_image(
@@ -535,7 +540,7 @@ class ReverseRecursiveTemporalCutover:
         self.images.validate_occurrence(image, self.source, action, self.extent)
         self.adapter.clear_construction_memos()
         self._digit_images[key] = image, action
-        self.ledger.bump("reverse_recursive_terminal_publications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_TERMINAL_PUBLICATIONS)
         return image, action
 
     def _boundaries(self, action: FieldCellActionID) -> tuple[object, object]:
@@ -593,11 +598,15 @@ class ReverseRecursiveTemporalCutover:
                         "reverse pair stream encountered an invalid symbol"
                     )
                 effect = value_carry_fn(pair, self.base)
-                self.ledger.bump("reverse_recursive_terminal_reset_prefix_symbols")
+                self.ledger.bump(
+                    _reverse_add_keys.REVERSE_RECURSIVE_TERMINAL_RESET_PREFIX_SYMBOLS
+                )
                 if effect is not CarryFn.ID:
-                    self.ledger.bump("reverse_recursive_terminal_reset_hits")
+                    self.ledger.bump(
+                        _reverse_add_keys.REVERSE_RECURSIVE_TERMINAL_RESET_HITS
+                    )
                     return apply_carry_fn(effect, 0)
-        self.ledger.bump("reverse_recursive_terminal_neutral_fields")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_TERMINAL_NEUTRAL_FIELDS)
         return 0
 
     def _normalize_pair(self, pair: int, carry: int) -> tuple[int, int]:
@@ -614,7 +623,7 @@ class ReverseRecursiveTemporalCutover:
         if coordinate == pair_width:
             carry = self._terminal_carry(occurrence, pair_width)
             if carry:
-                self.ledger.bump("reverse_recursive_digit_observations")
+                self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_DIGIT_OBSERVATIONS)
                 return carry
             raise IndexError(coordinate)
         carry = 0
@@ -623,9 +632,11 @@ class ReverseRecursiveTemporalCutover:
         ) as pairs:
             for position, pair in enumerate(pairs):
                 outgoing, digit = self._normalize_pair(pair, carry)
-                self.ledger.bump("reverse_recursive_direct_carry_steps")
+                self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_DIRECT_CARRY_STEPS)
                 if position == coordinate:
-                    self.ledger.bump("reverse_recursive_digit_observations")
+                    self.ledger.bump(
+                        _reverse_add_keys.REVERSE_RECURSIVE_DIGIT_OBSERVATIONS
+                    )
                     return digit
                 carry = outgoing
         raise IndexError(coordinate)
@@ -633,7 +644,7 @@ class ReverseRecursiveTemporalCutover:
     def width(self, occurrence: ReverseRecursiveOccurrence) -> int:
         pair_width = self.pair_width(occurrence)
         carry = self._terminal_carry(occurrence, pair_width)
-        self.ledger.bump("reverse_recursive_direct_width_demands")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_DIRECT_WIDTH_DEMANDS)
         return pair_width + carry
 
     def iter_digits(
@@ -649,12 +660,12 @@ class ReverseRecursiveTemporalCutover:
                 outgoing, digit = self._normalize_pair(pair, carry)
                 carry = outgoing
                 emitted += 1
-                self.ledger.bump("reverse_recursive_direct_carry_steps")
-                self.ledger.bump("reverse_recursive_streamed_digits")
+                self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_DIRECT_CARRY_STEPS)
+                self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_STREAMED_DIGITS)
                 yield digit
         if carry:
             emitted += 1
-            self.ledger.bump("reverse_recursive_streamed_digits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_STREAMED_DIGITS)
             yield carry
         if emitted != pair_width + int(carry):
             raise AssertionError("reverse direct output stream width mismatch")
@@ -671,7 +682,7 @@ class ReverseRecursiveTemporalCutover:
         self._pair_widths.dispose()
         self._boundary_cache.dispose()
         self._disposed = True
-        self.ledger.bump("reverse_recursive_cutover_disposals")
+        self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_CUTOVER_DISPOSALS)
 
 
 __all__ = ["ReverseRecursiveOccurrence", "ReverseRecursiveTemporalCutover"]

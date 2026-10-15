@@ -30,6 +30,9 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import make_node_index
 
 
@@ -232,11 +235,11 @@ class FieldTransferArena:
 
     def probe(self, key: FieldTransferRequestKey) -> FieldTransferID | None:
         self.validate_request(key)
-        self.ledger.bump("field_transfer_binding_requests")
+        self.ledger.bump(_execution_keys.FIELD_TRANSFER_BINDING_REQUESTS)
         result = self._bindings.get(key)
         if result is not None:
             self.resolve(result)
-            self.ledger.bump("field_transfer_binding_early_hits")
+            self.ledger.bump(_execution_keys.FIELD_TRANSFER_BINDING_EARLY_HITS)
         return result
 
     def validate_observation_source(
@@ -306,13 +309,13 @@ class FieldTransferArena:
             self._nodes[local_id] = record
             self._keys[semantic] = local_id
             self._next_id += 1
-            self.ledger.bump("new_field_transfer_nodes")
+            self.ledger.bump(_execution_keys.NEW_FIELD_TRANSFER_NODES)
         else:
-            self.ledger.bump("field_transfer_semantic_alias_hits")
+            self.ledger.bump(_execution_keys.FIELD_TRANSFER_SEMANTIC_ALIAS_HITS)
         result = self._handle(local_id)
         self._bindings[key] = result
         self._observation_bindings[(result, key.source)] = None
-        self.ledger.bump("field_transfer_binding_publications")
+        self.ledger.bump(_execution_keys.FIELD_TRANSFER_BINDING_PUBLICATIONS)
         return result
 
     def clear_bindings(self) -> None:

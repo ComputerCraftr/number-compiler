@@ -15,6 +15,8 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
 
 
@@ -136,7 +138,7 @@ class ReverseHigherActionSchema:
             return None
         self.ledger.reserve(self._children_owner, entries=1)
         self._children[action] = result
-        self.ledger.bump("reverse_higher_schema_children_publications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_HIGHER_SCHEMA_CHILDREN_PUBLICATIONS)
         return result
 
     def kind(
@@ -223,8 +225,8 @@ class ReverseHigherActionSchema:
                 raise ValueError("reverse identity has one boundary state")
             return 0
         primitive = self._primitive_after_validation(action)
-        self.ledger.bump("primitive_transition_evaluations")
-        self.ledger.bump("nonlinear_branch_evaluations")
+        self.ledger.bump(_shared_keys.PRIMITIVE_TRANSITION_EVALUATIONS)
+        self.ledger.bump(_reverse_add_keys.NONLINEAR_BRANCH_EVALUATIONS)
         domain = primitive.domains[int(direction)]
         if type(state) is not int or not 0 <= state < len(domain):
             raise ValueError("reverse primitive state is outside its domain")
@@ -245,7 +247,7 @@ class ReverseHigherActionSchema:
         if kind == "identity":
             return symbol
         primitive = self._primitive_after_validation(action)
-        self.ledger.bump("primitive_output_evaluations")
+        self.ledger.bump(_shared_keys.PRIMITIVE_OUTPUT_EVALUATIONS)
         left_domain, right_domain = primitive.domains
         if (
             type(left) is not int

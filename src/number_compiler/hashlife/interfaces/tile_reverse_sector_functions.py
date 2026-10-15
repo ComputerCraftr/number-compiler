@@ -10,6 +10,9 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseForcingResidues,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -77,31 +80,31 @@ def compose_reverse_sectors(
 ) -> ReverseCarrySectorTransfer | None:
     """Compose certified children, declining unsupported activity geometry."""
     if ledger is not None:
-        ledger.bump("reverse_sector_compose_requests")
+        ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPOSE_REQUESTS)
     if left is None or right is None:
         if ledger is not None:
-            ledger.bump("reverse_sector_compose_failures")
+            ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPOSE_FAILURES)
         return None
     if (
         type(left) is not ReverseCarrySectorTransfer
         or type(right) is not ReverseCarrySectorTransfer
     ):
         if ledger is not None:
-            ledger.bump("reverse_sector_compose_failures")
+            ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPOSE_FAILURES)
         raise TypeError("reverse sector composition requires canonical children")
     try:
         result = left.then(right)
     except BaseException as error:
         if ledger is not None:
-            ledger.bump("reverse_sector_compose_failures")
+            ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPOSE_FAILURES)
         if type(error) is ValueError and "contiguous prefix" in str(error):
             return None
         raise
     if ledger is not None:
-        ledger.bump("reverse_sector_compose_evaluations")
-        ledger.bump("reverse_sector_component_outputs", 75)
-        ledger.bump("reverse_sector_ring_scalar_operations", 150)
-        ledger.bump("reverse_sector_carry_input_evaluations", 2)
+        ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPOSE_EVALUATIONS)
+        ledger.bump(_interfaces_keys.REVERSE_SECTOR_COMPONENT_OUTPUTS, 75)
+        ledger.bump(_interfaces_keys.REVERSE_SECTOR_RING_SCALAR_OPERATIONS, 150)
+        ledger.bump(_interfaces_keys.REVERSE_SECTOR_CARRY_INPUT_EVALUATIONS, 2)
     return result
 
 
@@ -164,7 +167,7 @@ def _aligned_reverse_interval_forcing(
         summaries.append(sectors)
     primary_summary, reflected_summary = summaries[0], summaries[1]
     predecessor_summary = None if predecessor is None else summaries[2]
-    adapter.ledger.bump("reverse_interval_forcing_requests")
+    adapter.ledger.bump(_interfaces_keys.REVERSE_INTERVAL_FORCING_REQUESTS)
     try:
         result = primary_summary.interval_forcing(
             reflected_summary,
@@ -174,9 +177,9 @@ def _aligned_reverse_interval_forcing(
             predecessor=predecessor_summary,
         )
     except BaseException:
-        adapter.ledger.bump("reverse_interval_forcing_failures")
+        adapter.ledger.bump(_interfaces_keys.REVERSE_INTERVAL_FORCING_FAILURES)
         raise
-    adapter.ledger.bump("reverse_interval_forcing_evaluations")
+    adapter.ledger.bump(_interfaces_keys.REVERSE_INTERVAL_FORCING_EVALUATIONS)
     return result
 
 
@@ -271,7 +274,7 @@ def reverse_sector_width_from_interface(
     extent = sectors.active_width + apply_carry_fn(sectors.carry, 0)
     if extent > node.width:
         raise ValueError("reverse width requires one terminal padding cell")
-    adapter.ledger.bump("reverse_sector_width_observations")
+    adapter.ledger.bump(_interfaces_keys.REVERSE_SECTOR_WIDTH_OBSERVATIONS)
     return min(limit, extent)
 
 

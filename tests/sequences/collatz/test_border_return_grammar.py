@@ -3,6 +3,12 @@
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import (
+    BorderEntryPort,
+    BorderExitPort,
+    BoundaryPathKind,
+    GuardedBorderPath,
+)
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     select_border_return_macro,
@@ -15,14 +21,12 @@ from number_compiler.sequences.collatz.innovation_port_moore import SIGNED_SYMBO
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
 )
+from tests.support.collatz_finite_trace import physical_values
 
 
 def _physical(source: int, ticks: int) -> tuple[int, list[int]]:
-    widths = [source.bit_length()]
-    for _ in range(ticks):
-        source = 3 * source + 1 if source & 1 else source // 2
-        widths.append(source.bit_length())
-    return source, widths
+    values = physical_values(source, ticks)
+    return values[-1], [value.bit_length() for value in values]
 
 
 def _large_3adic_source(exponent: int) -> int:
@@ -33,20 +37,24 @@ def _large_3adic_source(exponent: int) -> int:
 @pytest.mark.parametrize(
     "source,ticks,tails,exit_port,endpoint",
     (
-        (6, 6, (0,), "8_to_4", 4),
-        (13, 7, (2,), "8_to_4", 4),
-        (23, 13, (0, 4), "8_to_4", 4),
-        (26, 8, (2,), "8_to_4", 4),
-        (43, 7, (0,), "8_to_9_to_8", 74),
-        (35, 11, (4,), "8_to_4", 4),
+        (6, 6, (0,), BorderExitPort.EIGHT_TO_FOUR, 4),
+        (13, 7, (2,), BorderExitPort.EIGHT_TO_FOUR, 4),
+        (23, 13, (0, 4), BorderExitPort.EIGHT_TO_FOUR, 4),
+        (26, 8, (2,), BorderExitPort.EIGHT_TO_FOUR, 4),
+        (43, 7, (0,), BorderExitPort.EIGHT_TO_NINE_TO_EIGHT, 74),
+        (35, 11, (4,), BorderExitPort.EIGHT_TO_FOUR, 4),
     ),
 )
 def test_return_grammar_preserves_upper_border_and_full_action(
-    source: int, ticks: int, tails: tuple[int, ...], exit_port: str, endpoint: int
+    source: int,
+    ticks: int,
+    tails: tuple[int, ...],
+    exit_port: BorderExitPort,
+    endpoint: int,
 ) -> None:
     macro = select_border_return_macro(source, ticks)
     assert macro is not None
-    assert macro.family == "6305R"
+    assert macro.identity.kind is BoundaryPathKind.THREE_BORDER_RETURN
     assert macro.zero_tails == tails
     assert macro.exit_port == exit_port
     assert macro.endpoint == endpoint
@@ -66,7 +74,7 @@ def test_upper_borrow_returns_until_it_exits_at_8() -> None:
     q = (23 - 3) // 10
     u = (3 * q + 1) >> macro.zero_tails[0]
     assert (3 * u - 1) // 4 == (53 - 3) // 10
-    assert macro.exit_port == "8_to_4"
+    assert macro.exit_port is BorderExitPort.EIGHT_TO_FOUR
 
 
 def test_return_uses_j_plus_four_physical_ticks_not_j_plus_two() -> None:
@@ -142,11 +150,16 @@ def test_demanded_boundary_observation_exposes_both_return_clocks() -> None:
 def test_9_can_only_be_emitted_by_authenticated_8_entry() -> None:
     for source in (43, 123, 183, 243):
         macro = select_border_return_macro(source, 60)
-        if macro is not None and macro.exit_port.startswith("8_to_9"):
+        if macro is not None and macro.exit_port in (
+            BorderExitPort.EIGHT_TO_NINE,
+            BorderExitPort.EIGHT_TO_NINE_TO_EIGHT,
+            BorderExitPort.EIGHT_TO_NINE_OPEN,
+            BorderExitPort.EIGHT_TO_NINE_PENDING,
+        ):
             # The final zero symbol is the actual 8->9 division, not
             # an independent 9-action assumed from the quotient.
             assert any(bit == 0 for bit, _ in macro.parts)
-            assert macro.entry_port != "9"
+            assert type(macro.entry_port) is BorderEntryPort
 
 
 def test_initial_nine_remains_a_valid_independent_source() -> None:
@@ -237,7 +250,11 @@ def test_assembled_return_is_one_hashlife_action_and_exact_observer() -> None:
         endpoint, widths = _physical(source, ticks)
         assert result.endpoint == endpoint and result.run_actions == 1
         assert result.first_boundary_macro is not None
-        assert result.first_boundary_macro.family == "6305R"
+        assert isinstance(result.first_boundary_macro.identity, GuardedBorderPath)
+        assert (
+            result.first_boundary_macro.identity.kind
+            is BoundaryPathKind.THREE_BORDER_RETURN
+        )
         assert result.physical_f5 is not None
         assert result.physical_f5.apply(source) == endpoint % 5
         assert result.joint_action is not None
@@ -277,8 +294,12 @@ def test_d32_cells_are_published_from_composed_return_without_replay() -> None:
     )
     assert result.run_actions == 1
     assert result.first_boundary_macro is not None
+    assert isinstance(result.first_boundary_macro.identity, GuardedBorderPath)
     assert type(result.first_boundary_macro) is BorderReturnMacro
-    assert result.first_boundary_macro.family == "6305R"
+    assert (
+        result.first_boundary_macro.identity.kind
+        is BoundaryPathKind.THREE_BORDER_RETURN
+    )
     assert result.first_boundary_macro.zero_tails[0] == 40
     assert ledger.counters.get("collatz_boundary_prefix_root_publications", 0) >= 3
     assert ledger.counters.get("collatz_hashlife_max_level", 0) >= 5
@@ -314,8 +335,9 @@ def test_composite_source_image_publishes_structural_macro() -> None:
         assert witness is not None
         start, macro = witness
         assert type(macro) is BorderReturnMacro
-        assert start == 0 and macro.family == "6305R"
-        assert macro.exit_port == "8_to_4"
+        assert start == 0
+        assert macro.identity.kind is BoundaryPathKind.THREE_BORDER_RETURN
+        assert macro.exit_port is BorderExitPort.EIGHT_TO_FOUR
         observation = workspace.innovation_observation
         assert observation is not None
         assert sum(observation.symbol_counts) == observation.normalized_steps
@@ -345,7 +367,11 @@ def test_d8_frame_after_return_does_not_join_a_stale_joint_cache_frontier() -> N
         innovation_modulus=49,
     )
     assert result.first_boundary_macro is not None
-    assert result.first_boundary_macro.family == "6305R"
+    assert isinstance(result.first_boundary_macro.identity, GuardedBorderPath)
+    assert (
+        result.first_boundary_macro.identity.kind
+        is BoundaryPathKind.THREE_BORDER_RETURN
+    )
     assert result.endpoint == _physical(source, ticks)[0]
     assert result.joint_action is not None
     assert result.joint_action.endpoint == result.endpoint

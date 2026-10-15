@@ -16,6 +16,7 @@ from number_compiler.resources.fused_traversal_workspace import (
     fused_traversal_workspace_owner_names,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
 from number_compiler.sequences.comma.domain import canonical_offset_orbit
 from number_compiler.sequences.comma.return_mdd import (
@@ -228,17 +229,17 @@ class SymbolicDecadePowers:
             for column in raw_columns:
                 interned = self._columns.get(column)
                 if interned is None:
-                    self.view.ledger.bump("comma_power_column_id_misses")
+                    self.view.ledger.bump(_comma_keys.COMMA_POWER_COLUMN_ID_MISSES)
                     self._columns[column] = column
                     interned = column
                 else:
-                    self.view.ledger.bump("comma_power_column_id_hits")
+                    self.view.ledger.bump(_comma_keys.COMMA_POWER_COLUMN_ID_HITS)
                 columns_list.append(interned)
             columns = tuple(columns_list)
             self._powers[level, root] = _ReturnPowerBinding(
                 columns, labels, return_shift, period
             )
-            self.view.ledger.bump("comma_power_publications")
+            self.view.ledger.bump(_comma_keys.COMMA_POWER_PUBLICATIONS)
 
     def _input_columns(
         self, binding: _ReturnPowerBinding
@@ -250,7 +251,7 @@ class SymbolicDecadePowers:
             key = binding.columns, shift
             cached_columns = self._input_templates.get(key)
             if cached_columns is None:
-                self.view.ledger.bump("comma_power_input_template_misses")
+                self.view.ledger.bump(_comma_keys.COMMA_POWER_INPUT_TEMPLATE_MISSES)
                 with _workspace_reservation(
                     self.view.ledger, self._composition_workspace_owner
                 ) as (reserve, release):
@@ -263,7 +264,7 @@ class SymbolicDecadePowers:
                     )
                     self._input_templates[key] = translated_columns
             else:
-                self.view.ledger.bump("comma_power_input_template_hits")
+                self.view.ledger.bump(_comma_keys.COMMA_POWER_INPUT_TEMPLATE_HITS)
                 translated_columns = cached_columns
         return tuple(zip(binding.labels, translated_columns, strict=True))
 
@@ -292,7 +293,9 @@ class SymbolicDecadePowers:
         try:
             for label, left in self._input_columns(first):
                 if label >= 46:
-                    self.view.ledger.bump("comma_power_absorbing_terminal_copies")
+                    self.view.ledger.bump(
+                        _comma_keys.COMMA_POWER_ABSORBING_TERMINAL_COPIES
+                    )
                     contributions: tuple[tuple[int, ReturnColumnKey], ...] = (
                         (label, left),
                     )
@@ -348,7 +351,7 @@ class SymbolicDecadePowers:
         if type(level) is not int or level < 0:
             raise ValueError("symbolic decade level must be nonnegative")
         if level <= self._completed_level:
-            self.view.ledger.bump("comma_power_completed_hits")
+            self.view.ledger.bump(_comma_keys.COMMA_POWER_COMPLETED_HITS)
             return
         for current in range(self._completed_level + 1, level + 1):
             for root, source in enumerate(self.view.roots):
@@ -393,7 +396,7 @@ class SymbolicDecadePowers:
         clock = (phase + binding.return_shift) % PERIOD
         for label, column in zip(binding.labels, binding.columns, strict=True):
             if evaluate_return_column(column, clock, charge=self.view.ledger.bump):
-                self.view.ledger.bump("comma_power_point_requests")
+                self.view.ledger.bump(_comma_keys.COMMA_POWER_POINT_REQUESTS)
                 return ("live", label) if label < 46 else ("stop", label - 46)
         raise AssertionError("completed symbolic power did not cover its clock")
 

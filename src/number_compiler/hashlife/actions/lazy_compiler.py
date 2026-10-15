@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.contracts.block_definition import (
     is_compatibility_composition,
@@ -26,10 +26,19 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+
+ACTION_PROGRAM_CANONICAL_KEY_TAG: Final[str] = "action-program-v2"
+from number_compiler.resources.metric_keys import (
+    hashlife_actions as _actions_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 class UnsupportedInterfaceError(TypeError):
@@ -83,9 +92,10 @@ class ProgramComposition:
         self.exponent = first.exponent + second.exponent
         self.node_id = handle.local_id
         self.canonical_key = (
-            "action-program-v2",
+            ACTION_PROGRAM_CANONICAL_KEY_TAG,
             SemanticIdentity(
-                "action-program", (_effect_key(first), _effect_key(second))
+                SemanticIdentityDomain.ACTION_PROGRAM,
+                (_effect_key(first), _effect_key(second)),
             ),
         )
         self.blank_left_tail = first.blank_left_tail + second.blank_left_tail
@@ -161,10 +171,14 @@ class LazyCompiler:
         # authority checks still use the returned owner IDs and arena token.
         namespace = f"compiler-{ledger.owner_count}"
         self.owner = ledger.register(
-            f"{namespace}-programs", "compiled_action_program", "INDEX_OWNED"
+            f"{namespace}-programs",
+            "compiled_action_program",
+            ResourceScope.INDEX_OWNED,
         )
         self.index_owner = ledger.register(
-            f"{namespace}-interner", "compiled_action_interner", "INDEX_OWNED"
+            f"{namespace}-interner",
+            "compiled_action_interner",
+            ResourceScope.INDEX_OWNED,
         )
         self._nodes: MutableSequence[BlockEffect] = ledger.make_list(self.owner)
         self._ids: MutableMapping[object, int] = ledger.make_dict(self.index_owner)
@@ -245,8 +259,8 @@ class LazyCompiler:
             else:
                 result = self.atom(node)
             imported[id(node)] = result
-        self.ledger.bump("compiler_admission_dag_visits", admission_visits)
-        self.ledger.bump("compiler_import_dag_visits", visits)
+        self.ledger.bump(_actions_keys.COMPILER_ADMISSION_DAG_VISITS, admission_visits)
+        self.ledger.bump(_actions_keys.COMPILER_IMPORT_DAG_VISITS, visits)
         return imported[id(effect)]
 
     def compose(self, first: BlockEffect, second: BlockEffect) -> BlockEffect:
@@ -282,11 +296,11 @@ class LazyCompiler:
                     pending_atoms[semantic] = staged
                 child_id = staged[0]
             handles.append(ActionProgramID(self.token, "action-program", child_id))
-        self.ledger.bump("composition_requests")
+        self.ledger.bump(_shared_keys.COMPOSITION_REQUESTS)
         key = CompilerCompositionKey(*handles)
         found = self._ids.get(key)
         if found is not None:
-            self.ledger.bump("composition_cache_hits")
+            self.ledger.bump(_shared_keys.COMPOSITION_CACHE_HITS)
             return self._nodes[found]
         allocations = 1 + len(pending_atoms)
         self.ledger.reserve_many(
@@ -301,7 +315,7 @@ class LazyCompiler:
         self._ids[key] = len(self._nodes)
         self._nodes.append(node)
         self.ledger.register_root(self.owner, handle)
-        self.ledger.bump("composition_evaluations")
+        self.ledger.bump(_shared_keys.COMPOSITION_EVALUATIONS)
         return node
 
     def reference(self, effect: BlockEffect) -> ActionProgramID:

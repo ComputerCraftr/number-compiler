@@ -13,14 +13,16 @@ from hmac import compare_digest
 from importlib.resources import as_file, files
 from pathlib import Path
 from secrets import token_bytes
+from typing import Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.process_cache import MISSING, get_process_cache
 
-CERTIFICATE_ID = "a367620-closed-regions-v1"
+CERTIFICATE_ID: Final[str] = "a367620-closed-regions-v1"
 CERTIFICATE_ASSET = "comma_prefix_v1.jsonl.gz"
 # Filled only from the independently generated, reviewed immutable certificate.
 CERTIFICATE_SHA256 = "f6e864b26ca9c8164ed91594d995aca15b19e027166d469844be37268896e4eb"
@@ -62,14 +64,14 @@ class UnresolvedCommaTerm(UnresolvedSequenceTerm):
 
 
 def _charge(ledger: ResourceLedger, max_work: int, amount: int = 1) -> None:
-    spent = ledger.counters.get("comma_work", 0) + ledger.counters.get(
-        "comma_certificate_work", 0
+    spent = ledger.counters.get(_comma_keys.COMMA_WORK, 0) + ledger.counters.get(
+        _comma_keys.COMMA_CERTIFICATE_WORK, 0
     )
     if amount > max_work - spent:
-        ledger.bump("comma_budget_refusals")
-        ledger.bump("comma_certificate_budget_refusals")
+        ledger.bump(_comma_keys.COMMA_BUDGET_REFUSALS)
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_BUDGET_REFUSALS)
         raise BlockContextBudgetExceeded("comma certificate work budget exceeded")
-    ledger.bump("comma_certificate_work", amount)
+    ledger.bump(_comma_keys.COMMA_CERTIFICATE_WORK, amount)
 
 
 def unresolved_boundary(index: int) -> UnresolvedCommaTerm:
@@ -93,8 +95,8 @@ def _checked_asset(path: Path, ledger: ResourceLedger, max_work: int) -> None:
             total += len(chunk)
             if total > 8 * 1024 * 1024:
                 raise ValueError("comma certificate exceeds its compressed size limit")
-            ledger.bump("comma_certificate_read_bytes", len(chunk))
-            ledger.bump("comma_operand_bit_work", 8 * len(chunk))
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_READ_BYTES, len(chunk))
+            ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, 8 * len(chunk))
             digest.update(chunk)
     if digest.hexdigest() != CERTIFICATE_SHA256:
         raise ValueError("comma certificate checksum differs from its admitted version")
@@ -158,9 +160,9 @@ def _verify(
     if not shared_cache:
         local_key, tag = _admission_marker(-1)
         if local_hit(local_key, tag):
-            ledger.bump("comma_certificate_local_hits")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_LOCAL_HITS)
             return
-        ledger.bump("comma_certificate_cache_bypasses")
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_BYPASSES)
         check_asset()
         if memo is not None:
             memo[local_key] = tag
@@ -182,7 +184,7 @@ def _verify(
 
         if local_hit(local_key, tag):
             lease.stats()  # Recheck authority after the query-local lookup.
-            ledger.bump("comma_certificate_local_hits")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_LOCAL_HITS)
             return
         key = (CERTIFIED_MAX_INDEX, FIRST_FORK_INDEX, FIRST_FORK_VALUE)
         expected = (CERTIFICATE_SHA256, tag)
@@ -197,13 +199,13 @@ def _verify(
             ):
                 raise ValueError("foreign comma certificate cache payload")
             publish_local()
-            ledger.bump("comma_certificate_cache_hits")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_HITS)
             return
-        ledger.bump("comma_certificate_cache_misses")
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_MISSES)
         check_asset()
         _charge(ledger, max_work)
         if lease.put(key, expected):
-            ledger.bump("comma_certificate_cache_publications")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_PUBLICATIONS)
         publish_local()
 
 
@@ -288,7 +290,7 @@ def require_certified_index(
         if getattr(store, "ledger", None) is not ledger:
             raise ValueError("foreign comma global provider admission owner")
         global_provider.require_global_release_admission()
-        ledger.bump("comma_global_release_prefix_admissions")
+        ledger.bump(_comma_keys.COMMA_GLOBAL_RELEASE_PREFIX_ADMISSIONS)
         return
     if index > CERTIFIED_MAX_INDEX:
         raise unresolved_boundary(index)

@@ -19,6 +19,9 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
 )
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -95,8 +98,8 @@ def reverse_boundary_step(
         summary = payload.bound_reverse_output
         if type(summary) is not ReverseBoundOutput:
             raise ValueError("reverse carry observation returned an incomplete summary")
-        engine.ledger.bump("reverse_boundary_single_tile_transfers")
-        engine.ledger.bump("reverse_boundary_transfer_completions")
+        engine.ledger.bump(_execution_keys.REVERSE_BOUNDARY_SINGLE_TILE_TRANSFERS)
+        engine.ledger.bump(_execution_keys.REVERSE_BOUNDARY_TRANSFER_COMPLETIONS)
         values.append(summary)
         return True
     if frame.stage == 0:
@@ -157,7 +160,7 @@ def reverse_boundary_step(
             chunks.close()
             anchors.close()
             arguments.close()
-            engine.ledger.bump("reverse_boundary_transfer_completions")
+            engine.ledger.bump(_execution_keys.REVERSE_BOUNDARY_TRANSFER_COMPLETIONS)
             values.append(summary)
         else:
             frame.saved = (buffers, index, summary)

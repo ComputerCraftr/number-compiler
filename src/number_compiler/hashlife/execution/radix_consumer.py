@@ -15,6 +15,10 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +117,7 @@ class RadixDivisionActionArena:
                 raise ValueError("radix action witness has another exponent")
         found = self._keys.get(exponent)
         if found is not None:
-            self.ledger.bump("radix_temporal_action_early_hits")
+            self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
             return self._handle(found)
         reservations = [
             (self._node_owner, 1, 1),
@@ -127,8 +131,8 @@ class RadixDivisionActionArena:
         self._keys[exponent] = local_id
         if children is not None:
             self._children[local_id] = children
-        self.ledger.bump("radix_temporal_action_evaluations")
-        self.ledger.bump("field_action_publications")
+        self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EVALUATIONS)
+        self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
         return self._handle(local_id)
 
     def compose(
@@ -138,10 +142,10 @@ class RadixDivisionActionArena:
     ) -> RadixDivisionActionID:
         """Apply ``before`` and then ``after`` with semantic pre-interning."""
         a, b = self.resolve(before), self.resolve(after)
-        self.ledger.bump("radix_temporal_action_requests")
+        self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_REQUESTS)
         found = self._keys.get(a.exponent + b.exponent)
         if found is not None:
-            self.ledger.bump("radix_temporal_action_early_hits")
+            self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
             return self._handle(found)
         return self._intern(a.exponent + b.exponent, (before, after))
 
@@ -160,7 +164,7 @@ class RadixDivisionActionArena:
             raise ValueError("radix division exponent must be positive")
         found = self._keys.get(exponent)
         if found is not None:
-            self.ledger.bump("radix_temporal_action_early_hits")
+            self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
             return self._handle(found)
         return semigroup_power(self.primitive, exponent, compose=self.compose)
 

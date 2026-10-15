@@ -11,6 +11,7 @@ import pytest
 from number_compiler.api import cli, cli_context, cli_render, cli_requests
 from number_compiler.api.family_registry import CAPABILITIES
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.query_types import FermatTermQuery, TermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
@@ -19,18 +20,18 @@ def forbidden(*args: object, **kwargs: object) -> Never:
     raise AssertionError("unrequested execution was entered")
 
 
-def family_options(family: str) -> list[str]:
+def family_options(family: FamilyId) -> list[str]:
     return ["--seed", "27"] if family in {"reverse-add", "2rev10", "collatz"} else []
 
 
 @pytest.mark.parametrize("family", CAPABILITIES)
 @pytest.mark.parametrize("exponent", (0, 1, 4))
 def test_compact_selector_is_an_exact_family_integer(
-    family: str, exponent: int
+    family: FamilyId, exponent: int
 ) -> None:
     request = cli_requests.parse_request(
         [
-            family,
+            family.value,
             "--nth-power10",
             str(exponent),
             *family_options(family),
@@ -48,12 +49,12 @@ def test_compact_selector_is_an_exact_family_integer(
 
 @pytest.mark.parametrize("family", CAPABILITIES)
 def test_compact_value_and_info_match_explicit_index(
-    family: str, capsys: pytest.CaptureFixture[str]
+    family: FamilyId, capsys: pytest.CaptureFixture[str]
 ) -> None:
     common = [*family_options(family), "--info", "metrics", "--format", "json"]
-    assert cli.main([family, "--nth", "1", *common]) == 0
+    assert cli.main([family.value, "--nth", "1", *common]) == 0
     ordinary = json.loads(capsys.readouterr().out)
-    assert cli.main([family, "--nth-power10", "0", *common]) == 0
+    assert cli.main([family.value, "--nth-power10", "0", *common]) == 0
     compact = json.loads(capsys.readouterr().out)
     encoded = {"encoding": "power10", "exponent": 0}
     assert compact["index"] == compact["info"]["metrics"]["index"] == encoded
@@ -100,7 +101,7 @@ def test_collatz_compact_index_uses_exact_terminal_cycle(
         ("prime", ["--nth-power10", "2"]),
     ),
 )
-def test_compact_selector_conflicts(family: str, conflict: list[str]) -> None:
+def test_compact_selector_conflicts(family: FamilyId, conflict: list[str]) -> None:
     with pytest.raises(SystemExit) as stopped:
         cli_requests.parse_request([family, "--nth-power10", "1", *conflict])
     assert stopped.value.code == 2
@@ -220,7 +221,7 @@ def test_huge_event_index_refuses_without_decimal_integer_conversion(
                     "--seed",
                     "27",
                     "--info",
-                    "clock",
+                    "temporal.clock",
                     "--max-index-bits",
                     "32",
                 ]
@@ -232,9 +233,14 @@ def test_huge_event_index_refuses_without_decimal_integer_conversion(
     assert "--max-index-bits" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("family", ("fermat", "mersenne", "antihydra", "a367620"))
+@pytest.mark.parametrize(
+    "family",
+    (FamilyId.FERMAT, FamilyId.MERSENNE, FamilyId.ANTIHYDRA, FamilyId.A367620),
+)
 def test_real_large_compact_metadata_never_formats_index_text(
-    family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    family: FamilyId,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from number_compiler.api import symbolic_terms
 
@@ -244,7 +250,7 @@ def test_real_large_compact_metadata_never_formats_index_text(
     assert (
         cli.main(
             [
-                family,
+                family.value,
                 "--nth-power10",
                 "5000",
                 "--no-value",
@@ -278,15 +284,21 @@ def test_real_large_compact_metadata_never_formats_index_text(
         assert packet["info"]["metrics"]["width"] == packet["index"]
 
 
-@pytest.mark.parametrize("family", ("fermat", "mersenne", "antihydra"))
+@pytest.mark.parametrize(
+    "family", (FamilyId.FERMAT, FamilyId.MERSENNE, FamilyId.ANTIHYDRA)
+)
 def test_compact_symbolic_value_keeps_power10_selector(
-    family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    family: FamilyId,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from number_compiler.api import symbolic_terms
 
     monkeypatch.setattr(symbolic_terms, "integer_text", forbidden)
     exponent = "2" if family == "antihydra" else "5000"
-    assert cli.main([family, "--nth-power10", exponent, "--format", "symbolic"]) == 0
+    assert (
+        cli.main([family.value, "--nth-power10", exponent, "--format", "symbolic"]) == 0
+    )
     text = capsys.readouterr().out
     assert f"10^{exponent}" in text and len(text) < 100
 
@@ -321,7 +333,7 @@ def test_projected_symbolic_constructor_keyword_remains_supported() -> None:
     ),
 )
 def test_ordinary_symbolic_text_remains_unchanged(
-    family: str,
+    family: FamilyId,
     expected: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -344,7 +356,7 @@ def test_index_budget_covers_explicit_event_coordinates() -> None:
                 "--seed",
                 "27",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--max-index-bits",
                 "2",
             ]
@@ -366,13 +378,15 @@ def test_verification_rejects_index_budget_as_a_term_option() -> None:
 
 @pytest.mark.parametrize("family", CAPABILITIES)
 def test_compact_information_only_never_renders(
-    family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    family: FamilyId,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
-                family,
+                family.value,
                 "--nth-power10",
                 "0",
                 *family_options(family),
@@ -421,7 +435,7 @@ def test_compact_metadata_only_preserves_unresolved_comma_boundary(
                 "9",
                 "--no-value",
                 "--info",
-                "certificate",
+                "safety.certificate",
                 "--format",
                 "json",
             ]
@@ -431,7 +445,7 @@ def test_compact_metadata_only_preserves_unresolved_comma_boundary(
     packet = json.loads(capsys.readouterr().out)
     encoded = {"encoding": "power10", "exponent": 9}
     assert packet["index"] == packet["error"]["requested_index"] == encoded
-    assert packet["info"]["certificate"]["requested_index"] == encoded
+    assert packet["info"]["safety.certificate"]["requested_index"] == encoded
 
 
 def test_compact_presentation_does_not_rewrite_equal_arithmetic_values() -> None:
@@ -461,8 +475,8 @@ def test_compact_presentation_does_not_rewrite_equal_arithmetic_values() -> None
                 "--seed",
                 "27",
                 "--info",
-                "clock",
-                "--max-events",
+                "temporal.clock",
+                "--temporal-clock-max-events",
                 "1",
             ],
             "physical clock observation budget",
@@ -474,14 +488,21 @@ def test_compact_presentation_does_not_rewrite_equal_arithmetic_values() -> None
                 "1",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--max-candidate-bits",
                 "16",
             ],
             "max_candidate_bits",
         ),
         (
-            ["mersenne", "--nth-power10", "0", "--no-value", "--info", "primality"],
+            [
+                "mersenne",
+                "--nth-power10",
+                "0",
+                "--no-value",
+                "--info",
+                "number-theory.primality",
+            ],
             "special theorem parameter",
         ),
         (["reverse-add", "--nth-power10", "0"], "requires --seed"),
@@ -503,7 +524,7 @@ def test_compact_info_metadata_is_centralized_in_query_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = cli_requests.parse_request(
-        ["antihydra", "--nth-power10", "1", "--no-value", "--info", "ledger"]
+        ["antihydra", "--nth-power10", "1", "--no-value", "--info", "safety.ledger"]
     )
     assert request is not None
 
@@ -511,7 +532,9 @@ def test_compact_info_metadata_is_centralized_in_query_context(
         return {"requested_returns": 10, "value": 10}
 
     monkeypatch.setattr(cli_context.QueryContext, "_observe", observation)
-    packet = cli_context.QueryContext(request, NumberCompiler()).information()["ledger"]
+    packet = cli_context.QueryContext(request, NumberCompiler()).information()[
+        "safety.ledger"
+    ]
     encoded = {"encoding": "power10", "exponent": 1}
     assert packet["index"] == encoded
     assert packet["requested_returns"] == 10

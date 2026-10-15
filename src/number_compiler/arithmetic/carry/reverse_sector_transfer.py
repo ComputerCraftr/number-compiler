@@ -10,6 +10,7 @@ only after the interval carry action determines its growth bit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Final
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -21,6 +22,7 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 _MODULUS = 32
 _CLASSES = (1, 2, 4, 8)
 _MAX_BASE = 1 << 31
+REVERSE_CARRY_SECTOR_TRANSFER_TAG: Final[str] = "reverse-carry-sector-transfer-v1"
 _TRANSFER_ISSUER = object()
 
 
@@ -497,7 +499,7 @@ class ReverseCarrySectorTransfer:
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return (
-            "reverse-carry-sector-transfer-v1",
+            REVERSE_CARRY_SECTOR_TRANSFER_TAG,
             self.base,
             self.width,
             self.active_width,

@@ -20,19 +20,30 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    BorderEntryPort,
+    BorderExitPort,
+    BoundaryPathKind,
+    GuardedBorderPath,
+    border_return_path,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.temporal_f5_observer import (
         CollatzF5AffineAction,
     )
+
+COLLATZ_BORDER_RETURN_ACTION_TAG: Final[str] = "collatz-border-return-v1"
 
 _ISSUER = object()
 _MAX_RETURNS_PER_ACTION = 64
@@ -42,7 +53,7 @@ _MAX_RETURNS_PER_ACTION = 64
 class BorderReturnMacro:
     """Sealed, composable 6305 return program, including upper exit guard."""
 
-    family: str
+    identity: GuardedBorderPath
     source: int
     endpoint: int
     physical_ticks: int
@@ -52,8 +63,8 @@ class BorderReturnMacro:
     parts: tuple[tuple[int, int], ...]
     zero_tails: tuple[int, ...]
     returns: int
-    entry_port: str
-    exit_port: str
+    entry_port: BorderEntryPort
+    exit_port: BorderExitPort
     _binding: tuple[object, ...] = field(repr=False, compare=False)
     _issuer: object = field(repr=False, compare=False)
 
@@ -94,8 +105,8 @@ class BorderReturnMacro:
         """Structural immutable values only; never publish action objects."""
         fields = self.fields
         return (
-            "collatz-6305-border-return-v1",
-            self.family,
+            COLLATZ_BORDER_RETURN_ACTION_TAG,
+            self.identity.structural_key(),
             self.source,
             self.endpoint,
             self.physical_ticks,
@@ -111,13 +122,13 @@ class BorderReturnMacro:
             self.parts,
             self.zero_tails,
             self.returns,
-            self.entry_port,
-            self.exit_port,
+            self.entry_port.value,
+            self.exit_port.value,
         )
 
     def observation(self) -> dict[str, object]:
         return {
-            "family_word": self.family,
+            "border": self.identity.observation(run_parameters=self.zero_tails),
             "source": self.source,
             "endpoint": self.endpoint,
             "physical_ticks": self.physical_ticks,
@@ -131,8 +142,8 @@ class BorderReturnMacro:
                 "any entry and 8/9 exit actions"
             ),
             "completed_returns": self.returns,
-            "entry_port": self.entry_port,
-            "exit_port": self.exit_port,
+            "entry_port": self.entry_port.value,
+            "exit_port": self.exit_port.value,
             "completed_final_division": True,
             "scope": "authenticated 6305 return/exit graph, not a universal future ID",
         }
@@ -146,7 +157,7 @@ def validate_border_return_macro(macro: BorderReturnMacro) -> None:
     ):
         raise ValueError("border-return macro has no producer authority")
     binding = (
-        macro.family,
+        macro.identity,
         macro.source,
         macro.endpoint,
         macro.physical_ticks,
@@ -161,7 +172,10 @@ def validate_border_return_macro(macro: BorderReturnMacro) -> None:
     )
     if (
         macro._binding != binding
-        or macro.family != "6305R"
+        or type(macro.identity) is not GuardedBorderPath
+        or macro.identity.kind is not BoundaryPathKind.THREE_BORDER_RETURN
+        or macro.identity.entry_digit != macro.entry_port.value
+        or macro.identity.exit_digit != macro.endpoint % 10
         or macro.source <= 0
         or macro.endpoint <= 0
         or not macro.zero_tails
@@ -191,6 +205,7 @@ def select_border_return_macro(
     minimum_useful_physical_ticks: int = 0,
     preflight: Callable[[int], None] | None = None,
     ledger: ResourceLedger | None = None,
+    radix_state: JointRadix6Source | None = None,
 ) -> BorderReturnMacro | None:
     """Produce one complete cross-family action without scalar Collatz replay.
 
@@ -209,33 +224,43 @@ def select_border_return_macro(
         or minimum_useful_physical_ticks < 0
     ):
         raise ValueError("minimum useful physical ticks must be a nonnegative integer")
+    state = (
+        radix_state
+        if radix_state is not None
+        else JointRadix6Source.from_source(source)
+    )
+    if type(state) is not JointRadix6Source:
+        raise TypeError("border-return selector requires a radix-6 source state")
+    state.require_source(source)
 
     if ledger is not None:
-        ledger.bump("collatz_physical_border_return_candidate_checks")
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_CHECKS)
 
     def account_operands(*values: int) -> None:
         if ledger is not None:
             ledger.bump(
-                "collatz_physical_border_return_candidate_operand_bits",
+                _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_OPERAND_BITS,
                 sum(value.bit_length() for value in values),
             )
 
     def record_refusal() -> None:
         if ledger is not None:
-            ledger.bump("collatz_physical_border_return_candidate_refusals")
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_REFUSALS)
 
     def below_minimum(candidate_ticks: int) -> bool:
         """Reject only strictly shorter candidates; ties remain admissible."""
         account_operands(candidate_ticks, minimum_useful_physical_ticks)
         if ledger is not None:
             ledger.bump(
-                "collatz_physical_border_return_candidate_threshold_comparisons"
+                _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_THRESHOLD_COMPARISONS
             )
         if candidate_ticks >= minimum_useful_physical_ticks:
             return False
         record_refusal()
         if ledger is not None:
-            ledger.bump("collatz_physical_border_return_candidate_threshold_refusals")
+            ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_THRESHOLD_REFUSALS
+            )
         return True
 
     account_operands(source, available_physical_ticks)
@@ -246,13 +271,13 @@ def select_border_return_macro(
     if below_minimum(available_physical_ticks):
         if ledger is not None:
             ledger.bump(
-                "collatz_physical_border_return_candidate_extent_bound_refusals"
+                _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_EXTENT_BOUND_REFUSALS
             )
         return None
     if available_physical_ticks < 4:
         record_refusal()
         return None
-    if source % 10 not in (0, 3, 5) and source % 20 != 6:
+    if state.decimal_residue(10) not in (0, 3, 5) and state.decimal_residue(20) != 6:
         record_refusal()
         return None
 
@@ -265,15 +290,21 @@ def select_border_return_macro(
     returns = 0
     width = BlankLedger()
     entry = (
-        "3"
-        if current % 10 == 3
-        else ("6" if current % 20 == 6 else "5" if current % 10 == 5 else "0")
+        BorderEntryPort.DIGIT_THREE
+        if state.decimal_residue(10) == 3
+        else (
+            BorderEntryPort.DIGIT_SIX
+            if state.decimal_residue(20) == 6
+            else BorderEntryPort.DIGIT_FIVE
+            if state.decimal_residue(10) == 5
+            else BorderEntryPort.DIGIT_ZERO
+        )
     )
-    exit_port = "unresolved"
+    exit_port = BorderExitPort.UNRESOLVED
     final_threshold_admitted = False
 
     def append(bit: int, count: int, target: int, *, lower: int, upper: int) -> None:
-        nonlocal current, budget, physical, normalized, width
+        nonlocal current, budget, physical, normalized, width, state
         if count <= 0:
             return
         ticks = count * (2 if bit else 1)
@@ -291,6 +322,7 @@ def select_border_return_macro(
                 after_width - before_width, lower - before_width, upper - before_width
             )
         )
+        state = state.after_normalized(bit, count, target)
         current = target
         budget -= ticks
         physical += ticks
@@ -298,7 +330,7 @@ def select_border_return_macro(
 
     # The initial 6->3, 0*->5, and 5->6->(3 or 8) are explicitly
     # source-authenticated entrance ports.  They are not guessed predecessors.
-    if entry == "6":
+    if entry is BorderEntryPort.DIGIT_SIX:
         account_operands(current)
         append(
             0,
@@ -307,10 +339,10 @@ def select_border_return_macro(
             lower=(current // 2).bit_length(),
             upper=current.bit_length(),
         )
-    elif entry == "0":
+    elif entry is BorderEntryPort.DIGIT_ZERO:
         account_operands(current)
         if ledger is not None:
-            ledger.bump("collatz_physical_border_return_valuation_checks")
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS)
         exponent = v2_positive(current)
         if budget < exponent:
             record_refusal()
@@ -323,7 +355,7 @@ def select_border_return_macro(
             lower=(current >> exponent).bit_length(),
             upper=current.bit_length(),
         )
-    if current % 10 == 5:
+    if state.decimal_residue(10) == 5:
         if budget < 2:
             record_refusal()
             return None
@@ -337,13 +369,13 @@ def select_border_return_macro(
             upper=raw.bit_length(),
         )
 
-    while current % 10 == 3 and len(tails) < max_returns:
+    while state.decimal_residue(10) == 3 and len(tails) < max_returns:
         account_operands(current)
         q = (current - 3) // 10
         t = 3 * q + 1
         account_operands(q, t)
         if ledger is not None:
-            ledger.bump("collatz_physical_border_return_valuation_checks")
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS)
         exponent = v2_positive(t)
         if budget < exponent + 4:
             break
@@ -389,11 +421,11 @@ def select_border_return_macro(
             raise AssertionError("border return lost its distinct clocks")
         tails.append(exponent)
         if odd % 4 == 3:
-            if current % 10 != 3:
+            if state.decimal_residue(10) != 3:
                 raise AssertionError("upper borrow return did not reach a 3 digit")
             returns += 1
         else:
-            if current % 10 != 8:
+            if state.decimal_residue(10) != 8:
                 raise AssertionError("upper carry exit did not reach an 8 digit")
             break
 
@@ -401,13 +433,17 @@ def select_border_return_macro(
         record_refusal()
         return None
 
-    if current % 10 == 3:
-        exit_port = "return_to_3" if budget else "return_at_horizon"
-    elif current % 10 == 8:
-        if current % 20 == 8:
-            exit_port = "8_to_4"
-        elif current % 20 == 18:
-            exit_port = "8_to_9"
+    if state.decimal_residue(10) == 3:
+        exit_port = (
+            BorderExitPort.RETURN_TO_THREE
+            if budget
+            else BorderExitPort.RETURN_AT_HORIZON
+        )
+    elif state.decimal_residue(10) == 8:
+        if state.decimal_residue(20) == 8:
+            exit_port = BorderExitPort.EIGHT_TO_FOUR
+        elif state.decimal_residue(20) == 18:
+            exit_port = BorderExitPort.EIGHT_TO_NINE
         else:
             raise AssertionError("8 border has an impossible source residue")
         if budget:
@@ -419,12 +455,14 @@ def select_border_return_macro(
             projected_budget = budget - 1
             projected_run = 0
             projected_guard_valuation = 0
-            if exit_port == "8_to_9":
+            if exit_port is BorderExitPort.EIGHT_TO_NINE:
                 projected_current = current // 2
                 projected_guard = projected_current + 1
                 account_operands(projected_current, projected_guard, projected_budget)
                 if ledger is not None:
-                    ledger.bump("collatz_physical_border_return_valuation_checks")
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS
+                    )
                 projected_guard_valuation = v2_positive(projected_guard)
                 projected_run = min(projected_guard_valuation, projected_budget // 2)
                 projected_physical += 2 * projected_run
@@ -439,7 +477,7 @@ def select_border_return_macro(
                 lower=(current // 2).bit_length(),
                 upper=current.bit_length(),
             )
-            if exit_port == "8_to_9":
+            if exit_port is BorderExitPort.EIGHT_TO_NINE:
                 # A newly produced interior 9 always has the authenticated
                 # incoming 8.  Pump the odd 9->8 return where the budget
                 # contains complete normalized odd steps.
@@ -462,10 +500,12 @@ def select_border_return_macro(
                         upper=(2 * endpoint).bit_length(),
                     )
                     exit_port = (
-                        "8_to_9_to_8" if run == guard_valuation else "8_to_9_open"
+                        BorderExitPort.EIGHT_TO_NINE_TO_EIGHT
+                        if run == guard_valuation
+                        else BorderExitPort.EIGHT_TO_NINE_OPEN
                     )
                 else:
-                    exit_port = "8_to_9_pending"
+                    exit_port = BorderExitPort.EIGHT_TO_NINE_PENDING
 
     if not runs:
         return None
@@ -491,7 +531,7 @@ def select_border_return_macro(
     ):
         raise AssertionError("border-return composed action differs from its exit")
     binding: tuple[object, ...] = (
-        "6305R",
+        border_return_path(entry.value, state.decimal_residue(10)),
         source,
         current,
         physical,
@@ -507,7 +547,7 @@ def select_border_return_macro(
     macro = object.__new__(BorderReturnMacro)
     for name, value in zip(
         (
-            "family",
+            "identity",
             "source",
             "endpoint",
             "physical_ticks",

@@ -24,6 +24,9 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
@@ -284,8 +287,8 @@ def validate_fusion_contexts(
                 arena.tiles.resolve(expected).alphabet,
             )
     if counted:
-        arena.ledger.bump("completed_result_port_validation_requests", 2)
-        arena.ledger.bump("completed_result_port_validation_visits", visits)
+        arena.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_REQUESTS, 2)
+        arena.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_VISITS, visits)
     return visits
 
 
@@ -312,7 +315,7 @@ def validate_ports_readonly(
     if ledger is not None:
         if type(ledger) is not ResourceLedger or ledger is not interfaces.ledger:
             raise ValueError("port validation ledger belongs to another index")
-        ledger.bump("completed_result_port_validation_requests")
+        ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_REQUESTS)
     visits = 0
     while node.variable is not None:
         variable = node.variable
@@ -326,7 +329,7 @@ def validate_ports_readonly(
         ]
         visits += 1
         if ledger is not None:
-            ledger.bump("completed_result_port_validation_visits")
+            ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_VISITS)
     terminal = node.terminal
     if terminal is None or terminal.kind != "atom" or terminal.value != 1:
         raise ValueError("result ports are inadmissible")

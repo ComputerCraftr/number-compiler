@@ -19,7 +19,12 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 from number_compiler.resources.cache_gc_metrics import (
     record_execution_cache_event,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
 )
 
@@ -33,15 +38,15 @@ def lookup_interface(
 ) -> LocalInterfaceID | None:
     self._validate_interface_key(key)
     found = self._memo.get(key)
-    self.ledger.bump("powered_interface_requests")
+    self.ledger.bump(_tiles_keys.POWERED_INTERFACE_REQUESTS)
     if found is None:
         record_execution_cache_event(self, "interface", "miss", key.action, key.input)
-        record_unattributed_post_eviction_miss(self.ledger, "interface")
+        record_unattributed_post_eviction_miss(self.ledger, ResultCacheKind.INTERFACE)
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("powered interface memo has another value sort")
     self._validate_interface(key, found)
-    self.ledger.bump("powered_interface_early_hits")
+    self.ledger.bump(_tiles_keys.POWERED_INTERFACE_EARLY_HITS)
     record_execution_cache_event(
         self, "interface", "early_hit", key.action, key.input, allow_new=False
     )
@@ -55,15 +60,15 @@ def publish_interface(
 ) -> LocalInterfaceID:
     self._validate_interface_key(key)
     self._validate_interface(key, interface)
-    self.ledger.bump("powered_interface_publication_requests")
+    self.ledger.bump(_tiles_keys.POWERED_INTERFACE_PUBLICATION_REQUESTS)
     found = self._memo.get(key)
     if found is not None:
         if type(found) is not LocalInterfaceID or found != interface:
             raise ValueError("powered interface already has another complete value")
-        self.ledger.bump("powered_interface_late_aliases")
+        self.ledger.bump(_tiles_keys.POWERED_INTERFACE_LATE_ALIASES)
         return found
     publish_indexed_result(self, key, interface)
-    self.ledger.bump("powered_interface_publications")
+    self.ledger.bump(_tiles_keys.POWERED_INTERFACE_PUBLICATIONS)
     return interface
 
 
@@ -73,15 +78,15 @@ def lookup_fused_interface(
 ) -> LocalInterfaceID | None:
     self._validate_fused_key(key)
     found = self._memo.get(key)
-    self.ledger.bump("fused_interface_requests")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_REQUESTS)
     if found is None:
-        record_unattributed_post_eviction_miss(self.ledger, "interface")
+        record_unattributed_post_eviction_miss(self.ledger, ResultCacheKind.INTERFACE)
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("fused interface memo has another value sort")
     if self.interfaces.resolve(found).signature != key.wiring.signature:
         raise ValueError("fused interface has another port signature")
-    self.ledger.bump("fused_interface_early_hits")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_EARLY_HITS)
     return found
 
 
@@ -102,17 +107,17 @@ def lookup_execution_fused_interface(
         raise TypeError("expected a scheduler-derived fused-interface key")
     key.__post_init__()
     found = self._memo.get(key)
-    self.ledger.bump("fused_interface_execution_probes")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_EXECUTION_PROBES)
     if found is None:
-        self.ledger.bump("fused_interface_execution_probe_misses")
+        self.ledger.bump(_tiles_keys.FUSED_INTERFACE_EXECUTION_PROBE_MISSES)
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("fused interface memo has another value sort")
     if self.interfaces.resolve(found).signature != key.wiring.signature:
         raise ValueError("fused interface has another port signature")
-    self.ledger.bump("fused_interface_requests")
-    self.ledger.bump("fused_interface_early_hits")
-    self.ledger.bump("fused_interface_execution_early_hits")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_REQUESTS)
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_EARLY_HITS)
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_EXECUTION_EARLY_HITS)
     return found
 
 
@@ -126,12 +131,12 @@ def publish_fused_interface(
         raise TypeError("fused interface requires a local interface ID")
     if self.interfaces.resolve(interface).signature != key.wiring.signature:
         raise ValueError("fused interface has another port signature")
-    self.ledger.bump("fused_interface_publication_requests")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_PUBLICATION_REQUESTS)
     found = self._memo.get(key)
     if found is not None:
         if type(found) is not LocalInterfaceID or found != interface:
             raise ValueError("fused interface already has another complete value")
-        self.ledger.bump("fused_interface_late_aliases")
+        self.ledger.bump(_tiles_keys.FUSED_INTERFACE_LATE_ALIASES)
         return found
     variant_key = fused_variant_key(key)
     producer_wiring = variant_key.producer_wiring
@@ -166,7 +171,7 @@ def publish_fused_interface(
         for owner, entries, nodes in reservations:
             self.ledger.release(owner, entries, nodes)
         raise
-    self.ledger.bump("fused_interface_publications")
+    self.ledger.bump(_tiles_keys.FUSED_INTERFACE_PUBLICATIONS)
     return interface
 
 
@@ -176,14 +181,14 @@ def lookup_spatial_interface(
 ) -> LocalInterfaceID | None:
     self._validate_spatial_key(key)
     found = self._memo.get(key)
-    self.ledger.bump("spatial_interface_composition_requests")
+    self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_REQUESTS)
     if found is None:
-        record_unattributed_post_eviction_miss(self.ledger, "spatial")
+        record_unattributed_post_eviction_miss(self.ledger, ResultCacheKind.SPATIAL)
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("spatial interface memo has another value sort")
     self._validate_spatial_result(key, found)
-    self.ledger.bump("spatial_interface_composition_early_hits")
+    self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_EARLY_HITS)
     return found
 
 
@@ -194,12 +199,12 @@ def publish_spatial_interface(
 ) -> LocalInterfaceID:
     self._validate_spatial_key(key)
     self._validate_spatial_result(key, result)
-    self.ledger.bump("spatial_interface_composition_publication_requests")
+    self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_PUBLICATION_REQUESTS)
     found = self._memo.get(key)
     if found is not None:
         if type(found) is not LocalInterfaceID or found != result:
             raise ValueError("spatial interface already has another complete value")
-        self.ledger.bump("spatial_interface_composition_late_aliases")
+        self.ledger.bump(_shared_keys.SPATIAL_INTERFACE_COMPOSITION_LATE_ALIASES)
         return found
     self.ledger.reserve(self._memo_owner, entries=1)
     try:
@@ -208,7 +213,7 @@ def publish_spatial_interface(
         self._memo.pop(key, None)
         self.ledger.release(self._memo_owner, entries=1)
         raise
-    self.ledger.bump("spatial_interface_composition_publications")
+    self.ledger.bump(_shared_keys.SPATIAL_INTERFACE_COMPOSITION_PUBLICATIONS)
     return result
 
 
@@ -240,7 +245,7 @@ def publish_spatial_quotient(
         raise ValueError(
             "spatial quotient requires a closed or already-normalized product"
         )
-    self.ledger.bump("spatial_interface_composition_publication_requests")
+    self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_PUBLICATION_REQUESTS)
     result = publish_quotient(
         self.interfaces,
         QuotientRecord(key.wiring.signature, components),
@@ -248,5 +253,5 @@ def publish_spatial_quotient(
         spatial=SpatialQuotientBinding(self, key),
     )
     if closed:
-        self.ledger.bump("quotient_arithmetic_normalizations")
+        self.ledger.bump(_shared_keys.QUOTIENT_ARITHMETIC_NORMALIZATIONS)
     return result

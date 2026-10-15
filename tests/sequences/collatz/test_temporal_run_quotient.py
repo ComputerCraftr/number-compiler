@@ -63,6 +63,13 @@ def test_large_source_d8_batch_materializes_its_high_fiber_once(
 ) -> None:
     from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
+    # This regression is specifically about the D8 materialization route; the
+    # independently tested source-certified chain may now own this same seed.
+    monkeypatch.setattr(
+        "number_compiler.sequences.collatz.temporal_run_executor.consume_unified_skew_chain",
+        lambda *_args, **_kwargs: None,
+    )
+
     seed = (1 << 131_072) + 27
     materialize = D8CylinderFrame.materialize
     observed: list[tuple[int, int]] = []

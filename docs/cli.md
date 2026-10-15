@@ -8,11 +8,11 @@ number-compiler antihydra --help
 number-compiler reverse-add --seed 196 --nth 8
 number-compiler 2rev10 --seed 10 --nth 1
 number-compiler collatz --nth 64 --seed 27
-number-compiler antihydra --nth 64 --info ledger --info clock
-number-compiler fermat --nth 5 --info primality --info factor --format json
-number-compiler mersenne --nth 131 --no-value --info primality
-number-compiler collatz --events 20 --seed 27 --info hensel
-number-compiler collatz --events 20 --seed 27 --info safety --format json
+number-compiler antihydra --nth 64 --info safety.ledger --info temporal.clock
+number-compiler fermat --nth 5 --info number-theory.primality --info number-theory.factor --format json
+number-compiler mersenne --nth 131 --no-value --info number-theory.primality
+number-compiler collatz --events 20 --seed 27 --info arithmetic.hensel
+number-compiler collatz --events 20 --seed 27 --info safety.execution --format json
 number-compiler antihydra --verify-nonhalting certificate.json
 ```
 
@@ -47,7 +47,20 @@ zero-based sequence index, Mersenne uses a positive exponent, and A367620 uses
 positive OEIS indices with checked-prefix admission. The generated capability
 table below owns the supported source parameters and observations.
 
-`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics` and `--info closed-form`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports.
+`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
+
+For `2rev10`, `arithmetic.radix25-shift` projects the original decimal
+source through its exact radix-2/5 shift and carry correction.
+`temporal.radix-walsh` demands a source-certified finite temporal bank and its
+64-lane Walsh/F5 projection. Use `--arithmetic-radix-places`,
+`--temporal-walsh-start`, and the shared `--temporal-grammar-position` and
+`--temporal-grammar-period` options. Conditional borrow-ingress responses are
+not a global innovation tape. The ordinary value route does not demand these
+spectral projections.
+
+```sh
+number-compiler 2rev10 --seed 196 --nth 0 --no-value --info arithmetic.radix25-shift --arithmetic-radix-places 8 --format json
+```
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
 `--info`, and has no ordinary term value. It is exclusive with both term selectors.
@@ -62,7 +75,11 @@ options. Explicit options belonging to another family or observation are errors.
 The default stdout contains only the exact digits. `--output-base B` selects a
 base from 2 through 36. `--format symbolic` requests the existing symbolic term
 description. Requested information is a JSON dictionary on stderr. Repeated
-`--info` names are deduplicated and evaluated once.
+`--info` names are deduplicated and evaluated once. `--info temporal` is a
+snapshot-only summary: it reports the requested clock and already-published
+projection metadata, and lists supported temporal details without activating
+them. Detailed packets use namespaced IDs such as `temporal.clock`,
+`spatial.stencil`, and `arithmetic.hensel`.
 
 `--format json` writes one stdout object with `family`, `index`, `index_unit`,
 `output_base`, `value` and `info`; no information is written to stderr. The value
@@ -87,19 +104,19 @@ Python audited metrics remain available.
 Families without a live execution ledger report null execution metrics rather
 than invented zero work.
 
-The following capability table is generated from the CLI registry. `root` requires `--defect`; reverse/add and Collatz seed requirements are described above.
+The following capability table is generated from the CLI registry. `number-theory.root` requires `--defect`; reverse/add and Collatz seed requirements are described above.
 
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
-| `2rev10` | `iterations` | `--seed` | `metrics`, `closed-form` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock`, `accumulator`, `boundary-macro`, `innovation-borrow` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
-| `antihydra` | `macro_returns_after_startup` | — | `metrics`, `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` | — |
-| `a367620` | `oeis_index` | — | `metrics`, `clock`, `tropical`, `certificate` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.stencil` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `spatial.stencil`, `temporal.bank`, `spatial.pair-bank`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
+| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
+| `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
-| `fermat` | `fermat_index` | — | `metrics`, `primality`, `factor`, `root` | — |
-| `mersenne` | `mersenne_exponent` | — | `metrics`, `primality`, `factor`, `root` | — |
+| `fermat` | `fermat_index` | — | `metrics`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
+| `mersenne` | `mersenne_exponent` | — | `metrics`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
 <!-- cli-capabilities:end -->
 
 Family help lists the applicable projection parameters. Primality and factor
@@ -110,7 +127,7 @@ An undecided special-number factor query reports `unknown` and exits 3.
 Printed witnesses retain their
 checked integer target and discovery accounting.
 
-Collatz `safety` asks whether any event in the admitted finite prefix fell
+Collatz `safety.execution` asks whether any event in the admitted finite prefix fell
 strictly below the starting seed. Its exact affine endpoint, Hensel cylinder
 and normalized inverse-threshold envelope are included. Events stop at one,
 as for the other event observations. A false result only describes this
@@ -137,12 +154,24 @@ a subquadratic cold-construction bound or cross-request reverse cache savings.
 Nondecimal fallback limits are unchanged. Guarded homogeneous/alternating
 interior formulas alone do not authorize a whole-integer endpoint.
 
+`--info temporal.matrix` reports endpoint-consistent innovation moments from
+the completed decimal occurrence. With `--temporal-matrix-modulus M`, it folds the output
+grammar modulo M without constructing the exact endpoint integer.
+`--info temporal.stencil` explicitly requests the bounded five-band carry and
+signed-borrow diagnostic, subject to `--max-digits` and `--max-output-bits`.
+These observations do not authorize repeating a conditional source action.
+Neither runs for an ordinary value or metrics-only request.
+
+```sh
+number-compiler reverse-add --seed 196 --nth 20 --no-value --info temporal.matrix --temporal-matrix-modulus 1009 --format json
+```
+
 ## Antihydra arithmetic and physical observations
 
 The arithmetic endpoint is the total sequence
 `a(0) = 8`, `a(n+1) = a(n) + floor(a(n)/2)`. Its ledger adds 2 on even values of
 `a`, and subtracts 1 on odd values. Arithmetic continues if this ledger becomes
-negative. `ledger` and `modular` use the arithmetic owner without a physical
+negative. `safety.ledger` and `arithmetic.modular` use the arithmetic owner without a physical
 clock roof. Labels distinguish odd centered states `D = a - 1` from odd values
 of `a`.
 
@@ -169,9 +198,10 @@ operand-bit counters are separate and are not presented as allocated bytes.
 `--max-output-bits` controls value output and defaults to 1,000,000.
 Antihydra's `--max-steps` and `--max-state-bits` default to 4,096;
 `--max-observer-terms` defaults to 1,000,000 projection operations.
-Applicable observation defaults remain 4,096 for `--max-events` and
-`--max-digits`, 1,000,000 for `--max-candidate-bits`, and 4,096 for
-`--max-factor-products`. Index admission has its separate `--max-index-bits`
+Applicable observation defaults remain 4,096 for the event-selector
+`--max-events`, the clock-specific `--temporal-clock-max-events` and
+`--temporal-clock-max-digits`, and reverse/add's `--max-digits`; 1,000,000 for
+`--max-candidate-bits`; and 4,096 for `--max-factor-products`. Index admission has its separate `--max-index-bits`
 limit described above. These are admission limits, not a
 promise of inexpensive arbitrary-size jumps.
 
@@ -227,12 +257,12 @@ The full Isabelle certificate-instance proof remains a release obligation.
 
 ```sh
 number-compiler a367620 --nth 1
-number-compiler a367620 --nth 20000 --info clock
-number-compiler a367620 --nth 412987860 --info certificate --format json
-number-compiler a367620 --nth 20000 --no-value --info certificate --info metrics --format json
+number-compiler a367620 --nth 20000 --info temporal.clock
+number-compiler a367620 --nth 412987860 --info safety.certificate --format json
+number-compiler a367620 --nth 20000 --no-value --info safety.certificate --info metrics --format json
 ```
 
-The certificate packet distinguishes `runtime_verified` from
+The safety.certificate packet distinguishes `runtime_verified` from
 `isabelle_instance_checked`. Verification streams complete finite regions;
 the published OEIS choice bits are not runtime branch oracles. `--info metrics`
 alone never initiates certificate verification or arithmetic. Metrics remain
@@ -260,10 +290,10 @@ still hash the immutable compressed certificate; those bytes are charged.
 
 ### Homogeneous growth projections
 
-Collatz's requested `clock` value includes `homogeneous_growth`, with exact
+Collatz's requested `temporal.clock` value includes `homogeneous_growth`, with exact
 `growths=H`, `halvings=D`, `radix=10` and
 `homogeneous_radix_order=floor(H log10(3) - D log10(2))`.
-Antihydra's requested `mahler` associated action uses the same fields with
+Antihydra's requested `arithmetic.mahler` associated action uses the same fields with
 `H=D=R`, derived from its admitted return extent. This is the homogeneous
 multiplier's radix order, not the endpoint's digit width or a safety result;
 source offsets, caps and existing clock meanings remain separate.
@@ -271,7 +301,7 @@ These projections use certified rational bounds, and a precision/work refusal
 never returns an approximate result. Digit-only and metrics-only queries do
 not request them. There is no growth-word selector.
 
-The physical Collatz `clock` packet also includes `width_tape`. When the
+The physical Collatz `temporal.clock` packet also includes `width_tape`. When the
 admitted run or exact cycle already supplies its width walk, this reports
 binary (`radix=2`) source/target widths and the relative displacement and
 prefix extrema in `blank`. It is `null` when an applied macro has no retained
@@ -281,20 +311,20 @@ compiler. It is not a complete carry tape or a decimal-width projection.
 
 ### Reverse boundary certificates
 
-Decimal `reverse-add` accepts `--info boundary-macro`. With
+Decimal `reverse-add` accepts `--info temporal.macro`. With
 `--no-value`, this requests only a source-bound boundary certificate: unanimous
 width and edge digits across all admitted unknown-interior carry branches.
 It never certifies the complete future integer. Window precision is tried at
 2, 4 and 8 digits under bounded construction resources; an unsupported narrow
 source or ambiguous continuation reports `unavailable` with exit 3.
 
-Value output and `boundary-macro` may be requested together. Both use the same
+Value output and `temporal.macro` may be requested together. Both use the same
 admitted source workspace and carry-prefix summaries; the observer does not
 decode the source or scan its interior again. Its future relation still retains
 both possible unknown carries, so it does not authorize full-integer jumps.
 
 ```bash
-number-compiler reverse-add --seed 10001 --nth 1 --no-value --info boundary-macro --format json
+number-compiler reverse-add --seed 10001 --nth 1 --no-value --info temporal.macro --format json
 ```
 
 Nondecimal `--base` is rejected for this observer. A double-reverse operation
@@ -304,7 +334,7 @@ new public sequence family.
 
 ### Collatz accumulator action
 
-`collatz --info accumulator --modulus M` requests the residue of the original
+`collatz --info temporal.accumulator --temporal-accumulator-modulus M` requests the residue of the original
 source plus its completed **normalized** successors. An odd normalized step
 includes its forced division; it consumes two physical ticks. An unmatched
 final odd physical tick is reported by the pending phase and is not added as
@@ -313,7 +343,7 @@ The modulus defaults to 257. This observer uses the same admitted root image
 as a requested value and is not constructed for ordinary value/clock queries.
 
 ```bash
-number-compiler collatz --seed 27 --nth 16 --no-value --info accumulator --modulus 49 --format json
+number-compiler collatz --seed 27 --nth 16 --no-value --info temporal.accumulator --temporal-accumulator-modulus 49 --format json
 ```
 
 Joint affine coefficients are budgeted even when only a modular output is
@@ -322,13 +352,13 @@ or use a bounded Moore observation class as an endpoint cache key.
 
 ### Collatz guarded innovation observations
 
-`collatz --info boundary-macro` reports the first guarded boundary macro
-actually executed by the source-image constructor. `--info innovation-borrow`
+`collatz --info temporal.macro` reports the first guarded boundary macro
+actually executed by the source-image constructor. `--info temporal.innovation-borrow`
 requests the signed normalized second-innovation tape for the requested prefix at an odd
 modulus between 3 and 4096 (default 257). Both may accompany a value request.
 
 ```bash
-number-compiler collatz --seed 2174 --nth 13 --no-value --info innovation-borrow --modulus 49 --format json
+number-compiler collatz --seed 2174 --nth 13 --no-value --info temporal.innovation-borrow --temporal-innovation-borrow-modulus 49 --format json
 ```
 
 The tape is selected from the authenticated run grammar, including admitted
@@ -339,7 +369,7 @@ observation quotients. They do not establish an autonomous finite quotient of
 all future Collatz branches. Physical ticks, completed normalized steps and a
 pending odd half-step remain separate.
 These information requests do not demand the whole chronological accumulator;
-add `--info accumulator` when that output is needed. Ordinary value requests
+add `--info temporal.accumulator` when that output is needed. Ordinary value requests
 do not construct the modular Moore observer.
 
 Finite-horizon Moore IDs authorize reuse of the declared output word only at

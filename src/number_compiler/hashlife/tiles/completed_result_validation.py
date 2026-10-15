@@ -45,6 +45,9 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
     validated_action_signature,
 )
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease, TileRecord
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_types import (
@@ -208,8 +211,8 @@ def _validate_key(
                 counted=False,
                 action_admission=action_admission,
             )
-        self.ledger.bump("completed_result_port_validation_requests", 2)
-        self.ledger.bump("completed_result_port_validation_visits", visits)
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_REQUESTS, 2)
+        self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_VISITS, visits)
     else:
         self._validate_boundaries(key.boundaries, key.input)
         self._validate_ports(key.wiring.signature, key.ports)

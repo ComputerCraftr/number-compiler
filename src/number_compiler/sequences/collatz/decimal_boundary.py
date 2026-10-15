@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 
 def physical_digit_successor(digit: int, inward: int) -> int:
@@ -45,8 +46,10 @@ def physical_boundary_edge(source: int) -> DecimalBoundaryEdge:
 def physical_boundary_packet(source: int, ledger: ResourceLedger) -> dict[str, object]:
     """Observe the initial exact source without discovering its future inputs."""
     edge = physical_boundary_edge(source)
-    ledger.bump("collatz_decimal_boundary_source_classifications")
-    ledger.bump("collatz_decimal_boundary_operand_bits", source.bit_length())
+    ledger.bump(_collatz_keys.COLLATZ_DECIMAL_BOUNDARY_SOURCE_CLASSIFICATIONS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_DECIMAL_BOUNDARY_OPERAND_BITS, source.bit_length()
+    )
     return {
         "source_residue": edge.residue20,
         "source_modulus": 20,

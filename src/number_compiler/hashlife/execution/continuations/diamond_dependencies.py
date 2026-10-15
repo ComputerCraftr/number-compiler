@@ -8,6 +8,9 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     Result,
     Task,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -25,7 +28,7 @@ def execute(self: DiamondRuntime, root: Task) -> Result:
     descending = True
     try:
         while True:
-            self.ledger.bump("scheduler_transitions")
+            self.ledger.bump(_execution_keys.SCHEDULER_TRANSITIONS)
             if descending:
                 cached = self._probe_admitted(task)
                 if cached is not None:
@@ -33,9 +36,14 @@ def execute(self: DiamondRuntime, root: Task) -> Result:
                 else:
                     program = self._program(task)
                     frames.append(_Frame(task, program))
-                    peak = self.ledger.counters.get("scheduler_workspace_peak", 0)
+                    peak = self.ledger.counters.get(
+                        _execution_keys.SCHEDULER_WORKSPACE_PEAK, 0
+                    )
                     if len(frames) > peak:
-                        self.ledger.bump("scheduler_workspace_peak", len(frames) - peak)
+                        self.ledger.bump(
+                            _execution_keys.SCHEDULER_WORKSPACE_PEAK,
+                            len(frames) - peak,
+                        )
                     try:
                         task = next(program)
                     except StopIteration as done:

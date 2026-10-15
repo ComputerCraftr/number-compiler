@@ -31,6 +31,9 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import append_indexed_node
 
 
@@ -362,10 +365,10 @@ class HigherSummaryArena:
         ):
             raise ValueError("summary input is outside its action port")
         if type(record.recipe) is UnaryIdentity:
-            self.ledger.bump("higher_identity_transfer_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
             return incoming
         if type(record.recipe) is UnaryFinite and type(incoming) is int:
-            self.ledger.bump("higher_finite_transfer_state_visits")
+            self.ledger.bump(_execution_keys.HIGHER_FINITE_TRANSFER_STATE_VISITS)
             return record.recipe.outputs[incoming]
         if type(record.recipe) is UnaryAffine and type(incoming) is int:
             return record.recipe.transfer.apply(incoming, self.ledger)
@@ -399,7 +402,7 @@ class HigherSummaryArena:
     def _intern(self, record: SummaryRecord) -> HigherSummaryID:
         found = self._keys.get(record)
         if found is not None:
-            self.ledger.bump("higher_summary_semantic_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
             return self._handle(found, record)
         local_id = append_indexed_node(
             self.ledger,
@@ -410,7 +413,7 @@ class HigherSummaryArena:
             record,
             record,
         )
-        self.ledger.bump("higher_summary_semantic_publications")
+        self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
         return self._handle(local_id, record)
 
     def _variable(
@@ -527,10 +530,10 @@ class HigherSummaryArena:
         if (before.action, before.side) != (after.action, after.side):
             raise ValueError("spatial unary summaries have incompatible interfaces")
         if type(before.recipe) is UnaryIdentity:
-            self.ledger.bump("higher_identity_transfer_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
             return second
         if type(after.recipe) is UnaryIdentity:
-            self.ledger.bump("higher_identity_transfer_elisions")
+            self.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
             return first
         variable = self._variable(before.action, before.side, "spatial-unary")
         body = self.apply_unary(second, self.apply_unary(first, variable))
@@ -688,7 +691,7 @@ class HigherSummaryArena:
                     self.apply_unary(forward, anchor),
                     self.semantics.function(argument, continuation_body),
                 )
-                self.ledger.bump("higher_summary_temporal_compositions")
+                self.ledger.bump(_execution_keys.HIGHER_SUMMARY_TEMPORAL_COMPOSITIONS)
                 return self._make_unary(
                     key.action,
                     key.side,
@@ -697,7 +700,7 @@ class HigherSummaryArena:
                     UnaryTemporal(forward, opposite, context),
                 )
             if node.level:
-                self.ledger.bump("higher_summary_spatial_compositions")
+                self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SPATIAL_COMPOSITIONS)
                 return self._compose_unary_records(
                     self._bindings[dependencies[0]],
                     self._bindings[dependencies[1]],
@@ -721,7 +724,7 @@ class HigherSummaryArena:
                 UnaryLeaf(self._input_symbol(key.source)),
             )
         if node.level:
-            self.ledger.bump("higher_context_spatial_compositions")
+            self.ledger.bump(_execution_keys.HIGHER_CONTEXT_SPATIAL_COMPOSITIONS)
             return self._compose_context_records(
                 *(self._bindings[dependency] for dependency in dependencies),
             )
@@ -746,7 +749,7 @@ class HigherSummaryArena:
     ) -> HigherSummaryID:
         found = self._bindings.get(root)
         if found is not None:
-            self.ledger.bump("higher_summary_binding_hits")
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_BINDING_HITS)
             return found
         stack: list[tuple[_UnaryBinding | _ContextBinding, bool]] = [(root, False)]
         active: set[_UnaryBinding | _ContextBinding] = set()

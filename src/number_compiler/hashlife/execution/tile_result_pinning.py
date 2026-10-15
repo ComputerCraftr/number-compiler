@@ -9,6 +9,9 @@ from number_compiler.hashlife.execution.tile_application_authority import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -36,7 +39,7 @@ def pin_result(
         _ = found.result
         if found is not lease:
             lease.close()
-        scheduler.ledger.bump("tile_result_pin_early_hits")
+        scheduler.ledger.bump(_execution_keys.TILE_RESULT_PIN_EARLY_HITS)
         return
     reserved = False
     try:
@@ -49,7 +52,7 @@ def pin_result(
             scheduler.ledger.release(scheduler._pin_owner, entries=1)
         lease.close()
         raise
-    scheduler.ledger.bump("tile_scheduler_demanded_result_pins")
+    scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_DEMANDED_RESULT_PINS)
 
 
 def release_result_pins(scheduler: TileScheduler, application: int) -> None:

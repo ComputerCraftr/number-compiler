@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Literal
+from typing import Final, Literal
 
 from number_compiler.resources.immutable_signature import (
     ScalarSignature,
@@ -19,7 +19,7 @@ GLOBAL_RELEASE_SESSION_ID = "Comma_Semantic_Future_Instance"
 GLOBAL_RELEASE_THEOREM_ID = (
     "Comma_Semantic_Global_Safety.comma_semantic_global_release_safety"
 )
-GLOBAL_RELEASE_CONTRACT_ID = "comma-semantic-global-release-safety-v1"
+GLOBAL_RELEASE_CONTRACT_ID: Final[str] = "comma-semantic-global-release-safety-v1"
 GLOBAL_RELEASE_CLAIMS = frozenset(
     {
         "complete-source-map",
@@ -36,7 +36,9 @@ FINITE_TEST_FIXTURE_SCOPE = "test-fixture"
 KERNEL_RELEASE_SCOPE = "kernel-release"
 FINITE_TEST_FIXTURE_SESSION_ID = "TEST_ONLY: semantic future fixture"
 FINITE_TEST_FIXTURE_THEOREM_ID = "TEST_ONLY: not a kernel theorem"
-FINITE_TEST_FIXTURE_CONTRACT_ID = "comma-semantic-future-provider-fixture-v1"
+FINITE_TEST_FIXTURE_CONTRACT_ID: Final[str] = (
+    "comma-semantic-future-provider-fixture-v1"
+)
 FINITE_TEST_FIXTURE_CLAIMS = frozenset(
     {
         "complete-source-map",

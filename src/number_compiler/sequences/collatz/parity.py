@@ -37,6 +37,7 @@ from number_compiler.arithmetic.polynomials.binomial_pow2 import (
     scaled_binomial_mod_pow2,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.fields.congruence_automaton import (
@@ -722,13 +723,13 @@ def collatz_shifted_parity_residue(
         raise TypeError("shifted parity germ requires a resource ledger")
     if precision > cursor.width:
         raise ValueError("shifted parity cursor lacks demanded precision")
-    ledger.bump("collatz_shifted_parity_germ_demands")
+    ledger.bump(_collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_DEMANDS)
     if precision == 0:
         # The pending odd symbol was checked even though the requested output
         # contains no bits; charge that admission read.
         if cursor.phase:
-            ledger.bump("collatz_shifted_parity_germ_symbol_reads")
-            ledger.bump("collatz_shifted_parity_germ_operand_bits")
+            ledger.bump(_collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_SYMBOL_READS)
+            ledger.bump(_collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_OPERAND_BITS)
         return 0
     inverse_width = precision - cursor.phase
     # Mask first: shifting the entire supplied Q word would allocate a copy
@@ -738,11 +739,14 @@ def collatz_shifted_parity_residue(
     # The inverse routine performs at most one inverse-three setup and one
     # modular contribution per one symbol. Account for the precision
     # of those operands as well as the bits selected from the cursor.
-    ledger.bump("collatz_shifted_parity_germ_symbol_reads", precision)
-    ledger.bump("collatz_shifted_parity_germ_inverse_setups", int(inverse_width > 0))
-    ledger.bump("collatz_shifted_parity_germ_modular_terms", ones)
+    ledger.bump(_collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_SYMBOL_READS, precision)
     ledger.bump(
-        "collatz_shifted_parity_germ_operand_bits",
+        _collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_INVERSE_SETUPS,
+        int(inverse_width > 0),
+    )
+    ledger.bump(_collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_MODULAR_TERMS, ones)
+    ledger.bump(
+        _collatz_keys.COLLATZ_SHIFTED_PARITY_GERM_OPERAND_BITS,
         max(1, precision) + inverse_width * (2 * ones + 1),
     )
     residue = collatz_parity_inverse_residue(word, inverse_width)

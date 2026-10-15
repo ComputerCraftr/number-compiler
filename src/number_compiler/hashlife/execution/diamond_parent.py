@@ -12,6 +12,13 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     MacroTransferKey,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_actions as _actions_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 def publish_parent_identity(
@@ -50,9 +57,9 @@ def publish_parent_identity(
     found = bindings.get(key)
     if found is not None:
         actions.resolve(found)
-        actions.ledger.bump("image_program_requests")
-        actions.ledger.bump("image_program_cache_hits")
-        actions.ledger.bump("image_program_admission_visits", 1)
+        actions.ledger.bump(_execution_keys.IMAGE_PROGRAM_REQUESTS)
+        actions.ledger.bump(_execution_keys.IMAGE_PROGRAM_CACHE_HITS)
+        actions.ledger.bump(_execution_keys.IMAGE_PROGRAM_ADMISSION_VISITS, 1)
         return found
     result, temporal = actions._plan_compose(key.before, key.after)
     # A staged action is a composition; existing identity actions have no image.
@@ -83,20 +90,20 @@ def publish_parent_identity(
     # OwnedMemo.__setitem__ would reserve a second time. This store has already
     # received its share of the same atomic reservation as both canonical nodes.
     bindings._data[key] = result
-    ledger.bump("image_program_requests")
-    ledger.bump("image_program_evaluations")
-    ledger.bump("image_program_admission_visits", 1)
-    ledger.bump("diamond_temporal_composition_requests")
+    ledger.bump(_execution_keys.IMAGE_PROGRAM_REQUESTS)
+    ledger.bump(_execution_keys.IMAGE_PROGRAM_EVALUATIONS)
+    ledger.bump(_execution_keys.IMAGE_PROGRAM_ADMISSION_VISITS, 1)
+    ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
     ledger.bump(
-        "diamond_temporal_composition_hits"
+        _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS
         if temporal is None
-        else "diamond_temporal_composition_evaluations"
+        else _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS
     )
     if image is not None:
         ledger.bump(
-            "diamond_cell_interner_hits"
+            _actions_keys.DIAMOND_CELL_INTERNER_HITS
             if existing_image is not None
-            else "diamond_cell_interner_evaluations"
+            else _actions_keys.DIAMOND_CELL_INTERNER_EVALUATIONS
         )
-        ledger.bump("diamond_image_normalized_requests")
+        ledger.bump(_shared_keys.DIAMOND_IMAGE_NORMALIZED_REQUESTS)
     return result

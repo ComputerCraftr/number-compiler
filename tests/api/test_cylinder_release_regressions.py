@@ -41,7 +41,7 @@ def test_no_factor_cli_does_not_collect_classical_gcd(
                 "11",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
@@ -49,7 +49,8 @@ def test_no_factor_cli_does_not_collect_classical_gcd(
         == 3
     )
     assert (
-        json.loads(capsys.readouterr().out)["info"]["primality"]["status"] == "unknown"
+        json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]["status"]
+        == "unknown"
     )
 
 
@@ -91,7 +92,7 @@ def test_large_exponent_gate_is_bounded(
                 p,
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--max-candidate-bits",
                 p,
                 "--format",
@@ -101,7 +102,7 @@ def test_large_exponent_gate_is_bounded(
         == 3
     )
     assert (
-        json.loads(capsys.readouterr().out)["info"]["primality"]["method"]
+        json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]["method"]
         == "exponent-gate-budget"
     )
 
@@ -120,14 +121,14 @@ def test_large_unresolved_candidate_has_no_classical_fallback(
                 "20011",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "unknown"
     assert "classical_budget_exceeded" not in row
 
@@ -147,14 +148,31 @@ def test_source_derived_observer_cli(
                 "--seed",
                 "27",
                 "--info",
-                kind,
+                {
+                    "modular": "arithmetic.modular",
+                    "clock": "temporal.clock",
+                    "twisted": "arithmetic.twisted",
+                    "hasse": "arithmetic.hasse",
+                    "hensel": "arithmetic.hensel",
+                    "tropical": "arithmetic.tropical",
+                    "factor": "arithmetic.factor",
+                }[kind],
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"][kind]
+    public_name = {
+        "modular": "arithmetic.modular",
+        "clock": "temporal.clock",
+        "twisted": "arithmetic.twisted",
+        "hasse": "arithmetic.hasse",
+        "hensel": "arithmetic.hensel",
+        "tropical": "arithmetic.tropical",
+        "factor": "arithmetic.factor",
+    }[kind]
+    row = json.loads(capsys.readouterr().out)["info"][public_name]
     assert row["discovered_events"] == 3 and row["discovery_digit_work"] > 0
     if kind == "modular":
         assert row["value"] == {"upper": 27, "offset": 23, "lower": 16}
@@ -166,7 +184,9 @@ def test_source_derived_observer_cli(
 def test_observer_cli_consumes_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(CollatzClockObservers, "modular", forbidden)
     with pytest.raises(AssertionError, match="unrequested"):
-        main(["collatz", "--events", "3", "--seed", "27", "--info", "modular"])
+        main(
+            ["collatz", "--events", "3", "--seed", "27", "--info", "arithmetic.modular"]
+        )
 
 
 def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> None:
@@ -180,7 +200,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
                 "3",
                 "--no-value",
                 "--info",
-                "mirror",
+                "spatial.mirror",
                 "--info",
                 "metrics",
                 "--format",
@@ -190,7 +210,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
         == 0
     )
     info = json.loads(capsys.readouterr().out)["info"]
-    row = info["mirror"]
+    row = info["spatial.mirror"]
     assert row["palindrome"] is False and any(row["value"]["coefficients"])
     assert "work_counters" not in row  # Work belongs to the requested metrics packet.
     work = info["metrics"]["execution_metrics"]
@@ -207,7 +227,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
                 "11",
                 "--no-value",
                 "--info",
-                "root",
+                "number-theory.root",
                 "--defect",
                 "621",
                 "--format",
@@ -216,7 +236,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"]["root"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.root"]
     assert row["factor"] == 23 and "supplied" in row["scope"]
     assert (
         main(
@@ -226,7 +246,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
                 "11",
                 "--no-value",
                 "--info",
-                "root",
+                "number-theory.root",
                 "--defect",
                 "391",
             ]
@@ -317,9 +337,9 @@ def test_hard_composite_exponent_needs_no_full_factor_search(
                 p,
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--info",
-                "factor",
+                "number-theory.factor",
                 "--max-candidate-bits",
                 p,
                 "--format",
@@ -328,7 +348,7 @@ def test_hard_composite_exponent_needs_no_full_factor_search(
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"]["primality"]
+    row = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert row["status"] == "composite" and row["factor_expression"] is None
     assert row["factor_query_status"] == "no-split"
 
@@ -346,8 +366,8 @@ def test_mirror_sheet_budget_precedes_allocation(
                 "3",
                 "--no-value",
                 "--info",
-                "mirror",
-                "--width",
+                "spatial.mirror",
+                "--spatial-width",
                 "1000000000000",
             ]
         )
@@ -368,11 +388,14 @@ def test_prefix_does_not_claim_arrival_at_one(
                 "--seed",
                 "27",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    assert json.loads(capsys.readouterr().out)["info"]["clock"]["reached_one"] is False
+    assert (
+        json.loads(capsys.readouterr().out)["info"]["temporal.clock"]["reached_one"]
+        is False
+    )

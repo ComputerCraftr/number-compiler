@@ -10,6 +10,7 @@ import itertools
 from collections.abc import Iterator
 from math import comb
 
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.machine import TRANSITIONS
 from number_compiler.sequences.antihydra.runtime import Run
 
@@ -263,7 +264,7 @@ def directional_hasse(result: Run, degree: int, modulus: int) -> dict[str, objec
         raise ArithmeticError(
             "directional support augmentation disagrees with physical clock"
         )
-    result.ledger.counters["directional_polynomial_samples"] = samples
+    result.ledger.counters[_antihydra_keys.DIRECTIONAL_POLYNOMIAL_SAMPLES] = samples
     return {
         "center": 1,
         "modulus": modulus,

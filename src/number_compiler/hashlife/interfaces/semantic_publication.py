@@ -21,6 +21,9 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,20 +159,23 @@ class PreparedFunctions:
     def _commit(self) -> None:
         assert self.transaction is not None
         self.arena.ledger.bump(
-            "semantic_ite_reduction_publications",
+            _interfaces_keys.SEMANTIC_ITE_REDUCTION_PUBLICATIONS,
             sum(
                 request.operation == "construction-ite"
                 for request, _ in self.reductions
             ),
         )
         self.arena.ledger.bump(
-            "semantic_bit_admissibility_publications",
+            _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_PUBLICATIONS,
             sum(
                 request.operation == "bit-admissibility"
                 for request, _ in self.reductions
             ),
         )
-        self.arena.ledger.bump("semantic_function_published_nodes", len(self.nodes))
+        self.arena.ledger.bump(
+            _interfaces_keys.SEMANTIC_FUNCTION_PUBLISHED_NODES,
+            len(self.nodes),
+        )
         self.transaction.close()
         self.transaction = None
         self.preparation_entries = 0

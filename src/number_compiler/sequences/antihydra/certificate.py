@@ -10,12 +10,13 @@ from __future__ import annotations
 import json
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.sequences.antihydra.machine import MACHINE_SHA256
 
 Row = tuple[Fraction, Fraction, Fraction]
+CERTIFICATE_SCHEMA: Final[str] = "antihydra-affine-charts-v1"
 
 
 def rational(value: object) -> Fraction:
@@ -59,7 +60,7 @@ def check_implication(premises: list[Row], target: Row, weights: object) -> None
 
 
 def verify(data: object) -> dict[str, object]:
-    if not isinstance(data, dict) or data.get("schema") != "antihydra-affine-charts-v1":
+    if not isinstance(data, dict) or data.get("schema") != CERTIFICATE_SCHEMA:
         raise ValueError("unsupported non-halting certificate schema")
     if data.get("machine_sha256") != MACHINE_SHA256 or data.get("source") != "blank":
         raise ValueError("certificate is not bound to the pinned blank-tape machine")

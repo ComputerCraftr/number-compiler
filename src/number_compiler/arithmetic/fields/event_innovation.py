@@ -25,6 +25,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     _Zero,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 from number_compiler.resources.stores import LedgerList
 
 
@@ -100,7 +103,7 @@ class _EventWork:
         bits = max(abs(before).bit_length(), abs(value).bit_length()) + 1
         self.reserve((bits + 63) // 64)
         table[key] = before + value
-        self.ledger.bump("event_normalization_integer_bits", bits)
+        self.ledger.bump(_fields_keys.EVENT_NORMALIZATION_INTEGER_BITS, bits)
 
     def close(self) -> None:
         count = len(self.stack)
@@ -186,7 +189,7 @@ def _packet_group(state: _Context) -> tuple[int, int, int]:
 
 def _certificate_reserve(work: _EventWork, bits: int) -> None:
     work.reserve(max(1, (bits + 63) // 64))
-    work.ledger.bump("event_radial_certificate_integer_bits", bits)
+    work.ledger.bump(_fields_keys.EVENT_RADIAL_CERTIFICATE_INTEGER_BITS, bits)
 
 
 def _zero_radial_block(
@@ -230,7 +233,7 @@ def _zero_radial_block(
                     work.basis[exponent] = coefficient
                 elif exponent in work.basis:
                     del work.basis[exponent]
-                work.ledger.bump("event_radial_certificate_terms")
+                work.ledger.bump(_fields_keys.EVENT_RADIAL_CERTIFICATE_TERMS)
                 if k < degree:
                     _certificate_reserve(work, degree + degree.bit_length() + 2)
                     choose = choose * (degree - k) // (k + 1)
@@ -266,12 +269,12 @@ def _cancel_radial_identities(work: _EventWork) -> None:
             if _shift(order[stop]) <= _shift(order[start]) + size * (size - 1) // 2:
                 continue
         if size > 1:
-            work.ledger.bump("event_radial_certificate_blocks")
+            work.ledger.bump(_fields_keys.EVENT_RADIAL_CERTIFICATE_BLOCKS)
             if _zero_radial_block(work, order, start, stop):
                 for index in range(start, stop):
                     del work.terms[order[index]]
-                work.ledger.bump("event_radial_zero_blocks")
-                work.ledger.bump("event_radial_cancelled_packets", size)
+                work.ledger.bump(_fields_keys.EVENT_RADIAL_ZERO_BLOCKS)
+                work.ledger.bump(_fields_keys.EVENT_RADIAL_CANCELLED_PACKETS, size)
         start = stop
 
 
@@ -288,7 +291,7 @@ def _normalize(
             work.ledger.release(work.stack_owner, entries=1, nodes=1)
             edges = _children(arena, state)
             work.graph[state] = edges
-            work.ledger.bump("event_normalization_contexts")
+            work.ledger.bump(_fields_keys.EVENT_NORMALIZATION_CONTEXTS)
             for _, child in edges:
                 work.reserve(_context_units(child))
                 work.enqueue(child)
@@ -326,7 +329,7 @@ def _normalize(
                 continue
             atom = arena.radial(arena.chart(state.reference, state.chart), state.radial)
             terms.append((weight, atom))
-        work.ledger.bump("event_normalization_nonzero_terms", len(terms))
+        work.ledger.bump(_fields_keys.EVENT_NORMALIZATION_NONZERO_TERMS, len(terms))
         return arena.linear_combination(terms)
     finally:
         work.close()

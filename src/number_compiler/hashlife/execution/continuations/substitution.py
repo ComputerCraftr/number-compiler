@@ -9,6 +9,9 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
     HigherFunction,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_semantic import (
@@ -68,7 +71,7 @@ def bind_free_many(
     relevant: list[tuple[HigherExpressionID, HigherExpressionID]] = []
     free = self._expression_free_ids[expression.local_id]
     for binding in bindings:
-        self.ledger.bump("higher_simultaneous_binding_pairs_checked")
+        self.ledger.bump(_execution_keys.HIGHER_SIMULTANEOUS_BINDING_PAIRS_CHECKED)
         if type(binding) is not tuple or len(binding) != 2:
             raise TypeError("simultaneous bindings require variable/value pairs")
         variable, replacement = binding
@@ -84,7 +87,7 @@ def bind_free_many(
         return expression
     if len(relevant) == 1:
         variable, replacement = relevant[0]
-        self.ledger.bump("higher_simultaneous_binding_ports")
+        self.ledger.bump(_execution_keys.HIGHER_SIMULTANEOUS_BINDING_PORTS)
         return bind_free(self, expression, variable, replacement)
     relevant.sort(key=lambda binding: binding[0].local_id)
     dependencies = (expression,) + tuple(item for pair in relevant for item in pair)
@@ -99,7 +102,7 @@ def bind_free_many(
         staged.append((placeholder, replacement))
     for placeholder, replacement in staged:
         expression = bind_free(self, expression, placeholder, replacement)
-    self.ledger.bump("higher_simultaneous_binding_ports", len(relevant))
+    self.ledger.bump(_execution_keys.HIGHER_SIMULTANEOUS_BINDING_PORTS, len(relevant))
     return expression
 
 
@@ -109,7 +112,7 @@ def substitute(
     variable: HigherExpressionID,
     replacement: HigherExpressionID,
 ) -> HigherExpressionID:
-    from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    from number_compiler.hashlife.execution.continuations.higher_types import (
         _Rewrite,
     )
 

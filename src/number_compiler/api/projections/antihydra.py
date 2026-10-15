@@ -9,6 +9,7 @@ from number_compiler.api.number_api import (
     ProjectedNumberTerm,
     ProjectionMetrics,
 )
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
 
 if TYPE_CHECKING:
@@ -54,13 +55,13 @@ def project(compiler: NumberCompiler, query: AntihydraTermQuery) -> ProjectedNum
         + query.max_state_bits.bit_length(),
     )
     return ProjectedNumberTerm(
-        "antihydra",
+        FamilyId.ANTIHYDRA,
         query.index,
         None,
         2,
-        SymbolicExpression("antihydra", query.index),
+        SymbolicExpression(FamilyId.ANTIHYDRA, query.index),
         AntihydraTermPayload(term),
         ProjectionMetrics(
-            "antihydra", query.index, 0, 0, 1, descriptor_bits, 4 + query.index
+            FamilyId.ANTIHYDRA, query.index, 0, 0, 1, descriptor_bits, 4 + query.index
         ),
     )

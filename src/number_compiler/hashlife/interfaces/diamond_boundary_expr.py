@@ -34,6 +34,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions
 from number_compiler.hashlife.interfaces.expression_transactions import _Transaction
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_expression_closures import (
@@ -312,9 +315,12 @@ class BoundaryExpressionArena:
             for port in self.nodes[root].free_ports
             if port.sort == sort
         }
-        self.ledger.bump("boundary_expression_freshness_root_queries", len(roots))
         self.ledger.bump(
-            "boundary_expression_freshness_port_visits",
+            _interfaces_keys.BOUNDARY_EXPRESSION_FRESHNESS_ROOT_QUERIES,
+            len(roots),
+        )
+        self.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_FRESHNESS_PORT_VISITS,
             sum(len(self.nodes[root].free_ports) for root in roots),
         )
         candidate = role
@@ -515,13 +521,23 @@ class BoundaryExpressionArena:
             if constant_value < 0:
                 constant_value = output
             constant &= output == constant_value
-        self.ledger.bump("boundary_expression_finite_admission_visits", visits)
-        self.ledger.bump("boundary_expression_finite_admission_value_visits", reads)
+        self.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSION_VISITS,
+            visits,
+        )
+        self.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSION_VALUE_VISITS,
+            reads,
+        )
         if identity:
-            self.ledger.bump("boundary_expression_identity_function_early_hits")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_IDENTITY_FUNCTION_EARLY_HITS
+            )
             return argument
         if constant:
-            self.ledger.bump("boundary_expression_constant_function_early_hits")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_FUNCTION_EARLY_HITS
+            )
             return self._finish(BoundaryExprNode("literal", sort, value=constant_value))
         if noncanonical:
             identity_function = input_expression(self.boundaries.kernels, domain, port)
@@ -529,7 +545,9 @@ class BoundaryExpressionArena:
                 _effect_key(self.actions.primitive(action))
             ]
             summary = self.unary.compose(handle, side, summary, identity_function, port)
-            self.ledger.bump("boundary_expression_finite_admissibility_normalizations")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSIBILITY_NORMALIZATIONS
+            )
         return self._finish(
             BoundaryExprNode("finite_apply", sort, (root,), function=summary)
         )
@@ -568,10 +586,14 @@ class BoundaryExpressionArena:
             raise ValueError("finite map argument has another primitive port sort")
         function, constant, identity = admit_map(self, source, target, summary)
         if identity:
-            self.ledger.bump("boundary_expression_identity_function_early_hits")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_IDENTITY_FUNCTION_EARLY_HITS
+            )
             return argument
         if constant is not None:
-            self.ledger.bump("boundary_expression_constant_function_early_hits")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_FUNCTION_EARLY_HITS
+            )
             return self._finish(BoundaryExprNode("literal", target, value=constant))
         return self._finish(
             BoundaryExprNode("finite_map", target, (root,), function=function)
@@ -622,11 +644,16 @@ class BoundaryExpressionArena:
             for port in admitted
             if FormalPort(self.nodes[port].sort, self.nodes[port].role) in support
         }
-        self.ledger.bump("boundary_expression_support_metadata_queries")
-        self.ledger.bump("boundary_expression_support_port_visits", len(support))
-        self.ledger.bump("boundary_expression_substitution_requests")
+        self.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_SUPPORT_METADATA_QUERIES)
+        self.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_SUPPORT_PORT_VISITS,
+            len(support),
+        )
+        self.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_SUBSTITUTION_REQUESTS)
         if not effective:
-            self.ledger.bump("boundary_expression_substitution_direct_results")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_SUBSTITUTION_DIRECT_RESULTS
+            )
             return expression
         bindings = tuple(
             ExprBinding(self._handle(port), self._handle(admitted[port]))
@@ -635,9 +662,11 @@ class BoundaryExpressionArena:
         key = ExprSubstitutionKey(expression, bindings)
         found = self.memo.get(key)
         if found is not None:
-            self.ledger.bump("boundary_expression_substitution_cache_hits")
+            self.ledger.bump(
+                _interfaces_keys.BOUNDARY_EXPRESSION_SUBSTITUTION_CACHE_HITS
+            )
             return found
-        self.ledger.bump("boundary_expression_substitution_evaluations")
+        self.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_SUBSTITUTION_EVALUATIONS)
         transaction = _Transaction(self)
         transaction.substitutions = {port: admitted[port] for port in effective}
         transaction.substitution_ports = frozenset(

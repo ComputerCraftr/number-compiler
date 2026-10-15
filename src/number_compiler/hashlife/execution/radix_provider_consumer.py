@@ -30,6 +30,10 @@ from number_compiler.hashlife.execution.radix_consumer import (
     RadixDivisionActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import append_indexed_node, make_dense_index
 
 
@@ -91,7 +95,7 @@ class RadixProviderActionArena:
         record = _RadixProviderAction(provider, consumer)
         found = self._keys.get(record)
         if found is not None:
-            self.ledger.bump("radix_provider_action_early_hits")
+            self.ledger.bump(_execution_keys.RADIX_PROVIDER_ACTION_EARLY_HITS)
             return self._handle(found)
         local_id = append_indexed_node(
             self.ledger,
@@ -102,8 +106,8 @@ class RadixProviderActionArena:
             record,
             record,
         )
-        self.ledger.bump("radix_provider_action_evaluations")
-        self.ledger.bump("field_action_publications")
+        self.ledger.bump(_execution_keys.RADIX_PROVIDER_ACTION_EVALUATIONS)
+        self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
         return self._handle(local_id)
 
 
@@ -212,7 +216,7 @@ class RadixProviderAdapter:
         limit = 2 if side == 0 else self.divisions.radix
         if not 0 <= state < limit or symbol not in (0, 1, 2):
             raise ValueError("radix division input lies outside its finite port")
-        self.ledger.bump("radix_limb_operations")
+        self.ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
         if symbol == 2:
             return state
         if side == 0:
@@ -259,7 +263,7 @@ class RadixProviderAdapter:
             return 2
         if symbol not in (0, 1):
             raise ValueError("radix division requires a binary provider symbol")
-        self.ledger.bump("radix_limb_operations")
+        self.ledger.bump(_shared_keys.RADIX_LIMB_OPERATIONS)
         return (
             self.ledger.observe_arithmetic(2 * right + symbol) // self.divisions.radix
         )

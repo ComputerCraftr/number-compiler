@@ -18,6 +18,10 @@ from typing import Self
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,21 +281,21 @@ class GrowthArithmeticEvaluator:
     def _initialize_order_counters(self) -> None:
         """Publish measured zeroes for an observed order-evaluation owner."""
         for counter in (
-            "growth_arithmetic_operand_bits",
-            "growth_arithmetic_work",
-            "growth_arithmetic_precision_bits",
-            "growth_arithmetic_budget_refusals",
-            "growth_cache_admission_checks",
-            "growth_order_identity_shortcuts",
-            "growth_order_key_lookups",
-            "growth_order_cache_hits",
-            "growth_order_equality_checks",
-            "growth_order_exact_rational_cases",
-            "growth_order_bounded_exact_ratio_cases",
-            "growth_order_cache_bypasses",
-            "growth_order_refinements",
-            "growth_log_constant_lookups",
-            "growth_log_constant_cache_hits",
+            _fields_keys.GROWTH_ARITHMETIC_OPERAND_BITS,
+            _fields_keys.GROWTH_ARITHMETIC_WORK,
+            _fields_keys.GROWTH_ARITHMETIC_PRECISION_BITS,
+            _shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS,
+            _fields_keys.GROWTH_CACHE_ADMISSION_CHECKS,
+            _fields_keys.GROWTH_ORDER_IDENTITY_SHORTCUTS,
+            _fields_keys.GROWTH_ORDER_KEY_LOOKUPS,
+            _fields_keys.GROWTH_ORDER_CACHE_HITS,
+            _fields_keys.GROWTH_ORDER_EQUALITY_CHECKS,
+            _fields_keys.GROWTH_ORDER_EXACT_RATIONAL_CASES,
+            _fields_keys.GROWTH_ORDER_BOUNDED_EXACT_RATIO_CASES,
+            _fields_keys.GROWTH_ORDER_CACHE_BYPASSES,
+            _fields_keys.GROWTH_ORDER_REFINEMENTS,
+            _fields_keys.GROWTH_LOG_CONSTANT_LOOKUPS,
+            _fields_keys.GROWTH_LOG_CONSTANT_CACHE_HITS,
         ):
             self.ledger.bump(counter, 0)
 
@@ -334,9 +338,9 @@ class GrowthArithmeticEvaluator:
         storage_bits: int | None = None,
     ) -> Iterator[None]:
         self._ensure_open()
-        self.ledger.bump("growth_arithmetic_operand_bits", operand_bits)
+        self.ledger.bump(_fields_keys.GROWTH_ARITHMETIC_OPERAND_BITS, operand_bits)
         if self._work_used + units > self.max_work_units:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise BlockContextBudgetExceeded("growth arithmetic work budget exceeded")
         retained_bits = (
             precision_bits + operand_bits if storage_bits is None else storage_bits
@@ -346,19 +350,22 @@ class GrowthArithmeticEvaluator:
         try:
             with self.ledger.reservation(self._scratch_owner, nodes=scratch_nodes):
                 self._work_used += units
-                self.ledger.bump("growth_arithmetic_work", units)
-                self.ledger.bump("growth_arithmetic_precision_bits", precision_bits)
+                self.ledger.bump(_fields_keys.GROWTH_ARITHMETIC_WORK, units)
+                self.ledger.bump(
+                    _fields_keys.GROWTH_ARITHMETIC_PRECISION_BITS,
+                    precision_bits,
+                )
                 yield
         except BlockContextBudgetExceeded:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise
 
     def _ensure_cache_slot(self, entries: int = 1) -> None:
-        self.ledger.bump("growth_cache_admission_checks")
+        self.ledger.bump(_fields_keys.GROWTH_CACHE_ADMISSION_CHECKS)
         try:
             self.ledger.check_capacity(entries=entries, nodes=entries)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise
 
     def order_bounds(
@@ -373,9 +380,51 @@ class GrowthArithmeticEvaluator:
         self._validate_order_request(scale, radix)
         require_integer(precision_bits, "logarithm precision", 1)
         if precision_bits > self.max_precision_bits:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise BlockContextBudgetExceeded("logarithm precision budget exceeded")
         return self._charged_order_interval(scale, radix, precision_bits)
+
+    def binary_log_ratio_bounds(
+        self, numerator: int, denominator: int, *, precision_bits: int = 64
+    ) -> tuple[Fraction, Fraction]:
+        """Certify ``log_2(numerator/denominator)`` for ratios in [1,2].
+
+        Reuse the owned ln(2) intervals and the same charged, finite atanh
+        series as the existing radix-order evaluator. Ambiguous comparisons
+        are the caller's responsibility to refine, never guessed here.
+        """
+        self._ensure_open()
+        require_integer(numerator, "binary threshold numerator", 1)
+        require_integer(denominator, "binary threshold denominator", 1)
+        require_integer(precision_bits, "logarithm precision", 1)
+        if precision_bits > self.max_precision_bits:
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
+            raise BlockContextBudgetExceeded("logarithm precision budget exceeded")
+        operand_bits = numerator.bit_length() + denominator.bit_length()
+        with self._charge_work(max(1, operand_bits), 0, operand_bits):
+            if numerator < denominator or numerator > 2 * denominator:
+                raise ValueError("binary logarithm threshold must be in [1,2]")
+            if numerator == denominator:
+                return Fraction(0), Fraction(0)
+            if numerator == 2 * denominator:
+                return Fraction(1), Fraction(1)
+        # This charged identity interval populates/reuses the existing log2
+        # constants. There is no independent unowned logarithm cache.
+        self._charged_order_interval(
+            HomogeneousGrowthScale.identity(), 2, precision_bits
+        )
+        constants = self._logs.get((2, precision_bits))
+        if constants is None:
+            raise BlockContextBudgetExceeded("owned logarithm constants were evicted")
+        operand_bits = numerator.bit_length() + denominator.bit_length()
+        with self._charge_log_work(numerator, precision_bits, operand_bits):
+            low, high, _terms = _logarithm_interval_scaled(
+                numerator, denominator, precision_bits
+            )
+            return (
+                Fraction(low, constants.ln_two[1]),
+                Fraction(high, constants.ln_two[0]),
+            )
 
     def continued_fraction_prefix(
         self,
@@ -396,38 +445,41 @@ class GrowthArithmeticEvaluator:
         self._validate_order_request(scale, radix)
         require_integer(max_terms, "continued fraction term limit", 0)
         for counter in (
-            "growth_cf_key_lookups",
-            "growth_cf_budget_refusals",
-            "growth_cf_prefix_reservations",
+            _fields_keys.GROWTH_CF_KEY_LOOKUPS,
+            _fields_keys.GROWTH_CF_BUDGET_REFUSALS,
+            _fields_keys.GROWTH_CF_PREFIX_RESERVATIONS,
         ):
             self.ledger.bump(counter, 0)
         if max_terms == 0:
             return ContinuedFractionPrefix(scale, radix, (), None, False, False, 0)
         if max_terms > self.max_work_units:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
-            self.ledger.bump("growth_cf_budget_refusals")
-            return ContinuedFractionPrefix(scale, radix, (), None, False, True, 0)
+            return self._continued_fraction_budget_refusal(scale, radix)
         try:
             with self.ledger.reservation(
                 self._scratch_owner, entries=max_terms, nodes=max_terms
             ):
-                self.ledger.bump("growth_cf_prefix_reservations")
+                self.ledger.bump(_fields_keys.GROWTH_CF_PREFIX_RESERVATIONS)
                 return self._continued_fraction_prefix_admitted(scale, radix, max_terms)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
-            self.ledger.bump("growth_cf_budget_refusals")
-            return ContinuedFractionPrefix(scale, radix, (), None, False, True, 0)
+            return self._continued_fraction_budget_refusal(scale, radix)
+
+    def _continued_fraction_budget_refusal(
+        self, scale: HomogeneousGrowthScale, radix: int
+    ) -> ContinuedFractionPrefix:
+        self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
+        self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
+        return ContinuedFractionPrefix(scale, radix, (), None, False, True, 0)
 
     def _continued_fraction_prefix_admitted(
         self, scale: HomogeneousGrowthScale, radix: int, max_terms: int
     ) -> ContinuedFractionPrefix:
-        self.ledger.bump("growth_cf_key_lookups")
+        self.ledger.bump(_fields_keys.GROWTH_CF_KEY_LOOKUPS)
         operand_bits = self._scale_operand_bits(scale, radix)
         try:
             with self._charge_work(max(1, operand_bits), 1, operand_bits):
                 exact_value = _exact_rational_radix_order(scale, radix)
         except BlockContextBudgetExceeded:
-            self.ledger.bump("growth_cf_budget_refusals")
+            self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
             return ContinuedFractionPrefix(scale, radix, (), None, False, True, 0)
 
         if exact_value is not None:
@@ -445,7 +497,7 @@ class GrowthArithmeticEvaluator:
                         partial_quotient = numerator // denominator
                         remainder = numerator - partial_quotient * denominator
                 except BlockContextBudgetExceeded:
-                    self.ledger.bump("growth_cf_budget_refusals")
+                    self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                     return ContinuedFractionPrefix(
                         scale,
                         radix,
@@ -474,7 +526,7 @@ class GrowthArithmeticEvaluator:
             try:
                 lower, upper = self._charged_order_interval(scale, radix, precision)
             except BlockContextBudgetExceeded:
-                self.ledger.bump("growth_cf_budget_refusals")
+                self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                 return ContinuedFractionPrefix(
                     scale, radix, tuple(terms), None, False, True, precision
                 )
@@ -496,14 +548,14 @@ class GrowthArithmeticEvaluator:
                         lower, upper, expected_term, precision
                     )
                 except BlockContextBudgetExceeded:
-                    self.ledger.bump("growth_cf_budget_refusals")
+                    self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                     return ContinuedFractionPrefix(
                         scale, radix, tuple(terms), None, False, True, precision
                     )
 
             if not prefix_resolved:
                 if precision >= self.max_precision_bits:
-                    self.ledger.bump("growth_cf_budget_refusals")
+                    self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                     return ContinuedFractionPrefix(
                         scale, radix, tuple(terms), None, False, True, precision
                     )
@@ -527,7 +579,7 @@ class GrowthArithmeticEvaluator:
                         lower, upper, lower_floor, precision
                     )
                 except BlockContextBudgetExceeded:
-                    self.ledger.bump("growth_cf_budget_refusals")
+                    self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                     return ContinuedFractionPrefix(
                         scale, radix, tuple(terms), None, False, True, precision
                     )
@@ -539,7 +591,7 @@ class GrowthArithmeticEvaluator:
                     scale, radix, tuple(terms), None, False, False, precision
                 )
             if precision >= self.max_precision_bits:
-                self.ledger.bump("growth_cf_budget_refusals")
+                self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
                 return ContinuedFractionPrefix(
                     scale, radix, tuple(terms), None, False, True, precision
                 )
@@ -574,27 +626,27 @@ class GrowthArithmeticEvaluator:
         self._ensure_open()
         self._validate_order_request(scale, radix)
         if scale.is_identity:
-            self.ledger.bump("growth_order_identity_shortcuts")
+            self.ledger.bump(_fields_keys.GROWTH_ORDER_IDENTITY_SHORTCUTS)
             return 0
-        self.ledger.bump("growth_order_key_lookups")
+        self.ledger.bump(_fields_keys.GROWTH_ORDER_KEY_LOOKUPS)
         key = (scale, radix)
         operand_bits = self._scale_operand_bits(scale, radix)
         with self._charge_work(max(1, operand_bits), 1, operand_bits):
             found = self._orders.get(key)
         if found is not None:
-            self.ledger.bump("growth_order_cache_hits")
+            self.ledger.bump(_fields_keys.GROWTH_ORDER_CACHE_HITS)
             return found
 
         with self._charge_work(max(1, operand_bits), 1, operand_bits):
-            self.ledger.bump("growth_order_equality_checks")
+            self.ledger.bump(_fields_keys.GROWTH_ORDER_EQUALITY_CHECKS)
             exact_value = _exact_rational_radix_order(scale, radix)
         if exact_value is not None:
             exact = exact_value.numerator // exact_value.denominator
-            self.ledger.bump("growth_order_exact_rational_cases")
+            self.ledger.bump(_fields_keys.GROWTH_ORDER_EXACT_RATIONAL_CASES)
             try:
                 self._publish_order(key, exact)
             except BlockContextBudgetExceeded:
-                self.ledger.bump("growth_order_cache_bypasses")
+                self.ledger.bump(_fields_keys.GROWTH_ORDER_CACHE_BYPASSES)
             return exact
 
         ratio_bit_estimate = _bounded_ratio_bit_estimate(scale)
@@ -618,11 +670,11 @@ class GrowthArithmeticEvaluator:
                 numerator = 3**scale.growths
                 denominator = 1 << scale.halvings
                 exact = _floor_radix_order_ratio(numerator, denominator, radix)
-            self.ledger.bump("growth_order_bounded_exact_ratio_cases")
+            self.ledger.bump(_fields_keys.GROWTH_ORDER_BOUNDED_EXACT_RATIO_CASES)
             try:
                 self._publish_order(key, exact)
             except BlockContextBudgetExceeded:
-                self.ledger.bump("growth_order_cache_bypasses")
+                self.ledger.bump(_fields_keys.GROWTH_ORDER_CACHE_BYPASSES)
             return exact
 
         self._ensure_cache_slot()
@@ -634,10 +686,10 @@ class GrowthArithmeticEvaluator:
             upper_floor = upper.numerator // upper.denominator
             if lower_floor == upper_floor:
                 self._publish_order(key, lower_floor)
-                self.ledger.bump("growth_order_refinements")
+                self.ledger.bump(_fields_keys.GROWTH_ORDER_REFINEMENTS)
                 return lower_floor
             if precision >= self.max_precision_bits:
-                self.ledger.bump("growth_arithmetic_budget_refusals")
+                self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
                 raise BlockContextBudgetExceeded(
                     "radix order remains unresolved at the precision budget"
                 )
@@ -652,7 +704,7 @@ class GrowthArithmeticEvaluator:
         self, scale: HomogeneousGrowthScale, radix: int, precision_bits: int
     ) -> tuple[Fraction, Fraction]:
         constants_key = (radix, precision_bits)
-        self.ledger.bump("growth_log_constant_lookups")
+        self.ledger.bump(_fields_keys.GROWTH_LOG_CONSTANT_LOOKUPS)
         with self._charge_work(
             max(1, radix.bit_length()),
             1,
@@ -667,10 +719,10 @@ class GrowthArithmeticEvaluator:
             try:
                 self._logs[constants_key] = constants
             except BlockContextBudgetExceeded:
-                self.ledger.bump("growth_arithmetic_budget_refusals")
+                self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
                 raise
         else:
-            self.ledger.bump("growth_log_constant_cache_hits")
+            self.ledger.bump(_fields_keys.GROWTH_LOG_CONSTANT_CACHE_HITS)
 
         operand_bits = self._scale_operand_bits(scale, radix)
         units = max(1, precision_bits + operand_bits)
@@ -688,7 +740,7 @@ class GrowthArithmeticEvaluator:
         try:
             self._orders[key] = value
         except BlockContextBudgetExceeded:
-            self.ledger.bump("growth_arithmetic_budget_refusals")
+            self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise
 
     def _charge_log_work(

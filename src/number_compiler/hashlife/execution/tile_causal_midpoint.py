@@ -22,6 +22,9 @@ from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def cached_midpoint_step(
@@ -87,8 +90,8 @@ def cached_midpoint_step(
             frames.append(frame)
             values.append(exits[0])
             values.append(exits[1])
-            engine.ledger.bump("tile_causal_midpoint_port_reuses")
-            engine.ledger.bump("tile_causal_midpoint_reuse")
+            engine.ledger.bump(_execution_keys.TILE_CAUSAL_MIDPOINT_PORT_REUSES)
+            engine.ledger.bump(_execution_keys.TILE_CAUSAL_MIDPOINT_REUSE)
             return True
         frames.extend(
             (
@@ -113,7 +116,7 @@ def cached_midpoint_step(
                 ),
             )
         )
-        engine.ledger.bump("tile_causal_midpoint_reuse")
+        engine.ledger.bump(_execution_keys.TILE_CAUSAL_MIDPOINT_REUSE)
         return True
     if frame.stage == 13:
         right_argument, left_argument = values.pop(), values.pop()

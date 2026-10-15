@@ -20,8 +20,8 @@ import pytest
         ["antihydra", "--nth", "64"],
         ["reverse-add", "--seed", "196", "--nth", "4"],
         ["collatz", "--nth", "4", "--seed", "27"],
-        ["fermat", "--nth", "0", "--no-value", "--info", "primality"],
-        ["mersenne", "--nth", "11", "--no-value", "--info", "factor"],
+        ["fermat", "--nth", "0", "--no-value", "--info", "number-theory.primality"],
+        ["mersenne", "--nth", "11", "--no-value", "--info", "number-theory.factor"],
         ["antihydra", "--nth", "64", "--no-value", "--info", "metrics"],
     ],
 )

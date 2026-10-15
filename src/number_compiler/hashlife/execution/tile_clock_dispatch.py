@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -21,7 +24,7 @@ def complete_clock(
     Point and width demands keep their lazy first-root coordinate pullback;
     only whole-output demands construct the two primitive root-event fields.
     """
-    scheduler.ledger.bump("tile_clock_completion_requests")
+    scheduler.ledger.bump(_execution_keys.TILE_CLOCK_COMPLETION_REQUESTS)
     hooks = scheduler.adapter.family_hooks
     result = (
         None
@@ -29,5 +32,5 @@ def complete_clock(
         else hooks.finish_clock(scheduler, key, whole_output=whole_output)
     )
     if result is not None:
-        scheduler.ledger.bump("tile_clock_completion_successes")
+        scheduler.ledger.bump(_execution_keys.TILE_CLOCK_COMPLETION_SUCCESSES)
     return result

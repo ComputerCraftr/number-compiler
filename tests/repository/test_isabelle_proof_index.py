@@ -1,7 +1,7 @@
 """The proof inventory is navigation and validation, never proof certification."""
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import NamedTuple
 
 import pytest
 
@@ -9,25 +9,10 @@ from devtools.checks import isabelle_oracle_audit
 from devtools.checks import isabelle_proof_index as index
 from devtools.checks import isabelle_source_analysis as source_analysis
 from devtools.checks import isabelle_syntax as syntax
-from devtools.checks.isabelle_registry import discover_sessions
 from devtools.paths import isabelle_root
-
-
-class _RepositoryProofGraph(NamedTuple):
-    sessions: dict[str, syntax.Session]
-    headers: dict[Path, tuple[str, tuple[str, ...]]]
-
-
-@pytest.fixture(scope="module")
-def repository_proof_graph() -> _RepositoryProofGraph:
-    """Parse immutable checkout ancestry once; fixture-mutating tests stay local."""
-    root = index.ISABELLE
-    sessions = {session.name: session for session in discover_sessions(root)}
-    headers = {
-        path: syntax.parse_theory_header(path.read_text(), path)
-        for path in root.rglob("*.thy")
-    }
-    return _RepositoryProofGraph(sessions, headers)
+from tests.support.isabelle_proof_graph import (
+    RepositoryProofGraph as _RepositoryProofGraph,
+)
 
 
 def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -549,9 +534,7 @@ def test_weighted_comma_ancestry_excludes_legacy_execution(
     }
     if rank_free:
         assert ancestors.isdisjoint({"Comma_Fast_Decade_Rank", "Comma_Fast_Rank_Check"})
-    headers = {
-        theory: imports for theory, imports in repository_proof_graph.headers.values()
-    }
+    headers = repository_proof_graph.theory_imports
     reached: set[str] = set()
     pending_theories = [
         theory for name in ancestors for theory in sessions[name].theories
@@ -667,7 +650,7 @@ def test_structural_future_instance_avoids_legacy_checked_instance(
     assert "Comma_Future_Checked_Instance" not in ancestors
 
 
-def _session_ancestors(sessions: dict[str, syntax.Session], target: str) -> set[str]:
+def _session_ancestors(sessions: Mapping[str, syntax.Session], target: str) -> set[str]:
     ancestors: set[str] = set()
     pending = [target]
     while pending:

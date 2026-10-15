@@ -13,14 +13,15 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma.arithmetic import phase_period
 from number_compiler.sequences.comma.certificates import _charge
 
-_SCHEMA = "a367620-closed-sector-forest-v1"
+_SCHEMA: Final[str] = "a367620-closed-sector-forest-v1"
 _MAX_LINE_BYTES = 8192
 _MAX_COMPRESSED_BYTES = 8 * 1024 * 1024
 _MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
@@ -59,7 +60,8 @@ class ForestVerification:
 
 def _charge_bits(ledger: ResourceLedger, *values: int) -> None:
     ledger.bump(
-        "comma_certificate_operand_bit_work", sum(v.bit_length() for v in values)
+        _comma_keys.COMMA_CERTIFICATE_OPERAND_BIT_WORK,
+        sum(v.bit_length() for v in values),
     )
 
 
@@ -148,11 +150,12 @@ def _prefix_to_first_fork(
                 _charge_bits(ledger, value, gain, cycles, period)
         _charge(ledger, max_work)
         ledger.bump(
-            "comma_certificate_candidate_operand_bit_work", 18 * value.bit_length()
+            _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
+            18 * value.bit_length(),
         )
         children = _literal_children(value)
-        ledger.bump("comma_certificate_candidate_digit_trials", 9)
-        ledger.bump("comma_certificate_boundary_classifications")
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 9)
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_CLASSIFICATIONS)
         if len(children) != 1:
             return index, value, children, skipped_periods
         value = children[0]
@@ -289,13 +292,14 @@ def _check_forest_row(
     if entry < 100:
         _charge(ledger, max_work)
         ledger.bump(
-            "comma_certificate_candidate_operand_bit_work", 18 * entry.bit_length()
+            _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
+            18 * entry.bit_length(),
         )
         exits = list(_literal_children(entry))
-        ledger.bump("comma_certificate_candidate_digit_trials", 9)
-        ledger.bump("comma_certificate_boundary_classifications")
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 9)
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_CLASSIFICATIONS)
         boundary_steps = 1
-        ledger.bump("comma_certificate_boundary_steps")
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_STEPS)
         for child in exits:
             _charge_bits(ledger, entry, child)
             if not _is_child(entry, child):
@@ -306,13 +310,14 @@ def _check_forest_row(
         while True:
             _charge(ledger, max_work)
             ledger.bump(
-                "comma_certificate_candidate_operand_bit_work", 18 * value.bit_length()
+                _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
+                18 * value.bit_length(),
             )
             children = _literal_children(value)
-            ledger.bump("comma_certificate_candidate_digit_trials", 9)
-            ledger.bump("comma_certificate_boundary_classifications")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 9)
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_CLASSIFICATIONS)
             boundary_steps += 1
-            ledger.bump("comma_certificate_boundary_steps")
+            ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_STEPS)
             same_sector: int | None = None
             for child in children:
                 _charge_bits(ledger, value, child)
@@ -377,7 +382,7 @@ def verify_forest_certificate(
         raise ValueError("comma forest certificate does not exist")
 
     candidate_trials_before = ledger.counters.get(
-        "comma_certificate_candidate_digit_trials", 0
+        _comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 0
     )
     if expected_sha256 is not None:
         digest = hashlib.sha256()
@@ -393,8 +398,10 @@ def verify_forest_certificate(
                     raise ValueError(
                         "comma certificate exceeds its compressed size limit"
                     )
-                ledger.bump("comma_certificate_read_bytes", len(chunk))
-                ledger.bump("comma_certificate_operand_bit_work", 8 * len(chunk))
+                ledger.bump(_comma_keys.COMMA_CERTIFICATE_READ_BYTES, len(chunk))
+                ledger.bump(
+                    _comma_keys.COMMA_CERTIFICATE_OPERAND_BIT_WORK, 8 * len(chunk)
+                )
                 digest.update(chunk)
         if digest.hexdigest() != expected_sha256:
             raise ValueError("comma certificate checksum differs from expected digest")
@@ -440,7 +447,7 @@ def verify_forest_certificate(
             raise ValueError(
                 "root-20 first fork differs from the checked branch witness"
             )
-        ledger.bump("comma_certificate_prefix_phase_cycles", skipped)
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_PREFIX_PHASE_CYCLES, skipped)
 
         with gzip.open(certificate_path, "rb") as stream:
             header_line = stream.readline(_MAX_LINE_BYTES + 1)
@@ -449,7 +456,9 @@ def verify_forest_certificate(
                 raise ValueError(
                     "comma certificate exceeds its uncompressed size limit"
                 )
-            ledger.bump("comma_certificate_uncompressed_bytes", len(header_line))
+            ledger.bump(
+                _comma_keys.COMMA_CERTIFICATE_UNCOMPRESSED_BYTES, len(header_line)
+            )
             header = _parse_line(header_line)
             sources = _check_header(header, roots, prefix)
             for source in sources:
@@ -468,7 +477,9 @@ def verify_forest_certificate(
                         raise ValueError(
                             "comma certificate exceeds its uncompressed size limit"
                         )
-                    ledger.bump("comma_certificate_uncompressed_bytes", len(line))
+                    ledger.bump(
+                        _comma_keys.COMMA_CERTIFICATE_UNCOMPRESSED_BYTES, len(line)
+                    )
                     _charge(ledger, max_work)
                     record = _parse_line(line)
                     exits = _check_forest_row(record, source, entry, ledger, max_work)
@@ -500,10 +511,11 @@ def verify_forest_certificate(
 
         if sector_entries == 0:
             raise ValueError("comma forest certificate has no finite-forest rows")
-        ledger.bump("comma_certificate_sector_entries", sector_entries)
-        ledger.bump("comma_certificate_phase_cycles", phase_cycles)
-        ledger.counters["comma_certificate_frontier_peak"] = max(
-            ledger.counters.get("comma_certificate_frontier_peak", 0), frontier_peak
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_SECTOR_ENTRIES, sector_entries)
+        ledger.bump(_comma_keys.COMMA_CERTIFICATE_PHASE_CYCLES, phase_cycles)
+        ledger.counters[_comma_keys.COMMA_CERTIFICATE_FRONTIER_PEAK] = max(
+            ledger.counters.get(_comma_keys.COMMA_CERTIFICATE_FRONTIER_PEAK, 0),
+            frontier_peak,
         )
         return ForestVerification(
             roots_exhausted=49,
@@ -511,7 +523,9 @@ def verify_forest_certificate(
             boundary_steps=boundary_steps,
             phase_cycles=phase_cycles,
             candidate_digit_trials=(
-                ledger.counters.get("comma_certificate_candidate_digit_trials", 0)
+                ledger.counters.get(
+                    _comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 0
+                )
                 - candidate_trials_before
             ),
             prefix_index=prefix_index,

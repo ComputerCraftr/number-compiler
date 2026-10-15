@@ -9,6 +9,25 @@ from typing import cast
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.cache_gc_metrics import cache_event_histograms
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
+from number_compiler.resources.metric_keys import (
+    arithmetic_functions as _functions_keys,
+)
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.metric_keys import comma as _comma_keys
+from number_compiler.resources.metric_keys import (
+    double_reverse as _double_reverse_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
+from number_compiler.resources.metric_keys import projection as _projection_keys
+from number_compiler.resources.metric_keys import resources as _resources_keys
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.metric_records import (
     HashLifeProjectionMetrics,
     LedgerMetrics,
@@ -41,9 +60,9 @@ def collect_ledger_metrics(
 ) -> LedgerMetrics:
     """Collect resource counts, optionally performing explicit graph audits.
 
-    Public runtime metric snapshots pass ``audit_payloads=False``. Deep payload
-    and ownership walks remain available to callers that explicitly request a
-    ledger audit.
+    Public runtime metric snapshots pass ``audit_payloads=False`` and reuse a
+    tracked audit cache. The default explicit audit always rechecks nested
+    records that may have changed without a store mutation.
     """
     from number_compiler.arithmetic.carry.reverse_port_functions import (
         ReversePortFunction,
@@ -93,41 +112,45 @@ def collect_ledger_metrics(
     source_version = ledger.mutation_version
     snapshot = ledger.snapshot()
     root_signature = ledger.audit_root_signature() if not audit_payloads else None
-    cached_audit = ledger.cached_payload_audit(root_signature)
+    cached_audit = (
+        None if audit_payloads else ledger.cached_payload_audit(root_signature)
+    )
     audit_is_current = type(cached_audit) is PayloadAudit
     if audit_payloads:
         # Audits charge their bounded arithmetic; the retained inventory stays fixed.
-        audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
+        # Explicit audits ignore cached results so nested low-level mutations
+        # are checked even when tracked stores and the shallow root signature match.
+        audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=True)
         audit_is_current = True
     elif type(cached_audit) is PayloadAudit:
         audit = cached_audit
     else:
         audit = PayloadAudit(0, 0, 0)
     audit_counters = {
-        "reverse_pair_output_audit_entries",
-        "reverse_payload_audit_identity_operand_bits",
-        "collatz_d8_payload_audit_local_symbols",
-        "dyadic_payload_audit_branch_steps",
-        "dyadic_payload_audit_operand_bits",
-        "dyadic_payload_audit_cycle_checks",
-        "dyadic_payload_audit_compositions",
-        "dyadic_payload_audit_prefix_additions",
-        "dyadic_payload_audit_reconstruction_hits",
-        "source_image_seal_validation_visits",
-        "mahler_source_validation_operand_bits",
+        _reverse_add_keys.REVERSE_PAIR_OUTPUT_AUDIT_ENTRIES,
+        _reverse_add_keys.REVERSE_PAYLOAD_AUDIT_IDENTITY_OPERAND_BITS,
+        _resources_keys.COLLATZ_D8_PAYLOAD_AUDIT_LOCAL_SYMBOLS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_BRANCH_STEPS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_OPERAND_BITS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_CYCLE_CHECKS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_COMPOSITIONS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_PREFIX_ADDITIONS,
+        _resources_keys.DYADIC_PAYLOAD_AUDIT_RECONSTRUCTION_HITS,
+        _execution_keys.SOURCE_IMAGE_SEAL_VALIDATION_VISITS,
+        _antihydra_keys.MAHLER_SOURCE_VALIDATION_OPERAND_BITS,
         "antihydra_payload_audit_branch_steps",
         "antihydra_payload_audit_arithmetic_branch_steps",
         "antihydra_payload_audit_compositions",
-        "antihydra_payload_audit_physical_steps",
-        "antihydra_payload_audit_endpoint_operand_bits",
-        "antihydra_payload_audit_projection_fragment_operand_bits",
-        "antihydra_payload_audit_projection_fragment_steps",
-        "payload_audit_contract_member_visits",
-        "payload_audit_contract_dependency_visits",
-        "double_reverse_payload_audit_boundary_visits",
-        "double_reverse_payload_audit_boundary_classifications",
-        "comma_boundary_explicit_audit_component_checks",
-        "comma_boundary_explicit_audit_operand_bits",
+        _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PHYSICAL_STEPS,
+        _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_ENDPOINT_OPERAND_BITS,
+        _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PROJECTION_FRAGMENT_OPERAND_BITS,
+        _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PROJECTION_FRAGMENT_STEPS,
+        _resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS,
+        _resources_keys.PAYLOAD_AUDIT_CONTRACT_DEPENDENCY_VISITS,
+        _double_reverse_keys.DOUBLE_REVERSE_PAYLOAD_AUDIT_BOUNDARY_VISITS,
+        _double_reverse_keys.DOUBLE_REVERSE_PAYLOAD_AUDIT_BOUNDARY_CLASSIFICATIONS,
+        _comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_COMPONENT_CHECKS,
+        _comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_OPERAND_BITS,
     }
     if audit_payloads:
         # Occurrence binding validation reaches the ordinary identity validator.
@@ -135,9 +158,9 @@ def collect_ledger_metrics(
         # publish anything (the mutation-version check below still enforces that).
         audit_counters.update(
             {
-                "reverse_field_action_semantic_identity_requests",
-                "reverse_field_action_semantic_identity_cache_hits",
-                "reverse_field_action_identity_validation_radial_bit_work",
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_REQUESTS,
+                _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_CACHE_HITS,
+                _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_VALIDATION_RADIAL_BIT_WORK,
             }
         )
     if ledger.mutation_version != source_version or any(
@@ -473,8 +496,12 @@ def collect_ledger_metrics(
             for name, value in counters.items()
             if name.endswith("_peak") or "_peak_" in name
         },
-        finite_port_applications=counters.get("finite_port_applications", 0),
-        finite_port_decision_visits=counters.get("finite_port_decision_visits", 0),
+        finite_port_applications=counters.get(
+            _functions_keys.FINITE_PORT_APPLICATIONS, 0
+        ),
+        finite_port_decision_visits=counters.get(
+            _functions_keys.FINITE_PORT_DECISION_VISITS, 0
+        ),
         reverse_carry_function_classifications=counters.get(
             "reverse_carry_function_classifications", 0
         ),
@@ -558,9 +585,9 @@ def collect_ledger_metrics(
         reverse_summary_reflection_hits=counters.get(
             "reverse_summary_reflection_hits", 0
         ),
-        composition_requests=counters.get("composition_requests", 0),
-        composition_cache_hits=counters.get("composition_cache_hits", 0),
-        composition_evaluations=counters.get("composition_evaluations", 0),
+        composition_requests=counters.get(_shared_keys.COMPOSITION_REQUESTS, 0),
+        composition_cache_hits=counters.get(_shared_keys.COMPOSITION_CACHE_HITS, 0),
+        composition_evaluations=counters.get(_shared_keys.COMPOSITION_EVALUATIONS, 0),
         retained_composition_entries=sum(
             item.composition_entries for item in inventory
         ),
@@ -568,15 +595,23 @@ def collect_ledger_metrics(
         summary_cache_hits=counters.get("summary_cache_hits", 0),
         symbolic_port_queries=counters.get("symbolic_port_queries", 0),
         symbolic_maximum_port_bits=counters.get("symbolic_maximum_port_bits", 0),
-        bounded_limb_operations=counters.get("bounded_limb_operations", 0),
-        maximum_arithmetic_bits=counters.get("maximum_arithmetic_bits", 0),
-        unbounded_arithmetic_observations=counters.get(
-            "unbounded_arithmetic_observations", 0
+        bounded_limb_operations=counters.get(
+            _resources_keys.BOUNDED_LIMB_OPERATIONS, 0
         ),
-        endpoint_lowering_requests=counters.get("endpoint_lowering_requests", 0),
-        explicitly_lowered_digits=counters.get("explicitly_lowered_digits", 0),
+        maximum_arithmetic_bits=counters.get(
+            _resources_keys.MAXIMUM_ARITHMETIC_BITS, 0
+        ),
+        unbounded_arithmetic_observations=counters.get(
+            _resources_keys.UNBOUNDED_ARITHMETIC_OBSERVATIONS, 0
+        ),
+        endpoint_lowering_requests=counters.get(
+            _projection_keys.ENDPOINT_LOWERING_REQUESTS, 0
+        ),
+        explicitly_lowered_digits=counters.get(
+            _projection_keys.EXPLICITLY_LOWERED_DIGITS, 0
+        ),
         explicitly_materialized_endpoints=counters.get(
-            "explicitly_materialized_endpoints", 0
+            _projection_keys.EXPLICITLY_MATERIALIZED_ENDPOINTS, 0
         ),
     )
     report = replace(
@@ -621,7 +656,7 @@ def collect_ledger_metrics(
             "finite_cycle_certificate_nodes": nodes_for("finite_cycle_certificate"),
             "cache_events_by_spatial_level": cache_levels,
             "cache_events_by_temporal_span": cache_spans,
-            "primitive_behavioral_class_population": sum(
+            _interfaces_keys.PRIMITIVE_BEHAVIORAL_CLASS_POPULATION: sum(
                 quotient.left_count + quotient.right_count
                 for root in execution_roots
                 if type(root) is DiamondKernelArena and root.ledger is ledger
@@ -754,7 +789,9 @@ def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetri
     report = collect_ledger_metrics(ledger, audit_payloads=False)
     values = ledger_fields_from(report)
     values.update(
-        point_queries=report.resource_work_counters.get("temporal_point_requests", 0),
+        point_queries=report.resource_work_counters.get(
+            _shared_keys.TEMPORAL_POINT_REQUESTS, 0
+        ),
         retained_execution_nodes=report.resource_ledger_nodes,
         compiler_retained_execution_nodes=report.compiler_program_nodes,
         compiler_retained_cache_entries=sum(
@@ -768,7 +805,7 @@ def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetri
         retained_cache_accounting_delta=report.resource_accounting_mismatch,
         total_hashlife_retained_entries=report.cache_slots,
         direct_powered_point_queries=report.resource_work_counters.get(
-            "direct_powered_point_queries", 0
+            _collatz_keys.DIRECT_POWERED_POINT_QUERIES, 0
         ),
     )
     return replace_metric(HashLifeProjectionMetrics(*([0] * 15)), values)

@@ -19,6 +19,10 @@ from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
+)
 from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     ReversePrimitiveOutputMorphism,
 )
@@ -188,7 +192,7 @@ class ReverseMorphismTransferArena:
             (alphabet.radix, alphabet.blank, alphabet.symbol_count, alphabet.cell_bits)
             != (10, 19, 20, 5)
             or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-            or alphabet.version != "canonical-tile-alphabet-v1"
+            or alphabet.version != CANONICAL_TILE_ALPHABET_VERSION
         ):
             raise ValueError(
                 "reverse carry morphism requires the decimal pair alphabet"
@@ -201,7 +205,7 @@ class ReverseMorphismTransferArena:
         memo = self._right_bound if right_only else self._bound
         cached = memo.get((source, ports))
         if cached is not None:
-            self.ledger.bump("reverse_morphism_bound_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_MORPHISM_BOUND_HITS)
             return cached
         self._source_control(source)
         workspace = self._workspace
@@ -230,7 +234,9 @@ class ReverseMorphismTransferArena:
                         result: ReverseBoundOutput | ReverseRightTransfer = (
                             ReverseRightTransfer(10, action, action)
                         )
-                        self.ledger.bump("reverse_morphism_directional_leaf_consumers")
+                        self.ledger.bump(
+                            _reverse_add_keys.REVERSE_MORPHISM_DIRECTIONAL_LEAF_CONSUMERS
+                        )
                     else:
                         function = self.output.bind(record.symbol, incoming)
                         symbol = self.bits.evaluate(function, {})
@@ -239,7 +245,9 @@ class ReverseMorphismTransferArena:
                                 "output morphism is undefined on producer ports"
                             )
                         result = ReverseBoundOutput.leaf(10, symbol)
-                        self.ledger.bump("reverse_morphism_leaf_bindings")
+                        self.ledger.bump(
+                            _reverse_add_keys.REVERSE_MORPHISM_LEAF_BINDINGS
+                        )
                 elif ready:
                     second, first = workspace.pop_value(), workspace.pop_value()
                     if right_only:
@@ -253,10 +261,12 @@ class ReverseMorphismTransferArena:
                             right_composed = second.then(first, self.ledger)
                             self._right_compositions[first, second] = right_composed
                             self.ledger.bump(
-                                "reverse_morphism_directional_compositions"
+                                _reverse_add_keys.REVERSE_MORPHISM_DIRECTIONAL_COMPOSITIONS
                             )
                         else:
-                            self.ledger.bump("reverse_morphism_composition_hits")
+                            self.ledger.bump(
+                                _reverse_add_keys.REVERSE_MORPHISM_COMPOSITION_HITS
+                            )
                         result = right_composed
                     else:
                         if (
@@ -268,9 +278,13 @@ class ReverseMorphismTransferArena:
                         if composed is None:
                             composed = first.then(second, self.ledger)
                             self._compositions[first, second] = composed
-                            self.ledger.bump("reverse_morphism_spatial_compositions")
+                            self.ledger.bump(
+                                _reverse_add_keys.REVERSE_MORPHISM_SPATIAL_COMPOSITIONS
+                            )
                         else:
-                            self.ledger.bump("reverse_morphism_composition_hits")
+                            self.ledger.bump(
+                                _reverse_add_keys.REVERSE_MORPHISM_COMPOSITION_HITS
+                            )
                         result = composed
                 else:
                     if record.left is None or record.right is None:
@@ -296,7 +310,7 @@ class ReverseMorphismTransferArena:
                     self._bound[tile, incoming] = result
                 else:
                     raise TypeError("morphism produced another result sort")
-                self.ledger.bump("reverse_morphism_output_bindings")
+                self.ledger.bump(_reverse_add_keys.REVERSE_MORPHISM_OUTPUT_BINDINGS)
                 workspace.append_value(result)
             root = workspace.pop_value()
             expected = ReverseRightTransfer if right_only else ReverseBoundOutput
@@ -326,5 +340,5 @@ class ReverseMorphismTransferArena:
             result = codec.encode_right(transfer.apply(codec.decode_right(state)))
         else:
             result = self.compile_bound(source, producer_ports).apply(side, state)
-        self.ledger.bump("reverse_morphism_transfer_observations")
+        self.ledger.bump(_reverse_add_keys.REVERSE_MORPHISM_TRANSFER_OBSERVATIONS)
         return result

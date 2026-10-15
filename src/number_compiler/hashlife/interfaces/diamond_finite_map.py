@@ -16,6 +16,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     evaluate_primitive_bits,
     input_expression,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
@@ -88,8 +91,13 @@ def admit_map(
         if constant_value is None:
             constant_value = output
         constant &= constant_value == output
-    arena.ledger.bump("boundary_expression_finite_admission_visits", visits)
-    arena.ledger.bump("boundary_expression_finite_admission_value_visits", reads)
+    arena.ledger.bump(
+        _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSION_VISITS, visits
+    )
+    arena.ledger.bump(
+        _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSION_VALUE_VISITS,
+        reads,
+    )
     if constant or identity:
         return summary, constant_value if constant else None, identity
     if invalid:
@@ -97,5 +105,7 @@ def admit_map(
         summary = kernels.choose(
             _valid_argument(kernels, argument), summary, kernels.constant(codomain, 0)
         )
-        arena.ledger.bump("boundary_expression_finite_admissibility_normalizations")
+        arena.ledger.bump(
+            _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSIBILITY_NORMALIZATIONS
+        )
     return summary, None, False

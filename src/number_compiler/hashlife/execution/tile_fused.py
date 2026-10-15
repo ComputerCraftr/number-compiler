@@ -20,6 +20,10 @@ from number_compiler.hashlife.tiles.tile_ports import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
+from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -96,8 +100,8 @@ def demanded_fused_point(
     coordinate: int,
 ) -> int | None:
     if supports_fused_pair(scheduler, key.action):
-        scheduler.ledger.bump("powered_absorption_requests")
-        scheduler.ledger.bump("powered_absorption_evaluations")
+        scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_REQUESTS)
+        scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_EVALUATIONS)
         result = observe_fused_point(scheduler, key, coordinate)
         _absorption_success(scheduler, key.action)
         return result
@@ -114,8 +118,8 @@ def demanded_fused_width(
     limit: int,
 ) -> int | None:
     if supports_fused_pair(scheduler, key.action):
-        scheduler.ledger.bump("powered_absorption_requests")
-        scheduler.ledger.bump("powered_absorption_evaluations")
+        scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_REQUESTS)
+        scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_EVALUATIONS)
         result = observe_fused_width(scheduler, key, limit)
         _absorption_success(scheduler, key.action)
         return result
@@ -130,11 +134,15 @@ def _absorption_success(
     scheduler: TileScheduler,
     action: FieldCellActionID,
 ) -> None:
-    scheduler.ledger.bump("powered_absorption_successes")
+    scheduler.ledger.bump(_execution_keys.POWERED_ABSORPTION_SUCCESSES)
     span = scheduler.adapter.action_cocycle(action).physical_ticks
-    previous = scheduler.ledger.counters.get("powered_absorption_max_span", 0)
+    previous = scheduler.ledger.counters.get(
+        _execution_keys.POWERED_ABSORPTION_MAX_SPAN, 0
+    )
     if span > previous:
-        scheduler.ledger.bump("powered_absorption_max_span", span - previous)
+        scheduler.ledger.bump(
+            _execution_keys.POWERED_ABSORPTION_MAX_SPAN, span - previous
+        )
 
 
 def _initial_producer(
@@ -175,8 +183,8 @@ def _contexts(
         or any(type(item) is not ChildContext for item in result)
     ):
         raise TypeError("fused sibling transfer returned another context")
-    scheduler.ledger.bump("tile_scheduler_sibling_transfer_requests")
-    scheduler.ledger.bump("tile_scheduler_sibling_transfer_evaluations")
+    scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_SIBLING_TRANSFER_REQUESTS)
+    scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_SIBLING_TRANSFER_EVALUATIONS)
     return FusedBoundaryContract(
         *(BoundPorts(value.ports, value.wiring, value.boundaries) for value in result)
     )
@@ -252,10 +260,10 @@ def observe_fused_point(
     """Observe B(A(X))[coordinate] without constructing A(X) or its sibling."""
     contract = _initial_contract(scheduler, key)
     tile = key.input
-    scheduler.ledger.bump("tile_fused_observation_requests")
+    scheduler.ledger.bump(_execution_keys.TILE_FUSED_OBSERVATION_REQUESTS)
     while True:
-        scheduler.ledger.bump("tile_fused_observation_descents")
-        scheduler.ledger.bump("tile_fused_frames")
+        scheduler.ledger.bump(_execution_keys.TILE_FUSED_OBSERVATION_DESCENTS)
+        scheduler.ledger.bump(_execution_keys.TILE_FUSED_FRAMES)
         node = scheduler.tiles.resolve(tile)
         if not node.level:
             result = _fused_adapter(scheduler).fused_leaf_result(
@@ -268,7 +276,7 @@ def observe_fused_point(
             )
             if type(result) is not PrimitiveTileResult:
                 raise TypeError("fused leaf returned an incomplete result")
-            scheduler.ledger.bump("tile_fused_leaf_evaluations")
+            scheduler.ledger.bump(_execution_keys.TILE_FUSED_LEAF_EVALUATIONS)
             return result.symbol
         if node.left is None or node.right is None:
             raise ValueError("malformed canonical fused parent")
@@ -288,17 +296,19 @@ def observe_fused_width(
     """Find the rightmost active fused leaf using bounded subtree effects."""
     initial = _initial_contract(scheduler, key)
     pending: list[tuple[int, TileID, FusedBoundaryContract]] = [(0, key.input, initial)]
-    scheduler.ledger.bump("tile_fused_observation_requests")
+    scheduler.ledger.bump(_execution_keys.TILE_FUSED_OBSERVATION_REQUESTS)
     while pending:
-        peak = scheduler.ledger.counters.get("tile_fused_workspace_peak", 0)
+        peak = scheduler.ledger.counters.get(_shared_keys.TILE_FUSED_WORKSPACE_PEAK, 0)
         if len(pending) > peak:
-            scheduler.ledger.bump("tile_fused_workspace_peak", len(pending) - peak)
+            scheduler.ledger.bump(
+                _shared_keys.TILE_FUSED_WORKSPACE_PEAK, len(pending) - peak
+            )
         origin, tile, contract = pending.pop()
-        scheduler.ledger.bump("tile_fused_frames")
+        scheduler.ledger.bump(_execution_keys.TILE_FUSED_FRAMES)
         node = scheduler.tiles.resolve(tile)
         if origin >= limit:
             continue
-        scheduler.ledger.bump("tile_fused_observation_descents")
+        scheduler.ledger.bump(_execution_keys.TILE_FUSED_OBSERVATION_DESCENTS)
         if origin + node.width <= limit and not _active(
             scheduler,
             key,

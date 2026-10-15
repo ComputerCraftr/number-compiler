@@ -6,7 +6,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Hashable, Iterator
 from dataclasses import dataclass
 from math import ceil, log2
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.api.elementary_payloads import (
@@ -14,6 +14,7 @@ from number_compiler.api.elementary_payloads import (
     MersenneTermPayload,
     ScalarTermPayload,
 )
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.query_types import TermQuery
 from number_compiler.api.reverse_payloads import (
     DoubleReverseTermPayload,
@@ -27,6 +28,8 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
 )
 from number_compiler.arithmetic.formula.formula import FormulaRoot
+from number_compiler.resources.metric_keys import api as _api_metrics
+from number_compiler.resources.metric_keys import shared as _shared_metrics
 from number_compiler.resources.output_stream_metrics import measured_output_stream
 
 if TYPE_CHECKING:
@@ -44,16 +47,7 @@ if TYPE_CHECKING:
     )
 
 
-NumberFamily = Literal[
-    "reverse-add",
-    "2rev10",
-    "collatz",
-    "antihydra",
-    "prime",
-    "fermat",
-    "mersenne",
-    "a367620",
-]
+NumberFamily = FamilyId
 
 _PoweredOwner = TypeVar("_PoweredOwner")
 
@@ -179,16 +173,19 @@ class PoweredCollatzTermPayload:
             # Explicit full-output lowering happens once, on first demand.
             # It must not become one source-image reconstruction per digit.
             ledger = self.term._ledger
-            ledger.bump("collatz_radix_conversion_requests")
+            ledger.bump(_api_metrics.COLLATZ_RADIX_CONVERSION_REQUESTS)
             try:
                 value = self.materialize(max_bits=self.term.maximum_width)
-                ledger.bump("collatz_radix_conversion_operand_bits", value.bit_length())
+                ledger.bump(
+                    _api_metrics.COLLATZ_RADIX_CONVERSION_OPERAND_BITS,
+                    value.bit_length(),
+                )
                 digits = digits_lsd(value, self.radix)
             except BaseException:
-                ledger.bump("collatz_radix_conversion_failures")
+                ledger.bump(_api_metrics.COLLATZ_RADIX_CONVERSION_FAILURES)
                 raise
             for digit in digits:
-                ledger.bump("collatz_radix_conversion_emitted_digits")
+                ledger.bump(_api_metrics.COLLATZ_RADIX_CONVERSION_EMITTED_DIGITS)
                 yield int(digit)
 
         return measured_output_stream(
@@ -238,18 +235,23 @@ class AntihydraTermPayload:
 
     def digits(self) -> tuple[int, ...]:
         ledger = self.term.ledger
-        ledger.bump("antihydra_output_stream_requests")
-        ledger.bump("antihydra_digit_conversion_requests")
+        ledger.bump(_api_metrics.ANTIHYDRA_OUTPUT_STREAM_REQUESTS)
+        ledger.bump(_shared_metrics.ANTIHYDRA_DIGIT_CONVERSION_REQUESTS)
         try:
             value = self.term.value()
-            ledger.bump("antihydra_digit_conversion_operand_bits", value.bit_length())
+            ledger.bump(
+                _shared_metrics.ANTIHYDRA_DIGIT_CONVERSION_OPERAND_BITS,
+                value.bit_length(),
+            )
             digits = digits_lsd(value, 2)
         except BaseException:
-            ledger.bump("antihydra_output_stream_failures")
-            ledger.bump("antihydra_digit_conversion_failures")
+            ledger.bump(_api_metrics.ANTIHYDRA_OUTPUT_STREAM_FAILURES)
+            ledger.bump(_shared_metrics.ANTIHYDRA_DIGIT_CONVERSION_FAILURES)
             raise
-        ledger.bump("antihydra_output_stream_emitted_digits", len(digits))
-        ledger.bump("antihydra_digit_conversion_emitted_digits", len(digits))
+        ledger.bump(_api_metrics.ANTIHYDRA_OUTPUT_STREAM_EMITTED_DIGITS, len(digits))
+        ledger.bump(
+            _shared_metrics.ANTIHYDRA_DIGIT_CONVERSION_EMITTED_DIGITS, len(digits)
+        )
         return digits
 
     @source_reads_only

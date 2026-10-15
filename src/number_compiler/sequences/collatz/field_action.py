@@ -12,14 +12,17 @@ from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Literal, Protocol, TypeAlias
+from typing import Final, Literal, Protocol, TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaHandle,
     ArenaToken,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.fields.adic_morphism import (
     PadicAffineMorphism,
     PadicRadialQuotient,
@@ -30,6 +33,8 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.sequences.collatz.character import CollatzRadialCharacter
 
 ProgramRole = Literal[
@@ -51,6 +56,14 @@ _PROGRAM_ROLES: tuple[ProgramRole, ...] = (
 _ACTION_KIND = "field-cell-action"
 _DEFECT_KIND = "collatz-residual-defect"
 _OUTPUT_KIND = "coordinate-output-morphism"
+COLLATZ_CHARACTER_ACTION_TAG: Final[str] = "collatz-character-action-v1"
+COLLATZ_RESIDUAL_DEFECT_TAG: Final[str] = "collatz-residual-defect-v1"
+COLLATZ_ACTION_GEOMETRY_TAG: Final[str] = "collatz-action-geometry-v1"
+COLLATZ_FIELD_ACTION_TAG: Final[str] = "collatz-field-action-v2"
+GEOMETRY_LEVEL_FIELD: Final = "level"
+GEOMETRY_PHASE_FIELD: Final = "phase"
+GEOMETRY_LEFT_HALO_FIELD: Final = "halo-left"
+GEOMETRY_RIGHT_HALO_FIELD: Final = "halo-right"
 
 
 class CollatzSymbolicProgramAlgebra(Protocol):
@@ -503,7 +516,7 @@ class CollatzFieldActionArena:
             if reservations:
                 self.ledger.reserve_many(reservations)
             self._early_hits += 1
-            self.ledger.bump("collatz_field_action_early_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_EARLY_HITS)
             return found
         self.ledger.reserve_many(
             (
@@ -515,8 +528,8 @@ class CollatzFieldActionArena:
         result = CollatzFieldActionID(self.owner, _ACTION_KIND, len(self._nodes))
         self._nodes.append(action)
         self._keys[identity] = result
-        self.ledger.bump("collatz_field_action_publications")
-        self.ledger.bump("field_action_publications")
+        self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_PUBLICATIONS)
+        self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
         return result
 
     def intern(self, action: CollatzFieldAction) -> CollatzFieldActionID:
@@ -559,26 +572,26 @@ class CollatzFieldActionArena:
             raise TypeError("Collatz action requires six canonical program identities")
         root, affine, physical_tick, valuation, frame, output = program_identities
         character = (
-            "collatz-character-action-v1",
+            COLLATZ_CHARACTER_ACTION_TAG,
             action.character.growth_phase,
             tuple(item.canonical_key for item in action.character.radial),
         )
         innovation = action.innovation.canonical_key
         defect = (
-            "collatz-residual-defect-v1",
+            COLLATZ_RESIDUAL_DEFECT_TAG,
             self.defects.certificate_digest,
             self.defects.validate(action.defect),
         )
         geometry = (
-            "collatz-action-geometry-v1",
-            ("level", str(action.geometry.level)),
+            COLLATZ_ACTION_GEOMETRY_TAG,
+            (GEOMETRY_LEVEL_FIELD, str(action.geometry.level)),
             action.geometry.orientation,
-            ("phase", str(action.geometry.phase)),
-            ("halo-left", str(action.geometry.halo_left)),
-            ("halo-right", str(action.geometry.halo_right)),
+            (GEOMETRY_PHASE_FIELD, str(action.geometry.phase)),
+            (GEOMETRY_LEFT_HALO_FIELD, str(action.geometry.halo_left)),
+            (GEOMETRY_RIGHT_HALO_FIELD, str(action.geometry.halo_right)),
         )
         behavior = (
-            "collatz-field-action-v2",
+            COLLATZ_FIELD_ACTION_TAG,
             character,
             root,
             affine,
@@ -590,7 +603,7 @@ class CollatzFieldActionArena:
             output,
             geometry,
         )
-        return SemanticIdentity("", behavior)
+        return SemanticIdentity(SemanticIdentityDomain.ANONYMOUS, behavior)
 
     def semantic_identity(self, reference: CollatzFieldActionID) -> SemanticIdentity:
         """Return complete source-free action behavior without its arena ordinal."""
@@ -647,9 +660,9 @@ class CollatzFieldActionArena:
         if first.geometry != second.geometry:
             raise ValueError("temporal actions require identical normalized geometry")
         self._composition_requests += 1
-        self.ledger.bump("collatz_field_action_composition_requests")
-        self.ledger.bump("temporal_parent_requests")
-        self.ledger.bump("diamond_temporal_composition_requests")
+        self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITION_REQUESTS)
+        self.ledger.bump(_shared_keys.TEMPORAL_PARENT_REQUESTS)
+        self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
         cache_key = (before, after)
         found = self._compositions.get(cache_key)
         if found is not None:
@@ -657,9 +670,9 @@ class CollatzFieldActionArena:
             # must fail before being reported as a warm semantic hit.
             self.resolve(found)
             self._composition_early_hits += 1
-            self.ledger.bump("collatz_field_action_composition_cache_hits")
-            self.ledger.bump("temporal_parent_early_hits")
-            self.ledger.bump("diamond_temporal_composition_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITION_CACHE_HITS)
+            self.ledger.bump(_shared_keys.TEMPORAL_PARENT_EARLY_HITS)
+            self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS)
             return found
         first_affine = first.innovation.as_affine()
         second_affine = second.innovation.as_affine()
@@ -708,9 +721,9 @@ class CollatzFieldActionArena:
             self.ledger.reserve(self._composition_owner, entries=1)
             self._compositions[cache_key] = semantic_found
             self._composition_early_hits += 1
-            self.ledger.bump("collatz_field_action_semantic_pre_hits")
-            self.ledger.bump("temporal_parent_early_hits")
-            self.ledger.bump("diamond_temporal_composition_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_SEMANTIC_PRE_HITS)
+            self.ledger.bump(_shared_keys.TEMPORAL_PARENT_EARLY_HITS)
+            self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS)
             return semantic_found
         result = CollatzFieldAction(
             character,
@@ -749,20 +762,24 @@ class CollatzFieldActionArena:
             reservations.append((self._witness_owner, 1, 0))
         canonical = self._intern(result, tuple(reservations))
         if existing is not None:
-            self.ledger.bump("collatz_field_action_late_duplicate_reductions")
-            self.ledger.bump("temporal_parent_late_duplicate_reductions")
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_FIELD_ACTION_LATE_DUPLICATE_REDUCTIONS
+            )
+            self.ledger.bump(_collatz_keys.TEMPORAL_PARENT_LATE_DUPLICATE_REDUCTIONS)
         if canonical not in (before, after) and canonical not in self._witnesses:
             self._witnesses[canonical] = (before, after)
         elif reserve_witness:
             self.ledger.release(self._witness_owner, entries=1)
         self._compositions[cache_key] = canonical
         self._composition_evaluations += 1
-        self.ledger.bump("collatz_field_action_compositions")
-        self.ledger.bump("temporal_parent_compositions")
-        self.ledger.bump("diamond_temporal_composition_evaluations")
+        self.ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITIONS)
+        self.ledger.bump(_shared_keys.TEMPORAL_PARENT_COMPOSITIONS)
+        self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_EVALUATIONS)
         if innovation.source_annihilated:
             self._source_annihilation_derivations += 1
-            self.ledger.bump("collatz_field_action_source_annihilation_derivations")
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_FIELD_ACTION_SOURCE_ANNIHILATION_DERIVATIONS
+            )
         return canonical
 
     def power(

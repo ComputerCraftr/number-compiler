@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 if TYPE_CHECKING:
@@ -79,7 +80,7 @@ def physical_cycle(
         if action in residues:
             continue
         node = runtime.actions.resolve(action)
-        runtime.ledger.bump("physical_cycle_action_visits")
+        runtime.ledger.bump(_collatz_keys.PHYSICAL_CYCLE_ACTION_VISITS)
         if node.kind == "identity":
             residues[action] = 0
         elif node.kind == "atom":
@@ -101,7 +102,7 @@ def physical_cycle(
                 pending.extend(((action, True), (second, False), (first, False)))
             else:
                 residues[action] = (residues[first] + residues[second]) % 3
-    runtime.ledger.bump("physical_cycle_source_certifications")
+    runtime.ledger.bump(_collatz_keys.PHYSICAL_CYCLE_SOURCE_CERTIFICATIONS)
     return PhysicalCycleProjection(
         geometry.token, root, (phase + residues[root]) % 3, extent
     )

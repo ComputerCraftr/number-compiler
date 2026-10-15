@@ -24,6 +24,7 @@ from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAc
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, clear_accounted_store
+from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
@@ -244,7 +245,7 @@ class SpatialReferenceBuffer:
             raise ValueError("closed or exhausted spatial workspace buffer")
         self.workspace._refs[self.identity, self.used] = value
         self.used += 1
-        self.workspace.ledger.bump("tile_causal_spatial_buffer_appends")
+        self.workspace.ledger.bump(_resources_keys.TILE_CAUSAL_SPATIAL_BUFFER_APPENDS)
 
     def reverse(self) -> None:
         if self.closed:
@@ -255,7 +256,7 @@ class SpatialReferenceBuffer:
             a, b = (self.identity, left), (self.identity, right)
             refs[a], refs[b] = refs[b], refs[a]
         self.workspace.ledger.bump(
-            "tile_causal_spatial_buffer_reversal_visits", self.used
+            _resources_keys.TILE_CAUSAL_SPATIAL_BUFFER_REVERSAL_VISITS, self.used
         )
 
     def close(self) -> None:
@@ -319,10 +320,10 @@ class CausalSpatialWorkspace:
         self.slots += capacity
         self._object_bytes += buffer.backing_bytes
         self.ledger.note_store_mutation()
-        self.ledger.bump("tile_causal_spatial_buffer_allocations")
+        self.ledger.bump(_resources_keys.TILE_CAUSAL_SPATIAL_BUFFER_ALLOCATIONS)
         new_tables = (getsizeof(self._refs._data), getsizeof(self._buffers._data))
         self.ledger.bump(
-            "tile_causal_spatial_buffer_allocated_bytes",
+            _resources_keys.TILE_CAUSAL_SPATIAL_BUFFER_ALLOCATED_BYTES,
             buffer.backing_bytes
             + sum(
                 new
@@ -614,7 +615,7 @@ class CausalTaskWorkspace:
             authority.owner, "field-cell-action", size=authority._next_action
         )
         snapshot = self.admitted_action_snapshot(token, action)
-        self.ledger.bump("tile_causal_action_admitted_metadata_visits")
+        self.ledger.bump(_resources_keys.TILE_CAUSAL_ACTION_ADMITTED_METADATA_VISITS)
         try:
             record = authority._actions[action.local_id]
         except KeyError:
@@ -639,7 +640,7 @@ class CausalTaskWorkspace:
         self._require_action_admission(token)
         actions = tuple(self.action_admitted)
         for action in actions:
-            self.ledger.bump("tile_causal_action_final_validation_visits")
+            self.ledger.bump(_resources_keys.TILE_CAUSAL_ACTION_FINAL_VALIDATION_VISITS)
             authority.validate_action(action)
             self.admitted_action_metadata(token, authority, action)
 
@@ -710,8 +711,11 @@ class CausalFrameStack:
             self.ledger.release(self.owner, entries=1)
             raise
         self.payload_references += references
-        self.ledger.bump("tile_causal_frame_publications")
-        self.ledger.bump("tile_causal_frame_payload_reference_publications", references)
+        self.ledger.bump(_resources_keys.TILE_CAUSAL_FRAME_PUBLICATIONS)
+        self.ledger.bump(
+            _resources_keys.TILE_CAUSAL_FRAME_PAYLOAD_REFERENCE_PUBLICATIONS,
+            references,
+        )
         for counter, value in (
             ("tile_causal_frame_peak_slots", len(self)),
             ("tile_causal_frame_payload_reference_peak", self.payload_references),
@@ -778,7 +782,7 @@ class CausalResultStack:
         except BaseException:
             self.ledger.release(self.owner, entries=1)
             raise
-        self.ledger.bump("tile_causal_result_value_publications")
+        self.ledger.bump(_resources_keys.TILE_CAUSAL_RESULT_VALUE_PUBLICATIONS)
         for name, count in (
             ("slots", len(self)),
             ("backing_bytes", getsizeof(self._values._data)),
@@ -822,11 +826,14 @@ class CausalValueStack:
         except BaseException:
             self.ledger.release(self.owner, entries=1)
             raise
-        self.ledger.bump("tile_directed_transfer_value_publications")
-        peak = self.ledger.counters.get("tile_directed_transfer_value_peak_slots", 0)
+        self.ledger.bump(_resources_keys.TILE_DIRECTED_TRANSFER_VALUE_PUBLICATIONS)
+        peak = self.ledger.counters.get(
+            _resources_keys.TILE_DIRECTED_TRANSFER_VALUE_PEAK_SLOTS, 0
+        )
         if len(self) > peak:
             self.ledger.bump(
-                "tile_directed_transfer_value_peak_slots", len(self) - peak
+                _resources_keys.TILE_DIRECTED_TRANSFER_VALUE_PEAK_SLOTS,
+                len(self) - peak,
             )
 
     def pop(self) -> int:

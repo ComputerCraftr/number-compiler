@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
@@ -346,7 +347,7 @@ class SemanticContinuation:
             row = self.transitions.get(current_source)
             if row is None or not row:
                 raise ValueError("source occurrence has an empty weighted row")
-            self.ledger.bump("comma_semantic_occurrence_visits")
+            self.ledger.bump(_comma_keys.COMMA_SEMANTIC_OCCURRENCE_VISITS)
             weighted = row[(phase + shift) % len(row)]
             action = weighted.control
             if action.kind != "goto":
@@ -767,7 +768,8 @@ class SemanticContinuationArena:
                 )
                 published_sources.append(item)
             self.ledger.bump(
-                "comma_semantic_source_publications", len(published_sources)
+                _comma_keys.COMMA_SEMANTIC_SOURCE_PUBLICATIONS,
+                len(published_sources),
             )
         except BaseException:
             self._rollback_sources(touched_sources, remove_raw=False)
@@ -794,7 +796,8 @@ class SemanticContinuationArena:
             # action-store size.
             self._next_id = starting_next_id
             self.ledger.bump(
-                "comma_semantic_failed_source_publications", len(touched_sources)
+                _comma_keys.COMMA_SEMANTIC_FAILED_SOURCE_PUBLICATIONS,
+                len(touched_sources),
             )
             raise
 
@@ -810,16 +813,16 @@ class SemanticContinuationArena:
                     continue
                 transfer, period = _source_cycle(source)
                 if transfer is not None:
-                    self.ledger.bump("comma_semantic_cycle_transfer_builds")
+                    self.ledger.bump(_comma_keys.COMMA_SEMANTIC_CYCLE_TRANSFER_BUILDS)
                 actions: list[_RawAction] = []
                 for phase in range(period):
-                    self.ledger.bump("comma_semantic_action_requests")
+                    self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_REQUESTS)
                     try:
                         actions.append(_raw_action(source, phase, transfer))
                     except BaseException:
-                        self.ledger.bump("comma_semantic_action_failures")
+                        self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_FAILURES)
                         raise
-                self.ledger.bump("comma_semantic_action_evaluations", period)
+                self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_EVALUATIONS, period)
                 full_actions = tuple(actions)
                 self._store(
                     self._raw,

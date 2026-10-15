@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from dataclasses import dataclass
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
@@ -21,11 +21,19 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.metric_keys import (
+    double_reverse as _double_reverse_keys,
+)
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     DoubleReversePortAction,
     DoubleReverseTemporalHashlife,
     growth_ports,
 )
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    DoubleReverseSourcePrefix,
+)
+
+DOUBLE_REVERSE_SOURCE_IMAGE_VERSION: Final[str] = "decimal-2rev-source-image-v1"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -100,7 +108,7 @@ class _DoubleReverseMachine:
 
 class _DoubleReverseSourceAdapter:
     family = "double-reverse"
-    semantic_version = "decimal-2rev-source-image-v1"
+    semantic_version = DOUBLE_REVERSE_SOURCE_IMAGE_VERSION
 
     def __init__(
         self,
@@ -135,6 +143,7 @@ class _DoubleReverseSourceAdapter:
         self.temporal_memos = temporal_memos
         self._closed = False
         self._cleanup_complete = False
+        self.temporal_hashlife._bind_source_advancer(self._apply_word)
 
     def validate_source(self, source: object) -> None:
         if type(source) is not _DoubleReverseSource:
@@ -205,6 +214,36 @@ class _DoubleReverseSourceAdapter:
         return SourceImageCandidate(payload, 0, radix=10, precision=width)
 
     def _apply_word(self, root: int) -> int:
+        # For a bounded real primitive, reverse the decimal digits first and
+        # perform multiplication by two as a binary integer shift. Long SLPs
+        # retain the decimal carry transducer so CONCAT/REPEAT stays compact.
+        width = self.arena.nodes[root].length
+        if 0 < width <= 32:
+            reverse_value = 0
+            weight = 1
+            with self.ledger.reservation(
+                self.scratch_owner, entries=width, nodes=width
+            ):
+                for index in range(width):
+                    digit = self._symbol_at(root, index)
+                    if not 0 <= digit <= 9:
+                        raise ValueError("2rev10 source contains a nondecimal symbol")
+                    reverse_value += digit * weight
+                    weight *= 10
+                shifted = reverse_value << 1
+                if shifted.bit_length() > self.max_state_bits:
+                    raise BlockContextBudgetExceeded(
+                        "double-reverse state exceeds the admitted state-bit budget"
+                    )
+                result = self.arena.word(tuple(int(ch) for ch in str(shifted)))
+            if not self._fits_state_bits(result, self.arena.nodes[result].length):
+                raise BlockContextBudgetExceeded(
+                    "double-reverse state exceeds the admitted state-bit budget"
+                )
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_BINARY_SHIFT_PRIMITIVES
+            )
+            return result
         # The projector's explicit worklists can retain a constant multiple of
         # the current grammar size. Reserve that transient storage before work.
         bound = max(16, 4 * len(self.arena.nodes))
@@ -225,11 +264,17 @@ class _DoubleReverseSourceAdapter:
             raise BlockContextBudgetExceeded(
                 "double-reverse state exceeds the admitted state-bit budget"
             )
-        self.ledger.bump("double_reverse_spatial_transducer_applications")
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_SPATIAL_TRANSDUCER_APPLICATIONS
+        )
         return result
 
+    def _advance_temporal_prefix(self) -> DoubleReverseSourcePrefix:
+        """Advance the owner cursor through this adapter's exact one-T map."""
+        return self.temporal_hashlife._advance_source_prefix()
+
     def _record_square_guard_visit(self) -> None:
-        self.ledger.bump("double_reverse_square_guard_region_visits")
+        self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_GUARD_REGION_VISITS)
 
     def _symbol_at(self, root: int, position: int) -> int:
         return symbol_at(
@@ -239,31 +284,126 @@ class _DoubleReverseSourceAdapter:
             on_visit=self._record_square_guard_visit,
         )
 
+    def _trailing_zero_count(self, root: int) -> int:
+        """Count a compressed decimal suffix without visiting its cells."""
+        nodes = self.arena.nodes
+        bound = max(16, 4 * len(nodes))
+        with self.ledger.reservation(self.scratch_owner, entries=bound, nodes=bound):
+            tasks = [(root, 0)]
+            zeros: dict[int, int] = {}
+            try:
+                while tasks:
+                    current, stage = tasks.pop()
+                    self.ledger.bump(
+                        _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_NODE_VISITS
+                    )
+                    self.ledger.bump(
+                        _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERAND_BITS,
+                        nodes[current].length.bit_length(),
+                    )
+                    if current in zeros:
+                        continue
+                    node = nodes[current]
+                    if node.kind == "EMPTY":
+                        zeros[current] = 0
+                        self.ledger.bump(
+                            _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERATIONS
+                        )
+                    elif node.kind == "TERM":
+                        zeros[current] = int(node.symbol == 0)
+                        self.ledger.bump(
+                            _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERATIONS
+                        )
+                    elif node.kind == "CONCAT" and stage == 0:
+                        tasks.append((current, 1))
+                        tasks.append((node.right, 0))
+                    elif node.kind == "CONCAT" and stage == 1:
+                        right_zeros = zeros[node.right]
+                        if right_zeros == nodes[node.right].length:
+                            tasks.append((current, 2))
+                            tasks.append((node.left, 0))
+                        else:
+                            zeros[current] = right_zeros
+                            self.ledger.bump(
+                                _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERATIONS
+                            )
+                    elif node.kind == "CONCAT" and stage == 2:
+                        zeros[current] = zeros[node.right] + zeros[node.left]
+                        self.ledger.bump(
+                            _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERATIONS
+                        )
+                    elif node.kind == "REPEAT" and stage == 0:
+                        tasks.append((current, 1))
+                        tasks.append((node.child, 0))
+                    elif node.kind == "REPEAT" and stage == 1:
+                        child_zeros = zeros[node.child]
+                        zeros[current] = (
+                            node.length
+                            if child_zeros == nodes[node.child].length
+                            else child_zeros
+                        )
+                        self.ledger.bump(
+                            _double_reverse_keys.DOUBLE_REVERSE_SUFFIX_ZERO_FOLD_OPERATIONS
+                        )
+                    else:
+                        raise AssertionError("invalid double-reverse suffix SLP")
+                return zeros[root]
+            finally:
+                tasks.clear()
+                zeros.clear()
+
     def _general_two_step(self, root: int) -> int | None:
-        """Apply exact T² to any source with no contraction at either pass."""
+        """Apply exact normalized T², including arbitrary source contraction."""
         width = self.arena.nodes[root].length
         if width < 1:
             return None
-        self.ledger.bump("double_reverse_square_width_guards")
-        leading = self._symbol_at(root, 0)
-        trailing = self._symbol_at(root, width - 1)
-        # A zero trailing digit contracts the first pass. A leading five
-        # makes the first pass end in zero and contracts the second pass.
-        if trailing == 0 or leading == 5:
-            self.ledger.bump("double_reverse_square_guard_refusals")
-            return None
+        self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_WIDTH_GUARDS)
+        if self._symbol_at(root, width - 1) != 0:
+            trailing_zeros = 0
+        elif width > 1 and self._symbol_at(root, width - 2) != 0:
+            trailing_zeros = 1
+        else:
+            trailing_zeros = self._trailing_zero_count(root)
+        if trailing_zeros == width:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS
+            )
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_ZERO_FIXED_POINTS
+            )
+            return self.arena.terminal(0)
+
+        new_width = width - trailing_zeros
+        trimmed = (
+            self.temporal_hashlife.part(root, 0, new_width) if trailing_zeros else root
+        )
+        leading = self._symbol_at(trimmed, 0)
+        trailing = self._symbol_at(trimmed, new_width - 1)
         right_birth = int(trailing >= 5)
         left_birth = int((2 * leading) % 10 >= 5)
-        final_width = width + left_birth + right_birth
-        if self._width_bits(final_width) > self.max_state_bits:
-            self.ledger.bump("double_reverse_square_guard_refusals")
-            self.ledger.bump("double_reverse_square_bit_budget_guard_refusals")
+        adjacent = self._symbol_at(trimmed, 1) if new_width > 1 else 0
+        first_cell = (
+            4 * leading + int((2 * adjacent + int(leading >= 5)) % 10 >= 5)
+        ) % 10
+        leading_trim = int(not left_birth and first_cell == 0)
+        intermediate_width = new_width + right_birth
+        final_width = new_width + left_birth + right_birth - leading_trim
+        if final_width < 1:
+            raise AssertionError("positive double-reverse square has zero width")
+        if (
+            self._width_bits(intermediate_width) > self.max_state_bits
+            or self._width_bits(final_width) > self.max_state_bits
+        ):
+            self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_GUARD_REFUSALS)
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_SQUARE_BIT_BUDGET_GUARD_REFUSALS
+            )
             return None
 
         bound = max(16, 4 * len(self.arena.nodes))
         before = self.two_step_projector.section_calls
         with self.ledger.reservation(self.scratch_owner, entries=bound, nodes=bound):
-            interior = self.two_step_projector.apply(root)
+            interior = self.two_step_projector.apply(trimmed)
             result = self.arena.concat_many(
                 (
                     self.arena.terminal(1) if left_birth else self.arena.empty_id,
@@ -271,16 +411,38 @@ class _DoubleReverseSourceAdapter:
                     self.arena.terminal(2) if right_birth else self.arena.empty_id,
                 )
             )
+            if leading_trim:
+                if self._symbol_at(result, 0) != 0:
+                    raise AssertionError("2rev10 normalized leading digit was not zero")
+                result = self.temporal_hashlife.part(
+                    result, 1, self.arena.nodes[result].length
+                )
         if self.arena.nodes[result].length != final_width:
-            raise AssertionError("2rev10 T² carry ports disagree with output extent")
+            raise AssertionError("2rev10 normalized square changed its certified width")
         if self._symbol_at(result, 0) == 0:
-            raise AssertionError("2rev10 noncontraction guard lost its leading digit")
-        self.ledger.bump("double_reverse_temporal_square_applications")
+            raise AssertionError("2rev10 square produced a noncanonical leading zero")
+        if final_width > width:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_GROWTH_SEAMS
+            )
+        if final_width < width:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_SHRINK_SEAMS
+            )
+        if trailing_zeros or leading_trim:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_NORMALIZATIONS
+            )
         self.ledger.bump(
-            "double_reverse_represented_growth_cells", left_birth + right_birth
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS
         )
+        if final_width > width:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
+                final_width - width,
+            )
         self.ledger.bump(
-            "double_reverse_temporal_square_region_visits",
+            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_REGION_VISITS,
             self.two_step_projector.section_calls - before,
         )
         return result
@@ -296,7 +458,9 @@ class _DoubleReverseSourceAdapter:
 
         def record_visit(is_node: bool) -> None:
             if is_node:
-                self.ledger.bump("double_reverse_state_comparison_node_visits")
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_NODE_VISITS
+                )
 
         with closing(
             iter_symbols(
@@ -314,7 +478,9 @@ class _DoubleReverseSourceAdapter:
         ) as symbols:
             for index, symbol in enumerate(symbols):
                 threshold_symbol = threshold[index] - ord("0")
-                self.ledger.bump("double_reverse_state_comparison_digits")
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_DIGITS
+                )
                 if symbol != threshold_symbol:
                     return symbol < threshold_symbol
         return False
@@ -341,12 +507,17 @@ class _DoubleReverseSourceAdapter:
             while remaining:
                 remaining, piece = divmod(remaining, 1_000_000_000)
                 pieces.append(piece)
-                self.ledger.bump("double_reverse_threshold_divisions")
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_THRESHOLD_DIVISIONS
+                )
             encoded = bytearray(str(pieces[-1]).encode("ascii"))
             for piece in reversed(pieces[:-1]):
                 encoded.extend(f"{piece:09d}".encode("ascii"))
             digits = bytes(encoded)
-            self.ledger.bump("double_reverse_threshold_conversion_bytes", len(digits))
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_THRESHOLD_CONVERSION_BYTES,
+                len(digits),
+            )
             self._threshold_owner[self.max_state_bits] = digits
         return digits
 
@@ -396,7 +567,9 @@ class _DoubleReverseSourceAdapter:
                     self.arena.nodes[prior.root].length + left_births + right_births
                 )
                 if self._width_bits(final_width) > self.max_state_bits:
-                    self.ledger.bump("double_reverse_hashlife_bit_budget_refusals")
+                    self.ledger.bump(
+                        _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS
+                    )
                     raise BlockContextBudgetExceeded(
                         "2rev10 powered endpoint exceeds the admitted state-bit budget"
                     )
@@ -404,9 +577,11 @@ class _DoubleReverseSourceAdapter:
                     prior.root, f_steps, phase
                 )
                 result = self.temporal_hashlife.root_of(powered_action.target)
-                self.ledger.bump("double_reverse_temporal_hashlife_publications")
                 self.ledger.bump(
-                    "double_reverse_represented_growth_cells",
+                    _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_HASHLIFE_PUBLICATIONS
+                )
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
                     left_births + right_births,
                 )
             elif exact_action.steps == 2:
@@ -419,7 +594,7 @@ class _DoubleReverseSourceAdapter:
         # action here created a second, weakly bound provenance record.
         payload = _DoubleReverseImage(self.issuer, self.source, combined, result)
         self.ledger.bump(
-            "double_reverse_completed_t2_publications",
+            _double_reverse_keys.DOUBLE_REVERSE_COMPLETED_T2_PUBLICATIONS,
             int(exact_action.steps == 2),
         )
         return SourceImageCandidate(

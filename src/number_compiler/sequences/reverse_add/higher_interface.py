@@ -36,6 +36,7 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
 from number_compiler.sequences.reverse_add.higher_schema import (
     ReverseHigherActionSchema,
@@ -123,7 +124,7 @@ class ReverseHigherInterfaceCompiler:
         self.actions.validate_action(action)
         found = self._cache.get(action)
         if found is not None:
-            self.ledger.bump("reverse_higher_interface_early_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_HIGHER_INTERFACE_EARLY_HITS)
             return found
 
         arena = self.semantics
@@ -207,7 +208,7 @@ class ReverseHigherInterfaceCompiler:
         )
         self.ledger.reserve(self._cache_owner, entries=1)
         self._cache[action] = result
-        self.ledger.bump("reverse_higher_interface_publications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_HIGHER_INTERFACE_PUBLICATIONS)
         return result
 
 

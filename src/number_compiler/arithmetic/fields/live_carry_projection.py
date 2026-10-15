@@ -27,6 +27,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     InnovationID,
     SymbolicInnovationArena,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +88,7 @@ def recover_centered_carry_events(
             view.leased_residue_runs(0, extent) as runs,
         ):
             for run in runs:
-                ledger.bump("carry_event_boundary_checks")
+                ledger.bump(_fields_keys.CARRY_EVENT_BOUNDARY_CHECKS)
                 if not 0 <= run.residue <= 18:
                     raise ValueError("pair residue is outside the decimal pair range")
 
@@ -101,16 +104,16 @@ def recover_centered_carry_events(
                         arena.interval(stop - start), CylinderChart(1, -start)
                     )
                     outgoing = arena.add(outgoing, interval)
-                    ledger.bump("carry_event_occupied_intervals")
+                    ledger.bump(_fields_keys.CARRY_EVENT_OCCUPIED_INTERVALS)
 
             for run in runs:
-                ledger.bump("carry_event_domain_actions")
+                ledger.bump(_fields_keys.CARRY_EVENT_DOMAIN_ACTIONS)
                 after = apply_carry_fn(value_carry_fn(run.residue, 10), carry)
                 if after == carry:
                     continue
                 point = arena.chart(arena.interval(1), CylinderChart(1, -run.start))
                 resets = arena.linear_combination(((1, resets), (after - carry, point)))
-                ledger.bump("carry_event_reset_events")
+                ledger.bump(_fields_keys.CARRY_EVENT_RESET_EVENTS)
                 if after:
                     opened = run.start
                 else:
@@ -168,10 +171,10 @@ def project_live_pair_carries(
             leaf = grammar.terminal(run.residue)
             repeated = grammar.repeat(leaf, size)
             root = grammar.concat(root, repeated)
-            ledger.bump("live_carry_input_runs")
+            ledger.bump(_fields_keys.LIVE_CARRY_INPUT_RUNS)
         projector = ResidueCarrySLPProjector(ledger)
         result = projector.project(grammar, grammar.nodes[root], incoming=incoming)
-        ledger.bump("live_carry_input_nodes", len(grammar.nodes))
+        ledger.bump(_fields_keys.LIVE_CARRY_INPUT_NODES, len(grammar.nodes))
         return result
     finally:
         if projector is not None:

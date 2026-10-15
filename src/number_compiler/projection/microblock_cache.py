@@ -16,7 +16,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import projection as _projection_keys
 from number_compiler.resources.stores import LedgerDict
 
 MicroblockKind = Literal["binary", "remainder", "output"]
@@ -111,7 +112,7 @@ class MicroblockCache:
         self._authority_owner = ledger.register(
             "exact-microblock-program-authorities",
             "action_authority",
-            "INDEX_OWNED",
+            ResourceScope.INDEX_OWNED,
         )
         self._validators: LedgerDict[
             ArenaToken, Callable[[ActionProgramID], object]
@@ -123,7 +124,7 @@ class MicroblockCache:
         )
         self.bind(program_owner, validate_program)
         self.owner = ledger.register(
-            "exact-microblocks", "exact_microblock", "INDEX_OWNED"
+            "exact-microblocks", "exact_microblock", ResourceScope.INDEX_OWNED
         )
         self.blocks: LedgerDict[MicroblockKey, ExactMicroblock] = ledger.make_dict(
             self.owner
@@ -191,9 +192,9 @@ class MicroblockCache:
         self._validate_key(key)
         found = self.blocks.get(key)
         value = None if found is None else self._payload(found)
-        self.ledger.bump("microblock_requests")
+        self.ledger.bump(_projection_keys.MICROBLOCK_REQUESTS)
         if value is not None:
-            self.ledger.bump("microblock_hits")
+            self.ledger.bump(_projection_keys.MICROBLOCK_HITS)
         return value
 
     def _drop(self, key: MicroblockKey) -> None:
@@ -201,8 +202,10 @@ class MicroblockCache:
         del self.blocks[key]
         self.ledger.release(self.owner, entries=1)
         self.payload_bytes -= value.payload_bytes
-        self.ledger.counters["microblock_payload_bytes"] = self.payload_bytes
-        self.ledger.bump("microblock_evictions")
+        self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_BYTES] = (
+            self.payload_bytes
+        )
+        self.ledger.bump(_projection_keys.MICROBLOCK_EVICTIONS)
 
     def discard(self, key: MicroblockKey) -> None:
         self._validate_key(key)
@@ -223,9 +226,15 @@ class MicroblockCache:
                 )
             self.blocks[key] = value
             self.payload_bytes = next_bytes
-            self.ledger.counters["microblock_payload_bytes"] = self.payload_bytes
-            self.ledger.counters["microblock_payload_high_water_bytes"] = max(
-                self.ledger.counters.get("microblock_payload_high_water_bytes", 0),
+            self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_BYTES] = (
+                self.payload_bytes
+            )
+            self.ledger.counters[
+                _projection_keys.MICROBLOCK_PAYLOAD_HIGH_WATER_BYTES
+            ] = max(
+                self.ledger.counters.get(
+                    _projection_keys.MICROBLOCK_PAYLOAD_HIGH_WATER_BYTES, 0
+                ),
                 self.payload_bytes,
             )
             return
@@ -272,22 +281,29 @@ class MicroblockCache:
             self.ledger.release(self.owner, entries=unused_slots)
         self.payload_bytes = self.payload_bytes - removed_bytes + value.payload_bytes
         if victims:
-            self.ledger.bump("microblock_evictions", len(victims))
-        self.ledger.bump("microblock_publications")
-        self.ledger.counters["microblock_payload_bytes"] = self.payload_bytes
-        self.ledger.counters["microblock_payload_high_water_bytes"] = max(
-            self.ledger.counters.get("microblock_payload_high_water_bytes", 0),
-            self.payload_bytes,
+            self.ledger.bump(_projection_keys.MICROBLOCK_EVICTIONS, len(victims))
+        self.ledger.bump(_projection_keys.MICROBLOCK_PUBLICATIONS)
+        self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_BYTES] = (
+            self.payload_bytes
         )
-        self.ledger.counters["microblock_entry_high_water"] = max(
-            self.ledger.counters.get("microblock_entry_high_water", 0), len(self.blocks)
+        self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_HIGH_WATER_BYTES] = (
+            max(
+                self.ledger.counters.get(
+                    _projection_keys.MICROBLOCK_PAYLOAD_HIGH_WATER_BYTES, 0
+                ),
+                self.payload_bytes,
+            )
+        )
+        self.ledger.counters[_projection_keys.MICROBLOCK_ENTRY_HIGH_WATER] = max(
+            self.ledger.counters.get(_projection_keys.MICROBLOCK_ENTRY_HIGH_WATER, 0),
+            len(self.blocks),
         )
 
     def clear(self) -> None:
         for key in tuple(self.blocks):
             self._drop(key)
         self.payload_bytes = 0
-        self.ledger.counters["microblock_payload_bytes"] = 0
+        self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_BYTES] = 0
 
     def __len__(self) -> int:
         return len(self.blocks)

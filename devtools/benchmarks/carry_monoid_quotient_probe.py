@@ -12,6 +12,10 @@ from devtools.verification.oracles.digit_power import (
     lucas_lehmer_digit_field,
     pepin_digit_field,
 )
+from devtools.verification.special_factor_reference import (
+    fermat_factor_witness,
+    mersenne_factor_witness,
+)
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -34,10 +38,6 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     adaptive_square_convolution,
-)
-from number_compiler.sequences.power_numbers.factor_morphism import (
-    fermat_factor_witness,
-    mersenne_factor_witness,
 )
 from number_compiler.sequences.prime.lane_quotient import (
     canonical_prime_base_period,

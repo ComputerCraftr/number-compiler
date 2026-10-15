@@ -21,6 +21,7 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import projection as _projection_keys
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,9 +123,9 @@ class FusedRadixArena:
         # These are original-source reads, not a physical generation loop.
         for position in range(count):
             source_position = position + shift
-            self.ledger.bump("radix_fused_spatial_leaf_visits")
+            self.ledger.bump(_projection_keys.RADIX_FUSED_SPATIAL_LEAF_VISITS)
             if source_position < len(source):
-                self.ledger.bump("radix_fused_original_source_reads")
+                self.ledger.bump(_projection_keys.RADIX_FUSED_ORIGINAL_SOURCE_READS)
             symbol = source[source_position] if source_position < len(source) else 0
             leaf = leaves.get(symbol)
             if leaf is None:
@@ -139,24 +140,30 @@ class FusedRadixArena:
                     parent = self._join(circuit, ports, left, right)
                     joins[key] = parent
                 else:
-                    self.ledger.bump("radix_fused_parent_construction_hits")
+                    self.ledger.bump(
+                        _projection_keys.RADIX_FUSED_PARENT_CONSTRUCTION_HITS
+                    )
                 stack.append(parent)
             self.ledger.bump(
-                "radix_fused_parent_records_peak",
+                _projection_keys.RADIX_FUSED_PARENT_RECORDS_PEAK,
                 max(
                     0,
                     len(stack)
                     + len(joins)
                     + len(leaves)
-                    - self.ledger.counters.get("radix_fused_parent_records_peak", 0),
+                    - self.ledger.counters.get(
+                        _projection_keys.RADIX_FUSED_PARENT_RECORDS_PEAK, 0
+                    ),
                 ),
             )
             self.ledger.bump(
-                "radix_fused_parent_stack_peak",
+                _projection_keys.RADIX_FUSED_PARENT_STACK_PEAK,
                 max(
                     0,
                     len(stack)
-                    - self.ledger.counters.get("radix_fused_parent_stack_peak", 0),
+                    - self.ledger.counters.get(
+                        _projection_keys.RADIX_FUSED_PARENT_STACK_PEAK, 0
+                    ),
                 ),
             )
         result = stack[0]
@@ -195,7 +202,7 @@ class FusedRadixArena:
             prepared.reserve_with(((self.owner, 1, 1),))
             prepared.publish_reserved()
             self.actions[record] = record
-            self.ledger.bump("radix_fused_actions_published")
+            self.ledger.bump(_projection_keys.RADIX_FUSED_ACTIONS_PUBLISHED)
             return record
         finally:
             if prepared is None:
@@ -239,7 +246,7 @@ class FusedRadixArena:
                 )
             )
             output = quotient
-        self.ledger.bump("radix_fused_leaf_compilations")
+        self.ledger.bump(_projection_keys.RADIX_FUSED_LEAF_COMPILATIONS)
         return _BuildingAction(0, physical_exit, tuple(exits), output, active)
 
     def _join(
@@ -289,7 +296,7 @@ class FusedRadixArena:
         )
         output = c.choose(select, right_output, left_output)
         active = c.choose(right_active, c.one, left_active)
-        self.ledger.bump("radix_fused_parent_compositions")
+        self.ledger.bump(_projection_keys.RADIX_FUSED_PARENT_COMPOSITIONS)
         return _BuildingAction(left.level + 1, right_physical, exits, output, active)
 
     def _substitute(
@@ -299,22 +306,22 @@ class FusedRadixArena:
         done: dict[int, int] = {}
         while pending:
             self.ledger.bump(
-                "radix_fused_substitution_workspace_peak",
+                _projection_keys.RADIX_FUSED_SUBSTITUTION_WORKSPACE_PEAK,
                 max(
                     0,
                     len(pending)
                     + len(done)
                     - self.ledger.counters.get(
-                        "radix_fused_substitution_workspace_peak", 0
+                        _projection_keys.RADIX_FUSED_SUBSTITUTION_WORKSPACE_PEAK, 0
                     ),
                 ),
             )
             identity, ready = pending.pop()
-            self.ledger.bump("radix_fused_substitution_frames")
+            self.ledger.bump(_projection_keys.RADIX_FUSED_SUBSTITUTION_FRAMES)
             if identity in done:
                 continue
             node = c.tx.node(identity)
-            self.ledger.bump("radix_fused_substitution_visits")
+            self.ledger.bump(_projection_keys.RADIX_FUSED_SUBSTITUTION_VISITS)
             if node.terminal is not None:
                 done[identity] = identity
                 continue
@@ -356,7 +363,7 @@ class FusedRadixArena:
             raise ValueError("fused action belongs to another arena")
         inputs = {port.variable: 0 for port in action.ports}
         inputs[action.ports[0].variable] = int(action.physical)
-        self.ledger.bump("radix_fused_digit_queries")
+        self.ledger.bump(_projection_keys.RADIX_FUSED_DIGIT_QUERIES)
         if not self.functions.evaluate(action.active, inputs).value:
             raise IndexError(action.stages - 1)
         result = 0

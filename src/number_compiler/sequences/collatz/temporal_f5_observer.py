@@ -8,14 +8,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import overload
+from typing import Final, overload
 
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+
+COLLATZ_F5_VIETA_POWER_TAG: Final[str] = "collatz-f5-vieta-power-v1"
 
 _F5 = 5
 _ROOT_CERTIFICATE_DEPTH = 8
@@ -246,7 +249,7 @@ def _root_fiber(
     for _ in range(depth):
         fiber = fiber.multiply(symbol)
         if ledger is not None:
-            ledger.bump("collatz_physical_temporal_root_cayley_products")
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ROOT_CAYLEY_PRODUCTS)
     return fiber
 
 
@@ -268,7 +271,7 @@ class CollatzPoweredRootVietaProgram:
 
     @property
     def semantic_key(self) -> tuple[str, int]:
-        return ("collatz-f5-vieta-power-v1", self.symbols)
+        return (COLLATZ_F5_VIETA_POWER_TAG, self.symbols)
 
     def then(
         self, after: CollatzPoweredRootVietaProgram
@@ -326,15 +329,16 @@ def root_fiber_certificate(
         raise AssertionError("temporal F5 root fiber did not saturate at depth eight")
     if ledger is not None:
         ledger.bump(
-            "collatz_physical_temporal_root_semifield_amplitude_square",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ROOT_SEMIFIELD_AMPLITUDE_SQUARE,
             fiber.cardinality,
         )
-        ledger.bump("collatz_physical_temporal_root_vieta_programs")
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ROOT_VIETA_PROGRAMS)
         ledger.bump(
-            "collatz_physical_temporal_root_vieta_powered_symbols", normalized_symbols
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ROOT_VIETA_POWERED_SYMBOLS,
+            normalized_symbols,
         )
         ledger.bump(
-            "collatz_physical_temporal_root_vieta_program_description_bits",
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ROOT_VIETA_PROGRAM_DESCRIPTION_BITS,
             max(1, normalized_symbols.bit_length()),
         )
     return CollatzRootFiberCertificate(

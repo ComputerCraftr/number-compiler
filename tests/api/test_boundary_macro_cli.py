@@ -29,7 +29,7 @@ def test_boundary_cli_uses_only_requested_edges(
                 "1",
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--info",
                 "metrics",
                 "--format",
@@ -40,7 +40,7 @@ def test_boundary_cli_uses_only_requested_edges(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] is None
-    boundary = packet["info"]["boundary-macro"]
+    boundary = packet["info"]["temporal.macro"]
     assert boundary["status"] == "available"
     assert boundary["target_width"] == 5
     assert boundary["prefix"] == "20"
@@ -61,7 +61,7 @@ def test_boundary_cli_refuses_narrow_source_without_false_value(
                 "16",
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--format",
                 "json",
             ]
@@ -70,8 +70,8 @@ def test_boundary_cli_refuses_narrow_source_without_false_value(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] is None
-    assert packet["info"]["boundary-macro"]["status"] == "unavailable"
-    assert packet["info"]["boundary-macro"]["target_width"] is None
+    assert packet["info"]["temporal.macro"]["status"] == "unavailable"
+    assert packet["info"]["temporal.macro"]["target_width"] is None
 
 
 def test_boundary_cli_rejects_nondecimal_base() -> None:
@@ -87,7 +87,7 @@ def test_boundary_cli_rejects_nondecimal_base() -> None:
                 "2",
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
             ]
         )
 
@@ -109,7 +109,7 @@ def test_value_and_boundary_share_admitted_source_carries(
                 "--nth",
                 "1",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--info",
                 "metrics",
                 "--format",
@@ -120,7 +120,7 @@ def test_value_and_boundary_share_admitted_source_carries(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] == "66666"
-    observation = packet["info"]["boundary-macro"]
+    observation = packet["info"]["temporal.macro"]
     assert observation["status"] == "available"
     assert observation["prefix"] == observation["suffix"] == "66"
     assert observation["target_width"] == 5

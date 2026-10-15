@@ -118,6 +118,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 )
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.metric_registry import DIAMOND_WORK_COUNTERS
 
 
@@ -455,17 +458,17 @@ class DiamondRuntime:
                 and self._admit_head_binding(result)
             ):
                 self.expression_heads[task] = result
-            self.ledger.bump("higher_head_evaluations")
+            self.ledger.bump(_execution_keys.HIGHER_HEAD_EVALUATIONS)
             return
         if isinstance(task, PairSummary):
             return  # Node, semantic interner, and binding were published atomically.
         if isinstance(task, SpatialSummary):
             self.spatial.bindings[task] = _expression(result)
-            self.ledger.bump("primitive_spatial_evaluations")
+            self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_EVALUATIONS)
             return
         if isinstance(task, ContextObservation):
             self.pair_macros.contexts.observations[task] = _expression(result)
-            self.ledger.bump("context_observation_evaluations")
+            self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_EVALUATIONS)
         elif isinstance(task, OutputFunction):
             self.outputs.bindings[task] = _expression(result)
         elif not isinstance(task, Output):
@@ -535,7 +538,7 @@ class DiamondRuntime:
         else:
             record = arena._leaf(task.action, task.cell)
         result = arena._publish(PairMacroKey(task.action, task.cell), record)
-        self.ledger.bump("macro_transfer_evaluations")
+        self.ledger.bump(_execution_keys.MACRO_TRANSFER_EVALUATIONS)
         return result
 
     def _context(self, request: ContextObservation) -> Generator[Task, Result, Result]:
@@ -679,11 +682,11 @@ class DiamondRuntime:
                     BoundarySide(task.side), finite.literal
                 )
                 self.absorbing_states[task.state] = absorbing
-                self.ledger.bump("primitive_absorber_evaluations")
+                self.ledger.bump(_execution_keys.PRIMITIVE_ABSORBER_EVALUATIONS)
             if absorbing:
-                self.ledger.bump("primitive_absorber_hits")
+                self.ledger.bump(_execution_keys.PRIMITIVE_ABSORBER_HITS)
                 if type(primitive.effect) is NonblankBlockEffect:
-                    self.ledger.bump("nonblank_absorber_hits")
+                    self.ledger.bump(_execution_keys.NONBLANK_ABSORBER_HITS)
                 return task.state
         provider = task.provider
         if (
@@ -775,7 +778,7 @@ class DiamondRuntime:
         if continuation.kind == "constant":
             assert continuation.value is not None
             previous = continuation.value
-            self.ledger.bump("constant_continuation_argument_elisions")
+            self.ledger.bump(_execution_keys.CONSTANT_CONTINUATION_ARGUMENT_ELISIONS)
         else:
             argument = _state(
                 (
@@ -821,7 +824,7 @@ class DiamondRuntime:
         function = _expression((yield request))
         constant = self.outputs.constant(function)
         if constant is not None:
-            self.ledger.bump("primitive_output_provider_elisions")
+            self.ledger.bump(_execution_keys.PRIMITIVE_OUTPUT_PROVIDER_ELISIONS)
             return constant
         return self.outputs.observe(function, self.cells.input_symbol(provider.cell))
 
@@ -846,7 +849,7 @@ class DiamondRuntime:
                 )
                 constant = self.outputs.constant(function)
                 if constant is not None:
-                    self.ledger.bump("primitive_output_provider_elisions")
+                    self.ledger.bump(_execution_keys.PRIMITIVE_OUTPUT_PROVIDER_ELISIONS)
                     return constant
             if provider.action == self.actions.identity:
                 symbol = self.cells.input_symbol(provider.cell)
@@ -875,7 +878,7 @@ class DiamondRuntime:
         if left_function.kind == "constant":
             assert left_function.value is not None
             second_left = left_function.value
-            self.ledger.bump("constant_continuation_argument_elisions")
+            self.ledger.bump(_execution_keys.CONSTANT_CONTINUATION_ARGUMENT_ELISIONS)
         else:
             left_argument = _state((yield Transfer(provider, first, right.anchor, 1)))
             second_left = _state((yield Evaluate(left.continuation, left_argument)))
@@ -883,7 +886,7 @@ class DiamondRuntime:
         if right_function.kind == "constant":
             assert right_function.value is not None
             second_right = right_function.value
-            self.ledger.bump("constant_continuation_argument_elisions")
+            self.ledger.bump(_execution_keys.CONSTANT_CONTINUATION_ARGUMENT_ELISIONS)
         else:
             right_argument = _state((yield Transfer(provider, first, left.anchor, 0)))
             second_right = _state((yield Evaluate(right.continuation, right_argument)))

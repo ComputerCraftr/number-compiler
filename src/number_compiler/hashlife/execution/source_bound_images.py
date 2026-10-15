@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_image_seals import (
@@ -17,7 +17,12 @@ from number_compiler.hashlife.execution.source_image_seals import (
     publication_seal,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
+
+SOURCE_IMAGE_CANDIDATE_VERSION: Final[str] = "candidate-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +81,7 @@ class SourceImageCandidate:
         _require_immutable_key(self.payload, "source image payload")
         SourceImageBinding(
             "candidate",
-            "candidate-v1",
+            SOURCE_IMAGE_CANDIDATE_VERSION,
             self.payload,
             self.payload,
             self.extent,
@@ -460,21 +465,21 @@ class SourceBoundSchedulerCore:
         # Declare exact instruments before the first origin or application.
         # An absent key after this point is missing evidence, not zero work.
         for counter in (
-            "source_image_application_requests",
-            "source_image_application_attempts",
-            "source_image_application_hits",
-            "source_image_relative_transfer_hits",
-            "source_image_application_misses",
-            "source_image_application_publications",
-            "source_image_origin_publications",
-            "source_image_publications",
-            "source_image_projection_requests",
-            "source_image_projection_hits",
-            "source_image_projection_misses",
-            "source_image_projection_publications",
-            "source_image_postorder_frames",
-            "source_image_primitive_applications",
-            "source_image_chronological_compositions",
+            _execution_keys.SOURCE_IMAGE_APPLICATION_REQUESTS,
+            _execution_keys.SOURCE_IMAGE_APPLICATION_ATTEMPTS,
+            _execution_keys.SOURCE_IMAGE_APPLICATION_HITS,
+            _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_HITS,
+            _execution_keys.SOURCE_IMAGE_APPLICATION_MISSES,
+            _execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS,
+            _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS,
+            _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+            _execution_keys.SOURCE_IMAGE_PROJECTION_REQUESTS,
+            _execution_keys.SOURCE_IMAGE_PROJECTION_HITS,
+            _execution_keys.SOURCE_IMAGE_PROJECTION_MISSES,
+            _execution_keys.SOURCE_IMAGE_PROJECTION_PUBLICATIONS,
+            _execution_keys.SOURCE_IMAGE_POSTORDER_FRAMES,
+            _execution_keys.SOURCE_IMAGE_PRIMITIVE_APPLICATIONS,
+            _execution_keys.SOURCE_IMAGE_CHRONOLOGICAL_COMPOSITIONS,
             "source_image_composite_applications",
             "source_image_demanded_composite_applications",
         ):
@@ -550,7 +555,7 @@ class SourceBoundSchedulerCore:
         except BaseException:
             self.ledger.release(self._adapter_owner, entries=1)
             raise
-        self.ledger.bump("source_image_adapter_registrations")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_ADAPTER_REGISTRATIONS)
 
     def _registered(self, adapter: SourceBoundImageAdapter) -> tuple[str, str]:
         if self._closed:
@@ -589,7 +594,7 @@ class SourceBoundSchedulerCore:
         self.ledger.release(self._origin_owner, entries=origins)
         self.ledger.release(self._node_owner, entries=nodes, nodes=nodes)
         self.owner = ArenaToken("tile-source-images-cleared")
-        self.ledger.bump("source_image_cache_clears")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_CACHE_CLEARS)
 
     def dispose(self) -> None:
         """Release all retained authority; the core cannot be reused."""
@@ -600,11 +605,11 @@ class SourceBoundSchedulerCore:
         self._adapters.clear()
         self.ledger.release(self._adapter_owner, entries=adapters)
         self._closed = True
-        self.ledger.bump("source_image_scheduler_disposals")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_SCHEDULER_DISPOSALS)
 
     def _validate_key(self, value: object, label: str) -> None:
         work = _require_immutable_key(value, label)
-        self.ledger.bump("source_image_key_validation_work", work)
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_KEY_VALIDATION_WORK, work)
 
     def resolve(self, image: SourceImageID) -> _ImageRecord:
         if type(image) is not SourceImageID:
@@ -725,7 +730,7 @@ class SourceBoundSchedulerCore:
             if not reserved:
                 self.ledger.release(self._node_owner, entries=1, nodes=1)
             raise
-        self.ledger.bump("source_image_publications")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_PUBLICATIONS)
         return SourceImageID(self.owner, self._KIND, local_id)
 
     def _origin(
@@ -742,7 +747,7 @@ class SourceBoundSchedulerCore:
                 found_view.binding.action, adapter.identity_action(source)
             ):
                 raise ValueError("source image origin binding was altered")
-            self.ledger.bump("source_image_origin_hits")
+            self.ledger.bump(_execution_keys.SOURCE_IMAGE_ORIGIN_HITS)
             return found
         identity = adapter.identity_action(source)
         adapter.validate_action(identity)
@@ -768,7 +773,7 @@ class SourceBoundSchedulerCore:
             self.ledger.release(self._node_owner, entries=1, nodes=1)
             self.ledger.release(self._origin_owner, entries=1)
             raise
-        self.ledger.bump("source_image_origin_publications")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS)
         return image
 
     def apply(
@@ -861,8 +866,10 @@ class SourceBoundSchedulerCore:
                 self.ledger.release(self._relative_owner, entries=1)
             raise
         if publish_relative:
-            self.ledger.bump("source_image_relative_transfer_publications")
-        self.ledger.bump("source_image_application_publications")
+            self.ledger.bump(
+                _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS
+            )
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS)
         return image
 
     def _validate_application_binding(
@@ -896,7 +903,7 @@ class SourceBoundSchedulerCore:
         if type(demand) is not SourceImageDemand:
             raise TypeError("source image projection requires an exact demand")
         demand.__post_init__()
-        self.ledger.bump("source_image_projection_requests")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_PROJECTION_REQUESTS)
         key = image, demand
         found = self._projections.get(key)
         if found is not None:
@@ -920,7 +927,7 @@ class SourceBoundSchedulerCore:
             # cold demand before reporting a usable hit.
             self._view_record(image, record)
             found.projection.__post_init__()
-            self.ledger.bump("source_image_projection_hits")
+            self.ledger.bump(_execution_keys.SOURCE_IMAGE_PROJECTION_HITS)
             return found.projection
         return None
 
@@ -935,7 +942,7 @@ class SourceBoundSchedulerCore:
             return found
         record = self.resolve(image)
         key = image, demand
-        self.ledger.bump("source_image_projection_misses")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_PROJECTION_MISSES)
         projected = adapter.project(self._view_record(image, record), demand)
         if type(projected) is not SourceImageProjection:
             raise TypeError("source image adapter returned another projection sort")
@@ -957,7 +964,7 @@ class SourceBoundSchedulerCore:
                 self._publication_seals.drop_projection(key)
             self.ledger.release(self._projection_owner, entries=1, nodes=1)
             raise
-        self.ledger.bump("source_image_projection_publications")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_PROJECTION_PUBLICATIONS)
         return projected
 
     def first_failure(
@@ -976,5 +983,5 @@ class SourceBoundSchedulerCore:
             raise ValueError("adapter failed to descend its recorded failure")
         if failure is not None and not isinstance(failure, Hashable):
             raise TypeError("source image failure witness must be immutable")
-        self.ledger.bump("source_image_failure_descents")
+        self.ledger.bump(_execution_keys.SOURCE_IMAGE_FAILURE_DESCENTS)
         return failure

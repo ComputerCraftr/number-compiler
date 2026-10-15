@@ -10,6 +10,9 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
     HomogeneousGrowthScale,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,10 +104,10 @@ def homogeneous_growth_packet(
         if evaluator.is_closed:
             raise RuntimeError("packet evaluator has been closed")
     if scale.is_identity:
-        ledger.bump("growth_arithmetic_operand_bits", 0)
-        ledger.bump("growth_arithmetic_work", 0)
-        ledger.bump("growth_arithmetic_precision_bits", 0)
-        ledger.bump("growth_order_identity_shortcuts")
+        ledger.bump(_fields_keys.GROWTH_ARITHMETIC_OPERAND_BITS, 0)
+        ledger.bump(_fields_keys.GROWTH_ARITHMETIC_WORK, 0)
+        ledger.bump(_fields_keys.GROWTH_ARITHMETIC_PRECISION_BITS, 0)
+        ledger.bump(_fields_keys.GROWTH_ORDER_IDENTITY_SHORTCUTS)
         return HomogeneousGrowthPacket(0, 0, radix, 0)
     if evaluator is not None:
         order = evaluator.radix_order(scale, radix)

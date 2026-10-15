@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from array import array
 from dataclasses import dataclass
+from typing import Final
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -18,11 +17,17 @@ from number_compiler.arithmetic.contracts.block_effect import (
     _normalized_digit,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     _decimal_kernel_carry_action,
     _decimal_kernel_pair_sum,
 )
+
+FINITE_KERNEL_BEHAVIOR_TAG: Final[str] = "finite-kernel-v2"
+FINITE_BLOCK_CANONICAL_KEY_TAG: Final[str] = "finite-block-v3"
 
 
 def _pair_carry_action(symbol: int, base: int) -> CarryFn:
@@ -334,7 +339,6 @@ class FiniteBlockEffect:
         "outputs",
         "right_count",
         "right_transitions",
-        "semantic_digest",
         "stable_blank_output",
         "storage_bytes",
         "supports_predecessor_trace",
@@ -441,7 +445,7 @@ class FiniteBlockEffect:
         if any(symbol >= self.alphabet_size for symbol in self.outputs):
             raise ValueError("finite output outside its alphabet")
         behavior = (
-            "finite-kernel-v2",
+            FINITE_KERNEL_BEHAVIOR_TAG,
             self.base,
             self.blank,
             self.exponent,
@@ -456,15 +460,14 @@ class FiniteBlockEffect:
             self.right_transitions,
             self.outputs.hex(),
         )
-        self.semantic_digest = hashlib.sha256(
-            json.dumps(behavior, separators=(",", ":")).encode("ascii")
-        ).hexdigest()
-        self._semantic_identity = SemanticIdentity(self.semantic_digest, behavior)
+        self._semantic_identity = SemanticIdentity(
+            SemanticIdentityDomain.ANONYMOUS, behavior
+        )
         self._sealed = True
 
     @property
     def canonical_key(self) -> tuple[object, ...]:
-        return ("finite-block-v3", self._semantic_identity)
+        return (FINITE_BLOCK_CANONICAL_KEY_TAG, self._semantic_identity)
 
     @staticmethod
     def _validate_side(side: BoundarySide) -> None:

@@ -52,7 +52,9 @@ from number_compiler.projection.source_audit import (
     RadixProjectionAuditSource,
     RadixProjectionSourceAuditor,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, ResourceScope
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
@@ -344,8 +346,8 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             "failures",
         ):
             self._ledger.bump(f"collatz_radix_conversion_{suffix}", 0)
-        self._ledger.bump("temporal_point_requests", 0)
-        self._ledger.bump("temporal_length_requests", 0)
+        self._ledger.bump(_shared_keys.TEMPORAL_POINT_REQUESTS, 0)
+        self._ledger.bump(_shared_keys.TEMPORAL_LENGTH_REQUESTS, 0)
         self.seed = seed
         self.steps = steps
         self.seed_digits = tuple(map(int, digits_lsd(seed, 2)))
@@ -360,8 +362,10 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             + 2
         )
         self._width_bound = (seed, steps, bound)
-        self._ledger.bump("collatz_width_bound_constructions")
-        self._ledger.bump("collatz_width_bound_operand_bits", seed.bit_length() + 2)
+        self._ledger.bump(_collatz_keys.COLLATZ_WIDTH_BOUND_CONSTRUCTIONS)
+        self._ledger.bump(
+            _collatz_keys.COLLATZ_WIDTH_BOUND_OPERAND_BITS, seed.bit_length() + 2
+        )
         self._source_construction = OriginalSourceConstruction(
             ExactSource(self.seed_digits, 2, blank=2, extent=bound, alphabet_size=2),
         )
@@ -385,7 +389,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._innovation_tape_demanded = False
         self._innovation_tape_modulus: int | None = None
         radix_owner = self._ledger.register(
-            "radix-applications", "application_index", "INDEX_OWNED"
+            "radix-applications", "application_index", ResourceScope.INDEX_OWNED
         )
         self._radix_projections: MutableMapping[int, RadixProjection] = (
             self._ledger.make_dict(radix_owner)
@@ -541,7 +545,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         transfer = self._source_image().saturated_summary().transfer
         numerator = transfer.upper * self.seed + transfer.offset
         self._ledger.bump(
-            "collatz_image_projection_operand_bits",
+            _collatz_keys.COLLATZ_IMAGE_PROJECTION_OPERAND_BITS,
             transfer.upper.bit_length()
             + self.seed.bit_length()
             + abs(transfer.offset).bit_length(),
@@ -556,8 +560,8 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         """Pull a bounded radix digit through the admitted affine transfer."""
         radix = require_integer(radix, "radix", 2)
         position = require_integer(position, "digit coordinate", 0)
-        self._ledger.bump("temporal_point_requests")
-        self._ledger.bump("collatz_image_radix_demands")
+        self._ledger.bump(_shared_keys.TEMPORAL_POINT_REQUESTS)
+        self._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
         try:
             return self._admitted_radix_digit(radix, position)
         except _ExteriorRadixCoordinate:
@@ -587,7 +591,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             transfer.lower.bit_length() - 1 + position * (radix.bit_length() - 1)
         )
         if scaled_place_bits >= numerator_bits:
-            self._ledger.bump("collatz_radix_exterior_shortcuts")
+            self._ledger.bump(_collatz_keys.COLLATZ_RADIX_EXTERIOR_SHORTCUTS)
             if position == 0:
                 return 0
             raise _ExteriorRadixCoordinate(position)
@@ -600,7 +604,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             or self.seed <= (threshold - transfer.offset - 1) // transfer.upper
         )
         if exterior:
-            self._ledger.bump("collatz_radix_exterior_shortcuts")
+            self._ledger.bump(_collatz_keys.COLLATZ_RADIX_EXTERIOR_SHORTCUTS)
             if position == 0:
                 return 0
             raise _ExteriorRadixCoordinate(position)
@@ -609,7 +613,9 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             (transfer.upper % modulus) * (self.seed % modulus)
             + transfer.offset % modulus
         ) % modulus
-        self._ledger.bump("collatz_image_projection_operand_bits", modulus.bit_length())
+        self._ledger.bump(
+            _collatz_keys.COLLATZ_IMAGE_PROJECTION_OPERAND_BITS, modulus.bit_length()
+        )
         return residue // threshold
 
     @source_reads_only
@@ -640,14 +646,14 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 value = self._ledger.observe_arithmetic(
                     value | (self.seed_digits[start + offset] << offset)
                 )
-                self._ledger.bump("collatz_original_limb_source_reads")
+                self._ledger.bump(_collatz_keys.COLLATZ_ORIGINAL_LIMB_SOURCE_READS)
             return value
         from number_compiler.projection.microblock_cache import (
             ExactMicroblock,
             MicroblockKey,
         )
 
-        self._ledger.bump("direct_powered_point_queries")
+        self._ledger.bump(_collatz_keys.DIRECT_POWERED_POINT_QUERIES)
         workspace = self._source_image()
         key = MicroblockKey(
             self._source_image_program(),
@@ -668,7 +674,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         except _ExteriorRadixCoordinate:
             symbol = radix
         else:
-            self._ledger.bump("collatz_image_radix_demands")
+            self._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
             if not 0 <= symbol < radix:
                 raise AssertionError("source image produced an invalid limb")
         self._microblocks.put(key, ExactMicroblock(symbol, limb_bits + 1))
@@ -690,12 +696,12 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         value = self._point_symbol(position)
         if value == 2:
             raise IndexError(position)
-        self._ledger.bump("temporal_point_requests")
+        self._ledger.bump(_shared_keys.TEMPORAL_POINT_REQUESTS)
         return value
 
     @source_reads_only
     def width(self) -> int:
-        self._ledger.bump("temporal_length_requests")
+        self._ledger.bump(_shared_keys.TEMPORAL_LENGTH_REQUESTS)
         _ = self.maximum_width  # Validate the original source/action binding.
         if self.steps == 0:
             return len(self.seed_digits)
@@ -945,13 +951,13 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             # its explicit query counter directly instead of relying on the
             # legacy HashLife index alias.
             direct_powered_point_queries=self._ledger.counters.get(
-                "direct_powered_point_queries", 0
+                _collatz_keys.DIRECT_POWERED_POINT_QUERIES, 0
             ),
             collatz_physical_factored_output_compilations=point.resource_work_counters.get(
-                "collatz_physical_factored_output_compilations", 0
+                _collatz_keys.COLLATZ_PHYSICAL_FACTORED_OUTPUT_COMPILATIONS, 0
             ),
             collatz_physical_joint_output_tables_elided=point.resource_work_counters.get(
-                "collatz_physical_joint_output_tables_elided", 0
+                _collatz_keys.COLLATZ_PHYSICAL_JOINT_OUTPUT_TABLES_ELIDED, 0
             ),
         )
 

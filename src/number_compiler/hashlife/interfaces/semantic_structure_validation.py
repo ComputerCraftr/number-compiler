@@ -26,6 +26,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     StructureID,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 def _require_semantic_total(
@@ -76,7 +79,9 @@ def _require_structured_total(
                         continue
                     checked.add(pair)
                     value, condition = (tx.node(identity) for identity in pair)
-                    arena.ledger.bump("semantic_structure_totality_pair_visits")
+                    arena.ledger.bump(
+                        _interfaces_keys.SEMANTIC_STRUCTURE_TOTALITY_PAIR_VISITS
+                    )
                     if condition.terminal is not None and not condition.terminal.value:
                         continue
                     if value.terminal is not None:

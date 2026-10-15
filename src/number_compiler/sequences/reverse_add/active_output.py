@@ -32,6 +32,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.stores import LedgerDict, LedgerList, append_indexed_node
 
 PAIR = AtomSort("reverse-decimal-pair", 19)
@@ -96,10 +97,10 @@ class ReverseActiveOutputArena:
 
     def intern(self, function: FactoredFunctionID) -> CoordinateOutputMorphismID:
         self._domain(function, PAIR)
-        self.ledger.bump("reverse_active_output_requests")
+        self.ledger.bump(_reverse_add_keys.REVERSE_ACTIVE_OUTPUT_REQUESTS)
         found = self._keys.get(function)
         if found is not None:
-            self.ledger.bump("reverse_active_output_hits")
+            self.ledger.bump(_reverse_add_keys.REVERSE_ACTIVE_OUTPUT_HITS)
             return CoordinateOutputMorphismID(self.owner, self._KIND, found)
         local_id = append_indexed_node(
             self.ledger,
@@ -110,7 +111,7 @@ class ReverseActiveOutputArena:
             function,
             function,
         )
-        self.ledger.bump("reverse_active_output_publications")
+        self.ledger.bump(_reverse_add_keys.REVERSE_ACTIVE_OUTPUT_PUBLICATIONS)
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)
 
     def normalized(

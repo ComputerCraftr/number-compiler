@@ -15,6 +15,9 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     RadialMultiplier,
     SymbolicInnovationArena,
 )
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 
 def _extent(extent: int) -> None:
@@ -106,5 +109,5 @@ def advance_centered_residual(
     else:
         radial = arena.radial(residual, RadialMultiplier(0, 1))
         window = arena.chart(arena.interval(extent - 1), CylinderChart(1, -1))
-    arena.ledger.bump("centered_carry_algebra_advance_attempts")
+    arena.ledger.bump(_fields_keys.CENTERED_CARRY_ALGEBRA_ADVANCE_ATTEMPTS)
     return arena.linear_combination(((1, radial), (1, innovation), (9, window)))

@@ -24,6 +24,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     evaluate_primitive_bits,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import (
+    hashlife_interfaces as _interfaces_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +107,8 @@ class FiniteFunctionAdmission:
                 raise ValueError(
                     "finite admission certificate disagrees with its primitive interfaces"
                 )
-            self.ledger.bump("finite_interface_admission_requests")
-            self.ledger.bump("finite_interface_admission_cache_hits")
+            self.ledger.bump(_interfaces_keys.FINITE_INTERFACE_ADMISSION_REQUESTS)
+            self.ledger.bump(_interfaces_keys.FINITE_INTERFACE_ADMISSION_CACHE_HITS)
             return 0
         expression = self.kernels.expression(function)
         port = LEFT_A if source.side == 0 else RIGHT_A
@@ -142,16 +145,19 @@ class FiniteFunctionAdmission:
                     "finite function emits outside its declared primitive domain"
                 )
         # All rejection paths above leave both telemetry and retained stores alone.
-        self.ledger.bump("finite_interface_admission_requests")
-        self.ledger.bump("finite_interface_admission_evaluations")
-        self.ledger.bump("finite_interface_admission_proof_visits", visits)
+        self.ledger.bump(_interfaces_keys.FINITE_INTERFACE_ADMISSION_REQUESTS)
+        self.ledger.bump(_interfaces_keys.FINITE_INTERFACE_ADMISSION_EVALUATIONS)
         self.ledger.bump(
-            "finite_interface_admission_workspace_peak",
+            _interfaces_keys.FINITE_INTERFACE_ADMISSION_PROOF_VISITS, visits
+        )
+        self.ledger.bump(
+            _interfaces_keys.FINITE_INTERFACE_ADMISSION_WORKSPACE_PEAK,
             max(
                 0,
                 peak
                 - self.ledger.counters.get(
-                    "finite_interface_admission_workspace_peak", 0
+                    _interfaces_keys.FINITE_INTERFACE_ADMISSION_WORKSPACE_PEAK,
+                    0,
                 ),
             ),
         )
@@ -162,5 +168,7 @@ class FiniteFunctionAdmission:
         ):
             self.memo[key] = certificate
         else:
-            self.ledger.bump("finite_interface_admission_uncached_evaluations")
+            self.ledger.bump(
+                _interfaces_keys.FINITE_INTERFACE_ADMISSION_UNCACHED_EVALUATIONS
+            )
         return visits

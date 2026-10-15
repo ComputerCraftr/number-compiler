@@ -12,13 +12,18 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import Final
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+)
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.field_action import ProgramRole
 
@@ -31,6 +36,8 @@ _ROLES: tuple[ProgramRole, ...] = (
     "frame",
 )
 _EXPONENT_LIMB_BITS = 64
+COLLATZ_RUNTIME_PROGRAM_TAG: Final[str] = "collatz-runtime-program-v2-binary-exponent"
+EXACT_EXPONENT_LIMBS_TAG: Final[str] = "exact-exponent-u64-v1"
 
 
 def _exponent_limbs(exponent: int) -> tuple[int, ...]:
@@ -163,7 +170,8 @@ class CollatzRuntimeProgramArena:
         # witness so two parenthesizations cannot acquire different IDs.
         key = node.role, node.exponent
         self.ledger.bump(
-            "collatz_runtime_program_key_bit_work", max(1, node.exponent.bit_length())
+            _collatz_keys.COLLATZ_RUNTIME_PROGRAM_KEY_BIT_WORK,
+            max(1, node.exponent.bit_length()),
         )
         found = self._keys.get(key)
         if found is not None:
@@ -217,12 +225,14 @@ class CollatzRuntimeProgramArena:
         bit_length = exponent.bit_length()
         if bit_length.bit_length() > 64:
             raise ValueError("Collatz exponent descriptor exceeds its bounded metadata")
-        self.ledger.bump("collatz_runtime_identity_key_bit_work", max(1, bit_length))
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_RUNTIME_IDENTITY_KEY_BIT_WORK, max(1, bit_length)
+        )
         record = self._semantic_identities.get(key)
         if record is not None:
             issued = self._semantic_identity_authority.get(key)
             self.ledger.bump(
-                "collatz_runtime_identity_authority_key_bit_work",
+                _collatz_keys.COLLATZ_RUNTIME_IDENTITY_AUTHORITY_KEY_BIT_WORK,
                 max(1, bit_length),
             )
             if (
@@ -243,11 +253,11 @@ class CollatzRuntimeProgramArena:
             if (
                 found.digest != digest
                 or found.behavior is not behavior_seal
-                or behavior_seal[0] != "collatz-runtime-program-v2-binary-exponent"
+                or behavior_seal[0] != COLLATZ_RUNTIME_PROGRAM_TAG
                 or behavior_seal[1] != role
                 or type(descriptor) is not tuple
                 or len(descriptor) != 3
-                or descriptor[0] != "exact-exponent-u64-v1"
+                or descriptor[0] != EXACT_EXPONENT_LIMBS_TAG
                 or descriptor[1] != bit_length
                 or type(descriptor[2]) is not tuple
                 or len(descriptor[2]) != limb_count
@@ -257,10 +267,10 @@ class CollatzRuntimeProgramArena:
                 # seals above detect replacement or mutation without walking
                 # every limb on a warm hit.
                 raise ValueError("cached Collatz semantic identity lost its seal")
-            self.ledger.bump("collatz_runtime_identity_cache_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_RUNTIME_IDENTITY_CACHE_HITS)
             return found
         self.ledger.bump(
-            "collatz_runtime_identity_authority_key_bit_work",
+            _collatz_keys.COLLATZ_RUNTIME_IDENTITY_AUTHORITY_KEY_BIT_WORK,
             max(1, bit_length),
         )
         if key in self._semantic_identity_authority:
@@ -279,18 +289,21 @@ class CollatzRuntimeProgramArena:
         try:
             byte_length = (bit_length + 7) // 8
             self.ledger.bump(
-                "collatz_runtime_identity_transient_byte_work", byte_length
+                _collatz_keys.COLLATZ_RUNTIME_IDENTITY_TRANSIENT_BYTE_WORK,
+                byte_length,
             )
             limbs = _exponent_limbs(exponent)
             if len(limbs) != limb_count:
                 raise ArithmeticError("noncanonical Collatz exponent limb count")
-            self.ledger.bump("collatz_runtime_identity_limb_work", max(1, limb_count))
-            behavior = (
-                "collatz-runtime-program-v2-binary-exponent",
-                role,
-                ("exact-exponent-u64-v1", bit_length, limbs),
+            self.ledger.bump(
+                _collatz_keys.COLLATZ_RUNTIME_IDENTITY_LIMB_WORK, max(1, limb_count)
             )
-            identity = SemanticIdentity("", behavior)
+            behavior = (
+                COLLATZ_RUNTIME_PROGRAM_TAG,
+                role,
+                (EXACT_EXPONENT_LIMBS_TAG, bit_length, limbs),
+            )
+            identity = SemanticIdentity(SemanticIdentityDomain.ANONYMOUS, behavior)
             record = (
                 identity,
                 identity.digest,
@@ -320,8 +333,11 @@ class CollatzRuntimeProgramArena:
                 self.ledger.release(self._identity_owner, entries=1)
             self.ledger.release(self._identity_owner, nodes=retained_nodes)
             raise
-        self.ledger.bump("collatz_runtime_identity_retained_limb_bytes", 8 * limb_count)
-        self.ledger.bump("collatz_runtime_identity_cache_misses")
+        self.ledger.bump(
+            _collatz_keys.COLLATZ_RUNTIME_IDENTITY_RETAINED_LIMB_BYTES,
+            8 * limb_count,
+        )
+        self.ledger.bump(_collatz_keys.COLLATZ_RUNTIME_IDENTITY_CACHE_MISSES)
         return identity
 
     def _composition_operands(
@@ -342,7 +358,7 @@ class CollatzRuntimeProgramArena:
         """Predict composition semantics without publishing a syntax node."""
         role, first, second = self._composition_operands(role, before, after)
         self.ledger.bump(
-            "collatz_runtime_identity_sum_bit_work",
+            _collatz_keys.COLLATZ_RUNTIME_IDENTITY_SUM_BIT_WORK,
             max(1, first.exponent.bit_length()) + max(1, second.exponent.bit_length()),
         )
         return self._semantic_identity_for(role, first.exponent + second.exponent)
@@ -370,7 +386,7 @@ class CollatzRuntimeProgramArena:
         found = self._compositions.get(key)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("collatz_program_composition_early_hits")
+            self.ledger.bump(_collatz_keys.COLLATZ_PROGRAM_COMPOSITION_EARLY_HITS)
             return found
         node = CollatzRuntimeProgram(
             role,
@@ -380,13 +396,13 @@ class CollatzRuntimeProgramArena:
         )
         result = self._intern(node, ((self._compose_owner, 1, 0),))
         self._compositions[key] = result
-        self.ledger.bump("collatz_program_compositions")
+        self.ledger.bump(_collatz_keys.COLLATZ_PROGRAM_COMPOSITIONS)
         return result
 
     def _sum_exponents(self, first: int, second: int) -> int:
         """Charge the exact duration addition used for a newly composed node."""
         self.ledger.bump(
-            "collatz_runtime_program_sum_bit_work",
+            _collatz_keys.COLLATZ_RUNTIME_PROGRAM_SUM_BIT_WORK,
             max(1, first.bit_length()) + max(1, second.bit_length()),
         )
         return first + second

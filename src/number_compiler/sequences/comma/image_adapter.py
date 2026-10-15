@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Hashable
 from dataclasses import dataclass
 from math import gcd
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.hashlife.execution.source_bound_images import (
@@ -18,6 +18,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
     CommaActionID,
@@ -38,7 +39,8 @@ from number_compiler.sequences.comma.boundary_quotient import (
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.power import CommaTerm
 
-SEMANTIC_VERSION = "comma-source-cylinder-v4-cycle-phase-coset"
+SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v4-cycle-phase-coset"
+STRICT_INTERIOR_CYCLE_CONSUMER_TAG: Final[str] = "strict-interior-cycle-v2-phase-coset"
 SOURCE = 20
 FIRST_FORK_VALUE = 19_999_999_918
 # Historical one-based location of the first fork, used only for exact checks.
@@ -381,8 +383,10 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 charge_bits=self.arena.charge_bits,
                 validate_read=self.arena._boundary_read_guard(state, template),
             )
-            self.ledger.bump("comma_boundary_prefix_applications")
-            self.ledger.bump("comma_boundary_represented_transitions", node.steps)
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_PREFIX_APPLICATIONS)
+            self.ledger.bump(
+                _comma_keys.COMMA_BOUNDARY_REPRESENTED_TRANSITIONS, node.steps
+            )
             if node.kind == "boundary-prefix-occurrence":
                 sector = decimal_sector(value)
                 next_index = payload.absolute_index + node.steps
@@ -394,7 +398,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                     + state.a.bit_length()
                     + state.exponent_residue.bit_length()
                 )
-                self.ledger.bump("comma_operand_bit_work", value.bit_length())
+                self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
                 return SourceImageCandidate(
                     CommaImagePayload(
                         value,
@@ -439,7 +443,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 charge_bits=self.arena.charge_bits,
             )
             value = entry.child_value
-            self.ledger.bump("comma_global_branch_action_applications")
+            self.ledger.bump(_comma_keys.COMMA_GLOBAL_BRANCH_ACTION_APPLICATIONS)
         elif node.kind == "global-boundary-return":
             state = node.boundary_source
             target = node.boundary_target
@@ -502,10 +506,10 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                     "comma weighted return differs from its exact endpoint"
                 )
             sector = decimal_sector(value)
-            self.ledger.bump("comma_global_branch_action_applications")
-            self.ledger.bump("comma_boundary_weighted_applications")
-            self.ledger.bump("comma_boundary_represented_transitions", steps)
-            self.ledger.bump("comma_operand_bit_work", value.bit_length())
+            self.ledger.bump(_comma_keys.COMMA_GLOBAL_BRANCH_ACTION_APPLICATIONS)
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_APPLICATIONS)
+            self.ledger.bump(_comma_keys.COMMA_BOUNDARY_REPRESENTED_TRANSITIONS, steps)
+            self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
             self.arena.charge_bits(
                 value.bit_length()
                 + payload.absolute_index.bit_length()
@@ -522,18 +526,18 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 radix=10,
             )
         elif node.kind == "step":
-            self.ledger.bump("comma_evaluated_transitions")
+            self.ledger.bump(_comma_keys.COMMA_EVALUATED_TRANSITIONS)
             sector = decimal_sector(payload.value)
             if sector.exponent < 2:
                 self.arena.charge(9)
                 self.arena.charge_bits(18 * payload.value.bit_length())
                 children = comma_children(payload.value)
-                self.ledger.bump("comma_child_candidate_checks", 9)
+                self.ledger.bump(_comma_keys.COMMA_CHILD_CANDIDATE_CHECKS, 9)
             else:
                 self.arena.charge(2)
                 self.arena.charge_bits(4 * payload.value.bit_length())
                 children = _large_sector_children(payload.value, sector)
-                self.ledger.bump("comma_seam_predicate_checks", 2)
+                self.ledger.bump(_comma_keys.COMMA_SEAM_PREDICATE_CHECKS, 2)
             if not children:
                 raise UnresolvedCommaBranch(
                     f"comma landmine at index {payload.absolute_index} has no child"
@@ -550,7 +554,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             )
             if value - payload.value != 10 * (payload.value % 10) + node.child_digit:
                 raise ValueError("comma action selected another child")
-            self.ledger.bump("comma_scalar_seam_steps")
+            self.ledger.bump(_comma_keys.COMMA_SCALAR_SEAM_STEPS)
         elif node.kind == "phase-prefix":
             sector = decimal_sector(payload.value)
             transfer = self.arena.transfer(node.leading, node.entering_digit)
@@ -573,9 +577,9 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             ):
                 raise ValueError("comma phase prefix crosses an unadmitted seam")
             value = payload.value + displacement
-            self.ledger.bump("comma_phase_prefix_applications")
-            self.ledger.bump("comma_phase_prefix_transitions", node.steps)
-            self.ledger.bump("comma_powered_image_applications")
+            self.ledger.bump(_comma_keys.COMMA_PHASE_PREFIX_APPLICATIONS)
+            self.ledger.bump(_comma_keys.COMMA_PHASE_PREFIX_TRANSITIONS, node.steps)
+            self.ledger.bump(_comma_keys.COMMA_POWERED_IMAGE_APPLICATIONS)
         elif node.kind == "cycle":
             self.arena.charge(2)
             self.arena.charge_bits(
@@ -611,11 +615,11 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             if output_headroom <= int(leading < 9):
                 raise ValueError("comma powered output lost its strict seam margin")
             output_ports = (leading, digit, output_headroom)
-            self.ledger.bump("comma_phase_cycles", node.cycles)
-            self.ledger.bump("comma_powered_image_applications")
+            self.ledger.bump(_comma_keys.COMMA_PHASE_CYCLES, node.cycles)
+            self.ledger.bump(_comma_keys.COMMA_POWERED_IMAGE_APPLICATIONS)
         else:
             raise ValueError("composite comma action needs chronological children")
-        self.ledger.bump("comma_operand_bit_work", value.bit_length())
+        self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
         if output_ports is not None:
             self.arena.charge_bits(
                 value.bit_length()
@@ -717,7 +721,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             + node.maximum_guard.bit_length()
             + len(payload.certificate_version) * 8
         )
-        self.ledger.bump("comma_relative_guard_checks")
+        self.ledger.bump(_comma_keys.COMMA_RELATIVE_GUARD_CHECKS)
         # The action's normalized maximum guard covers every chronological
         # phase prefix.  A source admits the whole action exactly when the
         # strict interior margin remains positive.
@@ -727,7 +731,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             payload.certificate_version,
             leading,
             digit % phase_class,
-            "strict-interior-cycle-v2-phase-coset",
+            STRICT_INTERIOR_CYCLE_CONSUMER_TAG,
         )
 
     def transport_reuse(
@@ -775,9 +779,9 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         ):
             raise ValueError("comma relative cycle has another source or effect")
         value = payload.value + node.displacement
-        self.ledger.bump("comma_relative_cycle_rebindings")
-        self.ledger.bump("comma_phase_cycles", node.cycles)
-        self.ledger.bump("comma_powered_image_applications")
+        self.ledger.bump(_comma_keys.COMMA_RELATIVE_CYCLE_REBINDINGS)
+        self.ledger.bump(_comma_keys.COMMA_PHASE_CYCLES, node.cycles)
+        self.ledger.bump(_comma_keys.COMMA_POWERED_IMAGE_APPLICATIONS)
         output_headroom = source_headroom - node.displacement
         if output_headroom <= int(node.leading < 9):
             raise ValueError("comma relative result lost its strict seam margin")

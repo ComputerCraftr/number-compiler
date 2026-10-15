@@ -24,6 +24,9 @@ from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferRequestKey,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 def _invalid_source_binding() -> Never:
@@ -99,9 +102,9 @@ class FieldTransferExecutor:
     ) -> FieldTransferID:
         key = FieldTransferRequestKey(action, source, geometry, signature)
         found = self.transfers.probe(key)
-        self.ledger.bump("field_transfer_parent_requests")
+        self.ledger.bump(_execution_keys.FIELD_TRANSFER_PARENT_REQUESTS)
         if found is not None:
-            self.ledger.bump("field_transfer_parent_early_hits")
+            self.ledger.bump(_execution_keys.FIELD_TRANSFER_PARENT_EARLY_HITS)
             return found
         source_level = (
             self.sources.resolve(source).level
@@ -121,7 +124,7 @@ class FieldTransferExecutor:
             candidate.extent_bound,
         )
         result = self.transfers.publish(key, record)
-        self.ledger.bump("field_transfer_parent_evaluations")
+        self.ledger.bump(_execution_keys.FIELD_TRANSFER_PARENT_EVALUATIONS)
         return result
 
     def point(
@@ -138,7 +141,7 @@ class FieldTransferExecutor:
         self.transfers.validate_observation_source(transfer, source)
         if not 0 <= coordinate < record.extent_bound:
             raise IndexError(coordinate)
-        self.ledger.bump("point_observations")
+        self.ledger.bump(_execution_keys.POINT_OBSERVATIONS)
         return self.adapter.point_transfer(transfer, source, incoming, coordinate)
 
     def width(
@@ -153,7 +156,7 @@ class FieldTransferExecutor:
         result = self.adapter.width_transfer(transfer, source, incoming)
         if type(result) is not int or not 0 <= result <= record.extent_bound:
             raise ValueError("field-transfer width lies outside its extent")
-        self.ledger.bump("width_observations")
+        self.ledger.bump(_execution_keys.WIDTH_OBSERVATIONS)
         return result
 
     def application(

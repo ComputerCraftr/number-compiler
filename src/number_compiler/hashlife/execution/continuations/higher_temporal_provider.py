@@ -24,6 +24,9 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 
 class HigherTemporalProviderEvaluator:
@@ -126,11 +129,11 @@ class HigherTemporalProviderEvaluator:
             # The configured producer validated this occurrence for the same
             # output. The first binding remains the observation witness; an
             # output alias is not authority for a different future successor.
-            self.ledger.bump("temporal_provider_binding_aliases")
+            self.ledger.bump(_execution_keys.TEMPORAL_PROVIDER_BINDING_ALIASES)
             return
         self.ledger.reserve(self._binding_owner, entries=1)
         self._bindings[provider] = (source, action)
-        self.ledger.bump("temporal_provider_bindings")
+        self.ledger.bump(_execution_keys.TEMPORAL_PROVIDER_BINDINGS)
 
     def complete_action(
         self,
@@ -178,7 +181,7 @@ class HigherTemporalProviderEvaluator:
             raise ValueError(
                 "higher temporal provider received noncanonical exterior boundaries"
             )
-        self.ledger.bump("temporal_provider_observations")
+        self.ledger.bump(_execution_keys.TEMPORAL_PROVIDER_OBSERVATIONS)
         return self.runtime.point(action, source, coordinate)
 
 

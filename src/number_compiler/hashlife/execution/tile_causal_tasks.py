@@ -20,6 +20,9 @@ from number_compiler.resources.causal_workspace import (
     CausalSpatialWorkspace,
     SpatialReferenceBuffer,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -154,7 +157,7 @@ def primitive_advance(
             state,
             _action_admission=action_admission,
         )
-        adapter.ledger.bump("tile_causal_direct_parent_transfers")
+        adapter.ledger.bump(_execution_keys.TILE_CAUSAL_DIRECT_PARENT_TRANSFERS)
         return result
     scan_view = BoundaryTileView(
         view.tile,
@@ -234,7 +237,7 @@ def scan_view(
         # repeats the same spatial tree at every temporal layer.
         mirror_lease = tiles.mirror(view.tile)
         leases.append(mirror_lease)
-        tiles.ledger.bump("tile_boundary_scan_whole_mirror_hits")
+        tiles.ledger.bump(_execution_keys.TILE_BOUNDARY_SCAN_WHOLE_MIRROR_HITS)
         return BoundaryTileView(mirror_lease.tile, 0, source.width)
     if results is not None:
         from number_compiler.hashlife.tiles.tile_region_memo import (
@@ -250,7 +253,7 @@ def scan_view(
             application=application,
         )
         leases.append(region_lease)
-        tiles.ledger.bump("tile_boundary_scan_cached_region_requests")
+        tiles.ledger.bump(_execution_keys.TILE_BOUNDARY_SCAN_CACHED_REGION_REQUESTS)
         return normalized
     merged = None
     for tile in covered_chunks(tiles, leases, view):
@@ -593,8 +596,8 @@ def publish_composite_output(
         return payload
     completed = publish_causal_completed(engine.scheduler.results, key, payload)
     result = retain_completed(engine, key, completed)
-    engine.ledger.bump("tile_causal_result_evaluations")
-    engine.ledger.bump("tile_temporal_complete_compositions")
+    engine.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_EVALUATIONS)
+    engine.ledger.bump(_execution_keys.TILE_TEMPORAL_COMPLETE_COMPOSITIONS)
     return result
 
 

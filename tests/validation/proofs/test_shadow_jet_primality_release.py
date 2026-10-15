@@ -59,13 +59,13 @@ def test_cli_consumes_candidate_shadow_bit(
             str(parameter),
             "--no-value",
             "--info",
-            "primality",
+            "number-theory.primality",
             "--format",
             "json",
         ]
     )
     row = json.loads(capsys.readouterr().out)
-    primality = row["info"]["primality"]
+    primality = row["info"]["number-theory.primality"]
     assert exit_code == 0, "P0: production CLI cannot recover the candidate prime bit"
     assert primality["decided"] and primality["status"] == status
     assert primality["certificate"]["scalable_construction"]

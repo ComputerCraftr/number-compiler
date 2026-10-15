@@ -11,9 +11,10 @@ from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from math import isqrt
 from os import urandom
-from typing import cast
+from typing import Final, cast
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheLease,
@@ -26,7 +27,7 @@ from number_compiler.sequences.prime.coprime_rank import (
 )
 
 _PRIME_CACHE_NAMESPACE = "prime.coprime-rank"
-_PRIME_CACHE_VERSION = "positive-integers-least-survivor-v1"
+_PRIME_CACHE_VERSION: Final[str] = "positive-integers-least-survivor-v1"
 _PRIME_CACHE_ISSUER = urandom(32)
 _PRIME_CACHE_SOURCE = (
     "positive-integers",
@@ -425,7 +426,9 @@ def nth_prime_at_or_after(
         partial = context._partial_query
         if type(partial) is not PrimePartialSuccessorQuery:
             raise RuntimeError("prime selection did not publish its partial successor")
-        scheduler_work = dag.ledger.counters.get("prime_successor_scheduler_work", 0)
+        scheduler_work = dag.ledger.counters.get(
+            _prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK, 0
+        )
         scheduler_allocations = partial.peak_scheduler_entries
         context.publish()
         (

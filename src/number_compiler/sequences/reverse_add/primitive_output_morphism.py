@@ -24,6 +24,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
     PAIR,
@@ -141,7 +142,9 @@ class ReversePrimitiveOutputMorphism:
         # or the caller's source assignments.
         roots: tuple[FactoredFunctionID, ...] = ()
         for value in reversed(range(20)):
-            self.ledger.bump("reverse_symbolic_channel_alphabet_branches")
+            self.ledger.bump(
+                _reverse_add_keys.REVERSE_SYMBOLIC_CHANNEL_ALPHABET_BRANCHES
+            )
             left = ReverseLeftTransfer.leaf(10, value)
             right = ReverseRightTransfer.leaf(10, value)
             branches = (
@@ -219,7 +222,7 @@ class ReversePrimitiveOutputMorphism:
         if self.kernel is None:
             raise ValueError("output binding requires an admitted primitive evaluator")
         value = self.kernel.emit(ports[0], symbol, ports[1])
-        self.ledger.bump("reverse_primitive_output_morphism_bindings")
+        self.ledger.bump(_reverse_add_keys.REVERSE_PRIMITIVE_OUTPUT_MORPHISM_BINDINGS)
         if value == 19:
             return self.bits.constant(FunctionSignature((), CELL), 19)
         output = self.active.resolve(self.active.constant(value))
@@ -244,7 +247,9 @@ class ReversePrimitiveOutputMorphism:
             return cached
         value = self._compile_leaf(symbol)
         self._leaves[symbol] = value
-        self.ledger.bump("reverse_primitive_output_morphism_compilations")
+        self.ledger.bump(
+            _reverse_add_keys.REVERSE_PRIMITIVE_OUTPUT_MORPHISM_COMPILATIONS
+        )
         return value
 
     def _compile_leaf(self, symbol: int) -> FactoredFunctionID:

@@ -10,6 +10,9 @@ from number_compiler.arithmetic.automata.symmetry_powering import ActionTransfor
 from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _FieldAnchor = tuple[type[object], object | None]
@@ -441,11 +444,11 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
             consumed += 8 + 8 * len(children)
         return PublicationSeal(_root_anchor(value), tuple(guards), retained_nodes)
     finally:
-        ledger.bump("source_image_seal_creation_visits", visits)
-        ledger.bump("source_image_seal_creation_bytes", consumed)
+        ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_CREATION_VISITS, visits)
+        ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_CREATION_BYTES, consumed)
         # Preserve aggregate counters consumed by existing reporting.
-        ledger.bump("source_image_seal_visits", visits)
-        ledger.bump("source_image_seal_bytes", consumed)
+        ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_VISITS, visits)
+        ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_BYTES, consumed)
 
 
 def _publication_matches(value: object, seal: PublicationSeal) -> tuple[bool, int]:
@@ -475,7 +478,7 @@ def publication_matches(
 ) -> bool:
     """Validate exact root and field anchors and charge the runtime visit."""
     valid, visits = _publication_matches(value, seal)
-    ledger.bump("source_image_seal_validation_visits", visits)
+    ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_VALIDATION_VISITS, visits)
     return valid
 
 

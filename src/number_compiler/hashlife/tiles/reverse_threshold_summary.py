@@ -25,8 +25,15 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.metric_keys import (
+    hashlife_tiles as _tiles_keys,
+)
 from number_compiler.resources.result_cache_kinds import (
+    ResultCacheKind,
     record_unattributed_post_eviction_miss,
+)
+from number_compiler.resources.tile_alphabet_contract import (
+    CANONICAL_TILE_ALPHABET_VERSION,
 )
 
 if TYPE_CHECKING:
@@ -66,7 +73,7 @@ def _validate_key(
         or alphabet.blank != 2 * key.base - 1
         or alphabet.symbol_count != 2 * key.base
         or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-        or alphabet.version != "canonical-tile-alphabet-v1"
+        or alphabet.version != CANONICAL_TILE_ALPHABET_VERSION
     ):
         raise ValueError("tile alphabet is not a canonical reverse pair field")
 
@@ -77,15 +84,17 @@ def _lookup(
 ) -> BlockSummary | None:
     _validate_key(results, key)
     found = results._memo.get(key)
-    results.ledger.bump("reverse_threshold_summary_requests")
+    results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_REQUESTS)
     if found is None:
-        record_unattributed_post_eviction_miss(results.ledger, "interface")
+        record_unattributed_post_eviction_miss(
+            results.ledger, ResultCacheKind.INTERFACE
+        )
         return None
     if type(found) is not BlockSummary:
         raise TypeError("reverse threshold memo contains another value sort")
     if found.length != results.tiles.resolve(key.input).extent:
         raise ValueError("reverse threshold summary lost its active extent")
-    results.ledger.bump("reverse_threshold_summary_early_hits")
+    results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_EARLY_HITS)
     return found
 
 
@@ -101,14 +110,14 @@ def _publish(
     if summary.length != results.tiles.resolve(key.input).extent:
         raise ValueError("reverse threshold summary has another active extent")
     found = results._memo.get(key)
-    results.ledger.bump("reverse_threshold_summary_publication_requests")
+    results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not BlockSummary or found != summary:
             raise ValueError("reverse threshold tile already has another summary")
-        results.ledger.bump("reverse_threshold_summary_late_duplicates")
+        results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_LATE_DUPLICATES)
         return found
     publish_indexed_result(results, key, summary)
-    results.ledger.bump("reverse_threshold_summary_publications")
+    results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_PUBLICATIONS)
     return summary
 
 
@@ -144,7 +153,7 @@ def reverse_threshold_summary(
             key = ReverseThresholdSummaryKey(current, base)
             if frame.known_missing:
                 results.ledger.bump(
-                    "reverse_threshold_summary_known_missing_probe_elisions"
+                    _tiles_keys.REVERSE_THRESHOLD_SUMMARY_KNOWN_MISSING_PROBE_ELISIONS
                 )
             elif _lookup(results, key) is not None:
                 continue
@@ -188,7 +197,7 @@ def reverse_threshold_summary(
             if summary.length != node.extent:
                 raise _UnsupportedReverseShape("reverse pair field has a blank gap")
             _publish(results, key, summary)
-            results.ledger.bump("reverse_threshold_summary_evaluations")
+            results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_EVALUATIONS)
         result = _lookup(results, root_key)
         if result is None:
             raise ValueError("reverse pair field has no active symbols")

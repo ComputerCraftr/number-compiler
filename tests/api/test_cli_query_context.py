@@ -10,6 +10,7 @@ import pytest
 from number_compiler.api import cli, cli_context, cli_render
 from number_compiler.api.cylinder_observation import CollatzObservationContext
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
+from number_compiler.api.observation_types import ObservationId
 from number_compiler.api.query_types import TermQuery
 
 
@@ -42,7 +43,7 @@ def test_public_temporal_powers_emit_digits_without_causal_or_physical_replay(
     options = (
         ["--seed", str(seed)]
         if family == "collatz"
-        else ["--info", "mahler", "--info", "hensel"]
+        else ["--info", "arithmetic.mahler", "--info", "arithmetic.hensel"]
     )
     assert cli.main([family, "--nth", str(steps), "--format", "json", *options]) == 0
     captured = capsys.readouterr()
@@ -50,12 +51,19 @@ def test_public_temporal_powers_emit_digits_without_causal_or_physical_replay(
     packet = json.loads(captured.out)
     assert packet["value"] == str(expected)
     if family == "antihydra":
-        for name in ("mahler", "hensel"):
+        for name in ("arithmetic.mahler", "arithmetic.hensel"):
             assert packet["info"][name]["value"]["timestamp_macro_returns"] == steps
             assert packet["info"][name]["guarded_physical_status"] == "not_requested"
 
 
-@pytest.mark.parametrize("names", (("hensel",), ("mahler",), ("hensel", "mahler")))
+@pytest.mark.parametrize(
+    "names",
+    (
+        ("arithmetic.hensel",),
+        ("arithmetic.mahler",),
+        ("arithmetic.hensel", "arithmetic.mahler"),
+    ),
+)
 def test_arithmetic_observers_do_not_request_physical_execution(
     names: tuple[str, ...],
     monkeypatch: pytest.MonkeyPatch,
@@ -67,7 +75,7 @@ def test_arithmetic_observers_do_not_request_physical_execution(
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
     monkeypatch.setattr(cli_render, "_render_value", forbidden)
-    if names == ("hensel",):
+    if names == ("arithmetic.hensel",):
         from number_compiler.sequences.antihydra import mahler_action
 
         monkeypatch.setattr(mahler_action, "associated_action", forbidden)
@@ -149,7 +157,7 @@ def test_primality_only_does_not_construct_a_value(
                 "4",
                 "--no-value",
                 "--info",
-                "primality",
+                "number-theory.primality",
                 "--format",
                 "json",
             ]
@@ -158,7 +166,7 @@ def test_primality_only_does_not_construct_a_value(
     )
     row = json.loads(capsys.readouterr().out)
     assert row["value"] is None
-    assert row["info"]["primality"]["status"] == "unknown"
+    assert row["info"]["number-theory.primality"]["status"] == "unknown"
 
 
 def test_reverse_metrics_only_does_not_construct_reachable_image(
@@ -256,7 +264,7 @@ def test_antihydra_metrics_after_ledger_do_not_repeat_endpoint(
                 "16",
                 "--no-value",
                 "--info",
-                "ledger",
+                "safety.ledger",
                 "--info",
                 "metrics",
                 "--format",
@@ -266,7 +274,7 @@ def test_antihydra_metrics_after_ledger_do_not_repeat_endpoint(
         == 0
     )
     packet = json.loads(capsys.readouterr().out)
-    assert packet["info"]["ledger"]["value"]["h"] > 0
+    assert packet["info"]["safety.ledger"]["value"]["h"] > 0
     assert calls == 1
 
 
@@ -295,11 +303,11 @@ def test_multiple_collatz_event_views_discover_one_prefix(
                 "--seed",
                 "27",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--info",
-                "modular",
+                "arithmetic.modular",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--format",
                 "json",
             ]
@@ -309,9 +317,9 @@ def test_multiple_collatz_event_views_discover_one_prefix(
     row = json.loads(capsys.readouterr().out)
     assert constructions == 1
     assert row["index_unit"] == "accelerated_odd_events" and row["value"] is None
-    assert set(row["info"]) == {"clock", "modular"}
-    assert row["info"]["clock"]["discovered_events"] == 4
-    assert row["info"]["modular"]["discovered_events"] == 4
+    assert set(row["info"]) == {"temporal.clock", "arithmetic.modular"}
+    assert row["info"]["temporal.clock"]["discovered_events"] == 4
+    assert row["info"]["arithmetic.modular"]["discovered_events"] == 4
 
 
 def test_collatz_event_cli_consumes_published_support_without_digit_replay(
@@ -332,9 +340,9 @@ def test_collatz_event_cli_consumes_published_support_without_digit_replay(
                 "--seed",
                 "27",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--info",
-                "hasse",
+                "arithmetic.hasse",
                 "--format",
                 "json",
             ]
@@ -342,7 +350,7 @@ def test_collatz_event_cli_consumes_published_support_without_digit_replay(
         == 0
     )
     info = json.loads(capsys.readouterr().out)["info"]
-    for name in ("clock", "hasse"):
+    for name in ("temporal.clock", "arithmetic.hasse"):
         assert info[name]["source_support_ticks"] == 9  # valuations 1, 2, 1, 1
         assert info[name]["discovered_events"] == 4
         assert "source_work_counters" not in info[name]
@@ -392,11 +400,11 @@ def test_collatz_finite_safety_cli_shares_discovery(
                 "--seed",
                 str(seed),
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--info",
-                "safety",
+                "safety.execution",
                 "--info",
-                "safety",
+                "safety.execution",
                 "--format",
                 "json",
             ]
@@ -404,7 +412,7 @@ def test_collatz_finite_safety_cli_shares_discovery(
         == 0
     )
     row = json.loads(capsys.readouterr().out)
-    packet = row["info"]["safety"]
+    packet = row["info"]["safety.execution"]
     value = packet["value"]
     current, count, descended = seed, 0, False
     while count < events and current != 1:
@@ -424,7 +432,7 @@ def test_collatz_finite_safety_cli_shares_discovery(
     assert (action["multiplier"] * seed + action["offset"]) // action[
         "denominator"
     ] == current
-    assert row["info"]["clock"]["discovered_events"] == count
+    assert row["info"]["temporal.clock"]["discovered_events"] == count
 
 
 def test_unrequested_collatz_safety_does_no_threshold_work(
@@ -435,7 +443,10 @@ def test_unrequested_collatz_safety_does_no_threshold_work(
 
     monkeypatch.setattr(saturated_future, "from_published_prefix", forbidden)
     assert (
-        cli.main(["collatz", "--events", "4", "--seed", "27", "--info", "clock"]) == 0
+        cli.main(
+            ["collatz", "--events", "4", "--seed", "27", "--info", "temporal.clock"]
+        )
+        == 0
     )
     assert capsys.readouterr().out == ""
 
@@ -464,9 +475,9 @@ def test_multiple_physical_views_use_one_term(
                 "--info",
                 "metrics",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--info",
-                "clock",
+                "temporal.clock",
                 "--format",
                 "json",
             ]
@@ -475,7 +486,7 @@ def test_multiple_physical_views_use_one_term(
     )
     row = json.loads(capsys.readouterr().out)
     assert row["value"] == "62" and len(projected) == 1
-    assert row["info"]["clock"]["value"]["physical_ticks"] == 4
+    assert row["info"]["temporal.clock"]["value"]["physical_ticks"] == 4
 
 
 def test_physical_budget_refusal_precedes_compiler_construction(
@@ -492,8 +503,8 @@ def test_physical_budget_refusal_precedes_compiler_construction(
                 "--seed",
                 "27",
                 "--info",
-                "clock",
-                "--max-events",
+                "temporal.clock",
+                "--temporal-clock-max-events",
                 "1",
             ]
         )
@@ -516,9 +527,9 @@ def test_antihydra_value_and_ledger_do_not_build_physical_roofs(
                 "--nth",
                 "10",
                 "--info",
-                "ledger",
+                "safety.ledger",
                 "--info",
-                "modular",
+                "arithmetic.modular",
                 "--info",
                 "metrics",
                 "--format",
@@ -529,7 +540,7 @@ def test_antihydra_value_and_ledger_do_not_build_physical_roofs(
     )
     row = json.loads(capsys.readouterr().out)
     assert row["value"] == "454"
-    ledger = row["info"]["ledger"]["value"]
+    ledger = row["info"]["safety.ledger"]["value"]
     assert ledger["ledger"] == 11 and ledger["odd_a_steps"] == 3
     assert ledger["centered_odd_events"] == 7
     work = row["info"]["metrics"]["execution_metrics"]["observations"]
@@ -547,8 +558,8 @@ def test_antihydra_output_budget_accepts_seed_exactly(
 @pytest.mark.parametrize(
     "names",
     [
-        ("tape", "twisted"),
-        ("twisted", "tape"),
+        ("spatial.tape", "arithmetic.twisted"),
+        ("arithmetic.twisted", "spatial.tape"),
     ],
 )
 def test_antihydra_equivalent_information_reuses_the_demand(
@@ -595,7 +606,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
     monkeypatch.setattr(cli_render, "_render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
     first, second = (row["info"][name] for name in names)
-    assert calls == [names[0]]
+    assert calls == [names[0].split(".")[-1]]
     assert first["kind"] == names[0] and second["kind"] == names[1]
     assert first["value"] == second["value"]
     assert row["value"] is None
@@ -603,7 +614,13 @@ def test_antihydra_equivalent_information_reuses_the_demand(
     assert work["query_observer_reuses"] == 1
 
 
-@pytest.mark.parametrize("names", [("mahler", "hensel"), ("hensel", "mahler")])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("arithmetic.mahler", "arithmetic.hensel"),
+        ("arithmetic.hensel", "arithmetic.mahler"),
+    ],
+)
 def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     names: tuple[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -633,8 +650,8 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     monkeypatch.setattr(cli_render, "_render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
     assert calls == 1
-    mahler = row["info"]["mahler"]["value"]
-    hensel = row["info"]["hensel"]["value"]
+    mahler = row["info"]["arithmetic.mahler"]["value"]
+    hensel = row["info"]["arithmetic.hensel"]["value"]
     assert "associated_action" not in hensel
     assert {
         key: value for key, value in mahler.items() if key != "associated_action"
@@ -736,12 +753,12 @@ def test_collatz_clock_budget_rejection_precedes_observer_preparation(
             "--nth",
             "64",
             "--info",
-            "clock",
+            "temporal.clock",
             "--info",
-            "accumulator",
+            "temporal.accumulator",
             "--info",
-            "boundary-macro",
-            "--max-digits",
+            "temporal.macro",
+            "--temporal-clock-max-digits",
             "5",
             "--format",
             "json",
@@ -785,7 +802,9 @@ def test_failed_collatz_prepare_retries_without_reprojecting(
     monkeypatch.setattr(PoweredCollatzTerm, "prepare_joint_cocycle", fail_once)
     request = QueryRequest(
         CollatzTermQuery(8, seed=27),
-        observations=CollatzTermObservationOptions(info=("accumulator",)),
+        observations=CollatzTermObservationOptions(
+            info=(ObservationId.TEMPORAL_ACCUMULATOR,)
+        ),
     )
     context = QueryContext(request, NumberCompiler())
 

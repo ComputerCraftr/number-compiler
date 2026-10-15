@@ -13,6 +13,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageID,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
 from number_compiler.sequences.prime.successor_action import (
     PrimeSuccessorActionArena,
@@ -117,7 +118,7 @@ class PrimePartialSuccessorQuery:
             scheduler,
             depth,
         )
-        self.rank.ledger.bump("prime_partial_successor_stage_publications")
+        self.rank.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_STAGE_PUBLICATIONS)
         return arena, adapter, scheduler
 
     def _update_peak(self, arena: PrimeSuccessorActionArena) -> None:
@@ -181,7 +182,7 @@ class PrimePartialSuccessorQuery:
             depth, self.rank.factor_rank(lower - 1)
         )
         self._update_peak(arena)
-        self.rank.ledger.bump("prime_partial_successor_interval_projections")
+        self.rank.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_INTERVAL_PROJECTIONS)
         return upper_rank - lower_rank + known
 
     def close(self) -> None:

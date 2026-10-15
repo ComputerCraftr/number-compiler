@@ -25,7 +25,7 @@ from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm,
 from tests.support.report_values import object_record
 
 
-@pytest.mark.parametrize("kind", ("clock", "hensel"))
+@pytest.mark.parametrize("kind", ("temporal.clock", "arithmetic.hensel"))
 def test_unrequested_mahler_module_is_not_imported(kind: str) -> None:
     code = """
 import sys

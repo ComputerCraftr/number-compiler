@@ -10,6 +10,7 @@ import pytest
 from number_compiler.api import cli
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz import temporal_border_return_execution
+from number_compiler.sequences.collatz.border_identity import BoundaryPathKind
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     select_border_return_macro,
@@ -50,7 +51,7 @@ def test_public_cli_publishes_exact_6305_source_macro(
                 str(ticks),
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--format",
                 "json",
             ]
@@ -59,9 +60,14 @@ def test_public_cli_publishes_exact_6305_source_macro(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] is None
-    boundary = packet["info"]["boundary-macro"]
+    boundary = packet["info"]["temporal.macro"]
     macro = boundary["first_executed_macro"]
-    assert macro["family_word"] == "6305R"
+    assert macro["border"]["kind"] == "guarded-path"
+    assert macro["border"]["path_kind"] == "three-border-return"
+    assert macro["border"]["entry_digit"] == 3
+    assert macro["border"]["exit_digit"] == 4
+    expected_run_parameters = {13: [2], 23: [0, 4], 43: [0]}
+    assert macro["border"]["run_parameters"] == expected_run_parameters[seed]
     assert macro["source"] == seed
     assert macro["endpoint"] == endpoint
     assert macro["physical_ticks"] == ticks
@@ -75,21 +81,21 @@ def test_public_cli_publishes_exact_6305_source_macro(
 
 @pytest.mark.usefixtures("isolated_process_cache")
 @pytest.mark.parametrize(
-    "seed,ticks,family,endpoint",
+    "seed,ticks,entry_phase,endpoint",
     (
-        (30, 9, "0563", 80),
-        (112, 6, "26847", 11),
-        (592, 11, "26847", 11),
-        (296, 10, "26847P1", 11),
-        (148, 9, "26847P2", 11),
-        (74, 8, "26847P3", 11),
-        (37, 7, "26847P4", 11),
+        (30, 9, 0, 80),
+        (112, 6, 0, 11),
+        (592, 11, 0, 11),
+        (296, 10, 1, 11),
+        (148, 9, 2, 11),
+        (74, 8, 3, 11),
+        (37, 7, 4, 11),
     ),
 )
 def test_public_cli_consumes_guarded_digit_cycle(
     seed: int,
     ticks: int,
-    family: str,
+    entry_phase: int,
     endpoint: int,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -102,7 +108,7 @@ def test_public_cli_consumes_guarded_digit_cycle(
                 "--nth",
                 str(ticks),
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--format",
                 "json",
             ]
@@ -111,11 +117,13 @@ def test_public_cli_consumes_guarded_digit_cycle(
     )
     packet = json.loads(capsys.readouterr().out)
     assert int(packet["value"]) == endpoint
-    boundary = packet["info"]["boundary-macro"]
+    boundary = packet["info"]["temporal.macro"]
     macro = boundary["first_executed_macro"]
-    assert macro["family_word"] == family
+    assert macro["border"]["kind"] == "closed-cycle"
+    assert macro["border"]["cycle"] == ([0, 5, 6, 3] if seed == 30 else [2, 6, 8, 4, 7])
+    assert macro["border"]["entry_phase"] == entry_phase
     assert macro["physical_ticks"] == ticks
-    assert boundary["executed_macro_actions"][family] == 1
+    assert sum(boundary["executed_macro_actions"].values()) == 1
 
 
 @pytest.mark.usefixtures("isolated_process_cache")
@@ -123,7 +131,7 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    route: list[str] = []
+    route: list[BoundaryPathKind | str] = []
     original_selector = select_border_return_macro
     original_transition = D8TemporalTable._transition
 
@@ -145,7 +153,7 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
             ledger=ledger,
         )
         if macro is not None:
-            route.append("6305R")
+            route.append(macro.identity.kind)
         return macro
 
     def record_d8(
@@ -162,7 +170,7 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
         CollatzTapeWidthSummary | None,
         DyadicTerminalFieldAction | None,
     ]:
-        if "6305R" not in route:
+        if BoundaryPathKind.THREE_BORDER_RETURN not in route:
             raise AssertionError("D8 was selected before a source-bound border return")
         route.append("D8")
         return original_transition(
@@ -185,7 +193,7 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
                 "80",
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--format",
                 "json",
             ]
@@ -194,8 +202,8 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] is None
-    assert route[0] == "6305R"
-    macro = packet["info"]["boundary-macro"]["first_executed_macro"]
+    assert route[0] is BoundaryPathKind.THREE_BORDER_RETURN
+    macro = packet["info"]["temporal.macro"]["first_executed_macro"]
     assert macro["source"] == 43
     assert macro["exit_port"] == "8_to_9_to_8"
 
@@ -214,7 +222,7 @@ def test_public_source_ending_in_nine_keeps_the_standalone_989_route(
                 "4",
                 "--no-value",
                 "--info",
-                "boundary-macro",
+                "temporal.macro",
                 "--format",
                 "json",
             ]
@@ -223,7 +231,14 @@ def test_public_source_ending_in_nine_keeps_the_standalone_989_route(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] is None
-    macro = packet["info"]["boundary-macro"]["first_executed_macro"]
-    assert macro["family_word"] == "989"
+    macro = packet["info"]["temporal.macro"]["first_executed_macro"]
+    assert macro["border"] == {
+        "kind": "closed-cycle",
+        "cycle": [8, 9],
+        "entry_phase": 1,
+        "entry_digit": 9,
+        "run_parameters": [2],
+        "display_label": "989",
+    }
     assert macro["source"] == 19
     assert macro["endpoint"] == 44

@@ -124,6 +124,110 @@ definition punctured_growth_edge_coefficient :: "nat list \<Rightarrow> nat" whe
   "punctured_growth_edge_coefficient ss =
     (ss ! 0) + 1 - 10 * carry_bit (punctured_prefix_carry ss 1)"
 
+text \<open>The two one-step observers used by the conditional stencil are exact
+algebraic ports.  The five-band coefficient and reflected carry XOR determine
+EQ birth on the no-growth branch; zero/nine emitted digits are precisely the
+borrow identity/reset gates.  These are local laws, not a source-closed
+right-congruence or a powered temporal action.\<close>
+
+lemma punctured_f5_reflected_xor_eq_birth:
+  fixes s c d out_left out_right target :: nat
+  assumes symbol: "s < 19"
+      and left_port: "c \<le> 1"
+      and right_port: "d \<le> 1"
+      and left_out: "out_left \<le> 1"
+      and right_out: "out_right \<le> 1"
+      and normalized: "10 * (out_left + out_right) \<le> 2*s + c + d"
+      and target_def:
+        "target = 2*s + c + d - 10*(out_left + out_right)"
+      and target_bound: "target \<le> 18"
+  shows "target = 9 \<longleftrightarrow> s mod 5 = 4 \<and> c + d = 1"
+proof
+  assume target_nine: "target = 9"
+  have target_expand:
+    "target + 10*(out_left + out_right) = 2*s + c + d"
+    using normalized target_def by arith
+  have sum_equation:
+    "2*s + c + d = 9 + 10*(out_left + out_right)"
+    using target_expand target_nine by arith
+  have ports_odd: "(c + d) mod 2 = 1"
+    using sum_equation by presburger
+  have ports_one: "c + d = 1"
+    using left_port right_port ports_odd by presburger
+  have source_equation:
+    "s = 4 + 5*(out_left + out_right)"
+    using sum_equation ports_one by arith
+  show "s mod 5 = 4 \<and> c + d = 1"
+    using source_equation ports_one by presburger
+next
+  assume target_ports: "s mod 5 = 4 \<and> c + d = 1"
+  have s_mod: "s mod 5 = 4" by (rule conjunct1[OF target_ports])
+  have ports_sum: "c + d = 1" by (rule conjunct2[OF target_ports])
+  have division_split: "s div 5 * 5 + s mod 5 = s"
+    by (rule div_mult_mod_eq)
+  have source_decomp: "5 * (s div 5) + 4 = s"
+    using division_split s_mod by arith
+  have source_expand: "2*s + c + d = 10 * (s div 5) + 9"
+    using source_decomp ports_sum by arith
+  have target_expand:
+    "target + 10*(out_left + out_right) = 2*s + c + d"
+    using normalized target_def by arith
+  have final_equation:
+    "target + 10*(out_left + out_right) = 10*(s div 5) + 9"
+    using target_expand source_expand by arith
+  show "target = 9"
+    using final_equation target_bound by presburger
+qed
+
+lemma punctured_no_growth_gt_high_birth:
+  fixes s a b out_left out_right target :: nat
+  assumes symbol: "s < 19"
+      and left_port: "a \<le> 1"
+      and right_port: "b \<le> 1"
+      and left_out: "out_left = (if 10 \<le> s + a then 1 else 0)"
+      and right_out: "out_right = (if 10 \<le> s + b then 1 else 0)"
+      and target_def:
+        "target = 2*s + a + b - 10*(out_left + out_right)"
+  shows "target \<le> 18 \<and>
+    (15 \<le> target \<longleftrightarrow>
+      s = 8 \<or> s = 18 \<or>
+      ((s = 7 \<or> s = 17) \<and> (a = 1 \<or> b = 1)) \<or>
+      (s = 9 \<and> a = 0 \<and> b = 0))"
+  using assms
+  by (cases a; cases b; simp_all split: if_splits; arith)
+
+lemma punctured_raw_zero_borrow_identity_gate:
+  fixes s carry :: nat
+  assumes symbol: "s < 19"
+      and incoming: "carry \<le> 1"
+  shows "s + carry - 10 * (if 10 \<le> s + carry then 1 else 0) = 0
+    \<longleftrightarrow>
+      (s = 0 \<and> carry = 0) \<or>
+      (s = 9 \<and> carry = 1) \<or>
+      (s = 10 \<and> carry = 0)"
+  using assms by presburger
+
+lemma punctured_raw_nine_borrow_identity_gate:
+  fixes s carry :: nat
+  assumes symbol: "s < 19"
+      and incoming: "carry \<le> 1"
+  shows "s + carry - 10 * (if 10 \<le> s + carry then 1 else 0) = 9
+    \<longleftrightarrow>
+      (s = 8 \<and> carry = 1) \<or>
+      (s = 9 \<and> carry = 0) \<or>
+      (s = 18 \<and> carry = 1)"
+  using assms by presburger
+
+definition punctured_raw_borrow_update :: "bool \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> bool" where
+  "punctured_raw_borrow_update reflected identity_gate previous_borrow =
+    (reflected \<noteq> (identity_gate \<and> (previous_borrow \<noteq> reflected)))"
+
+lemma punctured_raw_borrow_update_reset_or_identity:
+  "punctured_raw_borrow_update reflected identity_gate previous_borrow =
+    (if identity_gate then previous_borrow else reflected)"
+  by (cases reflected; cases identity_gate; cases previous_borrow)
+    (simp_all add: punctured_raw_borrow_update_def)
+
 lemma carry_out_take_successor:
   assumes bound: "i < length ss"
   shows "carry_out False (take (Suc i) ss) =
@@ -360,6 +464,45 @@ proof -
   show ?thesis using coefficient step_cell by simp
 qed
 
+theorem punctured_pointed_mixed_coefficient_refinement:
+  assumes valid: "valid_pair ss"
+      and positive: "0 < i"
+      and bound: "i < length ss"
+  shows "(if carry_out False ss
+          then punctured_growth_interior_coefficient ss i
+          else punctured_no_growth_coefficient ss i) = step ss ! i
+      \<and> digits ss ! i = ss ! i +
+          carry_bit (punctured_prefix_carry ss i) -
+          10 * carry_bit (punctured_prefix_carry ss (Suc i))"
+proof -
+  have coefficient:
+    "(if carry_out False ss
+      then punctured_growth_interior_coefficient ss i
+      else punctured_no_growth_coefficient ss i) = step ss ! i"
+  proof (cases "carry_out False ss")
+    case True
+    have refined:
+      "punctured_growth_interior_coefficient ss i = step ss ! i"
+      by (rule punctured_growth_interior_coefficient_refines_step
+          [OF valid True positive bound])
+    show ?thesis using True refined by simp
+  next
+    case False
+    have refined: "punctured_no_growth_coefficient ss i = step ss ! i"
+      by (rule punctured_no_growth_coefficient_refines_step[OF valid False bound])
+    show ?thesis using False refined by simp
+  qed
+  have bounded: "\<forall>s\<in>set ss. s < 19"
+    using valid by (auto simp: valid_pair_def)
+  have symbol: "ss ! i < 19" using bounded bound by auto
+  have low:
+    "digits ss ! i = ss ! i +
+      carry_bit (punctured_prefix_carry ss i) -
+      10 * carry_bit (punctured_prefix_carry ss (Suc i))"
+    by (rule punctured_digits_cell_exact[OF bound symbol])
+  show ?thesis using coefficient low by blast
+qed
+
 lemma punctured_growth_edge_coefficient_refines_first:
   assumes valid: "valid_pair ss"
       and growth: "carry_out False ss"
@@ -423,6 +566,63 @@ proof -
   show ?thesis using first symmetry by simp
 qed
 
+text \<open>The radix-19 name here is only the redundant coefficient alphabet
+for symmetric decimal pair sums.  The following recurrence proves the exact
+polynomial correction for decimal normalization, retaining both possible
+incoming carries.  It makes no claim that coefficients are digits of a
+radix-19 integer, or that the spatial cochain closes a future temporal bank.\<close>
+
+fun radix19_carries :: "nat list \<Rightarrow> bool \<Rightarrow> bool list" where
+  "radix19_carries [] incoming = []"
+| "radix19_carries (s # ss) incoming =
+    carry_apply (domain s) incoming #
+      radix19_carries ss (carry_apply (domain s) incoming)"
+
+fun radix19_final_carry :: "nat list \<Rightarrow> bool \<Rightarrow> bool" where
+  "radix19_final_carry [] incoming = incoming"
+| "radix19_final_carry (s # ss) incoming =
+    radix19_final_carry ss (carry_apply (domain s) incoming)"
+
+fun radix19_normalized_coefficients ::
+    "nat list \<Rightarrow> bool \<Rightarrow> int list" where
+  "radix19_normalized_coefficients [] incoming = []"
+| "radix19_normalized_coefficients (s # ss) incoming =
+    (int s + int (carry_bit incoming) -
+      10 * int (carry_bit (carry_apply (domain s) incoming))) #
+      radix19_normalized_coefficients ss (carry_apply (domain s) incoming)"
+
+fun radix19_integer_polynomial :: "int list \<Rightarrow> int \<Rightarrow> int" where
+  "radix19_integer_polynomial [] z = 0"
+| "radix19_integer_polynomial (a # rest) z =
+    a + z * radix19_integer_polynomial rest z"
+
+theorem radix19_decimal_normalization_cochain:
+  "radix19_integer_polynomial (map int ss) z + int (carry_bit incoming) +
+      (z - 10) * radix19_integer_polynomial
+        (map (\<lambda>c. int (carry_bit c)) (radix19_carries ss incoming)) z =
+    radix19_integer_polynomial
+        (radix19_normalized_coefficients ss incoming) z +
+      int (carry_bit (radix19_final_carry ss incoming)) * z ^ length ss"
+proof (induction ss arbitrary: incoming z)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons s ss)
+  let ?next = "carry_apply (domain s) incoming"
+  have tail:
+    "radix19_integer_polynomial (map int ss) z + int (carry_bit ?next) +
+        (z - 10) * radix19_integer_polynomial
+          (map (\<lambda>c. int (carry_bit c)) (radix19_carries ss ?next)) z =
+      radix19_integer_polynomial
+          (radix19_normalized_coefficients ss ?next) z +
+        int (carry_bit (radix19_final_carry ss ?next)) * z ^ length ss"
+    using Cons.IH[of z ?next] .
+  note scaled = arg_cong[where f="\<lambda>v::int. z*v", OF tail]
+  show ?case
+    using scaled
+    by (simp add: algebra_simps power_Suc)
+qed
+
 ML \<open>
   val checked = @{thms carry_out_take_successor
     punctured_q19_decode_half_symmetric punctured_q19_decode_half_length
@@ -430,8 +630,15 @@ ML \<open>
     punctured_carry_subtrahend_bound punctured_two_digit_normalization_sum
     punctured_digits_cell_exact punctured_no_growth_coefficient_refines_step
     punctured_growth_interior_coefficient_refines_step
+    punctured_pointed_mixed_coefficient_refinement
     punctured_growth_edge_coefficient_refines_first
-    punctured_growth_edge_coefficient_refines_last};
+    punctured_f5_reflected_xor_eq_birth
+    punctured_no_growth_gt_high_birth
+    punctured_raw_zero_borrow_identity_gate
+    punctured_raw_nine_borrow_identity_gate
+    punctured_raw_borrow_update_reset_or_identity
+    punctured_growth_edge_coefficient_refines_last
+    radix19_decimal_normalization_cochain};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Punctured T2 coefficient refinement depends on an oracle";
 \<close>

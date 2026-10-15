@@ -49,6 +49,9 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.stores import append_indexed_node, make_node_index
 
 
@@ -222,7 +225,7 @@ class SourceCellArena:
         key = tuple(cell.local_id for cell in record.cells), extent
         found = self._forest_keys.get(key)
         if found is not None:
-            self.ledger.bump("source_forest_interner_hits")
+            self.ledger.bump(_execution_keys.SOURCE_FOREST_INTERNER_HITS)
             return self._forest_handle(found)
         found = append_indexed_node(
             self.ledger,
@@ -233,7 +236,7 @@ class SourceCellArena:
             key,
             record,
         )
-        self.ledger.bump("source_forest_publications")
+        self.ledger.bump(_execution_keys.SOURCE_FOREST_PUBLICATIONS)
         return self._forest_handle(found)
 
     def forest_read(self, forest: SourceForestID, coordinate: int) -> int:
@@ -247,7 +250,7 @@ class SourceCellArena:
             if offset >= node.width:
                 offset -= node.width
                 continue
-            self.ledger.bump("source_forest_leaf_reads")
+            self.ledger.bump(_execution_keys.SOURCE_FOREST_LEAF_READS)
             return self._read_tile(node.source_tile, offset)
         raise AssertionError("source forest extent disagrees with its cells")
 
@@ -287,7 +290,7 @@ class SourceCellArena:
             return self.forest_read(source, coordinate)
         if type(source) is not SourceCellID:
             raise TypeError("expected a scoped source binding")
-        self.ledger.bump("source_cell_binding_reads")
+        self.ledger.bump(_execution_keys.SOURCE_CELL_BINDING_READS)
         return self._read_tile(self.resolve(source).source_tile, coordinate)
 
     def intern(self, start: int, level: int) -> SourceCellID:
@@ -300,7 +303,7 @@ class SourceCellArena:
             raise ValueError("source cell is not an existing dyadic subtree")
         found = self._keys.get(tile)
         if found is not None:
-            self.ledger.bump("source_cell_interner_hits")
+            self.ledger.bump(_execution_keys.SOURCE_CELL_INTERNER_HITS)
             return self._handle(found)
         pending: list[tuple[DyadicTile, bool]] = [(tile, False)]
         while pending:
@@ -348,7 +351,7 @@ class SourceCellArena:
                 current,
                 record,
             )
-            self.ledger.bump("source_cell_publications")
+            self.ledger.bump(_execution_keys.SOURCE_CELL_PUBLICATIONS)
         return self._handle(self._keys[tile])
 
     def children(self, source: SourceCellID) -> tuple[SourceCellID, SourceCellID]:
@@ -379,7 +382,7 @@ class SourceCellArena:
             raise ValueError("only original leaves contain symbols")
         if record.source_tile.symbol is None:
             raise AssertionError("source leaf has no symbol")
-        self.ledger.bump("source_leaf_visits")
+        self.ledger.bump(_execution_keys.SOURCE_LEAF_VISITS)
         return record.source_tile.symbol
 
     def alphabet(self) -> tuple[int, int]:
@@ -786,11 +789,11 @@ class RecursiveFieldImageArena:
 
     def probe(self, key: ImageRequestKey) -> FieldImageID | None:
         self.validate_request(key)
-        self.ledger.bump("field_image_binding_requests")
+        self.ledger.bump(_execution_keys.FIELD_IMAGE_BINDING_REQUESTS)
         found = self._bindings.get(key)
         if found is not None:
             self.resolve(found)
-            self.ledger.bump("field_image_binding_early_hits")
+            self.ledger.bump(_execution_keys.FIELD_IMAGE_BINDING_EARLY_HITS)
         return found
 
     def validate_binding(self, key: ImageRequestKey, image: FieldImageID) -> None:
@@ -879,12 +882,12 @@ class RecursiveFieldImageArena:
             self._next_id += 1
             self._nodes[existing_id] = record
             self._keys[semantic] = existing_id
-            self.ledger.bump("new_field_image_nodes")
+            self.ledger.bump(_execution_keys.NEW_FIELD_IMAGE_NODES)
         else:
-            self.ledger.bump("field_image_semantic_alias_hits")
+            self.ledger.bump(_execution_keys.FIELD_IMAGE_SEMANTIC_ALIAS_HITS)
         result = self._handle(existing_id)
         self._bindings[key] = result
-        self.ledger.bump("field_image_binding_publications")
+        self.ledger.bump(_execution_keys.FIELD_IMAGE_BINDING_PUBLICATIONS)
         return result
 
     def children(self, image: FieldImageID) -> tuple[FieldImageID, FieldImageID]:

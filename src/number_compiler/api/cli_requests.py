@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from number_compiler.api.cli_types import (
     IndexPresentation,
     ObservationOptions,
-    OutputFormat,
     PresentationOptions,
     QueryRequest,
 )
@@ -19,6 +18,15 @@ from number_compiler.api.family_registry import (
 from number_compiler.api.family_registry import (
     FamilySpec,
     presentation_options,
+)
+from number_compiler.api.observation_types import (
+    FamilyId,
+    IndexEncoding,
+    SelectorId,
+    family_id,
+)
+from number_compiler.api.observation_types import (
+    OutputFormat as OutputFormatId,
 )
 from number_compiler.api.query_types import (
     ExecutionQuery,
@@ -103,13 +111,24 @@ class UniqueValue(argparse.Action):
 
 def parser(
     *,
-    demanded_family: str | None = None,
-    registry: Mapping[str, FamilySpec] | None = None,
+    demanded_family: str | FamilyId | None = None,
+    registry: Mapping[FamilyId | str, FamilySpec] | None = None,
 ) -> argparse.ArgumentParser:
     """Register all names while constructing only the demanded family's actions."""
-    capabilities = _CAPABILITIES if registry is None else registry
-    if demanded_family is not None and demanded_family not in capabilities:
-        raise ValueError("unknown demanded CLI family")
+    capabilities = cast(
+        Mapping[FamilyId | str, FamilySpec],
+        _CAPABILITIES if registry is None else registry,
+    )
+    selected_family = (
+        demanded_family.value
+        if isinstance(demanded_family, FamilyId)
+        else demanded_family
+    )
+    known_families = {
+        key.value if isinstance(key, FamilyId) else key for key in capabilities
+    }
+    if selected_family is not None and selected_family not in known_families:
+        raise ValueError(f"unknown demanded CLI family: {selected_family}")
     command = argparse.ArgumentParser(
         prog="number-compiler",
         description="Exact family terms: number-compiler FAMILY --nth N [--info NAME].",
@@ -117,13 +136,21 @@ def parser(
     command.add_argument("--list-families", action="store_true")
     families = command.add_subparsers(dest="family")
     for family, spec in capabilities.items():
+        family_name = family.value if isinstance(family, FamilyId) else family
         family_parser = families.add_parser(
-            family,
+            family_name,
             help=f"index unit: {spec.unit}",
-            description=spec.description
-            or f"{family}: --nth uses {spec.unit}; term zero is the seed where applicable.",
+            description=(
+                spec.description
+                or f"{family}: --nth uses {spec.unit}; term zero is the seed where applicable."
+            )
+            + (
+                f" --events uses {spec.event_unit}."
+                if spec.event_query_type is not None and spec.event_unit is not None
+                else ""
+            ),
         )
-        if demanded_family is not None and family != demanded_family:
+        if selected_family is not None and family_name != selected_family:
             continue
         _add_family_options(family_parser, spec)
     return command
@@ -161,6 +188,7 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
             if option.value_kind == "boolean":
                 command.add_argument(
                     option.flag,
+                    dest=option.name,
                     action="store_true",
                     default=option.default,
                     help=option.help,
@@ -169,6 +197,7 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
             if option.value_kind == "choice":
                 command.add_argument(
                     option.flag,
+                    dest=option.name,
                     choices=option.choices,
                     default=option.default,
                     action=UniqueValue,
@@ -178,6 +207,7 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
             raise ValueError(f"unsupported parser value kind {option.value_kind!r}")
         command.add_argument(
             option.flag,
+            dest=option.name,
             type=cli_integer,
             default=option.default,
             action=UniqueValue,
@@ -186,7 +216,7 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
 
 
 def _add_information_option(command: argparse.ArgumentParser, spec: FamilySpec) -> None:
-    supported = tuple(dict.fromkeys(spec.nth_info + spec.event_info))
+    supported = tuple(dict.fromkeys(item.identifier for item in spec.observation_specs))
     help_text = "requested information; repeat for multiple observations"
     if spec.event_info:
         help_text += (
@@ -203,6 +233,7 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
         if option.value_kind == "boolean":
             command.add_argument(
                 option.flag,
+                dest=option.name,
                 action="store_true",
                 default=option.default,
                 help=option.help,
@@ -210,6 +241,7 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
         elif option.value_kind == "choice":
             command.add_argument(
                 option.flag,
+                dest=option.name,
                 choices=option.choices,
                 default=option.default,
                 action=UniqueValue,
@@ -218,6 +250,7 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
         elif option.value_kind == "integer":
             command.add_argument(
                 option.flag,
+                dest=option.name,
                 type=cli_integer,
                 default=option.default,
                 action=UniqueValue,
@@ -228,9 +261,14 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
 
 
 def parse_request(
-    argv: list[str], *, registry: Mapping[str, FamilySpec] | None = None
+    argv: list[str],
+    *,
+    registry: Mapping[FamilyId | str, FamilySpec] | None = None,
 ) -> QueryRequest | None:
-    capabilities = _CAPABILITIES if registry is None else registry
+    capabilities = cast(
+        Mapping[FamilyId | str, FamilySpec],
+        _CAPABILITIES if registry is None else registry,
+    )
     demanded_family = argv[0] if argv and argv[0] in capabilities else None
     command = parser(demanded_family=demanded_family, registry=capabilities)
     args = command.parse_args(argv)
@@ -246,9 +284,13 @@ def parse_request(
 
 
 def _request_from_args(
-    args: argparse.Namespace, capabilities: Mapping[str, FamilySpec]
+    args: argparse.Namespace,
+    capabilities: Mapping[FamilyId | str, FamilySpec],
 ) -> QueryRequest:
-    spec = capabilities[args.family]
+    selected_family = family_id(args.family)
+    spec = capabilities.get(selected_family)
+    if spec is None:
+        spec = capabilities[args.family]
     certificate = (
         None
         if spec.verify_flag is None
@@ -265,16 +307,16 @@ def _request_from_args(
         if power10_token is None
         else bounded_index(power10_token, max_index_bits.bit_length())
     )
-    selector: Literal["nth", "events", "verify"] = (
-        "verify"
+    selector = (
+        SelectorId.VERIFY
         if certificate is not None
-        else "events"
+        else SelectorId.EVENTS
         if event_count is not None
-        else "nth"
+        else SelectorId.NTH
     )
-    if selector == "verify":
+    if selector is SelectorId.VERIFY:
         index = 0
-    elif selector == "events":
+    elif selector is SelectorId.EVENTS:
         if event_count is None:
             raise AssertionError("events selector lost its event count")
         index = event_count
@@ -285,10 +327,10 @@ def _request_from_args(
     execution = _execution_query(args, selector, index, certificate, spec)
     observations = _observation_query(args, selector, spec)
     presentation = PresentationOptions(
-        index=IndexPresentation("power10", exponent)
+        index=IndexPresentation(IndexEncoding.POWER10, exponent)
         if exponent is not None
         else IndexPresentation(),
-        format=cast(OutputFormat, args.format),
+        format=OutputFormatId(args.format),
         output_base=args.output_base,
         max_output_bits=args.max_output_bits,
         no_value=args.no_value,
@@ -308,17 +350,17 @@ def _request_from_args(
 
 def _execution_query(
     args: argparse.Namespace,
-    selector: Literal["nth", "events", "verify"],
+    selector: SelectorId,
     index: int,
     certificate: str | None,
     spec: FamilySpec,
 ) -> ExecutionQuery:
     try:
-        if selector == "verify":
+        if selector is SelectorId.VERIFY:
             if certificate is None:
                 raise AssertionError("verify selector lost its certificate path")
             return spec.build_verify_query(certificate)
-        if selector == "events":
+        if selector is SelectorId.EVENTS:
             return spec.build_event_query(index, vars(args))
         return spec.build_term_query(index, vars(args))
     except QueryOptionError as exc:
@@ -334,7 +376,7 @@ def _execution_query(
 
 def _observation_query(
     args: argparse.Namespace,
-    selector: Literal["nth", "events", "verify"],
+    selector: SelectorId,
     spec: FamilySpec,
 ) -> ObservationOptions:
     return spec.build_observations(

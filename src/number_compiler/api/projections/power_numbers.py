@@ -9,6 +9,7 @@ from number_compiler.api.elementary_payloads import (
     MersenneTermPayload,
 )
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
@@ -25,14 +26,14 @@ def project_fermat(
 ) -> ProjectedNumberTerm:
     spec = FermatNumberSpec(query.index)
     return ProjectedNumberTerm(
-        "fermat",
+        FamilyId.FERMAT,
         query.index,
         query.index,
         2,
-        SymbolicExpression("fermat", query.index),
+        SymbolicExpression(FamilyId.FERMAT, query.index),
         FermatTermPayload(spec),
         ProjectionMetrics(
-            "fermat",
+            FamilyId.FERMAT,
             query.index,
             0,
             0,
@@ -48,14 +49,14 @@ def project_mersenne(
 ) -> ProjectedNumberTerm:
     spec = MersenneNumberSpec(query.index)
     return ProjectedNumberTerm(
-        "mersenne",
+        FamilyId.MERSENNE,
         query.index,
         query.index,
         2,
-        SymbolicExpression("mersenne", query.index),
+        SymbolicExpression(FamilyId.MERSENNE, query.index),
         MersenneTermPayload(spec),
         ProjectionMetrics(
-            "mersenne",
+            FamilyId.MERSENNE,
             query.index,
             0,
             0,

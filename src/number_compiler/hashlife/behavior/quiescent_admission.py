@@ -24,6 +24,9 @@ from number_compiler.hashlife.behavior.future_behavior import (
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     PrimitiveBehaviorQuotient,
 )
+from number_compiler.resources.metric_keys import (
+    hashlife_behavior as _behavior_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
@@ -38,7 +41,7 @@ def admit_quiescent_blank(
     """Atomically admit one primitive all-blank successor fixed point."""
     admitted = self.lookup_quiescent_blank(quotient)
     if admitted is not None:
-        self.ledger.bump("future_behavior_profile_early_hits")
+        self.ledger.bump(_behavior_keys.FUTURE_BEHAVIOR_PROFILE_EARLY_HITS)
         return admitted
     workspace_entries = 4 * quotient.left_count
     work = FutureBehaviorWork()
@@ -48,15 +51,15 @@ def admit_quiescent_blank(
             certificate = certify_quiescent_blank(quotient, work=work)
         finally:
             self.ledger.bump(
-                "future_behavior_refinement_observation_checks",
+                _behavior_keys.FUTURE_BEHAVIOR_REFINEMENT_OBSERVATION_CHECKS,
                 work.observation_checks,
             )
             self.ledger.bump(
-                "future_behavior_refinement_successor_checks",
+                _behavior_keys.FUTURE_BEHAVIOR_REFINEMENT_SUCCESSOR_CHECKS,
                 work.successor_checks,
             )
             self.ledger.bump(
-                "future_behavior_classification_work",
+                _behavior_keys.FUTURE_BEHAVIOR_CLASSIFICATION_WORK,
                 work.refinement_rounds,
             )
             self.ledger.release(self._future_work_owner, entries=workspace_entries)
@@ -129,7 +132,7 @@ def admit_quiescent_blank(
             for owner, entries, nodes in reversed(admission_reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             raise
-        self.ledger.bump("future_behavior_profile_early_hits")
+        self.ledger.bump(_behavior_keys.FUTURE_BEHAVIOR_PROFILE_EARLY_HITS)
         return result
     reservations: list[tuple[int, int, int]] = []
     if found_profile is None:
@@ -215,7 +218,7 @@ def admit_quiescent_blank(
         for owner, entries, nodes in reversed(reservations):
             self.ledger.release(owner, entries=entries, nodes=nodes)
         raise
-    self.ledger.bump("future_behavior_new_classes")
+    self.ledger.bump(_behavior_keys.FUTURE_BEHAVIOR_NEW_CLASSES)
     return result
 
 

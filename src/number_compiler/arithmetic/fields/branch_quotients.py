@@ -11,6 +11,9 @@ from typing import Literal
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _fields_keys,
+)
 
 PhaseFamily = Literal["mahler", "collatz"]
 
@@ -160,7 +163,7 @@ class PrimeBucketWorkspace:
         self.ledger.reserve(self._scratch, nodes=base_nodes)
         try:
             if self.work + prime - 1 > self.max_phase_work:
-                self.ledger.bump("prime_partition_work_refusals")
+                self.ledger.bump(_fields_keys.PRIME_PARTITION_WORK_REFUSALS)
                 raise BlockContextBudgetExceeded("prime phase work budget exceeded")
             self.work += prime - 1
             self.ledger.bump(f"{family}_prime_phase_construction", prime - 1)
@@ -176,7 +179,7 @@ class PrimeBucketWorkspace:
             for _ in range(prime + 1):
                 cost = prime * len(phases)
                 if self.work + cost > self.max_phase_work:
-                    self.ledger.bump("prime_partition_work_refusals")
+                    self.ledger.bump(_fields_keys.PRIME_PARTITION_WORK_REFUSALS)
                     raise BlockContextBudgetExceeded("prime phase work budget exceeded")
                 self.work += cost
                 self.ledger.bump(f"{family}_prime_phase_visits", cost)

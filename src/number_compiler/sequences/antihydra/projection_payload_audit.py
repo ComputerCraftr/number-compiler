@@ -7,6 +7,7 @@ from dataclasses import fields
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
@@ -132,10 +133,11 @@ def _fragment_source_bindings(
             if start >= last:
                 break
             ledger.bump(
-                "antihydra_payload_audit_projection_fragment_steps", block.width
+                _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PROJECTION_FRAGMENT_STEPS,
+                block.width,
             )
             ledger.bump(
-                "antihydra_payload_audit_projection_fragment_operand_bits",
+                _antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PROJECTION_FRAGMENT_OPERAND_BITS,
                 h.bit_length()
                 + balance.bit_length()
                 + head.bit_length()

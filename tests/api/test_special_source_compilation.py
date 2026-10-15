@@ -38,17 +38,16 @@ def test_special_source_compiler_defers_theorems_until_concrete_output_is_demand
     assert boundary.mode is SpecialOutputMode.RESOLVED and boundary.value == -1
     assert compiler.theorem_cache_size == 0
 
-    # The first cheap digit constraint resolved the PASS sheet and is retained as
-    # the source's two-bit tropical kernel.  Later separating coordinates reuse
-    # that proof immediately instead of asking the theorem again.
+    # Local source geometry resolves only the requested coordinate. Its branch
+    # labels carry no proof connecting an arbitrary later value to primality.
     reused = compiler.project_special_branch_values("fermat", 4, 3, 7)
-    assert reused.mode is SpecialOutputMode.RESOLVED and reused.value == 3
+    assert reused.mode is SpecialOutputMode.GUARDED
     assert compiler.theorem_cache_size == 0
-    assert compiler.special_constraint_cache_size >= 1
+    assert compiler.special_constraint_cache_size == 0
     pulled = compiler.resolve_special_theorem("fermat", 4)
-    assert pulled.projection_method == "pulled-back-output-constraint"
-    assert pulled.primality is None and pulled.source_guard.failure_bit is False
-    assert compiler.theorem_cache_size == 0
+    assert pulled.source_guard.failure_bit is None
+    assert pulled.primality is not None and pulled.primality.status == "unknown"
+    assert compiler.theorem_cache_size == 1
 
     # A powered theorem-sensitive block may instead expose a candidate-ring
     # defect.  Its support is accumulated as one gcd, not a list of factor

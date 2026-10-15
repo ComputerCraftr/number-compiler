@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.execution.diamond_law_contracts import (
+    BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW,
+)
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -17,11 +23,11 @@ if TYPE_CHECKING:
 class DiamondCompositionCertificate:
     root: ActionProgramID
     kernels: tuple[tuple[ActionProgramID, ActionProgramID], ...]
-    law: str = "bimachine-two-sided-substitution-v1"
+    law: str = BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW
 
     def validate(self, runtime: DiamondRuntime, root: ActionProgramID) -> bool:
         """Read-only validation; a compiler node count is not execution evidence."""
-        if self.root != root or self.law != "bimachine-two-sided-substitution-v1":
+        if self.root != root or self.law != BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW:
             return False
         runtime.actions.resolve(root)
         admitted = dict(self.kernels)
@@ -76,11 +82,12 @@ def certify(
         elif node.kind == "atom":
             handle = runtime.kernels.intern(runtime.actions.primitive(action))
             kernels.append((action, handle))
-    runtime.ledger.bump("diamond_certificate_construction_visits", visits)
+    runtime.ledger.bump(_execution_keys.DIAMOND_CERTIFICATE_CONSTRUCTION_VISITS, visits)
     prior = runtime.ledger.counters.get(
-        "diamond_certificate_construction_stack_peak", 0
+        _execution_keys.DIAMOND_CERTIFICATE_CONSTRUCTION_STACK_PEAK, 0
     )
     runtime.ledger.bump(
-        "diamond_certificate_construction_stack_peak", max(0, peak - prior)
+        _execution_keys.DIAMOND_CERTIFICATE_CONSTRUCTION_STACK_PEAK,
+        max(0, peak - prior),
     )
     return DiamondCompositionCertificate(root, tuple(kernels))

@@ -22,6 +22,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    arithmetic_carry as _carry_keys,
+)
 
 MIN_CLOSED_REVERSE_BASE = 2
 MAX_CLOSED_REVERSE_BASE = 15
@@ -207,7 +210,7 @@ class ReverseLeftTransfer:
             return ReverseLeftTransfer(self.base, True, True, True, CarryFn.ID, -1)
         has_active = self.has_active or after.has_active
         if ledger is not None:
-            ledger.bump("reverse_port_carry_compositions")
+            ledger.bump(_carry_keys.REVERSE_PORT_CARRY_COMPOSITIONS)
         return ReverseLeftTransfer(
             self.base,
             has_active,
@@ -316,7 +319,7 @@ class ReverseRightTransfer:
         if self.base != after.base:
             raise ValueError("right transfers use different radices")
         if ledger is not None:
-            ledger.bump("reverse_port_carry_compositions", 2)
+            ledger.bump(_carry_keys.REVERSE_PORT_CARRY_COMPOSITIONS, 2)
         return ReverseRightTransfer(
             self.base,
             compose_carry_fn(self.forward, after.forward),
@@ -462,7 +465,7 @@ class ReversePortFunction:
         left_index, right_index = ports
         left_state = codec.decode_left(left_index)
         right_state = codec.decode_right(right_index)
-        ledger.bump("reverse_port_function_observations")
+        ledger.bump(_carry_keys.REVERSE_PORT_FUNCTION_OBSERVATIONS)
         if self.kind == "constant":
             return self.value
         if self.kind == "left-transfer":
@@ -474,7 +477,7 @@ class ReversePortFunction:
         if self.kind == "predicate":
             return (self.truth_bits >> left_index) & 1
         assert self.left is not None and self.right is not None
-        ledger.bump("reverse_port_primitive_output_evaluations")
+        ledger.bump(_carry_keys.REVERSE_PORT_PRIMITIVE_OUTPUT_EVALUATIONS)
         return _emit(
             self.base,
             self.left.apply(left_state),
@@ -492,7 +495,7 @@ class ReversePortFunction:
         self.__post_init__()
         if left.base != self.base or right.base != self.base:
             raise ValueError("reverse substitution changes the radix")
-        ledger.bump("reverse_port_function_compositions")
+        ledger.bump(_carry_keys.REVERSE_PORT_FUNCTION_COMPOSITIONS)
         if self.kind == "constant":
             return self
         if self.kind == "left-transfer":
@@ -525,7 +528,7 @@ class ReversePortFunction:
             # The closed-form pullback distinguishes only the two incoming
             # carry bands.  Keep those representative state observations in
             # the existing work counter instead of making them disappear.
-            ledger.bump("reverse_port_predicate_state_evaluations", 2)
+            ledger.bump(_carry_keys.REVERSE_PORT_PREDICATE_STATE_EVALUATIONS, 2)
         return ReversePortFunction(
             self.signature,
             self.base,
@@ -545,7 +548,7 @@ class ReversePortFunction:
             or self.base != other.base
         ):
             raise ValueError("reverse disjunction requires matching predicates")
-        ledger.bump("reverse_port_function_compositions")
+        ledger.bump(_carry_keys.REVERSE_PORT_FUNCTION_COMPOSITIONS)
         return ReversePortFunction(
             self.signature,
             self.base,

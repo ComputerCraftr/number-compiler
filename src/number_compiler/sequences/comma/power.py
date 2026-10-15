@@ -17,6 +17,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
@@ -433,7 +434,7 @@ class CommaTerm:
         # Successful query progress differs from an evaluated image whose
         # projection/publication subsequently exhausted its budget.
         self.ledger.bump(
-            "comma_represented_transitions",
+            _comma_keys.COMMA_REPRESENTED_TRANSITIONS,
             payload.absolute_index - self._current_index,
         )
         self._current_value = payload.value
@@ -464,7 +465,7 @@ class CommaTerm:
                     source.exponent,
                     charge_bits=self.arena.charge_bits,
                 )
-                self.ledger.bump("comma_boundary_weighted_locator_requests")
+                self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_LOCATOR_REQUESTS)
                 if remaining <= prefix_steps:
                     action = self.arena._boundary_prefix_occurrence(source, remaining)
                     prior_index = self._current_index
@@ -527,7 +528,7 @@ class CommaTerm:
                     )
                     value = self._publish(action)
                 except Exception:
-                    self.ledger.bump("comma_hashlife_failed_work")
+                    self.ledger.bump(_comma_keys.COMMA_HASHLIFE_FAILED_WORK)
                     raise
                 if reused:
                     self.arena.cycle_reuse.count("applied_hits")
@@ -546,9 +547,11 @@ class CommaTerm:
                     charge_work=self.arena.charge,
                     charge_bits=self.arena.charge_bits,
                 )
-                self.ledger.bump("comma_port_classifications")
-                self.ledger.bump("comma_port_visits", port.port_visits)
-                self.ledger.bump("comma_locator_comparisons", port.locator_comparisons)
+                self.ledger.bump(_comma_keys.COMMA_PORT_CLASSIFICATIONS)
+                self.ledger.bump(_comma_keys.COMMA_PORT_VISITS, port.port_visits)
+                self.ledger.bump(
+                    _comma_keys.COMMA_LOCATOR_COMPARISONS, port.locator_comparisons
+                )
                 steps = min(remaining, port.physical_steps)
                 if steps:
                     action = self.arena.phase_prefix(
@@ -561,12 +564,12 @@ class CommaTerm:
                 self._charge(9)
                 self.arena.charge_bits(18 * value.bit_length())
                 children = comma_children(value)
-                self.ledger.bump("comma_child_candidate_checks", 9)
+                self.ledger.bump(_comma_keys.COMMA_CHILD_CANDIDATE_CHECKS, 9)
             else:
                 self._charge(2)
                 self.arena.charge_bits(4 * value.bit_length())
                 children = _large_sector_children(value, sector)
-                self.ledger.bump("comma_seam_predicate_checks", 2)
+                self.ledger.bump(_comma_keys.COMMA_SEAM_PREDICATE_CHECKS, 2)
             if not children:
                 raise UnresolvedCommaBranch(
                     f"comma source 20 reaches a landmine at value {value} "
@@ -689,11 +692,13 @@ class CommaTerm:
         sector = decimal_sector(value)
         return {
             "represented_transitions": self.index - 1,
-            "phase_cycles": self.ledger.counters.get("comma_phase_cycles", 0),
+            "phase_cycles": self.ledger.counters.get(_comma_keys.COMMA_PHASE_CYCLES, 0),
             "phase_prefix_transitions": self.ledger.counters.get(
-                "comma_phase_prefix_transitions", 0
+                _comma_keys.COMMA_PHASE_PREFIX_TRANSITIONS, 0
             ),
-            "seam_steps": self.ledger.counters.get("comma_scalar_seam_steps", 0),
+            "seam_steps": self.ledger.counters.get(
+                _comma_keys.COMMA_SCALAR_SEAM_STEPS, 0
+            ),
             "leading_digit": sector.leading,
             "digit_phase": sector.digit,
             "headroom": sector.headroom,

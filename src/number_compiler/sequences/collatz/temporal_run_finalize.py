@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.border_identity import (
+        BoundaryActionIdentity,
+    )
     from number_compiler.sequences.collatz.border_return_grammar import (
         BorderReturnMacro,
     )
@@ -28,6 +32,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.temporal_run_quotient import (
         CollatzF5AffineAction,
         CollatzTemporalRunQuotient,
+    )
+    from number_compiler.sequences.collatz.unified_skew_chain import (
+        UnifiedSkewChain,
     )
 
 
@@ -58,8 +65,9 @@ def finalize_collatz_temporal_run(
     cycle_repetitions: int,
     normalized_f5: CollatzF5AffineAction | None,
     physical_f5: CollatzF5AffineAction | None,
-    first_boundary: tuple[int, int, int, str] | None,
+    first_boundary: tuple[int, int, int, BoundaryActionIdentity] | None,
     first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None,
+    unified_skew_chain: UnifiedSkewChain | None = None,
 ) -> CollatzTemporalRunQuotient:
     if macros is not None and phase == 0 and previous_width < normalized <= share_width:
         macros.observe(
@@ -77,11 +85,14 @@ def finalize_collatz_temporal_run(
         )
 
     certificate = None
-    ledger.bump("collatz_physical_temporal_run_actions", run_actions)
-    ledger.bump("collatz_physical_temporal_normalized_symbols", normalized)
-    ledger.bump("collatz_physical_temporal_odd_ticks", odd_ticks)
-    ledger.bump("collatz_physical_temporal_division_ticks", division_ticks)
-    ledger.bump("collatz_physical_temporal_endpoint_operand_bits", current.bit_length())
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_ACTIONS, run_actions)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NORMALIZED_SYMBOLS, normalized)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ODD_TICKS, odd_ticks)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_DIVISION_TICKS, division_ticks)
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ENDPOINT_OPERAND_BITS,
+        current.bit_length(),
+    )
 
     tape_width_summary = width_spine.finish(
         seed.bit_length(),
@@ -155,6 +166,7 @@ def finalize_collatz_temporal_run(
         first_boundary,
         first_boundary_macro,
         innovation_observation,
+        unified_skew_chain,
     )
 
 

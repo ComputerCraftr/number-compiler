@@ -18,6 +18,8 @@ session Shared_Growth_Arithmetic in "arithmetic/growth" = HOL +
   options [document = false, quick_and_dirty = false]
   theories
     Homogeneous_Growth_Scale
+    Radial_Sturmian
+    Affine_High_Digits
 session Cylinder_Radial_Algebra in "cylinder_algebra/radial" = HOL +
   options [document = false, quick_and_dirty = false]
   theories

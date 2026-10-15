@@ -7,11 +7,19 @@ inflate the hot projection module or blur execution logic with reporting.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Final
 
 from number_compiler.resources.ledger import ResourceInventory
 from number_compiler.resources.temporal_diagnostics import (
     METRICS_SCHEMA_VERSION,
     TemporalExecutionDiagnostics,
+)
+
+TILE_REPRESENTATION_POLICY: Final[str] = (
+    "canonical-future-tiles-and-boundary-operands-v2"
+)
+MICROBLOCK_REPRESENTATION_POLICY: Final[str] = (
+    "capped-leaf-64bits-1024blocks-8192bytes-transient256bytes-v1"
 )
 
 
@@ -23,7 +31,7 @@ class LedgerMetrics:
     temporal_diagnostics: TemporalExecutionDiagnostics = field(
         default_factory=TemporalExecutionDiagnostics
     )
-    tile_representation_policy: str = "canonical-future-tiles-and-boundary-operands-v2"
+    tile_representation_policy: str = TILE_REPRESENTATION_POLICY
     future_behavior_profile_nodes: int = 0
     future_behavior_class_nodes: int = 0
     future_behavior_requests: int = 0
@@ -209,9 +217,7 @@ class LedgerMetrics:
     tile_scheduler_leaf_function_applications: int = 0
     tile_scheduler_spatial_compositions: int = 0
     tile_scheduler_workspace_peak: int = 0
-    microblock_representation_policy: str = (
-        "capped-leaf-64bits-1024blocks-8192bytes-transient256bytes-v1"
-    )
+    microblock_representation_policy: str = MICROBLOCK_REPRESENTATION_POLICY
     # Policy permission is not implementation evidence. Populations and work
     # below are observed independently; no cache is enabled by this record.
     exact_microblock_nodes: int = 0

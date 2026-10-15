@@ -14,6 +14,15 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    ENTRY_0563,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_4721,
+    PATH_305,
+    PATH_630,
+)
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     validate_border_return_macro,
@@ -125,7 +134,7 @@ def _slice_action(
         for bit, run_length in macro.parts:
             append_region(cursor, cursor + run_length, bit)
             cursor += run_length
-    elif macro.family == "421":
+    elif macro.identity == ENTRY_421:
         motif_start = 2
         motif_stop = 2 * macro.repetitions
         append_region(0, motif_start, 0)
@@ -138,10 +147,10 @@ def _slice_action(
             action = action.then(pattern)
             ones += count
         append_region(motif_stop, motif_stop + 1, 1)
-    elif macro.family in ("4721", "0563"):
+    elif macro.identity in (ENTRY_4721, ENTRY_0563):
         append_region(0, 1, 0)
         append_region(1, macro.normalized_symbols, 1)
-    elif (phase := boundary_macro_26847_phase(macro.family)) is not None:
+    elif (phase := boundary_macro_26847_phase(macro.identity)) is not None:
         motif_start = 4 - phase
         motif_stop = macro.normalized_symbols - 1
         append_region(0, motif_start, 0)
@@ -152,14 +161,14 @@ def _slice_action(
             action = action.then(tail)
             ones += count
         append_region(motif_stop, motif_stop + 1, 1)
-    elif macro.family == "630":
+    elif macro.identity == PATH_630:
         append_region(0, 1, 0)
         append_region(1, 2, 1)
         append_region(2, macro.normalized_symbols, 0)
-    elif macro.family == "305":
+    elif macro.identity == PATH_305:
         append_region(0, 1, 1)
         append_region(1, macro.normalized_symbols, 0)
-    elif macro.family == "989":
+    elif macro.identity == ENTRY_89_AT_NINE:
         append_region(0, macro.normalized_symbols, 1)
     else:
         raise ValueError("unknown admitted Collatz boundary family")
@@ -247,9 +256,9 @@ def _publish_boundary_macro_prefixes(
         raise ValueError("boundary prefix origin is not authenticated")
 
     ledger: ResourceLedger = macros.ledger
-    ledger.bump("collatz_boundary_prefix_macro_requests")
+    ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_MACRO_REQUESTS)
     ledger.bump(
-        "collatz_boundary_prefix_source_operand_bits",
+        _collatz_keys.COLLATZ_BOUNDARY_PREFIX_SOURCE_OPERAND_BITS,
         macro.source.bit_length() + macro.endpoint.bit_length(),
     )
     root_publications = 0
@@ -262,9 +271,9 @@ def _publish_boundary_macro_prefixes(
                 _preflight_slice(macro, width, scratch)
                 action, ones = _slice_action(macro, 0, width)
                 endpoint = action.endpoint(macro.source)
-                ledger.bump("collatz_boundary_prefix_root_candidates")
+                ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_ROOT_CANDIDATES)
                 ledger.bump(
-                    "collatz_boundary_prefix_action_operand_bits",
+                    _collatz_keys.COLLATZ_BOUNDARY_PREFIX_ACTION_OPERAND_BITS,
                     sum(
                         value.bit_length()
                         for value in (
@@ -282,7 +291,7 @@ def _publish_boundary_macro_prefixes(
             except BlockContextBudgetExceeded:
                 macros.frontier.clear()
                 cache_open = False
-                ledger.bump("collatz_boundary_prefix_budget_bypasses")
+                ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_BUDGET_BYPASSES)
                 break
     # Publish cumulative root prefixes even when this macro starts after an
     # irregular run or a short alignment fragment. The binary frontier stores
@@ -304,9 +313,11 @@ def _publish_boundary_macro_prefixes(
                     raise AssertionError(
                         "boundary checkpoint odd count exceeds its extent"
                     )
-                ledger.bump("collatz_boundary_prefix_global_root_candidates")
                 ledger.bump(
-                    "collatz_boundary_prefix_action_operand_bits",
+                    _collatz_keys.COLLATZ_BOUNDARY_PREFIX_GLOBAL_ROOT_CANDIDATES
+                )
+                ledger.bump(
+                    _collatz_keys.COLLATZ_BOUNDARY_PREFIX_ACTION_OPERAND_BITS,
                     action.gain.bit_length()
                     + action.offset.bit_length()
                     + action.sum_gain.bit_length()
@@ -318,7 +329,7 @@ def _publish_boundary_macro_prefixes(
             except BlockContextBudgetExceeded:
                 macros.frontier.clear()
                 cache_open = False
-                ledger.bump("collatz_boundary_prefix_budget_bypasses")
+                ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_BUDGET_BYPASSES)
                 break
             checkpoint *= 2
 
@@ -347,9 +358,9 @@ def _publish_boundary_macro_prefixes(
             else:
                 action, ones = _slice_action(macro, local_offset, width)
                 endpoint = action.endpoint(source)
-            ledger.bump("collatz_boundary_prefix_slice_candidates")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_SLICE_CANDIDATES)
             ledger.bump(
-                "collatz_boundary_prefix_action_operand_bits",
+                _collatz_keys.COLLATZ_BOUNDARY_PREFIX_ACTION_OPERAND_BITS,
                 source.bit_length()
                 + endpoint.bit_length()
                 + action.gain.bit_length()
@@ -372,7 +383,7 @@ def _publish_boundary_macro_prefixes(
         except BlockContextBudgetExceeded:
             macros.frontier.clear()
             cache_open = False
-            ledger.bump("collatz_boundary_prefix_budget_bypasses")
+            ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_BUDGET_BYPASSES)
             break
         position += width
         local_offset += width
@@ -382,5 +393,7 @@ def _publish_boundary_macro_prefixes(
         raise AssertionError(
             "boundary slices do not reconstruct their admitted endpoint"
         )
-    ledger.bump("collatz_boundary_prefix_root_publications", root_publications)
+    ledger.bump(
+        _collatz_keys.COLLATZ_BOUNDARY_PREFIX_ROOT_PUBLICATIONS, root_publications
+    )
     return root_publications

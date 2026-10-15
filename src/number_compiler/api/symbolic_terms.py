@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.api.observation_types import FamilyId
 from number_compiler.arithmetic.fields.symbolic_extent import integer_text
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class SymbolicExpression:
-    family: str = ""
+    family: FamilyId | None = None
     index: int = 0
     parameter: int | None = None
     radix: int | None = None
@@ -28,22 +29,22 @@ class SymbolicExpression:
         if self.literal is not None:
             return self.literal
         coordinate = integer_text(self.index) if index_text is None else index_text
-        if self.family == "a367620":
+        if self.family is FamilyId.A367620:
             return f"A367620[{coordinate}]"
-        if self.family == "reverse-add":
+        if self.family is FamilyId.REVERSE_ADD:
             return f"reverse_add(seed={self.parameter},base={self.radix})[{coordinate}]"
-        if self.family == "2rev10":
+        if self.family is FamilyId.DOUBLE_REVERSE:
             return f"double_reverse10(seed={self.parameter})[{coordinate}]"
-        if self.family == "collatz":
+        if self.family is FamilyId.COLLATZ:
             return f"collatz(seed={self.parameter})[{coordinate}]"
-        if self.family == "antihydra":
+        if self.family is FamilyId.ANTIHYDRA:
             return f"antihydra_arithmetic(source=blank)[{coordinate}]"
-        if self.family == "prime":
+        if self.family is FamilyId.PRIME:
             return f"prime_at_or_after(start={self.parameter})[{coordinate}]"
-        if self.family == "fermat":
+        if self.family is FamilyId.FERMAT:
             power = coordinate if index_text is None else f"({coordinate})"
             return f"2^(2^{power})+1"
-        if self.family == "mersenne":
+        if self.family is FamilyId.MERSENNE:
             power = coordinate if index_text is None else f"({coordinate})"
             return f"2^{power}-1"
         raise ValueError("unsupported symbolic term family")

@@ -10,6 +10,9 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_observation as _observation_keys,
+)
 from number_compiler.resources.stores import LedgerDict
 
 
@@ -102,7 +105,7 @@ def _sheet(
                 raise ValueError("cylinder clip lies outside its tile")
             key = tile.local_id, take
             if key in values:
-                ledger.bump("tile_cylinder_cache_hits")
+                ledger.bump(_observation_keys.TILE_CYLINDER_CACHE_HITS)
                 continue
             if record.level == 0:
                 alphabet = tiles.alphabet(record.alphabet)
@@ -118,7 +121,7 @@ def _sheet(
                     (digit,), width=width, sign=sign
                 )
                 workspace.put(key, _Word(1, projection, projection))
-                ledger.bump("tile_cylinder_leaf_reads")
+                ledger.bump(_observation_keys.TILE_CYLINDER_LEAF_READS)
             else:
                 left, right = record.left, record.right
                 if left is None or right is None:
@@ -144,11 +147,14 @@ def _sheet(
                             after.reverse.append(first.reverse, span=after.span),
                         ),
                     )
-                    ledger.bump("tile_cylinder_compositions")
-                    ledger.bump("tile_cylinder_coefficient_additions", 2 * width)
-            ledger.bump("tile_cylinder_node_evaluations")
+                    ledger.bump(_observation_keys.TILE_CYLINDER_COMPOSITIONS)
+                    ledger.bump(
+                        _observation_keys.TILE_CYLINDER_COEFFICIENT_ADDITIONS,
+                        2 * width,
+                    )
+            ledger.bump(_observation_keys.TILE_CYLINDER_NODE_EVALUATIONS)
         word = values[root.local_id, extent]
-        ledger.bump("tile_cylinder_coefficient_additions", width)
+        ledger.bump(_observation_keys.TILE_CYLINDER_COEFFICIENT_ADDITIONS, width)
         return TwistedCylinderProjection(
             width,
             sign,

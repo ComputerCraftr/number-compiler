@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator
 
-from number_compiler.arithmetic.automata.slp import SLPArena
+from number_compiler.arithmetic.automata.slp_interval import SLPNodeArena
 
 _TaskObserver = Callable[[bool], None]
 _ReserveTask = Callable[[], None]
@@ -12,7 +12,7 @@ _ReleaseTasks = Callable[[int], None]
 
 
 def symbol_at(
-    arena: SLPArena,
+    arena: SLPNodeArena,
     root: int,
     position: int,
     *,
@@ -51,7 +51,7 @@ def symbol_at(
 
 
 def iter_symbols(
-    arena: SLPArena,
+    arena: SLPNodeArena,
     root: int,
     *,
     reverse: bool = False,
