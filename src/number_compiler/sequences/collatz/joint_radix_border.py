@@ -209,7 +209,12 @@ class JointRadix6Source:
         selectors do not construct or refine that graph.
         """
         residue160 = self.decimal_residue(160)
-        return _candidate_label(residue160)
+        return candidate_family_for_residue160(residue160)
+
+    @property
+    def border_parent_candidate(self) -> bool:
+        """Exact residue precheck shared with border-parent admission."""
+        return has_border_parent_from_residue160(self.decimal_residue(160))
 
     @property
     def moore_guard_class(self) -> int:
@@ -246,12 +251,23 @@ class JointRadix6Source:
         return difference_power_block(self.tripling_events, gap, modulus)
 
 
-def _candidate_label(residue160: int) -> BoundaryActionIdentity | None:
+def candidate_family_for_residue160(
+    residue160: int,
+) -> BoundaryActionIdentity | None:
     """Stable finite candidate output; exact macro admission follows later."""
+    if type(residue160) is not int or not 0 <= residue160 < 160:
+        raise ValueError("candidate projection requires a radix-160 residue")
     for identity, residue, modulus, _minimum_source in _CANDIDATE_FAMILIES:
         if residue160 % modulus == residue:
             return identity
     return None
+
+
+def has_border_parent_from_residue160(residue160: int) -> bool:
+    """Whether the border-return producer has one of its exact entry residues."""
+    if type(residue160) is not int or not 0 <= residue160 < 160:
+        raise ValueError("border-parent projection requires a radix-160 residue")
+    return residue160 % 10 in (0, 3, 5) or residue160 % 20 == 6
 
 
 def candidate_family_guard(
@@ -302,7 +318,7 @@ def border_crt_moore() -> BorderCRTMoore:
             next_source = lifted // 2 if lifted % 2 == 0 else (3 * lifted + 1) // 2
             successors.append(next_source % 160)
         rows.append(tuple(successors))
-    labels = tuple(_candidate_label(residue) for residue in range(160))
+    labels = tuple(candidate_family_for_residue160(residue) for residue in range(160))
     result = minimize_finite_observer(tuple(rows), labels)
     representatives = partition_representatives(result.class_ids, result.classes)
     transitions = partition_quotient_rows(rows, result.class_ids, result.classes)
@@ -328,5 +344,7 @@ __all__ = [
     "BorderCRTMoore",
     "JointRadix6Source",
     "border_crt_moore",
+    "candidate_family_for_residue160",
     "candidate_family_guard",
+    "has_border_parent_from_residue160",
 ]

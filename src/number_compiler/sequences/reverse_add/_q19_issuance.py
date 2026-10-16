@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_output import (
         ReversePairQ19OutputOwner,
     )
+    from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
+        ReverseAddSpatialBankMorphism,
+    )
 
 
 class _SnapshotRecord(Protocol):
@@ -75,6 +78,18 @@ class Q19IssuanceRegistry:
             int, tuple[SourceGuardedGTBankAction, tuple[object, ...]]
         ] = OwnedMemo(ledger, bank_owner, node_cost=self._bank_record_cost)
         self.controlled_gt_bank_next = 0
+        spatial_owner = ledger.register(
+            prefix + "-spatial-bank-windows", "reverse_pair_q19_spatial_bank_window"
+        )
+        self.spatial_bank_windows: OwnedMemo[
+            int,
+            tuple[ReverseAddSpatialBankMorphism, tuple[object, ...]],
+        ] = OwnedMemo(
+            ledger,
+            spatial_owner,
+            node_cost=self._spatial_bank_window_cost,
+        )
+        self.spatial_bank_window_next = 0
 
     def _check_open(self) -> None:
         self.owner._check_open()
@@ -82,6 +97,7 @@ class Q19IssuanceRegistry:
             self.owner._issuance_registry is not self
             or self.owner._border_certificates is not self.border_certificates
             or self.owner._controlled_gt_banks is not self.controlled_gt_banks
+            or self.owner._spatial_bank_windows is not self.spatial_bank_windows
         ):
             raise ValueError("Q19 issuance registry binding changed")
 
@@ -91,7 +107,13 @@ class Q19IssuanceRegistry:
         issued: tuple[CertifiedBorderGrowth, tuple[object, ...]],
     ) -> int:
         record, binding = issued
-        return len(record.growth_word) + len(binding) + 1
+        return (
+            len(record.growth_word)
+            + len(record.outer_pairs)
+            + len(record.window_tiles)
+            + len(binding)
+            + 1
+        )
 
     @staticmethod
     def _bank_record_cost(
@@ -108,6 +130,14 @@ class Q19IssuanceRegistry:
             + len(binding)
             + 1
         )
+
+    @staticmethod
+    def _spatial_bank_window_cost(
+        _key: int,
+        issued: tuple[ReverseAddSpatialBankMorphism, tuple[object, ...]],
+    ) -> int:
+        _record, binding = issued
+        return len(binding) + 1
 
     def _lookup_border_issuance(
         self,
@@ -242,6 +272,61 @@ class Q19IssuanceRegistry:
         if issued is not None and issued[0] is action:
             del self.controlled_gt_banks[key]
             self.controlled_gt_bank_next = key
+
+    def allocate_spatial_bank_window_key(self) -> int:
+        self._check_open()
+        if type(
+            self.spatial_bank_window_next
+        ) is not int or self.spatial_bank_window_next != len(self.spatial_bank_windows):
+            raise ValueError("spatial bank window issuer registry was altered")
+        return self.spatial_bank_window_next
+
+    def retain_spatial_bank_window(
+        self, key: int, window: ReverseAddSpatialBankMorphism
+    ) -> None:
+        self._check_open()
+        if (
+            type(key) is not int
+            or key != self.spatial_bank_window_next
+            or window.action.owner is not self.owner
+            or window._registry_key != key
+        ):
+            raise ValueError("invalid spatial bank window registration")
+        self.spatial_bank_windows[key] = (window, window._snapshot())
+        self.spatial_bank_window_next += 1
+
+    def validate_spatial_bank_window(
+        self, window: ReverseAddSpatialBankMorphism
+    ) -> None:
+        self._check_open()
+        key = window._registry_key
+        if type(key) is not int or not 0 <= key < self.spatial_bank_window_next:
+            raise ValueError("spatial bank window is not retained by this Q19 owner")
+        issued = self.spatial_bank_windows.get(key)
+        if (
+            issued is None
+            or issued[0] is not window
+            or not _snapshot_matches(
+                issued[1],
+                window._snapshot(),
+                identity_positions=(0, 1),
+            )
+        ):
+            raise ValueError("spatial bank window was not retained by this Q19 owner")
+
+    def discard_spatial_bank_window(
+        self, key: int, window: ReverseAddSpatialBankMorphism
+    ) -> None:
+        """Roll back only the latest spatial window after failed publication."""
+        if self.owner._disposed:
+            return
+        self._check_open()
+        if key != self.spatial_bank_window_next - 1:
+            return
+        issued = self.spatial_bank_windows.get(key)
+        if issued is not None and issued[0] is window:
+            del self.spatial_bank_windows[key]
+            self.spatial_bank_window_next = key
 
 
 def issue_q19_record(

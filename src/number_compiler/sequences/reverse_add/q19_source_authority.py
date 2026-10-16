@@ -16,9 +16,10 @@ if TYPE_CHECKING:
     from .q19_border_control import CertifiedBorderGrowth
     from .q19_controlled_gt_bank import SourceGuardedGTBankAction
     from .q19_occurrence import ReversePairOutputOccurrence
-    from .q19_output import _Q19, ReversePairQ19OutputOwner
+    from .q19_output import ReversePairQ19OutputOwner
     from .q19_periodic_cone import CertifiedUniformizingCone
     from .q19_uniform_cone import CertifiedUniformCone
+    from .q19_word_summary import _Q19
     from .radix19_cochain import Radix19CarryBlock
 
 
@@ -47,7 +48,7 @@ def range_summary(
     reverse: bool = False,
 ) -> _Q19:
     """Fold a pair-symbol interval through cached regions, excluding tags."""
-    from .q19_output import _Q19
+    from .q19_word_summary import _Q19
 
     return fold_slp_interval(
         owner.arena,
@@ -76,7 +77,7 @@ def digit(
     position: int,
 ) -> int:
     """Read one exact normalized decimal digit from an issued source root."""
-    from .q19_output import _UPPER
+    from .q19_word_summary import _UPPER
 
     owner.validate(occurrence)
     if type(position) is not int or not 0 <= position < occurrence.output_width:
@@ -156,8 +157,8 @@ def authorize_radix19_gt_bank(
     if type(period_sizes) is not tuple or not period_sizes:
         raise ValueError("candidate periods must be a nonempty tuple")
     for period_size in period_sizes:
-        if type(period_size) is not int or not 1 <= period_size <= 8:
-            raise ValueError("candidate periods must lie in 1..8")
+        if type(period_size) is not int or not 1 <= period_size <= 32:
+            raise ValueError("candidate periods must lie in 1..32")
         try:
             return authorize_controlled_gt_bank(
                 owner,

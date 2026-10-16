@@ -11,8 +11,17 @@ do not determine the global Fermat fold or a prime decision.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+    two_adic_unit_binomial,
+)
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+        DyadicBooleanCounterWindow,
+    )
 
 MAX_PIVOT_PRECISION = 4_096
 DEFAULT_PIVOT_OFFSETS = (0, 1, 2, 3, 5, 6)
@@ -30,17 +39,13 @@ def _precision(value: int) -> int:
 
 
 def _unit_residue(level: int, precision: int) -> int:
-    """Return ``u_level mod 2**precision`` with stationary-tail powering."""
-    selected_level = require_integer(level, "dyadic source level", 1)
-    selected_precision = _precision(precision)
-    mask = (1 << selected_precision) - 1
-    last_level = min(selected_level, max(1, selected_precision - 1))
-    unit = 1  # u_1 = (3**2 - 1) / 2**3.
-    current = 1
-    while current < last_level:
-        unit = (unit + ((unit * unit) << (current + 1))) & mask
-        current += 1
-    return unit
+    """Exact, non-iterative 2-adic unit via truncated binomial powers.
+
+    This replaces chronological recurrence pumping with the bounded
+    coefficient quotient.  In particular a huge level needs no level-sized
+    modular-square sequence to answer a small requested window.
+    """
+    return two_adic_unit_binomial(level, precision)
 
 
 def _next_unit_residue(level: int, unit: int, precision: int) -> int:
@@ -338,6 +343,22 @@ class DyadicPivotMoore:
 
     def moving_unit_window(self, width: int) -> UnitInnovationWindow:
         return moving_unit_innovation_window(self.level, width)
+
+    def boolean_counter(
+        self, width: int, *, fermat_width: int, offset: int = 0
+    ) -> DyadicBooleanCounterWindow:
+        """Demand the full two-port add/XOR/fold action at a moving pivot.
+
+        The returned signed positional-class totals cover *only* the
+        authenticated window, not all high bits of the Fermat source.
+        """
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            demand_dyadic_boolean_counter,
+        )
+
+        return demand_dyadic_boolean_counter(
+            self.level, width, fermat_width=fermat_width, offset=offset
+        )
 
 
 __all__ = [

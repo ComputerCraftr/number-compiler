@@ -10,11 +10,17 @@ import pytest
 from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.observation_adapters import _publish
 from number_compiler.api.observation_types import (
+    OBSERVATION_REGISTRY,
     FamilyId,
     IndexEncoding,
     IndexUnit,
     ObservationId,
 )
+
+
+def test_every_observation_has_a_category_and_matching_contract() -> None:
+    assert set(OBSERVATION_REGISTRY) == set(ObservationId)
+    assert all(key is spec.identifier for key, spec in OBSERVATION_REGISTRY.items())
 
 
 @pytest.mark.parametrize("status", ("composite", "unknown", "unavailable"))

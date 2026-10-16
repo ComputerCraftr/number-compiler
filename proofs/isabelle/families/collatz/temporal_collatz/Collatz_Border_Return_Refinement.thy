@@ -139,6 +139,89 @@ lemma collatz_border_return_3_port:
     (3*(4*k+3)-1) div 4 = 3*k+2"
   by presburger
 
+text \<open>The 3-port is also the exact upper-coordinate transition for the
+next source-selected 6305 return.  This bridge uses the issued odd endpoint
+digit to recover the quotient and the next multiplication-by-three numerator;
+it does not select the next valuation in advance.\<close>
+
+theorem collatz_border_return_3_upper_numerator:
+  fixes u :: nat
+  assumes port: "u mod 4 = 3"
+  shows "(15*u+1) div 2 = 10*(3*(u div 4)+2)+3"
+    and "3*(3*(u div 4)+2)+1 = (9*u+1) div 4"
+proof -
+  have divmod: "(u div 4)*4 + u mod 4 = u"
+    by (rule div_mult_mod_eq)
+  have source: "u = 4*(u div 4)+3"
+    using divmod port by (simp add: mult.commute)
+  have first_numerator:
+    "15*u+1 = 2*(10*(3*(u div 4)+2)+3)"
+    using source by (simp add: algebra_simps)
+  show first: "(15*u+1) div 2 = 10*(3*(u div 4)+2)+3"
+    by (simp only: first_numerator; simp)
+  have second_numerator:
+    "9*u+1 = 4*(3*(3*(u div 4)+2)+1)"
+    using source by (simp add: algebra_simps)
+  show second: "3*(3*(u div 4)+2)+1 = (9*u+1) div 4"
+    by (simp only: second_numerator; simp)
+qed
+
+theorem collatz_border_return_3_successor_split:
+  fixes u :: nat
+  assumes port: "u mod 4 = 3"
+  defines "q' \<equiv> 3*(u div 4)+2"
+  shows "3*q'+1 = (9*u+1) div 4"
+    and "9*u+1 = 2^(collatz_source_valuation q' + 2) *
+        collatz_accelerated_target q'"
+    and "odd (collatz_accelerated_target q')"
+proof -
+  have upper: "3*q'+1 = (9*u+1) div 4"
+    using collatz_border_return_3_upper_numerator(2)[OF port]
+    by (simp add: q'_def)
+  show "3*q'+1 = (9*u+1) div 4" by (rule upper)
+  have residue: "(9*u+1) mod 4 = 0"
+    using port by presburger
+  have divmod: "((9*u+1) div 4)*4 + (9*u+1) mod 4 = 9*u+1"
+    by (rule div_mult_mod_eq)
+  have divmod_zero: "((9*u+1) div 4)*4 + 0 = 9*u+1"
+    using divmod by (simp only: residue)
+  have numerator_division: "((9*u+1) div 4)*4 = 9*u+1"
+    using divmod_zero by simp
+  have numerator: "9*u+1 = ((9*u+1) div 4)*4"
+    by (rule sym[OF numerator_division])
+  have numerator': "9*u+1 = 4*(3*q'+1)"
+    using numerator upper by (simp add: mult.commute)
+  have split:
+    "3*q'+1 = 2^(collatz_source_valuation q') *
+      collatz_accelerated_target q'"
+    by (rule collatz_source_split_exact)
+  show "9*u+1 = 2^(collatz_source_valuation q' + 2) *
+      collatz_accelerated_target q'"
+    using numerator' split by (simp add: power_add algebra_simps)
+  show "odd (collatz_accelerated_target q')"
+    by (rule collatz_accelerated_target_odd)
+qed
+
+lemma collatz_border_return_endpoint_mod5:
+  fixes u :: nat
+  assumes odd_u: "odd u"
+  shows "((15*u+1) div 2) mod 5 = 3"
+proof -
+  obtain k where u: "u = 2*k+1"
+    using odd_u by (rule oddE)
+  have quotient: "(15*u+1) div 2 = 15*k+8"
+    using u by (simp add: algebra_simps)
+  have factor: "15*k = 5*(3*k)"
+    by (simp add: algebra_simps)
+  have multiple: "(15*k) mod 5 = 0"
+    by (simp only: factor mod_mult_self1_is_0)
+  have residue: "(15*k+8) mod 5 =
+      ((15*k) mod 5 + 8 mod 5) mod 5"
+    by (rule mod_add_eq[symmetric])
+  show ?thesis
+    using quotient multiple residue by simp
+qed
+
 lemma collatz_border_return_8_exit_4:
   fixes k :: nat
   shows
@@ -353,7 +436,9 @@ ML \<open>
   val checked = @{thms physical_collatz_two_on_10q3
     physical_collatz_two_on_5_odd collatz_border_return_endpoint
     collatz_border_return_normalized_word collatz_border_return_physical_clock
-    collatz_border_return_3_port collatz_border_return_8_exit_4
+    collatz_border_return_3_port collatz_border_return_3_upper_numerator
+    collatz_border_return_3_successor_split
+    collatz_border_return_endpoint_mod5 collatz_border_return_8_exit_4
     collatz_border_return_8_exit_9 collatz_physical_8_to_4
     collatz_physical_8_to_9_to_8
     physical_collatz_reached_nine_has_eight_predecessor

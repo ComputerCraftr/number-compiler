@@ -13,6 +13,7 @@ from number_compiler.sequences.collatz import (
     source_cylinder_cache,
     temporal_mixed_execution,
     temporal_run_executor,
+    temporal_unified_skew_execution,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
@@ -107,7 +108,7 @@ def test_d68_complete_action_is_applied_before_any_new_discovery(
         )
         monkeypatch.setattr(temporal_run_executor, "select_mixed_macro", forbidden)
         monkeypatch.setattr(
-            temporal_run_executor, "consume_unified_skew_chain", forbidden
+            temporal_unified_skew_execution, "consume_unified_skew_chain", forbidden
         )
         for source in (_D68_SOURCE, _D68_SOURCE + (1 << 68)):
             ledger = ResourceLedger()

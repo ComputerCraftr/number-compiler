@@ -297,6 +297,13 @@ class AntihydraArithmeticTerm:
         return self.physical_publications[0].run
 
     @property
+    def mahler_window_memo(self) -> object | None:
+        """Expose the exact ledger container for the lazy Mahler memo."""
+        workspace = self.mahler_workspace
+        memo = None if workspace is None else workspace._window_memo
+        return None if memo is None else memo._data
+
+    @property
     def segments(self) -> LedgerList[ArithmeticSegment]:
         """Publish bounded chronological cylinders only for explicit consumers."""
         return self._materialize_segments(self.result())

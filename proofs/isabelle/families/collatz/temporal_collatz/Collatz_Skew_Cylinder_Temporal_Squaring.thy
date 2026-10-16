@@ -754,6 +754,42 @@ next
   show ?thesis using criterion Suc power_identity by simp
 qed
 
+text \<open>The runtime's global Sturmian exponents are additive across a
+source-guarded repeated block: `count_list bits True` is the 3-exponent,
+`length bits` is the normalized division exponent, and each odd normalized
+symbol contributes one additional physical tick.  This is a clock-composition
+law only; the cylinder theorem above remains the authority for reusing the
+same word at a later source.\<close>
+
+definition collatz_normalized_clock :: "bool list \<Rightarrow> nat \<times> nat" where
+  "collatz_normalized_clock bits = (count_list bits True, length bits)"
+
+definition collatz_physical_ticks :: "bool list \<Rightarrow> nat" where
+  "collatz_physical_ticks bits = length bits + count_list bits True"
+
+lemma collatz_repeated_word_clock:
+  "collatz_normalized_clock (concat (replicate repetitions bits)) =
+      (repetitions * count_list bits True, repetitions * length bits)"
+  "collatz_physical_ticks (concat (replicate repetitions bits)) =
+      repetitions * collatz_physical_ticks bits"
+proof -
+  have length_repeat:
+    "length (concat (replicate repetitions bits)) = repetitions * length bits"
+    by (induction repetitions) simp_all
+  have count_repeat:
+    "count_list (concat (replicate repetitions bits)) True =
+      repetitions * count_list bits True"
+    by (induction repetitions) (simp_all add: count_list_append)
+  show "collatz_normalized_clock (concat (replicate repetitions bits)) =
+      (repetitions * count_list bits True, repetitions * length bits)"
+    using length_repeat count_repeat
+    by (simp add: collatz_normalized_clock_def)
+  show "collatz_physical_ticks (concat (replicate repetitions bits)) =
+      repetitions * collatz_physical_ticks bits"
+    using length_repeat count_repeat
+    by (simp add: collatz_physical_ticks_def algebra_simps)
+qed
+
 text \<open>The residue-cylinder theorem is the induction principle used when a
 fixed word is considered again at a later endpoint.  The defect recurrence
 tracks its exact affine displacement.  A caller may combine these facts with
@@ -774,7 +810,8 @@ ML \<open>
       collatz_temporal_word_defect_endpoint
       collatz_temporal_word_defect_power_shift
       collatz_guarded_word_repetition_cylinder
-      collatz_guarded_word_repetition_dyadic_cylinder}) then ()
+      collatz_guarded_word_repetition_dyadic_cylinder
+      collatz_repeated_word_clock}) then ()
     else error "Temporal Collatz squaring depends on an oracle";
 \<close>
 

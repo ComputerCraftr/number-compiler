@@ -1,6 +1,7 @@
 theory Reverse_Carry_Harmonic_Ports
   imports Reverse_Residuals Shared_Carry_Dynamics.Shared_Carry_Tape
-    Shared_Carry_Dynamics.Port_Valued_Mealy
+    Shared_Carry_Dynamics.Port_Valued_Mealy Mirror_Pair_Step
+    Shared_S_Arithmetic.S_Arithmetic_Skew
 begin
 
 text \<open>Port-conditioned carry harmonics for the alternating 2,3 radix over
@@ -334,6 +335,312 @@ theorem all_equal_action_ten_period:
   by (cases c; simp add: port_action_def all_equal_true_emission
       prefix_harmonic_ten_period)
 
+text \<open>The Q19 pair-field producer uses the same three carry actions as the
+shared tape.  A coefficient sum below nine resets to zero, nine transmits the
+ingress, and a sum above nine resets to one.  The following bridge makes the
+source coefficient and its two ingress ports the input to the harmonic bank;
+it does not infer an unavailable ingress from a finite spectral observation.\<close>
+
+definition reverse_q19_pair_carry :: "nat \<Rightarrow> bool \<Rightarrow> bool" where
+  "reverse_q19_pair_carry s c = carry_apply (domain s) c"
+
+definition reverse_q19_carry_bit :: "bool \<Rightarrow> nat" where
+  "reverse_q19_carry_bit c = (if c then 1 else 0)"
+
+lemma reverse_q19_pair_carry_reset:
+  "reverse_q19_pair_carry s c =
+    (if s < 9 then False else if s = 9 then c else True)"
+  by (cases c; simp add: reverse_q19_pair_carry_def domain_def)
+
+definition reverse_q19_no_growth_target ::
+    "nat \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> nat" where
+  "reverse_q19_no_growth_target s low reflected =
+    2*s + reverse_q19_carry_bit low + reverse_q19_carry_bit reflected -
+      10*(reverse_q19_carry_bit (reverse_q19_pair_carry s low) +
+        reverse_q19_carry_bit (reverse_q19_pair_carry s reflected))"
+
+lemma reverse_q19_no_growth_target_range:
+  assumes "s \<le> 18"
+  shows "reverse_q19_no_growth_target s low reflected \<le> 18"
+  using assms
+  unfolding reverse_q19_no_growth_target_def reverse_q19_carry_bit_def
+    reverse_q19_pair_carry_def
+  by (cases low; cases reflected; cases "s < 9"; cases "s = 9";
+      simp_all add: domain_def; arith)
+
+lemma reverse_q19_no_growth_target_addback:
+  assumes "s \<le> 18"
+  shows "reverse_q19_no_growth_target s low reflected +
+      10*(reverse_q19_carry_bit (reverse_q19_pair_carry s low) +
+        reverse_q19_carry_bit (reverse_q19_pair_carry s reflected)) =
+      2*s + reverse_q19_carry_bit low + reverse_q19_carry_bit reflected"
+proof -
+  have nonnegative:
+    "10*(reverse_q19_carry_bit (reverse_q19_pair_carry s low) +
+        reverse_q19_carry_bit (reverse_q19_pair_carry s reflected)) \<le>
+      2*s + reverse_q19_carry_bit low + reverse_q19_carry_bit reflected"
+    using assms
+    unfolding reverse_q19_pair_carry_reset reverse_q19_carry_bit_def
+    by (cases low; cases reflected; cases "s < 9"; cases "s = 9";
+        simp_all; arith)
+  show ?thesis
+    unfolding reverse_q19_no_growth_target_def
+    using nonnegative by arith
+qed
+
+lemma reverse_q19_no_growth_target_normalized_pair:
+  assumes "s \<le> 18"
+  shows "reverse_q19_no_growth_target s low reflected =
+      normalized_pair_digit s (reverse_q19_carry_bit low) +
+      normalized_pair_digit s (reverse_q19_carry_bit reflected)"
+  using assms
+  unfolding reverse_q19_no_growth_target_def reverse_q19_carry_bit_def
+    reverse_q19_pair_carry_def normalized_pair_digit_def domain_def
+  by (cases low; cases reflected; cases "s < 9"; cases "s = 9";
+      simp_all; arith)
+
+theorem reverse_q19_no_growth_harmonic_coordinates:
+  assumes source: "s \<le> 18"
+  shows "reverse_q19_no_growth_target s low reflected mod 5 =
+      (2*s + reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected) mod 5"
+    and "reverse_q19_no_growth_target s low reflected mod 2 =
+      (reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected) mod 2"
+proof -
+  let ?lo = "reverse_q19_carry_bit (reverse_q19_pair_carry s low)"
+  let ?hi = "reverse_q19_carry_bit (reverse_q19_pair_carry s reflected)"
+  have equation:
+    "reverse_q19_no_growth_target s low reflected + 10*(?lo + ?hi) =
+      2*s + reverse_q19_carry_bit low + reverse_q19_carry_bit reflected"
+    by (rule reverse_q19_no_growth_target_addback[OF source])
+  have mod5:
+    "(reverse_q19_no_growth_target s low reflected + 10*(?lo + ?hi)) mod 5 =
+      reverse_q19_no_growth_target s low reflected mod 5"
+  proof -
+    have factor: "10*(?lo + ?hi) = 5*(2*(?lo + ?hi))"
+      by (simp add: algebra_simps)
+    have zero: "(10*(?lo + ?hi)) mod 5 = 0"
+      by (simp only: factor mod_mult_self1_is_0)
+    have split:
+      "(reverse_q19_no_growth_target s low reflected +
+          10*(?lo + ?hi)) mod 5 =
+        (reverse_q19_no_growth_target s low reflected mod 5 +
+          (10*(?lo + ?hi)) mod 5) mod 5"
+      by (rule mod_add_eq[symmetric])
+    show ?thesis using split zero by simp
+  qed
+  have mod2:
+    "(reverse_q19_no_growth_target s low reflected + 10*(?lo + ?hi)) mod 2 =
+      reverse_q19_no_growth_target s low reflected mod 2"
+  proof -
+    have factor: "10*(?lo + ?hi) = 2*(5*(?lo + ?hi))"
+      by (simp add: algebra_simps)
+    have zero: "(10*(?lo + ?hi)) mod 2 = 0"
+      by (simp only: factor mod_mult_self1_is_0)
+    have split:
+      "(reverse_q19_no_growth_target s low reflected +
+          10*(?lo + ?hi)) mod 2 =
+        (reverse_q19_no_growth_target s low reflected mod 2 +
+          (10*(?lo + ?hi)) mod 2) mod 2"
+      by (rule mod_add_eq[symmetric])
+    show ?thesis using split zero by simp
+  qed
+  have even: "(2*s) mod 2 = 0"
+    by (simp only: mod_mult_self1_is_0)
+  have pair_sum_mod:
+    "(2*s + (reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected)) mod 2 =
+      (reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected) mod 2"
+  proof -
+    have split:
+      "(2*s + (reverse_q19_carry_bit low +
+          reverse_q19_carry_bit reflected)) mod 2 =
+        ((2*s) mod 2 +
+          (reverse_q19_carry_bit low +
+            reverse_q19_carry_bit reflected) mod 2) mod 2"
+      by (rule mod_add_eq[symmetric])
+    show ?thesis using split even by simp
+  qed
+  show "reverse_q19_no_growth_target s low reflected mod 5 =
+      (2*s + reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected) mod 5"
+    using mod5 equation by simp
+  show "reverse_q19_no_growth_target s low reflected mod 2 =
+      (reverse_q19_carry_bit low +
+        reverse_q19_carry_bit reflected) mod 2"
+    using mod2 equation pair_sum_mod by (simp add: add.assoc)
+qed
+
+lemma reverse_q19_small_residue_characterization:
+  fixes n :: nat
+  assumes "n \<le> 18"
+  shows "n = 9 \<longleftrightarrow> n mod 5 = 4 \<and> n mod 2 = 1"
+  using assms by presburger
+
+corollary reverse_q19_no_growth_eq_birth:
+  assumes source: "s \<le> 18"
+  shows "reverse_q19_no_growth_target s low reflected = 9 \<longleftrightarrow>
+    (2*s + reverse_q19_carry_bit low +
+      reverse_q19_carry_bit reflected) mod 5 = 4 \<and>
+    (reverse_q19_carry_bit low +
+      reverse_q19_carry_bit reflected) mod 2 = 1"
+proof -
+  have range: "reverse_q19_no_growth_target s low reflected \<le> 18"
+    by (rule reverse_q19_no_growth_target_range[OF source])
+  have criterion:
+    "reverse_q19_no_growth_target s low reflected = 9 \<longleftrightarrow>
+      reverse_q19_no_growth_target s low reflected mod 5 = 4 \<and>
+      reverse_q19_no_growth_target s low reflected mod 2 = 1"
+    by (rule reverse_q19_small_residue_characterization[OF range])
+  show ?thesis
+    using reverse_q19_no_growth_harmonic_coordinates(1)[OF source]
+      reverse_q19_no_growth_harmonic_coordinates(2)[OF source] criterion
+    by simp
+qed
+
+definition reverse_q19_pair_domain_word :: "nat list \<Rightarrow> carry_domain list" where
+  "reverse_q19_pair_domain_word coefficients = map domain coefficients"
+
+definition reverse_q19_pair_port_action ::
+    "bool \<Rightarrow> nat list \<Rightarrow> bool \<Rightarrow>
+      bool \<times> nat \<times> nat" where
+  "reverse_q19_pair_port_action phase coefficients ingress =
+    port_action phase (reverse_q19_pair_domain_word coefficients) ingress"
+
+theorem reverse_q19_pair_port_action_append:
+  "reverse_q19_pair_port_action phase (left @ right) ingress =
+    (carry_finish (carry_finish ingress (reverse_q19_pair_domain_word left))
+        (reverse_q19_pair_domain_word right),
+      (harmonic_emit Radix2 phase ingress
+          (reverse_q19_pair_domain_word left) +
+        harmonic_emit Radix2
+          (advance_phase phase (reverse_q19_pair_domain_word left))
+          (carry_finish ingress (reverse_q19_pair_domain_word left))
+          (reverse_q19_pair_domain_word right)) mod 5,
+      (harmonic_emit Radix3 phase ingress
+          (reverse_q19_pair_domain_word left) +
+        harmonic_emit Radix3
+          (advance_phase phase (reverse_q19_pair_domain_word left))
+          (carry_finish ingress (reverse_q19_pair_domain_word left))
+          (reverse_q19_pair_domain_word right)) mod 5)"
+  by (simp add: reverse_q19_pair_port_action_def
+      reverse_q19_pair_domain_word_def port_action_spatial_composition)
+
+text \<open>A source-certified Q19 macro supplies an exact finite word of growth
+bits and forced F5 innovations.  This affine tape consumes that word in
+chronological order.  Quiet and growth multipliers are respectively 2 and
+1+z; `shared_skew_then` owns their composition law.  The theorem below does
+not select the word, predict a future source, or turn the source guard into a
+phase-only authorization.\<close>
+
+definition reverse_q19_f5_tick :: "nat \<Rightarrow> bool \<Rightarrow> nat \<Rightarrow>
+    nat skew_transfer" where
+  "reverse_q19_f5_tick z growth forcing =
+    \<lparr>upper = (if growth then 1+z else 2),
+      offset = forcing mod 5, lower = 1\<rparr>"
+
+fun reverse_q19_f5_tape :: "nat \<Rightarrow> (bool \<times> nat) list \<Rightarrow>
+    nat skew_transfer" where
+  "reverse_q19_f5_tape z [] = shared_skew_identity"
+| "reverse_q19_f5_tape z ((growth,forcing)#events) =
+    shared_skew_then (reverse_q19_f5_tick z growth forcing)
+      (reverse_q19_f5_tape z events)"
+
+fun reverse_q19_f5_apply :: "nat \<Rightarrow> (bool \<times> nat) list \<Rightarrow>
+    nat \<Rightarrow> nat" where
+  "reverse_q19_f5_apply z [] value = value mod 5"
+| "reverse_q19_f5_apply z ((growth,forcing)#events) value =
+    reverse_q19_f5_apply z events
+      (((if growth then 1+z else 2)*value + forcing) mod 5)"
+
+lemma reverse_q19_mod5_affine_step:
+  fixes a b c d x :: nat
+  shows "(a * ((b*x+c) mod 5) + d) mod 5 =
+    (a*b*x + a*(c mod 5) + d) mod 5"
+proof -
+  have input: "((b*x+c) mod 5) mod 5 = (b*x+c) mod 5"
+    by simp
+  have scaled_input:
+    "(a * ((b*x+c) mod 5)) mod 5 = (a * (b*x+c)) mod 5"
+    by (rule mod_mult_cong[OF refl input])
+  have first_add:
+    "(a * ((b*x+c) mod 5) + d) mod 5 =
+      (a * (b*x+c) + d) mod 5"
+    by (rule mod_add_cong[OF scaled_input refl])
+  have forcing:
+    "(a*c) mod 5 = (a * (c mod 5)) mod 5"
+    by (rule mod_mult_cong[OF refl]; simp)
+  have inner_add:
+    "(a*b*x + a*c) mod 5 = (a*b*x + a*(c mod 5)) mod 5"
+    by (rule mod_add_cong[OF refl forcing])
+  have final_add:
+    "((a*b*x + a*c) + d) mod 5 =
+      ((a*b*x + a*(c mod 5)) + d) mod 5"
+    by (rule mod_add_cong[OF inner_add refl])
+  have polynomial: "a*(b*x+c)+d = (a*b*x+a*c)+d"
+    by (simp add: algebra_simps)
+  have normalized:
+    "(a*(b*x+c)+d) mod 5 =
+      (a*b*x+a*(c mod 5)+d) mod 5"
+    by (simp only: polynomial final_add)
+  show ?thesis by (rule trans[OF first_add normalized])
+qed
+
+theorem reverse_q19_f5_tape_append:
+  "reverse_q19_f5_tape z (left @ right) =
+    shared_skew_then (reverse_q19_f5_tape z left)
+      (reverse_q19_f5_tape z right)"
+proof (induction left)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons event events)
+  obtain growth forcing where event: "event = (growth,forcing)"
+    by (cases event)
+  show ?case
+    using Cons.IH event
+    by (simp add: shared_skew_associative)
+qed
+
+theorem reverse_q19_f5_apply_tape:
+  "reverse_q19_f5_apply z events x =
+    (upper (reverse_q19_f5_tape z events)*x +
+      offset (reverse_q19_f5_tape z events)) mod 5"
+proof (induction events arbitrary: x)
+  case Nil
+  then show ?case
+    by (simp add: shared_skew_identity_def)
+next
+  case (Cons event events)
+  obtain growth forcing where event: "event = (growth,forcing)"
+    by (cases event)
+  let ?tail = "reverse_q19_f5_tape z events"
+  let ?scale = "if growth then 1+z else 2"
+  have affine:
+    "(upper ?tail * ((?scale*x+forcing) mod 5) + offset ?tail) mod 5 =
+      (upper ?tail * ?scale*x +
+        upper ?tail * (forcing mod 5) + offset ?tail) mod 5"
+    using reverse_q19_mod5_affine_step
+      [where a = "upper ?tail" and b = "?scale" and c = "forcing"
+        and d = "offset ?tail" and x = "x"] .
+  have applied:
+    "reverse_q19_f5_apply z (event#events) x =
+      (upper ?tail * ((?scale*x+forcing) mod 5) + offset ?tail) mod 5"
+    using Cons.IH[of "(?scale*x+forcing) mod 5"] event
+    by simp
+  have composed:
+    "(upper (reverse_q19_f5_tape z (event#events))*x +
+      offset (reverse_q19_f5_tape z (event#events))) mod 5 =
+      (upper ?tail * ?scale*x +
+        upper ?tail * (forcing mod 5) + offset ?tail) mod 5"
+    using event
+    by (simp add: shared_skew_then_def reverse_q19_f5_tick_def
+        algebra_simps)
+  show ?case using applied composed affine event by simp
+qed
+
 ML \<open>
   val checked = @{thms harmonic_emit_append port_action_spatial_composition
     harmonic_emit_raw_mod_five harmonic_emit_raw_append
@@ -342,7 +649,14 @@ ML \<open>
     prefix_harmonic_ten_period
     first_decisive_harmonic_difference radix2_population radix3_population
     even_odd_linear_inversion occupancy_code_capacity border_code_capacity
-    all_equal_actions_are_length_indexed all_equal_action_ten_period};
+    all_equal_actions_are_length_indexed all_equal_action_ten_period
+    reverse_q19_pair_carry_reset reverse_q19_no_growth_target_range
+    reverse_q19_no_growth_target_addback
+    reverse_q19_no_growth_target_normalized_pair
+    reverse_q19_no_growth_harmonic_coordinates
+    reverse_q19_no_growth_eq_birth reverse_q19_pair_port_action_append
+    reverse_q19_f5_tape_append reverse_q19_mod5_affine_step
+    reverse_q19_f5_apply_tape};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Carry harmonic port proof depends on an oracle";
 \<close>

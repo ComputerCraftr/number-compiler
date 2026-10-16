@@ -12,6 +12,7 @@ This module does not authorize the complete integer or numerical global U,V.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -26,6 +27,7 @@ from .mixed_periodic_bank import (
     MixedOutputArena,
     MixedPeriodicCore,
     MixedTemporalAction,
+    _controlled_bank_workspace,
     required_protected_halo,
 )
 from .q19_border_control import CertifiedBorderGrowth
@@ -39,10 +41,13 @@ from .temporal_bank_actions import (
 from .temporal_bulk_moore import AlternatingCore, UniformCarryCell
 
 if TYPE_CHECKING:
+    from .border_carry_safety import BilateralCyclePort
+    from .conditional_f5_macro import SourceCertifiedF5Macro
     from .q19_bank_boolean import CoupledBooleanBankFrame
     from .q19_occurrence import ReversePairOutputOccurrence
     from .q19_output import ReversePairQ19OutputOwner
     from .radix19_cochain import Radix19CarryBlock
+    from .temporal_residue99 import ReverseAddResidue99
 
 _ISSUER = object()
 
@@ -140,6 +145,23 @@ class SourceGuardedGTBankAction:
         if self.border_certificate is not None:
             self.border_certificate.validate(self.owner, self.source)
 
+    def temporal_residue99(self) -> ReverseAddResidue99:
+        """Independent mod-99 future output from the same issued pair source.
+
+        For horizons >=6, this is unconditional even if the GT bank's growth
+        input is only conditional; it does not certify the GT-bank output.
+        """
+        self._validate()
+        from .temporal_residue99 import from_issued_pair
+
+        return from_issued_pair(
+            self.owner,
+            self.source,
+            self.steps,
+            growth_word=self.growth_control,
+            border_certificate=self.border_certificate,
+        )
+
     @property
     def output_nodes(self) -> int:
         self._validate()
@@ -202,6 +224,50 @@ class SourceGuardedGTBankAction:
         rho = int(target > 9 or (target == 9 and eta == 1))
         identity = f.borrow_identity_if_next_quiet[phase]
         return (0, 1) if identity else (rho, rho)
+
+    def leading_carry_ports(self, tick: int) -> tuple[int, ...] | None:
+        """Read the finite Q19-issued exterior carry constraint for one tick."""
+        self._validate()
+        if type(tick) is not int or not 0 <= tick < self.steps:
+            raise IndexError(tick)
+        if self.border_certificate is None:
+            raise ValueError("leading carry safety needs a live border certificate")
+        return self.border_certificate.forced_leading_carry_ports()[tick]
+
+    def bilateral_carry_port(self, tick: int) -> BilateralCyclePort | None:
+        """Expose correlated low overflow and admissible middle transfers."""
+        self._validate()
+        if type(tick) is not int or not 0 <= tick < self.steps:
+            raise IndexError(tick)
+        if self.border_certificate is None:
+            raise ValueError("two-sided carry ports need a live border certificate")
+        return self.border_certificate.bilateral_carry_ports()[tick]
+
+    def bilateral_window_port(self, tick: int) -> BilateralCyclePort | None:
+        """Return a full K-window port only when both finite tiles are known."""
+        self._validate()
+        if type(tick) is not int or not 0 <= tick < self.steps:
+            raise IndexError(tick)
+        if self.border_certificate is None:
+            raise ValueError("window carry ports need a live border certificate")
+        return self.border_certificate.bilateral_window_ports()[tick]
+
+    def conditional_f5_macro_action(
+        self, *, start: int = 0, steps: int | None = None, z: int = 2
+    ) -> SourceCertifiedF5Macro:
+        """Project a certified border return into its conditional F5 action.
+
+        This is tied to the bank's exact source and growth certificate.  It
+        leaves source-specific affine corrections as explicit consumer inputs
+        and does not authorize repeating the Q19 source.
+        """
+        self._validate()
+        certificate = self.border_certificate
+        if certificate is None:
+            raise ValueError("F5 macro action needs certified border control")
+        if certificate.growth_word != self.growth_control:
+            raise ValueError("bank growth word differs from its live certificate")
+        return certificate.conditional_f5_macro_action(start=start, steps=steps, z=z)
 
     def source_radix19_cochain(
         self, *, z: int = 2, modulus: int = 5
@@ -328,8 +394,8 @@ def _source_period(
     owner.validate(source)
     if type(steps) is not int or steps < 1:
         raise ValueError("temporal bank requires at least one step")
-    if type(period_size) is not int or not 1 <= period_size <= 8:
-        raise ValueError("exact periodic bank requires a period of 1..8")
+    if type(period_size) is not int or not 1 <= period_size <= 32:
+        raise ValueError("exact periodic bank requires a period of 1..32")
     if type(coordinate) is not int or not 0 <= coordinate < source.pair_width:
         raise IndexError(coordinate)
     halo = required_protected_halo(period_size, steps) + 2
@@ -353,6 +419,8 @@ def _source_period(
 def _finite_proved_action(
     period: tuple[int, ...],
     word: tuple[int, ...],
+    *,
+    workspace_reserve: Callable[[int, int], None],
 ) -> MixedTemporalAction:
     """One finite border-certified port program if its cyclic bank has no orbit.
 
@@ -360,6 +428,10 @@ def _finite_proved_action(
     linear in the already PROVED short control word. Unlike a physical
     chronological fallback, it never requests any intermediate Q19 source.
     """
+    workspace_reserve(
+        8 + len(word) * (8 + 8 * len(period)),
+        2 * len(word) + 1,
+    )
     arena = MixedOutputArena()
     current = MixedPeriodicCore(period)
     root = 0
@@ -430,38 +502,42 @@ def authorize_controlled_gt_bank(
     period, halo = _source_period(
         owner, source, steps=steps, coordinate=coordinate, period_size=period_size
     )
-    try:
-        bank = ControlledMixedBank(
-            MixedPeriodicCore(period), word, max_states=max_states
-        )
-        action = bank.power(steps)
-    except IncompleteMixedBorder:
-        if border_certificate is None:
+    with _controlled_bank_workspace(owner.ledger, owner._scratch_owner) as reserve:
+        try:
+            bank = ControlledMixedBank(
+                MixedPeriodicCore(period),
+                word,
+                max_states=max_states,
+                workspace_reserve=reserve,
+            )
+            action = bank.power(steps)
+        except IncompleteMixedBorder:
+            if border_certificate is None:
+                raise
+            action = _finite_proved_action(period, word, workspace_reserve=reserve)
+        record = object.__new__(SourceGuardedGTBankAction)
+        registry_key = owner._issuance_registry.allocate_bank_key()
+        values = {
+            "owner": owner,
+            "source": source,
+            "coordinate": coordinate,
+            "steps": steps,
+            "period": period,
+            "growth_control": word,
+            "halo": halo,
+            "action": action,
+            "full_integer_certified": False,
+            "control_certified": border_certificate is not None,
+            "border_certificate": border_certificate,
+            "_registry_key": registry_key,
+        }
+        issue_q19_record(record, values, _ISSUER)
+        owner._issuance_registry.retain_bank(registry_key, record)
+        try:
+            record.__post_init__()
+        except BaseException:
+            owner._issuance_registry.discard_bank(registry_key, record)
             raise
-        action = _finite_proved_action(period, word)
-    record = object.__new__(SourceGuardedGTBankAction)
-    registry_key = owner._issuance_registry.allocate_bank_key()
-    values = {
-        "owner": owner,
-        "source": source,
-        "coordinate": coordinate,
-        "steps": steps,
-        "period": period,
-        "growth_control": word,
-        "halo": halo,
-        "action": action,
-        "full_integer_certified": False,
-        "control_certified": border_certificate is not None,
-        "border_certificate": border_certificate,
-        "_registry_key": registry_key,
-    }
-    issue_q19_record(record, values, _ISSUER)
-    owner._issuance_registry.retain_bank(registry_key, record)
-    try:
-        record.__post_init__()
-    except BaseException:
-        owner._issuance_registry.discard_bank(registry_key, record)
-        raise
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_CONDITIONAL_GT_BANK_ISSUED)
     owner.ledger.bump(
         _reverse_add_keys.REVERSE_Q19_CONDITIONAL_GT_BANK_OUTPUT_NODES,

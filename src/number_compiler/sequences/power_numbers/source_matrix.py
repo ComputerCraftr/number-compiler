@@ -13,6 +13,8 @@ not decide primality and are never consumed implicitly by a theorem query.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.fields.digit_formula import (
     FunctionMonoid,
@@ -21,6 +23,7 @@ from number_compiler.arithmetic.fields.digit_formula import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
+from number_compiler.hashlife.execution.source_image_seals import _typed_equal
 
 MAX_DIGIT_MODULUS = 1_000_000
 MAX_SOURCE_LEVEL_BITS = 4_096
@@ -314,7 +317,17 @@ class ThreePowerRadixBoundary:
                 raise ValueError("multiradix borrow/carry fields must be Boolean")
 
 
+_MULTIRADIX_ISSUER = object()
+
+
 @dataclass(frozen=True, slots=True)
+class _MultiradixProvenance:
+    issuer: object
+    record: ReferenceType[object]
+    snapshot: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class FermatMultiradixPort:
     """Bounded source-only multiradix observations for ``3**(2**level)``."""
 
@@ -330,6 +343,12 @@ class FermatMultiradixPort:
     carry_transition_steps: int
     carry_monoid_sizes: tuple[int, int]
     work: tuple[SmallModulusWork, SmallModulusWork, SmallModulusWork]
+    # This is producer authority, not mathematical content.  Keeping it out
+    # of construction and comparison preserves the public equality API while
+    # preventing a structural copy from inheriting the producer's identity.
+    _issuer: object = dataclass_field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if (
@@ -412,6 +431,65 @@ class FermatMultiradixPort:
         ):
             raise ValueError("multiradix boundary positions are not consecutive")
 
+    @property
+    def producer_verified(self) -> bool:
+        issuer = self._issuer
+        return (
+            type(issuer) is _MultiradixProvenance
+            and issuer.issuer is _MULTIRADIX_ISSUER
+            and issuer.record() is self
+            and _typed_equal(issuer.snapshot, _multiradix_snapshot(self))
+        )
+
+
+def _multiradix_snapshot(port: FermatMultiradixPort) -> tuple[object, ...]:
+    """Capture the mathematical port fields protected by producer authority."""
+    return (
+        port.index,
+        port.level,
+        port.base,
+        port.places,
+        port.modulus,
+        port.source_residue,
+        port.previous_residue,
+        port.next_residue,
+        tuple(
+            (
+                item.places,
+                item.source_remainder,
+                item.tripling_carry,
+                item.doubling_carry,
+                item.tripling_add_carry,
+                item.tripling_sub_borrow,
+                item.innovation_carry,
+                item.innovation_borrow,
+                item.successive_innovation_borrow,
+            )
+            for item in port.boundaries
+        ),
+        port.carry_transition_steps,
+        port.carry_monoid_sizes,
+        tuple(
+            (
+                item.modulus,
+                item.factor_trial_candidates,
+                item.scalar_power_compositions,
+                item.matrix_power_compositions,
+            )
+            for item in port.work
+        ),
+    )
+
+
+def _seal_multiradix_port(port: FermatMultiradixPort) -> None:
+    object.__setattr__(
+        port,
+        "_issuer",
+        _MultiradixProvenance(
+            _MULTIRADIX_ISSUER, ref(port), _multiradix_snapshot(port)
+        ),
+    )
+
 
 def demand_three_power_multiradix_port(
     index: int, level: int, base: int, places: int
@@ -484,7 +562,7 @@ def demand_three_power_multiradix_port(
                 difference_borrow,
             )
         )
-    return FermatMultiradixPort(
+    port = FermatMultiradixPort(
         index,
         level,
         base,
@@ -498,6 +576,8 @@ def demand_three_power_multiradix_port(
         (tripling_monoid_size, doubling_monoid_size),
         (source_work, previous_work, following_work),
     )
+    _seal_multiradix_port(port)
+    return port
 
 
 @dataclass(frozen=True, slots=True)

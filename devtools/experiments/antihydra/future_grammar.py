@@ -28,6 +28,12 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval as Interval,
 )
 from number_compiler.resources.stores import LedgerDict
+from number_compiler.sequences.antihydra.mahler_joint_future import (
+    MahlerJointFutureAction,
+)
+from number_compiler.sequences.antihydra.mahler_source_actions import (
+    MahlerSourceBoundSafetyAction,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +193,46 @@ class ReachableFutureGrammar:
         if self._closed:
             raise ValueError("closed Mahler reachable-future grammar")
 
+    def production_joint_action(self, handle: SourceBlockID) -> MahlerJointFutureAction:
+        """Project a proof handle into the production source-cylinder action."""
+        self._require_open()
+        block = self.workspace.view(handle)
+        q, gain = 1 << block.width, block.skew.upper
+        innovation = q * block.endpoint - gain * block.residue
+        if block.skew.lower != q or block.skew.offset != innovation:
+            raise ArithmeticError(
+                "production Mahler action detached from its sealed transfer"
+            )
+        predicate = block.predicate_action
+        cap_hat: int | None = None
+        if predicate.cap is not None:
+            scaled = predicate.cap * Q(1 << (block.width + 2))
+            if scaled.denominator != 1:
+                raise ArithmeticError("predicate cap cannot be source normalized")
+            cap_hat = scaled.numerator
+        safety = MahlerSourceBoundSafetyAction(block.width, -12 * innovation, cap_hat)
+        joint = MahlerJointFutureAction._with_gain(
+            block.width,
+            block.residue,
+            innovation,
+            block.guard,
+            safety,
+            gain,
+        )
+        expected_scale = Q(gain, q)
+        expected_offset = Q(-12 * innovation, 1 << (block.width + 2))
+        expected_cap = None if cap_hat is None else Q(cap_hat, 1 << (block.width + 2))
+        if (
+            joint.endpoint_residue != block.endpoint
+            or predicate.scale != expected_scale
+            or predicate.offset != expected_offset
+            or predicate.cap != expected_cap
+        ):
+            raise ArithmeticError(
+                "production Mahler action diverged from proof workspace"
+            )
+        return joint
+
     def edge(self, parent: SourceBlockID, exponent: int) -> GrammarEdge:
         self._require_open()
         block = self.workspace.view(parent)  # Reject foreign handles before cache use.
@@ -211,8 +257,27 @@ class ReachableFutureGrammar:
         high = (block.endpoint + gain * lift - event_block.residue) // modulus
         if high < 0:
             raise ArithmeticError("event parameter transport left natural fibers")
+        joint = self.production_joint_action(parent).then_event(
+            exponent, max_extent=self.workspace.max_width
+        )
         result = self.workspace.compose(parent, event)
         child = self.workspace.view(result)
+        child_cap = (
+            None
+            if joint.safety.cap_hat is None
+            else Q(joint.safety.cap_hat, 1 << (joint.extent + 2))
+        )
+        if (
+            child.guard != joint.guard
+            or child.endpoint != joint.endpoint_residue
+            or child.predicate_action.scale != Q(joint.gain, 1 << joint.extent)
+            or child.predicate_action.offset
+            != Q(-12 * joint.innovation, 1 << (joint.extent + 2))
+            or child.predicate_action.cap != child_cap
+        ):
+            raise ArithmeticError(
+                "Mahler future event lost its source/safety successor"
+            )
         if child.residue != block.residue + (lift << block.width):
             raise ArithmeticError("edge lost its original-source parameter")
         if child.endpoint != event_block.endpoint + 3**exponent * high:
@@ -288,12 +353,18 @@ class ReachableFutureGrammar:
             self.workspace.ledger.bump("grammar_width_refusals")
             raise BlockContextBudgetExceeded("repeated grammar width budget exceeded")
         result, power, remaining = self.root, handle, count
+        joint_result = MahlerJointFutureAction()
+        joint_power = self.production_joint_action(handle)
         while remaining:
             if remaining & 1:
                 result = self.workspace.compose(result, power)
+                joint_result = joint_result.then(joint_power)
             remaining >>= 1
             if remaining:
                 power = self.workspace.compose(power, power)
+                joint_power = joint_power.then(joint_power)
+        if self.production_joint_action(result) != joint_result:
+            raise ArithmeticError("powered production Mahler action lost its proof")
         return result
 
     def finite_repeated_clause_transport(

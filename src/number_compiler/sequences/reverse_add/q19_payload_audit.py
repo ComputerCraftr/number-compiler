@@ -92,8 +92,10 @@ def _store_shape(
 
 def _summary_matches(root: object, index: int) -> bool:
     from number_compiler.sequences.reverse_add.q19_output import (
-        _Q19,
         ReversePairQ19OutputOwner,
+    )
+    from number_compiler.sequences.reverse_add.q19_word_summary import (
+        _Q19,
         _WordSummary,
     )
 
@@ -185,6 +187,7 @@ def audit_reverse_pair_output_roots(
     containers: Mapping[int, object],
 ) -> tuple[set[int], set[int], set[tuple[int, int]]]:
     """Inspect completed records without invoking a projector or point evaluator."""
+    from number_compiler.sequences.reverse_add.border_carry_safety import BorderTile
     from number_compiler.sequences.reverse_add.q19_border_control import (
         CertifiedBorderGrowth,
     )
@@ -195,11 +198,16 @@ def audit_reverse_pair_output_roots(
         _occurrence_publication_binding,
     )
     from number_compiler.sequences.reverse_add.q19_output import (
-        _Q19,
         ReversePairOutputOccurrence,
         ReversePairQ19OutputOwner,
-        _FrozenPairStepLaw,
         _LedgerSLPArena,
+    )
+    from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
+        ReverseAddSpatialBankMorphism,
+    )
+    from number_compiler.sequences.reverse_add.q19_word_summary import (
+        _Q19,
+        _FrozenPairStepLaw,
         _WordSummary,
     )
 
@@ -223,7 +231,7 @@ def audit_reverse_pair_output_roots(
             and root.machine.base == 10
             and type(root.machine) is _FrozenPairStepLaw
             and type(root._binding) is tuple
-            and len(root._binding) == 10
+            and len(root._binding) == 11
             and root._binding[0] is ledger
             and root._binding[1] is root._digits
             and root._binding[2] == 10
@@ -234,6 +242,11 @@ def audit_reverse_pair_output_roots(
             and root._binding[7] is root._border_certificates
             and root._binding[8] is root._controlled_gt_banks
             and root._binding[9] is root._issuance_registry
+            and root._binding[10] is root._spatial_bank_windows
+            and root._issuance_registry.spatial_bank_windows
+            is root._spatial_bank_windows
+            and root._issuance_registry.spatial_bank_window_next
+            == len(root._spatial_bank_windows)
         )
         stores = (
             (arena.nodes, arena.owners[0], "reverse_pair_output_grammar"),
@@ -251,6 +264,11 @@ def audit_reverse_pair_output_roots(
                 root._controlled_gt_banks,
                 root._controlled_gt_banks_owner,
                 "reverse_pair_q19_conditional_gt_bank",
+            ),
+            (
+                root._spatial_bank_windows,
+                root._spatial_bank_windows_owner,
+                "reverse_pair_q19_spatial_bank_window",
             ),
             *(
                 (store, store_owner, "reverse_pair_projector_memo")
@@ -413,6 +431,35 @@ def audit_reverse_pair_output_roots(
                 and certificate.max_visited_states >= 1
                 and type(certificate.source_pair_inspections) is int
                 and certificate.source_pair_inspections >= 0
+                and type(certificate.outer_pairs) is tuple
+                and (
+                    not certificate.outer_pairs
+                    or len(certificate.outer_pairs) == len(certificate.growth_word) + 1
+                )
+                and all(
+                    pair is None
+                    or (
+                        type(pair) is tuple
+                        and len(pair) == 2
+                        and type(pair[0]) is int
+                        and type(pair[1]) is int
+                        and 1 <= pair[0] <= 9
+                        and 0 <= pair[1] <= 9
+                    )
+                    for pair in certificate.outer_pairs
+                )
+                and type(certificate.window_tiles) is tuple
+                and (
+                    not certificate.window_tiles
+                    or len(certificate.window_tiles) == len(certificate.growth_word) + 1
+                )
+                and all(
+                    tile is None
+                    or (
+                        type(tile) is BorderTile and tile.k == certificate.window_digits
+                    )
+                    for tile in certificate.window_tiles
+                )
             )
             if certificate_valid:
                 try:
@@ -464,6 +511,36 @@ def audit_reverse_pair_output_roots(
             valid &= action_valid
             if not action_valid:
                 invalid.add((root._controlled_gt_banks_owner, id(bank_action)))
+        for window_key, window_issued in root._spatial_bank_windows.items():
+            recognized.update((id(window_key), id(window_issued)))
+            if type(window_issued) is not tuple or len(window_issued) != 2:
+                valid = False
+                invalid.add((root._spatial_bank_windows_owner, id(window_issued)))
+                continue
+            window, window_binding = window_issued
+            recognized.update((id(window), id(window_binding)))
+            if type(window) is not ReverseAddSpatialBankMorphism:
+                valid = False
+                invalid.add((root._spatial_bank_windows_owner, id(window)))
+                continue
+            window_valid = (
+                type(window_binding) is tuple
+                and window_binding == window._snapshot()
+                and type(window_key) is int
+                and window_key == window._registry_key
+                and window.action.owner is root
+                and window.action.source.owner is root._authority
+                and root._controlled_gt_banks.get(window.action._registry_key)
+                is not None
+            )
+            if window_valid:
+                try:
+                    window._validate()
+                except (AttributeError, TypeError, ValueError):
+                    window_valid = False
+            valid &= window_valid
+            if not window_valid:
+                invalid.add((root._spatial_bank_windows_owner, id(window)))
         left_states, right_states = root.machine.left.states, root.machine.right.states
         for store, states, arity in (
             (root.projector._fwd, left_states, 2),
@@ -512,7 +589,9 @@ def audit_reverse_pair_output_roots(
             approved.update(id(summary) for summary in root._summaries.values())
             approved.update(id(occurrence) for occurrence in root._issued.values())
             for retained_issue in chain(
-                root._border_certificates.values(), root._controlled_gt_banks.values()
+                root._border_certificates.values(),
+                root._controlled_gt_banks.values(),
+                root._spatial_bank_windows.values(),
             ):
                 if type(retained_issue) is tuple and len(retained_issue) == 2:
                     retained_record, retained_binding = retained_issue
@@ -543,6 +622,7 @@ def audit_reverse_pair_output_owner(
         root._issued_owner,
         root._border_certificates_owner,
         root._controlled_gt_banks_owner,
+        root._spatial_bank_windows_owner,
         *root._projector_owners,
     )
     containers: dict[int, object] = {}
@@ -575,6 +655,11 @@ def audit_reverse_pair_output_owner(
             "reverse_pair_q19_conditional_gt_bank",
             root._controlled_gt_banks_owner,
         ),
+        (
+            "_audit_spatial_bank_windows",
+            "reverse_pair_q19_spatial_bank_window",
+            root._spatial_bank_windows_owner,
+        ),
         *(
             (attribute, "reverse_pair_projector_memo", owner)
             for attribute, owner in zip(
@@ -597,6 +682,7 @@ def audit_reverse_pair_output_owner(
         memo_attribute = {
             "_audit_border_certificates": "_border_certificates",
             "_audit_controlled_gt_banks": "_controlled_gt_banks",
+            "_audit_spatial_bank_windows": "_spatial_bank_windows",
         }.get(attribute)
         if memo_attribute is not None:
             memo = getattr(root, memo_attribute)

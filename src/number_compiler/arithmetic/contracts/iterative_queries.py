@@ -94,6 +94,18 @@ def enter_tuple_node(
     return False
 
 
+def enter_ordered_children(
+    stack: list[tuple[T, bool]],
+    active: set[int],
+    parent: T,
+    children: Sequence[T],
+) -> None:
+    """Schedule ordered children for postorder traversal after caller checks capacity."""
+    active.add(id(parent))
+    stack.append((parent, True))
+    stack.extend((child, False) for child in reversed(children))
+
+
 def finish_postorder(active: set[int], complete: set[int], identity: int) -> None:
     """Move a completed immutable DAG node out of the active ancestry set."""
     active.remove(identity)

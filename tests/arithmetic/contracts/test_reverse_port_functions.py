@@ -74,7 +74,15 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
     ports = _ports(codec)
     ledger = ResourceLedger()
     workspace = ClosedInterfaceWorkspace(ledger, "reverse-test")
+    left_states = tuple(codec.decode_left(index) for index in range(codec.left_count))
+    right_states = tuple(
+        codec.decode_right(index) for index in range(codec.right_count)
+    )
     for symbol in range(effect.blank + 1):
+        advanced_right_states = tuple(
+            cast(_BaseRightState, effect.advance(BoundarySide.RIGHT, state, symbol))
+            for state in right_states
+        )
         with workspace.scope("leaf"):
             components = reverse_leaf_components(
                 ports, base, symbol, ledger
@@ -83,19 +91,14 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
         functions = tuple(
             item for item in components if type(item) is ReversePortFunction
         )
-        for left in range(codec.left_count):
-            left_state = codec.decode_left(left)
+        for left, left_state in enumerate(left_states):
             advanced_left = cast(
                 _BaseLeftState,
                 effect.advance(BoundarySide.LEFT, left_state, symbol),
             )
-            for right in range(codec.right_count):
-                right_state = codec.decode_right(right)
+            for right, right_state in enumerate(right_states):
                 concrete = left, right
-                advanced_right = cast(
-                    _BaseRightState,
-                    effect.advance(BoundarySide.RIGHT, right_state, symbol),
-                )
+                advanced_right = advanced_right_states[right]
                 expected = effect.emit(left_state, symbol, right_state)
                 active = int(expected != effect.blank)
                 assert tuple(
@@ -123,10 +126,10 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
 def test_reverse_activity_mask_is_the_exact_closed_port_predicate(base: int) -> None:
     codec = ReversePortCodec(base)
     blank = 2 * base - 1
+    left_states = tuple(codec.decode_left(index) for index in range(codec.left_count))
     for symbol in range(blank + 1):
         truth = codec.active_truth_bits(symbol)
-        for index in range(codec.left_count):
-            state = codec.decode_left(index)
+        for index, state in enumerate(left_states):
             expected = not state.sink and (
                 symbol != blank
                 or (
@@ -157,16 +160,21 @@ def test_reverse_transfer_composition_is_closed_in_both_directions(
 ) -> None:
     effect = BaseBlockEffect(base)
     codec = ReversePortCodec(base)
+    left_leaves = tuple(
+        ReverseLeftTransfer.leaf(base, symbol) for symbol in range(effect.blank + 1)
+    )
+    right_leaves = tuple(
+        ReverseRightTransfer.leaf(base, symbol) for symbol in range(effect.blank + 1)
+    )
+    left_states = tuple(codec.decode_left(index) for index in range(codec.left_count))
+    right_states = tuple(
+        codec.decode_right(index) for index in range(codec.right_count)
+    )
     for first in range(effect.blank + 1):
         for second in range(effect.blank + 1):
-            left = ReverseLeftTransfer.leaf(base, first).then(
-                ReverseLeftTransfer.leaf(base, second)
-            )
-            right = ReverseRightTransfer.leaf(base, second).then(
-                ReverseRightTransfer.leaf(base, first)
-            )
-            for index in range(codec.left_count):
-                left_state = codec.decode_left(index)
+            left = left_leaves[first].then(left_leaves[second])
+            right = right_leaves[second].then(right_leaves[first])
+            for left_state in left_states:
                 expected_left = cast(
                     _BaseLeftState,
                     effect.advance(BoundarySide.LEFT, left_state, first),
@@ -176,8 +184,7 @@ def test_reverse_transfer_composition_is_closed_in_both_directions(
                     effect.advance(BoundarySide.LEFT, expected_left, second),
                 )
                 assert left.apply(left_state) == expected_left
-            for index in range(codec.right_count):
-                right_state = codec.decode_right(index)
+            for right_state in right_states:
                 expected_right = cast(
                     _BaseRightState,
                     effect.advance(BoundarySide.RIGHT, right_state, second),
@@ -197,22 +204,20 @@ def test_reverse_predicate_preimage_matches_every_left_state(base: int) -> None:
         1 << index for index in range(codec.left_count)
     )
     symbols = tuple(range(2 * base))
+    leaves = tuple(ReverseLeftTransfer.leaf(base, symbol) for symbol in symbols)
+    left_states = tuple(codec.decode_left(index) for index in range(codec.left_count))
     transfers = {
         ReverseLeftTransfer.identity(base),
-        *(ReverseLeftTransfer.leaf(base, symbol) for symbol in symbols),
-        *(
-            ReverseLeftTransfer.leaf(base, first).then(
-                ReverseLeftTransfer.leaf(base, second)
-            )
-            for first in symbols
-            for second in symbols
-        ),
+        *leaves,
+        *(first.then(second) for first in leaves for second in leaves),
     }
     for transfer in transfers:
+        targets = tuple(
+            codec.encode_left(transfer.apply(state)) for state in left_states
+        )
         for truth in predicates:
             pulled = transfer.predicate_preimage(truth)
-            for index in range(codec.left_count):
-                target = codec.encode_left(transfer.apply(codec.decode_left(index)))
+            for index, target in enumerate(targets):
                 assert ((pulled >> index) & 1) == ((truth >> target) & 1)
 
 
@@ -225,7 +230,28 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
     workspace = ClosedInterfaceWorkspace(ledger, "reverse-test")
     blank = effect.blank
     cases = ((0, blank - 1), (base - 1, base), (blank - 1, blank), (blank, 0))
+    left_states = tuple(codec.decode_left(index) for index in range(codec.left_count))
+    right_states = tuple(
+        codec.decode_right(index) for index in range(codec.right_count)
+    )
     for first, second in cases:
+        right_mid_states = tuple(
+            cast(
+                _BaseRightState,
+                effect.advance(BoundarySide.RIGHT, right_state, second),
+            )
+            for right_state in right_states
+        )
+        advanced_right_states = tuple(
+            (
+                right_mid,
+                cast(
+                    _BaseRightState,
+                    effect.advance(BoundarySide.RIGHT, right_mid, first),
+                ),
+            )
+            for right_mid in right_mid_states
+        )
         with workspace.scope("leaf"):
             first_components = reverse_leaf_components(ports, base, first, ledger)
         with workspace.scope("leaf"):
@@ -236,14 +262,11 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
             ).functions()
         functions = tuple(item for item in parent if type(item) is ReversePortFunction)
         assert len(functions) == 13
-        for left in range(codec.left_count):
-            left_state = codec.decode_left(left)
+        for left, left_state in enumerate(left_states):
             left_mid = effect.advance(BoundarySide.LEFT, left_state, first)
             left_out = effect.advance(BoundarySide.LEFT, left_mid, second)
-            for right in range(codec.right_count):
-                right_state = codec.decode_right(right)
-                right_mid = effect.advance(BoundarySide.RIGHT, right_state, second)
-                right_out = effect.advance(BoundarySide.RIGHT, right_mid, first)
+            for right, right_state in enumerate(right_states):
+                right_mid, right_out = advanced_right_states[right]
                 concrete = left, right
                 first_output = effect.emit(left_state, first, right_mid)
                 second_output = effect.emit(left_mid, second, right_state)
@@ -251,7 +274,7 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
                     cast(_BaseLeftState, left_out)
                 )
                 assert functions[1].evaluate(concrete, ledger) == codec.encode_right(
-                    cast(_BaseRightState, right_out)
+                    right_out
                 )
                 assert functions[2].evaluate(concrete, ledger) == first_output
                 assert functions[7].evaluate(concrete, ledger) == first_output

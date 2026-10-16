@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
         SourceGuardedGTBankAction,
     )
+    from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
+        ReverseAddSpatialBankMorphism,
+    )
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 
@@ -312,6 +315,46 @@ class ReverseSourceImageWorkspace:
     def syntax_depth_bound(self) -> int:
         return self.actions.node(self.root_action).depth
 
+    def certified_spatial_bank_morphism(
+        self, start: int, count: int, *, period: int = 2
+    ) -> ReverseAddSpatialBankMorphism:
+        """Publish a finite protected spatial output from the live source root."""
+        self._check_open()
+        if self.base != 10 or not 1 <= self.steps <= 128:
+            raise ValueError("only finite source-certified decimal bank horizons")
+        if (
+            type(start) is not int
+            or type(count) is not int
+            or type(period) is not int
+            or start < 0
+            or count < 1
+            or not 1 <= period <= 32
+        ):
+            raise ValueError("invalid spatial bank coordinates or period")
+        from .mixed_periodic_bank import required_protected_halo
+        from .q19_uniform_cone import UniformConeNotAuthorized
+
+        source = self.actions.source(self.source)
+        halo = required_protected_halo(period, self.steps) + 2
+        if start - halo < 0 or start + count + halo > len(source.digits) // 2:
+            raise UniformConeNotAuthorized(
+                "unprotected source border/center in spatial bank window"
+            )
+        owner = self.adapter._q19_output_owner(source)
+        self._register_source_payload_audit_contract()
+        cert = owner.certify_border_growth(
+            owner.initial, steps=self.steps, window_digits=6, max_states=2048
+        )
+        return owner.authorize_spatial_bank_morphism(
+            owner.initial,
+            steps=self.steps,
+            start=start,
+            count=count,
+            period_size=period,
+            growth_control=cert,
+            max_states=128,
+        )
+
     def _certified_gt_bank_digit(self, position: int) -> int | None:
         """Try the bounded original-source GT bank for one low-side digit.
 
@@ -377,33 +420,27 @@ class ReverseSourceImageWorkspace:
             raise AssertionError("radix-19 carry and border growth disagree")
 
         # Periods are tried in increasing order and accepted only after the
-        # source SLP proves the entire depth-dependent protected halo.  Each
-        # attempt reserves a conservative bound for the bounded Moore orbit
-        # and its output SLP before constructing either.
+        # source SLP proves the entire depth-dependent protected halo. The
+        # controlled-bank constructor reserves its orbit and output growth
+        # incrementally at the allocation boundary.
         max_states = 512
         max_period = min(8, len(source.digits))
-        scratch_nodes = (
-            max_states * (32 + 8 * max_period + 4 * depth.bit_length())
-            + 8 * depth
-            + len(owner.arena.nodes)
-        )
         for period_size in range(1, max_period + 1):
             self.ledger.bump(
                 _reverse_add_keys.REVERSE_Q19_POINTED_GT_BANK_CANDIDATE_ATTEMPTS
             )
             try:
-                with self.ledger.reservation(owner._scratch_owner, nodes=scratch_nodes):
-                    action = owner.authorize_controlled_gt_bank(
-                        owner.initial,
-                        steps=depth,
-                        coordinate=position,
-                        period_size=period_size,
-                        growth_control=control,
-                        max_states=max_states,
-                    )
-                    frame = action.frame(depth - 1)
-                    value = frame.digits_low[position % period_size]
-                    self._pointed_gt_banks[cache_key] = action
+                action = owner.authorize_controlled_gt_bank(
+                    owner.initial,
+                    steps=depth,
+                    coordinate=position,
+                    period_size=period_size,
+                    growth_control=control,
+                    max_states=max_states,
+                )
+                frame = action.frame(depth - 1)
+                value = frame.digits_low[position % period_size]
+                self._pointed_gt_banks[cache_key] = action
             except (
                 BlockContextBudgetExceeded,
                 IncompleteMixedBorder,

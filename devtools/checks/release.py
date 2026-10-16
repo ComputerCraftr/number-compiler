@@ -471,6 +471,10 @@ def _pytest_command(
         command.extend(("-m", mark))
     if profile:
         command.extend(("--profile-output", str(output_directory / f"{suite}.pstats")))
+    if suite == "unit" and selectors == ("tests",) and mark == "not validation":
+        # Keep the same selected manifest as ``-m 'not validation'`` while
+        # avoiding imports/collection of the explicit validation tree.
+        command.extend(("--ignore", "tests/validation"))
     command.extend((*selectors, f"--junitxml={xml}"))
     return tuple(command)
 

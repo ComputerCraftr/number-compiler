@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FunctionSignature,
@@ -37,6 +39,9 @@ from tests.support.assertions import assert_forbidden_payloads_read_only
 from tests.support.diamond_query import build
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+        DiamondRuntime,
+    )
     from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
         SemanticProfileID,
     )
@@ -108,6 +113,54 @@ def test_actual_profile_tables_and_lazy_decoders_have_read_only_inventory(
     assert report.reachable_profile_decoder_cache_entries == (
         0 if component is None else 3 if component == 2 else 1
     )
+
+
+def test_profile_audit_checks_action_once_and_rejects_stale_action_before_load() -> (
+    None
+):
+    app, arena, profile, _, codec = setup()
+    runtime = app.runtime
+    hooks = runtime.family_hooks
+    assert hooks is not None
+    assert hooks.validate_source_profile_action is not None
+    assert hooks.make_source_profile is not None
+    validator = cast(Callable[..., bool], hooks.validate_source_profile_action)
+    loader = cast(Callable[..., object], hooks.make_source_profile)
+    calls = {"validator": 0, "loader": 0}
+
+    def count_validator(runtime_arg: DiamondRuntime, action: ActionProgramID) -> bool:
+        calls["validator"] += 1
+        return validator(runtime_arg, action)
+
+    def count_loader(runtime_arg: DiamondRuntime, action: ActionProgramID) -> object:
+        calls["loader"] += 1
+        return loader(runtime_arg, action)
+
+    def forbidden_loader(*args: object, **kwargs: object) -> Never:
+        raise AssertionError("stale source action reached the profile loader")
+
+    object.__setattr__(hooks, "validate_source_profile_action", count_validator)
+    object.__setattr__(hooks, "make_source_profile", count_loader)
+    try:
+        report = collect_ledger_metrics(runtime.ledger)
+        assert report.forbidden_future_payloads == 0
+        assert calls == {"validator": 1, "loader": 1}
+
+        calls.update(validator=0, loader=0)
+        action = runtime.actions.resolve(codec.request.action)
+        assert action.kind == "compose"
+        stale_action = runtime.actions.reference(action.first)
+        assert runtime.actions.resolve(stale_action).kind == "atom"
+        object.__setattr__(arena.nodes[profile.local_id], "action", stale_action)
+        object.__setattr__(hooks, "make_source_profile", forbidden_loader)
+        before = runtime.ledger.snapshot()
+        stale_report = collect_ledger_metrics(runtime.ledger)
+        assert stale_report.forbidden_future_payloads > 0
+        assert runtime.ledger.snapshot() == before
+        assert calls == {"validator": 1, "loader": 0}
+    finally:
+        object.__setattr__(hooks, "validate_source_profile_action", validator)
+        object.__setattr__(hooks, "make_source_profile", loader)
 
 
 @pytest.mark.parametrize(

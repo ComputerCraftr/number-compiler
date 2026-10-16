@@ -10,7 +10,9 @@ import pytest
 from number_compiler.api import cli
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from number_compiler.sequences.double_reverse import power as power_module
+from number_compiler.sequences.double_reverse import (
+    source_bound_bank as source_bound_bank_module,
+)
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     validate_source_record,
 )
@@ -218,7 +220,7 @@ def test_exact_pair_falls_back_when_periodic_bank_refuses(
     def refuse(*_args: object, **_kwargs: object) -> object:
         raise ValueError("forced source halo refusal")
 
-    monkeypatch.setattr(power_module, "protected_periodic_bank", refuse)
+    monkeypatch.setattr(source_bound_bank_module, "protected_periodic_bank", refuse)
     value = seed
     for _ in range(4):
         value = _step(value)

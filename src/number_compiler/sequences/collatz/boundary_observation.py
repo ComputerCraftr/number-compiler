@@ -41,15 +41,74 @@ if TYPE_CHECKING:
     )
 
 
+def validate_position_requests(
+    position_spectrum_requests: tuple[tuple[int, int], ...],
+    odd_position_moore_requests: tuple[tuple[int, int], ...],
+    position_moore_walsh64: bool,
+) -> None:
+    """Validate bounded optional position observers at their demand boundary."""
+    for requests in (position_spectrum_requests, odd_position_moore_requests):
+        if (
+            type(requests) is not tuple
+            or len(requests) > 4
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or type(item[0]) is not int
+                or type(item[1]) is not int
+                for item in requests
+            )
+        ):
+            raise ValueError("position requests must contain at most four exact pairs")
+    if type(position_moore_walsh64) is not bool or (
+        position_moore_walsh64 and not odd_position_moore_requests
+    ):
+        raise ValueError("position Walsh64 requires an odd-position Moore request")
+
+
+def observe_empty_source_innovation_tape(
+    source: int,
+    modulus: int,
+    ledger: ResourceLedger,
+) -> InnovationTapeObservation:
+    """Observe the exact empty program when a zero-step term is requested."""
+    from number_compiler.sequences.collatz.innovation_input_tape import (
+        ParityProgramBuilder,
+    )
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        observe_parity_program,
+    )
+
+    with ParityProgramBuilder(source, ledger) as builder:
+        program = builder.finish(source, steps=0, one_symbols=0)
+        return observe_parity_program(
+            program,
+            modulus,
+            ledger=ledger,
+            physical_endpoint=source,
+            physical_ticks=0,
+            phase=0,
+        )
+
+
 def observe_guarded_boundary(
     seed: int,
     witness: tuple[int, CollatzBoundaryMacro | BorderReturnMacro] | None,
     modulus: int | None,
     ledger: ResourceLedger,
     global_tape: InnovationTapeObservation | None = None,
+    *,
+    position_spectrum_requests: tuple[tuple[int, int], ...] = (),
+    odd_position_moore_requests: tuple[tuple[int, int], ...] = (),
+    position_moore_walsh64: bool = False,
 ) -> dict[str, object]:
     """Use the issued macro directly; do not rediscover its source action."""
     require_integer(seed, "Collatz source", 1)
+    validate_position_requests(
+        position_spectrum_requests,
+        odd_position_moore_requests,
+        position_moore_walsh64,
+    )
     ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_OBSERVATION_REQUESTS)
     if global_tape is not None:
         from number_compiler.sequences.collatz.innovation_port_moore import (
@@ -134,6 +193,64 @@ def observe_guarded_boundary(
             else None
         ),
     }
+    if position_spectrum_requests or odd_position_moore_requests:
+        position_packet: dict[str, object] = {
+            "status": "complete" if macro is not None else "unavailable",
+            "scope": (
+                "first source-admitted macro only; fixed-word futures do not "
+                "authorize later Collatz selector choices"
+            ),
+        }
+        if macro is None:
+            position_packet["reason"] = "no admitted first boundary macro"
+        else:
+            from number_compiler.sequences.collatz.border_return_grammar import (
+                BorderReturnMacro,
+            )
+            from number_compiler.sequences.collatz.boundary_macros import (
+                CollatzBoundaryMacro,
+            )
+            from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+                DyadicTerminalFieldAction,
+            )
+
+            if type(macro) is BorderReturnMacro:
+                spectrum_observer = macro.demanded_position_harmonics
+            elif type(macro) is CollatzBoundaryMacro:
+                spectrum_observer = macro.demanded_motif_position_harmonics
+            else:
+                raise TypeError("boundary witness has another macro authority")
+            if position_spectrum_requests:
+                position_packet["spectra"] = tuple(
+                    {
+                        "radix": radix,
+                        "position_lsd_zero_indexed": position,
+                        "harmonic": spectrum_observer(radix, position).observation(),
+                    }
+                    for radix, position in position_spectrum_requests
+                )
+            if type(macro.fields) is not DyadicTerminalFieldAction:
+                raise TypeError("boundary witness has another field-action authority")
+            if odd_position_moore_requests:
+                from number_compiler.sequences.collatz.position_cycle_harmonics import (
+                    minimize_fixed_word_odd_position,
+                )
+
+                moore_observations: list[dict[str, object]] = []
+                for radix, position in odd_position_moore_requests:
+                    quotient = minimize_fixed_word_odd_position(
+                        macro.fields, radix, position
+                    )
+                    observation = quotient.observation(macro.source)
+                    if position_moore_walsh64:
+                        observation["future_digit_change_walsh64_mod5"] = (
+                            quotient.walsh64_future_digit_changes(macro.source)
+                        )
+                    moore_observations.append(observation)
+                position_packet["odd_position_moore"] = tuple(moore_observations)
+            position_packet["starting_physical_tick"] = tick
+            position_packet["macro_identity"] = macro.identity.display_label
+        packet["position_cycle_harmonics"] = position_packet
     if modulus is None:
         if macro is not None:
             from number_compiler.sequences.collatz.border_return_grammar import (

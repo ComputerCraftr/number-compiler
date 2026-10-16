@@ -83,12 +83,16 @@ class ObservationId(StrEnum):
     TEMPORAL_GRAMMAR = "temporal.grammar"
     TEMPORAL_RADIX_WALSH = "temporal.radix-walsh"
     TEMPORAL_CLOSED_FORM = "temporal.closed-form"
+    TEMPORAL_RESIDUE99 = "temporal.residue99"
+    TEMPORAL_CARRY_SAFETY = "temporal.carry-safety"
     TEMPORAL_ACCUMULATOR = "temporal.accumulator"
     TEMPORAL_INNOVATION_BORROW = "temporal.innovation-borrow"
     TEMPORAL_SPACETIME = "temporal.spacetime"
     SPATIAL_MIRROR = "spatial.mirror"
     SPATIAL_STENCIL = "spatial.stencil"
     SPATIAL_PAIR_BANK = "spatial.pair-bank"
+    SPATIAL_BANK_MORPHISM = "spatial.bank-morphism"
+    SPATIAL_BANK_WINDOW = "spatial.bank-window"
     SPATIAL_TAPE = "spatial.tape"
     ARITHMETIC_MODULAR = "arithmetic.modular"
     ARITHMETIC_RADIX25_SHIFT = "arithmetic.radix25-shift"
@@ -194,6 +198,8 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_GRAMMAR,
         ObservationId.TEMPORAL_RADIX_WALSH,
         ObservationId.TEMPORAL_CLOSED_FORM,
+        ObservationId.TEMPORAL_RESIDUE99,
+        ObservationId.TEMPORAL_CARRY_SAFETY,
         ObservationId.TEMPORAL_ACCUMULATOR,
         ObservationId.TEMPORAL_INNOVATION_BORROW,
         ObservationId.TEMPORAL_SPACETIME,
@@ -202,6 +208,8 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.SPATIAL_MIRROR,
         ObservationId.SPATIAL_STENCIL,
         ObservationId.SPATIAL_PAIR_BANK,
+        ObservationId.SPATIAL_BANK_MORPHISM,
+        ObservationId.SPATIAL_BANK_WINDOW,
         ObservationId.SPATIAL_TAPE,
     ),
     ObservationCategory.ARITHMETIC: (

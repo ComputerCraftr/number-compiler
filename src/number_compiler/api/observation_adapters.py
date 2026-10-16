@@ -200,11 +200,46 @@ def observe_double_reverse(context: QueryContext, name: ObservationId) -> Packet
                 "scope": "source-bound radix-2/5 projection; not future branch authority",
             },
         )
+    if name is ObservationId.TEMPORAL_RESIDUE99:
+        from number_compiler.api.bank_observation import double_reverse_residue_packet
+
+        return _publish(
+            context,
+            name,
+            double_reverse_residue_packet(payload.term),
+            coordinates=(("target_generation",),),
+        )
+    if name is ObservationId.TEMPORAL_CARRY_SAFETY:
+        from number_compiler.sequences.double_reverse.temporal_hashlife import (
+            UncertifiedPointedStencilError,
+        )
+
+        try:
+            prefix, source_safety, components = payload.term.temporal_carry_safety()
+        except UncertifiedPointedStencilError as exc:
+            return _publish(
+                context, name, {"status": "unavailable", "reason": str(exc)}
+            )
+        return _publish(
+            context,
+            name,
+            {
+                "prefix_steps": prefix,
+                "source_safety": asdict(source_safety),
+                "component_bounds": [asdict(component) for component in components],
+                "scope": (
+                    "source-derived finite carry constraints; compatible future "
+                    "ports do not authorize an entire-word temporal cycle"
+                ),
+            },
+        )
     if name in {
         ObservationId.TEMPORAL_RADIX_WALSH,
         ObservationId.SPATIAL_STENCIL,
         ObservationId.TEMPORAL_BANK,
         ObservationId.SPATIAL_PAIR_BANK,
+        ObservationId.SPATIAL_BANK_MORPHISM,
+        ObservationId.SPATIAL_BANK_WINDOW,
         ObservationId.TEMPORAL_GRAMMAR,
     }:
         return _observe_double_reverse_cylinder(context, name, payload.term, options)
@@ -292,6 +327,15 @@ def _observe_double_reverse_cylinder(
                     "position_unit": "final_outer_to_inner_pair",
                     "scope": "exact demanded pair in an authenticated finite cylinder",
                 },
+            )
+        if name in {
+            ObservationId.SPATIAL_BANK_WINDOW,
+            ObservationId.SPATIAL_BANK_MORPHISM,
+        }:
+            from number_compiler.api.bank_observation import double_reverse_bank_packet
+
+            return _publish(
+                context, name, double_reverse_bank_packet(term, options, name)
             )
         if name is ObservationId.TEMPORAL_GRAMMAR:
             bank = term.protected_temporal_bank(
@@ -389,6 +433,22 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
         raise TypeError("reverse/add query published a foreign term payload")
     if name is ObservationId.TEMPORAL_MACRO:
         return _publish(context, name, asdict(payload.term.observe_boundary_macro()))
+    if name is ObservationId.TEMPORAL_RESIDUE99:
+        return _publish(
+            context,
+            name,
+            asdict(payload.term.temporal_residue99()),
+            coordinates=(("duration",),),
+        )
+    if name is ObservationId.SPATIAL_BANK_MORPHISM:
+        from number_compiler.api.bank_observation import reverse_bank_packet
+
+        return _publish(
+            context,
+            name,
+            reverse_bank_packet(payload.term, options),
+            coordinates=(("temporal_depth",),),
+        )
     if name is ObservationId.TEMPORAL_MATRIX:
         if options.modulus is not None:
             return _publish(
@@ -574,7 +634,10 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
             payload.term.observe_boundary_macro(
                 modulus=term_options.innovation_modulus
                 if name is ObservationId.TEMPORAL_INNOVATION_BORROW
-                else None
+                else None,
+                position_spectrum_requests=((6, 0), (10, 0))
+                if name is ObservationId.TEMPORAL_INNOVATION_BORROW
+                else (),
             ),
         )
     raise ValueError("observation has no Collatz handler")

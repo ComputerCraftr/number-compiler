@@ -104,25 +104,34 @@ def _runtime(
     return ledger, tiles, scheduler, adapter, projection
 
 
-@pytest.mark.parametrize("radix", (2, 3, 6, 12))
 @pytest.mark.parametrize("value", (0, 1, 2, 5, 71, 140137))
-def test_tile_radix_digits_width_and_zero_quotient(
-    radix: int,
-    value: int,
-) -> None:
-    _, tiles, _, _, projection = _runtime(value, radix)
-    expected = _digits(value, radix)
+def test_tile_radix_digits_width_and_zero_quotient(value: int) -> None:
+    _, tiles, scheduler, adapter, binary_projection = _runtime(value, 2)
+    source = binary_projection._source.tile
     try:
-        assert projection.active_width() == len(expected)
-        assert (
-            tuple(projection.point(index) for index in range(len(expected))) == expected
-        )
-        with pytest.raises(IndexError):
-            projection.point(len(expected))
-        final = projection.quotient(len(expected))
-        assert tiles.resolve(final).extent == 0
+        for radix in (2, 3, 6, 12):
+            projection = (
+                binary_projection
+                if radix == 2
+                else TileRadixProjection(scheduler, adapter, source, radix)
+            )
+            expected = _digits(value, radix)
+            context = f"value={value}, radix={radix}"
+            try:
+                assert projection.active_width() == len(expected), context
+                assert (
+                    tuple(projection.point(index) for index in range(len(expected)))
+                    == expected
+                ), context
+                with pytest.raises(IndexError):
+                    projection.point(len(expected))
+                final = projection.quotient(len(expected))
+                assert tiles.resolve(final).extent == 0, context
+            finally:
+                if projection is not binary_projection:
+                    projection.close()
     finally:
-        projection.close()
+        binary_projection.close()
 
 
 @pytest.mark.parametrize("radix", (2, 3, 6, 12, 255))

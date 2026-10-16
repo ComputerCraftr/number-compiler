@@ -153,20 +153,27 @@ def register_antihydra_payload_contract(root: object) -> None:
             audit_antihydra_engine,
         )
     elif type(root) is AntihydraArithmeticTerm:
-        register(
-            root,
-            "antihydra",
-            (
-                bind(
-                    root.segment_owner,
-                    "_segments",
-                    "arithmetic_cylinder_support",
-                ),
-                bind(root.result_owner, "result_publications", "arithmetic_result"),
-                bind(root.physical_owner, "physical_publications", "physical_result"),
+        stores = [
+            bind(
+                root.segment_owner,
+                "_segments",
+                "arithmetic_cylinder_support",
             ),
-            audit_antihydra_term,
-        )
+            bind(root.result_owner, "result_publications", "arithmetic_result"),
+            bind(root.physical_owner, "physical_publications", "physical_result"),
+        ]
+        memo = getattr(root, "mahler_window_memo", None)
+        workspace = getattr(root, "mahler_workspace", None)
+        window_owner = getattr(workspace, "_window_owner", None)
+        if memo is not None and type(window_owner) is int:
+            stores.append(
+                bind(
+                    window_owner,
+                    "mahler_window_memo",
+                    "query_memo",
+                )
+            )
+        register(root, "antihydra", tuple(stores), audit_antihydra_term)
     elif type(root) is ProjectionFragmentCache:
         register(
             root,
@@ -211,6 +218,39 @@ def register_antihydra_payload_contract(root: object) -> None:
             (bind(root.owner, "images", "demanded_projection"),),
             audit_antihydra_section_workspace,
         )
+
+
+def refresh_antihydra_payload_contract(root: object) -> None:
+    """Refresh a term contract after its lazy Mahler memo is published."""
+    from number_compiler.resources.payload_contracts import (
+        remove_payload_audit_contract,
+    )
+
+    ledger = getattr(root, "ledger", None)
+    if type(ledger) is not ResourceLedger:
+        raise TypeError("Antihydra payload roots require their ResourceLedger")
+    # Registration rejects replacement by design.  Capture the existing
+    # binding before the remove/register pair so a constructor or validator
+    # failure cannot leave this live term without its prior authority.
+    key = (id(root), "antihydra")
+    old_binding = ledger._payload_audit_contracts.get(key)
+    if old_binding is None or old_binding.root_reference() is not root:
+        raise ValueError("Antihydra term has no exact contract to refresh")
+    remove_payload_audit_contract(ledger, root, "antihydra")
+    try:
+        register_antihydra_payload_contract(root)
+    except BaseException:
+        try:
+            # Restore the already-validated immutable binding directly.  This
+            # also repairs a hypothetical partial replacement before the
+            # exception escapes to the demand caller.
+            ledger._payload_audit_contracts[key] = old_binding
+            ledger.note_store_mutation()
+        except BaseException as restore_error:
+            raise RuntimeError(
+                "failed to restore the Antihydra payload contract"
+            ) from restore_error
+        raise
 
 
 def _owned_row_matches(
@@ -708,6 +748,16 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
                 mahler.validate(arithmetic)
             except (TypeError, ValueError, AttributeError):
                 valid = False
+            else:
+                memo = mahler._window_memo
+                window_owner = mahler._window_owner
+                if memo is not None:
+                    if type(window_owner) is not int or memo.owner != window_owner:
+                        valid = False
+                    else:
+                        for key, window in memo.items():
+                            _approve(approved, window_owner, key)
+                            _approve(approved, window_owner, window)
 
     physicals = term.physical_publications
     if physicals:
@@ -770,6 +820,7 @@ __all__ = [
     "audit_antihydra_image_workspace",
     "audit_antihydra_section_workspace",
     "audit_antihydra_term",
+    "refresh_antihydra_payload_contract",
     "register_antihydra_payload_contract",
 ]
 

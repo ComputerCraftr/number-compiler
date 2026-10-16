@@ -92,10 +92,18 @@ def _is_child(parent: int, candidate: int) -> bool:
 
 
 def _literal_children(parent: int) -> tuple[int, ...]:
+    # The nine literal candidates are consecutive. Determine their decimal
+    # scale once, advancing it only if this short interval crosses a decade.
+    base = parent + 10 * (parent % 10)
+    _, scale = _leading_digit_scale(base + 1)
+    upper = 10 * scale
     out: list[int] = []
     for digit in range(1, 10):
-        candidate = _child(parent, digit)
-        if _leading_digit_scale(candidate)[0] == digit:
+        candidate = base + digit
+        if candidate >= upper:
+            scale = upper
+            upper *= 10
+        if candidate // scale == digit:
             out.append(candidate)
     return tuple(out)
 

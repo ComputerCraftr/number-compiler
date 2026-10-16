@@ -1,5 +1,8 @@
 session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
   options [document = false, quick_and_dirty = false]
+  sessions
+    Shared_S_Arithmetic
+    "HOL-Number_Theory"
   theories
     Reverse_Residuals
     Reverse_Invariant
@@ -15,6 +18,7 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_196_Two_Port_Refinement
     Reverse_196_Universal_Emit
     Reverse_196_Publisher_Refinement
+    Reverse_196_Residue_Quotient
     Reverse_Punctured_T2_Coefficients
     Reverse_Punctured_Run_Pairing
     Reverse_Punctured_Event_Intervals

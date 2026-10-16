@@ -128,14 +128,24 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "spatial.mirror",
                 "temporal.macro",
                 "temporal.matrix",
+                "temporal.residue99",
                 "temporal.stencil",
+                "spatial.bank-morphism",
             ),
         ),
         ReverseAddTermQuery,
         AdapterBinding("number_compiler.api.projections.reverse_add", "project"),
         _observation("prepare_reverse", "admit_reverse", "observe_reverse"),
         term_observation=ObservationValueBinding(
-            ReverseAddObservationOptions, ("width", "max_digits", "modulus")
+            ReverseAddObservationOptions,
+            (
+                "width",
+                "max_digits",
+                "modulus",
+                "pair_bank_position",
+                "bank_morphism_count",
+                "grammar_period",
+            ),
         ),
         observer_options=_opts("width")
         + (
@@ -149,10 +159,33 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                     None, ("temporal.matrix",), flag_name="temporal_matrix_modulus"
                 ),
             ),
+            (
+                "pair_bank_position",
+                OptionSpec(
+                    0,
+                    ("spatial.bank-morphism",),
+                    flag_name="spatial_pair_bank_position",
+                ),
+            ),
+            (
+                "bank_morphism_count",
+                OptionSpec(
+                    16,
+                    ("spatial.bank-morphism",),
+                    flag_name="spatial_bank_morphism_count",
+                ),
+            ),
+            (
+                "grammar_period",
+                OptionSpec(
+                    2, ("spatial.bank-morphism",), flag_name="temporal_grammar_period"
+                ),
+            ),
         ),
         bounded_observations=(
             ObservationId.SPATIAL_MIRROR,
             ObservationId.TEMPORAL_STENCIL,
+            ObservationId.SPATIAL_BANK_MORPHISM,
         ),
         output_bound="seed",
         observation_constraints=(
@@ -174,6 +207,18 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 10,
                 "temporal-stencil requires decimal base",
             ),
+            (
+                ObservationId.TEMPORAL_RESIDUE99,
+                "base",
+                10,
+                "temporal residue99 requires decimal base",
+            ),
+            (
+                ObservationId.SPATIAL_BANK_MORPHISM,
+                "base",
+                10,
+                "reverse/add spatial bank morphism requires decimal base",
+            ),
         ),
     ),
     FamilyId.DOUBLE_REVERSE: FamilySpec(
@@ -183,9 +228,13 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
             (
                 "metrics",
                 "temporal.closed-form",
+                "temporal.residue99",
+                "temporal.carry-safety",
                 "spatial.stencil",
                 "temporal.bank",
                 "spatial.pair-bank",
+                "spatial.bank-morphism",
+                "spatial.bank-window",
                 "temporal.grammar",
                 "temporal.radix-walsh",
                 "arithmetic.radix25-shift",
@@ -200,6 +249,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "modulus",
                 "stencil_position",
                 "pair_bank_position",
+                "bank_morphism_count",
                 "grammar_position",
                 "grammar_period",
                 "radix_places",
@@ -227,8 +277,20 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "pair_bank_position",
                 OptionSpec(
                     0,
-                    ("spatial.pair-bank",),
+                    (
+                        "spatial.pair-bank",
+                        "spatial.bank-morphism",
+                        "spatial.bank-window",
+                    ),
                     flag_name="spatial_pair_bank_position",
+                ),
+            ),
+            (
+                "bank_morphism_count",
+                OptionSpec(
+                    16,
+                    ("spatial.bank-morphism", "spatial.bank-window"),
+                    flag_name="spatial_bank_morphism_count",
                 ),
             ),
             (
@@ -243,7 +305,11 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "grammar_period",
                 OptionSpec(
                     2,
-                    ("temporal.grammar", "temporal.radix-walsh"),
+                    (
+                        "temporal.grammar",
+                        "temporal.radix-walsh",
+                        "spatial.bank-morphism",
+                    ),
                     flag_name="temporal_grammar_period",
                 ),
             ),

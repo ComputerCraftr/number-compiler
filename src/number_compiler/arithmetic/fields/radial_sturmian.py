@@ -58,6 +58,22 @@ class RadialSturmianPacket:
 
 
 @dataclass(frozen=True, slots=True)
+class RadialRadixPrefix:
+    """Exact leading base-b source digits, without a full source integer."""
+
+    growths: int
+    radix: int
+    order: int
+    width: int
+    value: int
+    precision_bits: int
+
+    @property
+    def word_length(self) -> int:
+        return self.order + 1
+
+
+@dataclass(frozen=True, slots=True)
 class RadialSturmianClock:
     """Powered additive exponent port for an already authorized source action.
 
@@ -105,6 +121,110 @@ class RadialSturmianClock:
         if bit not in (0, 1):
             raise ArithmeticError("irrational rotation width jump is not Boolean")
         return bit
+
+    def leading_radix(
+        self,
+        evaluator: GrowthArithmeticEvaluator,
+        radix: int,
+        width: int = 4,
+    ) -> RadialRadixPrefix:
+        """Certified leading radix digits of the homogeneous source.
+
+        Only used here for positive integer 3**H (halvings=0). The exact
+        rational log threshold checker is shared with the existing binary
+        Sturmian evaluator; no full 3**H or radix digit tape is built.
+        """
+        if type(evaluator) is not GrowthArithmeticEvaluator:
+            raise TypeError("radial prefix needs a growth evaluator")
+        require_integer(radix, "leading radix", 2)
+        require_integer(width, "leading digits", 1)
+        if self.scale.halvings or not self.scale.growths:
+            raise ValueError("radial radix prefix requires a positive integer 3-power")
+        if radix not in (2, 10):
+            raise ValueError("radial digit prefix currently supports radix 2 or 10")
+        if width * (radix - 1).bit_length() > evaluator.max_precision_bits:
+            raise BlockContextBudgetExceeded("radial prefix exceeds precision budget")
+        order = evaluator.radix_order(self.scale, radix)
+        if width > order + 1:
+            raise ValueError("leading radix request exceeds source width")
+        # Exact whole-word fallback only when the entire integer is small.
+        # Otherwise a prefix equal to a transcendental threshold could
+        # consume the precision budget trying to prove equality.
+        if width == order + 1 and self.scale.growths <= 512:
+            bound = self.scale.growths * 2
+            if bound <= 1024:
+                with evaluator._charge_work(
+                    max(1, bound * radix.bit_length()),
+                    0,
+                    bound,
+                    storage_bits=4 * bound + 32,
+                ):
+                    value = 3**self.scale.growths
+                return RadialRadixPrefix(
+                    self.scale.growths, radix, order, width, value, 0
+                )
+        if radix == 2:
+            packet = self.leading_binary(evaluator, width)
+            return RadialRadixPrefix(
+                self.scale.growths,
+                radix,
+                order,
+                width,
+                packet.prefix_value,
+                packet.precision_bits,
+            )
+        precision = min(32, evaluator.max_precision_bits)
+        with evaluator._charge_work(
+            width * radix.bit_length(),
+            0,
+            width * radix.bit_length(),
+            storage_bits=8 * width * radix.bit_length(),
+        ):
+            threshold_denominator = radix ** (width - 1)
+        lower_prefix = threshold_denominator
+        upper_prefix = threshold_denominator * radix
+        highest_used = precision
+        # Determine floor(radix**(width-1+phase)) using certified
+        # comparisons, refining either interval until each branch is forced.
+        while upper_prefix - lower_prefix > 1:
+            middle = (lower_prefix + upper_prefix) // 2
+            threshold_precision = precision
+            phase_precision = precision
+            while True:
+                left, right = evaluator.order_bounds(
+                    self.scale, radix, precision_bits=phase_precision
+                )
+                left -= order
+                right -= order
+                threshold_left, threshold_right = evaluator.radix_log_ratio_bounds(
+                    middle,
+                    threshold_denominator,
+                    radix,
+                    precision_bits=threshold_precision,
+                )
+                highest_used = max(highest_used, phase_precision, threshold_precision)
+                if left >= threshold_right:
+                    lower_prefix = middle
+                    break
+                if right < threshold_left:
+                    upper_prefix = middle
+                    break
+                if (
+                    max(phase_precision, threshold_precision)
+                    >= evaluator.max_precision_bits
+                ):
+                    raise BlockContextBudgetExceeded(
+                        "radial leading digit threshold unresolved"
+                    )
+                # Both intervals must tighten; a loose threshold cannot be
+                # repaired by increasing the source precision alone.
+                phase_precision = min(phase_precision * 2, evaluator.max_precision_bits)
+                threshold_precision = min(
+                    threshold_precision * 2, evaluator.max_precision_bits
+                )
+        return RadialRadixPrefix(
+            self.scale.growths, radix, order, width, lower_prefix, highest_used
+        )
 
     def leading_binary(
         self, evaluator: GrowthArithmeticEvaluator, width: int = 8
@@ -217,4 +337,4 @@ class RadialSturmianClock:
         )
 
 
-__all__ = ["RadialSturmianClock", "RadialSturmianPacket"]
+__all__ = ["RadialRadixPrefix", "RadialSturmianClock", "RadialSturmianPacket"]

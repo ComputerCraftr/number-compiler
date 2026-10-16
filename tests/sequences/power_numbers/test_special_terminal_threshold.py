@@ -108,8 +108,8 @@ def test_terminal_query_is_fail_closed_and_never_hides_recurrence_or_carrier_wor
 def test_production_certificate_keeps_missing_terminal_extractor_unresolved() -> None:
     f2 = fermat_depth_certificate(2)
     assert f2.status == "prime"
-    assert f2.method.startswith("terminal-threshold:")
-    assert f2.scalable_construction
+    assert f2.method == "bounded-boolean-counter-full-coverage-pepin"
+    assert not f2.scalable_construction
     assert f2.carrier_states_enumerated == 0
     assert f2.construction_raw_squarings == 0
 

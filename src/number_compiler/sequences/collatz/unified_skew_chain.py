@@ -29,23 +29,16 @@ from number_compiler.arithmetic.fields.radial_sturmian import (
     RadialSturmianClock,
     RadialSturmianPacket,
 )
-from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
-    ENTRY_0563,
     ENTRY_89_AT_NINE,
-    ENTRY_421,
-    ENTRY_4721,
-    ENTRY_26847_PHASES,
     BoundaryActionIdentity,
     CollatzSegmentIdentity,
     NonBorderSegment,
 )
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
-    select_border_return_macro,
-    validate_border_return_macro,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     AdmittedBoundaryMacroPlan,
@@ -66,8 +59,6 @@ from number_compiler.sequences.collatz.radial_boundary_coupling import (
 )
 from number_compiler.sequences.collatz.terminal_preimage import (
     CollatzTerminalPower2Macro,
-    select_terminal_power2_macro,
-    validate_terminal_power2_macro,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 
@@ -412,9 +403,21 @@ class UnifiedSkewChain:
         radial_prefix_width: int = 8,
         difference_places: int = 0,
         include_walsh64: bool = False,
+        position_spectrum_requests: tuple[tuple[int, int], ...] = (),
+        odd_position_moore_requests: tuple[tuple[int, int], ...] = (),
+        position_moore_walsh64: bool = False,
         ledger: ResourceLedger | None = None,
     ) -> dict[str, object]:
         self.verify()
+        from number_compiler.sequences.collatz.boundary_observation import (
+            validate_position_requests,
+        )
+
+        validate_position_requests(
+            position_spectrum_requests,
+            odd_position_moore_requests,
+            position_moore_walsh64,
+        )
         clock = self.clock
         packet = (
             self.radial_leading_binary(radial_evaluator, radial_prefix_width)
@@ -472,11 +475,55 @@ class UnifiedSkewChain:
             raise TypeError("Walsh64 demand must be Boolean")
         guarded_ports = (
             self.source_closed_port_action(ledger=ledger)
-            if difference_places or include_walsh64
+            if difference_places or include_walsh64 or odd_position_moore_requests
             else None
         )
+        conditional_position_moore = (
+            tuple(
+                guarded_ports.demanded_odd_position_moore(
+                    self.source,
+                    radix,
+                    position,
+                    include_walsh64=position_moore_walsh64,
+                )
+                for radix, position in odd_position_moore_requests
+            )
+            if guarded_ports is not None and odd_position_moore_requests
+            else ()
+        )
+        returned_position_spectra: list[dict[str, object]] = []
+        if position_spectrum_requests:
+            from number_compiler.sequences.collatz.border_return_grammar import (
+                BorderReturnMacro,
+            )
+            from number_compiler.sequences.collatz.boundary_macros import (
+                CollatzBoundaryMacro,
+            )
+
+            for seam_index, seam in enumerate(self.seams):
+                witness = seam.witness
+                if type(witness) is BorderReturnMacro:
+                    family = "6305R"
+                    harmonic_method = witness.demanded_position_harmonics
+                elif type(witness) is CollatzBoundaryMacro:
+                    family = witness.display_label
+                    harmonic_method = witness.demanded_motif_position_harmonics
+                else:
+                    continue
+                for radix, position in position_spectrum_requests:
+                    returned_position_spectra.append(
+                        {
+                            "seam_index": seam_index,
+                            "family": family,
+                            "harmonic": harmonic_method(radix, position).observation(),
+                        }
+                    )
         joint_difference = None
-        if guarded_ports is not None and guarded_ports.odd_events:
+        if (
+            guarded_ports is not None
+            and guarded_ports.odd_events
+            and (difference_places or include_walsh64)
+        ):
             radix_places = (
                 {
                     3: difference_places,
@@ -536,6 +583,16 @@ class UnifiedSkewChain:
                 if seam_packets is not None
                 else {}
             ),
+            **(
+                {"conditional_odd_position_moore": conditional_position_moore}
+                if odd_position_moore_requests
+                else {}
+            ),
+            **(
+                {"admitted_border_position_harmonics": tuple(returned_position_spectra)}
+                if position_spectrum_requests
+                else {}
+            ),
             **({"repeated_skew_cylinder": repeated} if repeated is not None else {}),
             **({"radial_sturmian": asdict(packet)} if packet is not None else {}),
             "segments": tuple(
@@ -556,119 +613,6 @@ class UnifiedSkewChain:
             "terminal_entry_certified": self.reaches_terminal,
             "scope": "source-certified compositional prefix; terminal only at exact 1",
         }
-
-
-def _admit_next(
-    source: int,
-    remaining: int,
-    templates: BoundaryActionTemplateMemo,
-    preflight: Callable[[int], None] | None = None,
-    *,
-    ledger: ResourceLedger | None = None,
-    initial_plan: AdmittedBoundaryMacroPlan | None = None,
-    initial_plan_checked: bool = False,
-    radix_state: JointRadix6Source | None = None,
-) -> (
-    tuple[
-        CollatzSegmentIdentity,
-        int,
-        DyadicTerminalFieldAction,
-        BlankLedger,
-        FactorSpecs,
-        SeamWitness | None,
-    ]
-    | None
-):
-    """Select only exact bounded actions, never replay parity bits."""
-    state = (
-        radix_state
-        if radix_state is not None
-        else JointRadix6Source.from_source(source)
-    )
-    if type(state) is not JointRadix6Source:
-        raise TypeError("skew macro selector requires an exact radix-6 source state")
-    state.require_source(source)
-    if not state.even and source > 1:
-        power = 3 * source + 1
-        exponent = power.bit_length() - 1
-        # Preflight before allocating the powered coefficients.
-        if power & (power - 1) == 0 and exponent + 1 <= remaining:
-            if preflight is not None:
-                preflight(exponent)
-            terminal = select_terminal_power2_macro(source, remaining)
-        else:
-            terminal = None
-        if terminal is not None:
-            validate_terminal_power2_macro(terminal)
-            return (
-                NonBorderSegment.TERMINAL_POWER_OF_TWO,
-                1,
-                terminal.fields,
-                terminal.width_blank,
-                (((1,), 1), ((0,), terminal.exponent - 1)),
-                terminal,
-            )
-
-    plan = (
-        initial_plan
-        if initial_plan_checked
-        else admit_boundary_macro_plan(
-            source,
-            remaining,
-            minimum_repetitions=1,
-            radix_state=state,
-            ledger=ledger,
-        )
-    )
-    # Existing 421/4721/0563/26847/989 families are complete powered guards.
-    # For 3/5/6/0 tails, prefer the border automaton, which retains the upper
-    # return and 8/9 exit state across more than one named macro.
-    if plan is not None and plan.identity in (
-        ENTRY_421,
-        ENTRY_4721,
-        ENTRY_0563,
-        *ENTRY_26847_PHASES,
-        ENTRY_89_AT_NINE,
-    ):
-        return _select_boundary_plan(plan, templates, preflight)
-
-    if state.decimal_residue(10) in (0, 3, 5) or state.decimal_residue(20) == 6:
-        border = select_border_return_macro(
-            source,
-            remaining,
-            preflight=preflight,
-            ledger=ledger,
-            radix_state=state,
-        )
-        if border is not None:
-            validate_border_return_macro(border)
-            return (
-                border.identity,
-                border.odd_symbols,
-                border.fields,
-                border.width_blank,
-                tuple(((bit,), count) for bit, count in border.parts),
-                border,
-            )
-
-    if plan is not None:
-        return _select_boundary_plan(plan, templates, preflight)
-
-    if source > 1 and state.even:
-        exponent = v2_positive(source)
-        if exponent <= remaining:
-            if preflight is not None:
-                preflight(exponent)
-            fields = DyadicTerminalFieldAction.zero_run(exponent)
-            return (
-                NonBorderSegment.ZERO_RUN,
-                0,
-                fields,
-                BlankLedger(-exponent, -exponent, 0),
-                (((0,), exponent),),
-                None,
-            )
-    return None
 
 
 def select_unified_skew_chain(
@@ -702,6 +646,9 @@ def select_unified_skew_chain(
     from number_compiler.sequences.collatz.skew_cylinder_repeat import (
         RepeatedWordMooreCylinder,
     )
+    from number_compiler.sequences.collatz.unified_skew_admission import (
+        admit_next_unified_segment,
+    )
 
     if ledger is not None and type(ledger) is not ResourceLedger:
         raise TypeError("unified skew selection requires its query ledger")
@@ -726,9 +673,8 @@ def select_unified_skew_chain(
             numerator & (numerator - 1) == 0
             and numerator.bit_length() <= available_physical_ticks
         )
-    border_parent = available_physical_ticks >= 4 and (
-        joint_state.decimal_residue(10) in (0, 3, 5)
-        or joint_state.decimal_residue(20) == 6
+    border_parent = (
+        available_physical_ticks >= 4 and joint_state.border_parent_candidate
     )
     # Ordinary requests preserve the existing 989-to-mixed-cache precedence.
     # Observer requests still compose 989 when its clock, joint action, or tape
@@ -781,7 +727,7 @@ def select_unified_skew_chain(
                 _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
                 candidate_bits,
             )
-        admitted = _admit_next(
+        admitted = admit_next_unified_segment(
             current,
             available_physical_ticks - used,
             templates,

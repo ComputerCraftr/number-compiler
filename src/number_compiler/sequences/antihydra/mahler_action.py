@@ -29,6 +29,8 @@ from number_compiler.arithmetic.fields.mechanical_readout import (
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
@@ -36,6 +38,9 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 from number_compiler.sequences.antihydra.runtime import authenticated_arithmetic_result
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.mahler_joint_future import (
+        MahlerJointInteriorWindow,
+    )
     from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
 
 
@@ -54,6 +59,7 @@ def _action_packet(
     first_failure: int | None,
     *,
     include_radix_ports: bool = False,
+    window_memo: OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow] | None = None,
 ) -> dict[str, object]:
     if result.returns == 0 and semantic != SaturatingAffineAction.identity():
         raise ValueError(
@@ -157,8 +163,20 @@ def _action_packet(
                 "Mahler radial/cap action differs from its admitted source"
             )
         demanded_tripling = bound_action.demanded_tripling_ports(
-            base=6, places=4, ledger=result.ledger
+            base=6,
+            places=4,
+            ledger=result.ledger,
+            source=workspace.seed - 1,
+            endpoint_h=result.h,
+            binary_places=16,
+            decimal_places=4,
+            _workspace=workspace,
+            _workspace_transfer=transfer,
+            _window_memo=window_memo,
         )
+        joint_successor = demanded_tripling.pop("joint_source_successor", None)
+    else:
+        joint_successor = None
     with GrowthArithmeticEvaluator(result.ledger) as radial_evaluator:
         radial_packet = asdict(radial_clock.leading_binary(radial_evaluator))
         growth_packet = asdict(
@@ -224,6 +242,11 @@ def _action_packet(
             else {}
         ),
         **(
+            {"source_bound_joint_successor": joint_successor}
+            if joint_successor is not None
+            else {}
+        ),
+        **(
             {"radial_affine_arithmetic": radial_affine_packet}
             if radial_affine_packet is not None
             else {}
@@ -267,6 +290,11 @@ class MahlerWorkspace:
             raise ValueError("Mahler source lost its admitted arithmetic image")
         self.result = result
         self.source_workspace = workspace
+        self._window_owner: int | None = None
+        self._window_memo: (
+            OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow] | None
+        ) = None
+        self._window_contract_registered = False
 
     def _validate_binding(self, result: ArithmeticResult) -> None:
         if (
@@ -284,6 +312,138 @@ class MahlerWorkspace:
     def validate(self, result: ArithmeticResult) -> None:
         self._validate_binding(result)
         self.source_workspace.validate()
+        memo = self._window_memo
+        owner = self._window_owner
+        if memo is None:
+            if owner is not None:
+                raise ValueError("Mahler window owner lost its memo")
+        elif (
+            type(owner) is not int
+            or type(memo.owner) is not int
+            or memo.ledger is not result.ledger
+            or memo.owner != owner
+            or memo.nodes_per_entry != 64
+            or result.ledger.registered_container(owner) is not memo._data
+        ):
+            raise ValueError("Mahler precision memo is detached from its owner")
+        if memo is not None:
+            self._validate_window_payloads(result, memo)
+
+    def _validate_window_payloads(
+        self,
+        result: ArithmeticResult,
+        memo: OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow],
+    ) -> None:
+        """Audit the one demanded window against the admitted root source."""
+        from number_compiler.sequences.antihydra.mahler_joint_future import (
+            MAHLER_JOINT_FUTURE_KIND,
+            MahlerJointInteriorWindow,
+        )
+
+        if len(memo) > 1:
+            raise ValueError("Mahler precision memo exceeded its one-entry bound")
+        if not memo:
+            return
+        from number_compiler.arithmetic.fields.consumer_pullback import (
+            ExactRational as Q,
+        )
+        from number_compiler.arithmetic.fields.consumer_pullback import (
+            HalfOpenInterval,
+        )
+        from number_compiler.sequences.antihydra.mahler_source_actions import (
+            MahlerSourceBoundSafetyAction,
+        )
+
+        transfer = self.source_workspace.image_node(
+            self.source_workspace.root_payload
+        ).summary.transfer
+        extent = self.source_workspace.returns
+        modulus = 1 << extent
+        gain = transfer.upper
+        innovation = gain + transfer.offset - modulus
+        offset_hat = -12 * innovation
+        safety = MahlerSourceBoundSafetyAction(
+            extent,
+            offset_hat,
+            6 if extent == 1 else 6 * gain + offset_hat,
+        )
+        guard = (
+            HalfOpenInterval()
+            if extent == 0
+            else HalfOpenInterval(Q(1, 3), Q(1, 2))
+            if extent == 1
+            else HalfOpenInterval(Q(0), Q(0))
+        )
+        semantic_id = (
+            MAHLER_JOINT_FUTURE_KIND,
+            extent,
+            7 % modulus,
+            innovation,
+            guard,
+            safety,
+            gain,
+        )
+        for key, window in memo.items():
+            if type(key) is not tuple or len(key) != 4:
+                raise ValueError("Mahler window memo key has another shape")
+            if type(window) is not MahlerJointInteriorWindow:
+                raise ValueError("Mahler precision memo contains another payload")
+            window.verify_issued()
+            if (
+                type(key[0]) is not tuple
+                or not _typed_equal(key[0], semantic_id)
+                or key[1] != 7
+                or key[2] != window.bits
+                or key[3] != window.decimal_places
+                or type(key[1]) is not int
+                or type(key[2]) is not int
+                or type(key[3]) is not int
+                or type(window.bits) is not int
+                or type(window.decimal_places) is not int
+                or window.source != 7
+                or window.source_endpoint != result.h - 1
+            ):
+                raise ValueError("Mahler interior window lost its source payload")
+
+    def _demand_window_memo(
+        self, result: ArithmeticResult
+    ) -> OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow]:
+        if (
+            result is not self.result
+            or self.source_workspace is not result._term.arithmetic_workspace
+            or self.source_workspace.ledger is not result.ledger
+        ):
+            raise ValueError("Mahler window memo belongs to another source")
+        memo = self._window_memo
+        if memo is None:
+            owner = result.ledger.register(
+                f"mahler-joint-window-{len(result.ledger.inventory())}",
+                "query_memo",
+            )
+            memo = OwnedMemo(
+                result.ledger,
+                owner,
+                nodes_per_entry=64,
+                evictable=True,
+            )
+            self._window_owner = owner
+            self._window_memo = memo
+        elif (
+            self._window_owner != memo.owner
+            or type(memo.owner) is not int
+            or memo.ledger is not result.ledger
+            or result.ledger.registered_container(memo.owner) is not memo._data
+        ):
+            raise ValueError("Mahler precision memo has another source owner")
+        return memo
+
+    def dispose(self) -> None:
+        memo = self._window_memo
+        self._window_memo = None
+        self._window_owner = None
+        self._window_contract_registered = False
+        if memo is not None:
+            memo.dispose()
 
     def packet(
         self, result: ArithmeticResult, *, include_radix_ports: bool = False
@@ -338,6 +498,11 @@ class MahlerWorkspace:
             projected,
             failure,
             include_radix_ports=include_radix_ports,
+            window_memo=(
+                self._demand_window_memo(result)
+                if include_radix_ports and result.returns > 0
+                else None
+            ),
         )
 
 
@@ -349,15 +514,34 @@ def associated_action(
     arithmetic = authenticated_arithmetic_result(result)
     source_binding = result.source_binding
     workspace = arithmetic._term.mahler_workspace
+    created_workspace = workspace is None
     if workspace is None:
         workspace = MahlerWorkspace(arithmetic)
+    memo_before = workspace._window_memo
+    try:
         packet = workspace._packet_authenticated(
             arithmetic, include_radix_ports=include_radix_ports
         )
-        arithmetic._term.mahler_workspace = workspace
-    else:
-        packet = workspace._packet_authenticated(
-            arithmetic, include_radix_ports=include_radix_ports
-        )
+        if created_workspace:
+            arithmetic._term.mahler_workspace = workspace
+        if (
+            workspace._window_memo is not None
+            and not workspace._window_contract_registered
+        ):
+            from number_compiler.sequences.antihydra.payload_audit import (
+                refresh_antihydra_payload_contract,
+            )
+
+            refresh_antihydra_payload_contract(arithmetic._term)
+            workspace._window_contract_registered = True
+    except BaseException:
+        # A failed first memo publication must not leave an existing source
+        # workspace holding a store that the restored pre-memo contract does
+        # not own.  Preserve an older memo if this was a repeat demand.
+        if memo_before is None and workspace._window_memo is not None:
+            workspace.dispose()
+        if created_workspace:
+            arithmetic._term.mahler_workspace = None
+        raise
     packet["source_binding"] = source_binding
     return packet

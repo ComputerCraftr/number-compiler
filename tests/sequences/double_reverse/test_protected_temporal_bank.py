@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 
 import pytest
 
 from number_compiler.api import cli, cli_render
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from number_compiler.resources.metric_keys.double_reverse import (
+    DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS,
+    DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
+    DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES,
+)
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     PERIODIC_CHANNELS,
+    ProtectedPeriodicBank,
     certified_periodic_region,
     protected_periodic_bank,
 )
@@ -147,6 +154,52 @@ def test_temporal_moore_does_not_conflate_different_gt_high_outputs() -> None:
         assert bank.moore_classes is not None
         assert bank.moore_classes["gt_high"] > 1
         assert bank.moore_classes["eq"] == 1
+        metrics = term.metrics()
+        temporal_states = metrics[DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES]
+        assert metrics[DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS] == 16
+        # Fifteen scalar projections plus the joint scalar-output projection.
+        assert (
+            metrics[DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS]
+            == 30 * temporal_states
+        )
+
+
+def test_protected_bank_readers_require_live_unchanged_source_authority() -> None:
+    seed = int("17" + "48" * 30 + "88")
+
+    def read_at(record: ProtectedPeriodicBank) -> object:
+        return record.at(0)
+
+    def read_counts(record: ProtectedPeriodicBank) -> object:
+        return record.counts()
+
+    def read_extent(record: ProtectedPeriodicBank) -> object:
+        return record.represented_steps
+
+    readers = (read_at, read_counts, read_extent)
+    with DoubleReverseTerm(seed, 20) as term:
+        bank = term.protected_temporal_bank(20, period=2)
+        forged = type(bank)(
+            **{field.name: getattr(bank, field.name) for field in fields(type(bank))}
+        )
+        for read in readers:
+            with pytest.raises(ValueError, match="source authority"):
+                read(forged)
+
+        original_steps = bank.f_steps
+        object.__setattr__(bank, "f_steps", original_steps + 1)
+        for read in readers:
+            with pytest.raises(ValueError, match="source authority"):
+                read(bank)
+        object.__setattr__(bank, "f_steps", original_steps)
+        assert bank.represented_steps == original_steps
+
+    with pytest.raises(ValueError, match="source authority"):
+        bank.at(0)
+    with pytest.raises(ValueError, match="source authority"):
+        bank.counts()
+    with pytest.raises(ValueError, match="source authority"):
+        _ = bank.represented_steps
 
 
 def test_prefix_to_cylinder_closed_form_is_explicit_not_fabricated() -> None:
@@ -250,20 +303,25 @@ def test_billion_digit_slp_period_and_temporal_word_are_pumped() -> None:
 
 
 def test_exact_pair_oracle_matches_full_term_without_materializing_it() -> None:
+    depths = (18, 32, 63, 64, 100)
     for seed in (196, 12, 173488, 174388, 1768742):
-        for depth in (18, 32, 63, 64, 100):
-            x = seed
-            for _ in range(depth):
-                x = literal_t(x)
-            word = str(x)
+        checkpoints: dict[int, str] = {}
+        x = seed
+        for current_depth in range(1, max(depths) + 1):
+            x = literal_t(x)
+            if current_depth in depths:
+                checkpoints[current_depth] = str(x)
+        for depth in depths:
+            word = checkpoints[depth]
             with DoubleReverseTerm(seed, depth) as term:
-                for pair_position in range(min(4, (len(word) + 1) // 2)):
+                for pair_position in range(min(4, len(word) // 2)):
                     pair = term.exact_temporal_pair(pair_position)
                     expected = (int(word[pair_position]), int(word[-1 - pair_position]))
+                    pair_sum = sum(expected)
                     assert pair.digits == expected
-                    assert pair.pair == sum(expected)
-                    assert pair.gt_high == int(sum(expected) >= 15)
-                    assert pair.eq == int(sum(expected) == 9)
+                    assert pair.pair == pair_sum
+                    assert pair.gt_high == int(pair_sum >= 15)
+                    assert pair.eq == int(pair_sum == 9)
                 assert term._image is None
                 assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
 

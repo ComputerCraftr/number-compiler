@@ -15,6 +15,15 @@ powering or a polynomial expansion during a prime query.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+        DyadicBooleanCounterWindow,
+    )
+    from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
+        DyadicCertifiedTape,
+    )
 
 from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
 from number_compiler.arithmetic.fields.integer_congruence import join_congruences
@@ -181,6 +190,84 @@ class SourceTerminalDemand:
         )
         return MersenneTerminalSourceObservations(self, moduli, rows)
 
+    def observe_fermat_boolean_counters(
+        self, width: int = 64, *, offset: int = 0
+    ) -> tuple[DyadicBooleanCounterWindow, ...]:
+        """Demand last-four exact base-2 counter actions without source replay.
+
+        Only finite moving windows are authenticated.  Their signed classes
+        are *partial* remainder changes until a separate global coverage
+        theorem has supplied every omitted high-position contribution.
+        """
+        if self.family != "fermat":
+            raise ValueError("binary three-power counter is Fermat-source only")
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            demand_dyadic_boolean_counter,
+        )
+
+        return tuple(
+            demand_dyadic_boolean_counter(
+                t, width, fermat_width=self.candidate_width, offset=offset
+            )
+            for t in self.last_four_source_levels[:-1]
+        )
+
+    def observe_fermat_signed_class_windows(
+        self, width: int = 64, *, offset: int = 0
+    ) -> tuple[tuple[tuple[int, int], ...], ...]:
+        """Demand exact absolute signed Fermat fold classes at four births.
+
+        The returned tuples are sparse, signed w-class correction witnesses,
+        not an arbitrary-depth complete source publisher. In particular,
+        neither the returned vectors nor their Walsh/F5 projections imply
+        that undemanded high-position contributions vanish.
+        """
+        return tuple(
+            window.absolute_signed_classes
+            for window in self.observe_fermat_boolean_counters(width, offset=offset)
+        )
+
+    def observe_fermat_composed_tapes(
+        self,
+        *,
+        low_bits: int = 128,
+        leading_bits: int = 32,
+        max_precision_bits: int = 8_192,
+        max_work_units: int = 25_000_000,
+    ) -> tuple[DyadicCertifiedTape, ...]:
+        """Join radial and Boolean readouts under one receiving work ledger.
+
+        All four source occurrences consume the same evaluator and budget.
+        Their certified intervals remain local observations and do not prove
+        a global signed fold or a terminal prime result.
+        """
+        if self.family != "fermat":
+            raise ValueError("the three-power radial tape is Fermat-source only")
+        from number_compiler.arithmetic.fields.homogeneous_growth import (
+            GrowthArithmeticEvaluator,
+        )
+        from number_compiler.resources.ledger import ResourceLedger
+        from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
+            ThreeDyadicRadialCounterTransducer,
+        )
+
+        tapes: list[DyadicCertifiedTape] = []
+        with GrowthArithmeticEvaluator(
+            ResourceLedger(),
+            max_precision_bits=max_precision_bits,
+            max_work_units=max_work_units,
+        ) as evaluator:
+            for level in self.last_four_source_levels[:-1]:
+                tapes.append(
+                    ThreeDyadicRadialCounterTransducer(level).composed_step(
+                        evaluator,
+                        fermat_width=self.candidate_width,
+                        low_bits=low_bits,
+                        leading_bits=leading_bits,
+                    )
+                )
+        return tuple(tapes)
+
     @property
     def missing_proofs(self) -> tuple[str, str]:
         return (SOURCE_TO_FOLD_GAP, FOLD_TO_THRESHOLD_GAP)
@@ -330,6 +417,17 @@ class FermatTerminalSourceObservations:
     @property
     def terminal_status(self) -> str:
         return "UNKNOWN"
+
+    def observe_fermat_signed_class_windows(
+        self, width: int = 64, *, offset: int = 0
+    ) -> tuple[tuple[tuple[int, int], ...], ...]:
+        """Project only the source-bound partial signed class windows."""
+        return tuple(
+            window.absolute_signed_classes
+            for window in self.demand.observe_fermat_boolean_counters(
+                width, offset=offset
+            )
+        )
 
     @property
     def missing_proofs(self) -> tuple[str, str]:

@@ -43,12 +43,25 @@ def test_correlated_symbol_and_ports_are_substituted_simultaneously() -> None:
     right = bits.map_atoms(source, RIGHT_STATE, tuple(i % 5 for i in range(20)))
     first = arena.pullback_channels(symbol, left, right)
     second = arena.pullback_channels(first[2], left, right)
+    expected_by_symbol: dict[int, tuple[ReversePortFunction, ...]] = {}
+
+    def expected_leaf(symbol_value: int) -> tuple[ReversePortFunction, ...]:
+        cached = expected_by_symbol.get(symbol_value)
+        if cached is None:
+            raw = reverse_leaf_components(
+                PORTS, 10, symbol_value, bits.ledger
+            ).functions()
+            cached = tuple(
+                function for function in raw if type(function) is ReversePortFunction
+            )
+            expected_by_symbol[symbol_value] = cached
+        return cached
+
     for i in range(20):
         binding = {SYMBOL.variable: i}
         previous = (i + 7) % 20
         for channels in (first, second):
-            raw = reverse_leaf_components(PORTS, 10, previous, bits.ledger).functions()
-            expected = tuple(f for f in raw if type(f) is ReversePortFunction)
+            expected = expected_leaf(previous)
             values = tuple(
                 f.evaluate(((3 * i) % 43, i % 5), bits.ledger) for f in expected
             )
@@ -101,17 +114,17 @@ def test_foreign_or_wrong_sort_arguments_are_rejected_before_template_constructi
     assert not arena._channel_templates
 
 
-@pytest.mark.parametrize("allowance", (0, 50))
-def test_budget_refusal_publishes_no_partial_channel_template(allowance: int) -> None:
+def test_budget_refusal_publishes_no_partial_channel_template() -> None:
     ledger, _unused_bits_binding, arena, symbol, left, right = (
         _constant_channel_fixture()
     )
-    ledger.max_nodes = ledger.nodes + allowance
-    with pytest.raises(BlockContextBudgetExceeded):
-        arena.pullback_channels(symbol, left, right)
-    assert not arena._channel_templates
-    assert not arena._channel_seals
-    assert all(item.accounting_delta == 0 for item in ledger.inventory())
+    for allowance in (0, 50):
+        ledger.max_nodes = ledger.nodes + allowance
+        with pytest.raises(BlockContextBudgetExceeded):
+            arena.pullback_channels(symbol, left, right)
+        assert not arena._channel_templates
+        assert not arena._channel_seals
+        assert all(item.accounting_delta == 0 for item in ledger.inventory())
     ledger.max_nodes = None
     assert len(arena.pullback_channels(symbol, left, right)) == 13
 

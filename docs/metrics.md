@@ -119,6 +119,14 @@ publications count demanded observation construction. Uninstrumented fields are
 `null`; the collector does not derive a count from temporal depth or render an
 endpoint to fill a field.
 
+The raw `double_reverse_periodic_bank_moore_constructions` counter counts
+actual minimizer invocations, including each requested channel projection.
+`double_reverse_periodic_bank_moore_output_evaluations` counts scalar channel
+reads across temporal states and spatial lanes. A finite-only bank that does
+not invoke the minimizer records zero constructions. These counters do not
+measure label packing, source admission or all integer work and must not be
+presented as total construction cost.
+
 Shared reuse is process-local: separate CLI processes start cold. Same-process
 API requests may reuse compatible admitted germs; `shared_cache=False` bypasses
 that reuse and `clear_shared_cache()` invalidates it. Full-output rendering and

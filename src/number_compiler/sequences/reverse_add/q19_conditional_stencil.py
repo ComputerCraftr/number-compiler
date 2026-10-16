@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.inward_bank_harmonics import (
+        InwardBankSelection,
+        InwardBankWindow,
+    )
     from number_compiler.sequences.reverse_add.q19_output import (
         ReversePairOutputOccurrence,
         ReversePairQ19OutputOwner,
@@ -205,6 +209,69 @@ class GuardedPairStencil:
             reflected,
             c0 ^ reflected,
             target == 9,
+        )
+
+    def inward_bank_at(
+        self,
+        owner: ReversePairQ19OutputOwner,
+        coordinate: int,
+        *,
+        inward_lookahead: int = 4,
+    ) -> InwardBankSelection:
+        """Demand the GT/EQ/LT mask forced by bilateral Q19 reset ports.
+
+        The current root supplies the exact outer carry and a bounded inward
+        coefficient probe. A result with several masks is intentionally a
+        conditional port rather than a guessed future digit. The existing
+        cell_at remains available when a complete exact cell is required.
+        """
+        from .inward_bank_harmonics import inward_bank_select
+
+        self._assert_owner(owner)
+        return inward_bank_select(
+            width=self.source_width,
+            coordinate=coordinate,
+            growth=self.source_growth,
+            pair_at=lambda i: owner._pair_value_at(self.source, i),
+            low_carry=self.carry_at(owner, coordinate),
+            high_border_carries=(self.carry_at(owner, self.source_width - 1),),
+            inward_lookahead=inward_lookahead,
+        )
+
+    def inward_bank_window(
+        self,
+        owner: ReversePairQ19OutputOwner,
+        *,
+        start: int,
+        count: int = 64,
+        inward_lookahead: int = 4,
+    ) -> InwardBankWindow:
+        """Demand up to 64 next bank masks from this source, with F5 Walsh.
+
+        Source-owned one-step observer only: a finite temporal return still
+        needs an independently certified future border+interior action.
+        """
+        from .inward_bank_harmonics import InwardBankWindow
+
+        self._assert_owner(owner)
+        if (
+            type(start) is not int
+            or type(count) is not int
+            or start < 0
+            or not 1 <= count <= 64
+            or start + count > self.source_width // 2
+        ):
+            raise ValueError("mask window must fit the protected source half")
+        return InwardBankWindow(
+            start,
+            tuple(
+                self.inward_bank_at(
+                    owner,
+                    i,
+                    inward_lookahead=inward_lookahead,
+                )
+                for i in range(start, start + count)
+            ),
         )
 
     def authorize_temporal_cell(

@@ -19,6 +19,9 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
     HomogeneousGrowthScale,
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
+from number_compiler.sequences.collatz.border_carry_cylinder import (
+    Border6305CarryCylinder,
+)
 from number_compiler.sequences.collatz.border_identity import (
     BorderEntryPort,
     BorderExitPort,
@@ -257,7 +260,10 @@ class CollatzRadialBoundarySeam:
             packet["return_exit_port"] = self.witness.exit_port.value
             packet["6305_return_transitions"] = (
                 _border_return_high_transitions_admitted(
-                    self.witness, evaluator=evaluator, width=width
+                    self.witness,
+                    evaluator=evaluator,
+                    width=width,
+                    include_walsh64=include_walsh64,
                 )
             )
         return packet
@@ -280,6 +286,7 @@ def border_return_high_transitions(
     *,
     evaluator: GrowthArithmeticEvaluator,
     width: int = 8,
+    include_walsh64: bool = False,
 ) -> tuple[dict[str, object], ...]:
     """Observe certified 6305 returns without replaying their zero tails."""
     from number_compiler.sequences.collatz.border_return_grammar import (
@@ -293,7 +300,10 @@ def border_return_high_transitions(
         raise TypeError("6305 return observation needs its issued border action")
     validate_border_return_macro(macro)
     return _border_return_high_transitions_admitted(
-        macro, evaluator=evaluator, width=width
+        macro,
+        evaluator=evaluator,
+        width=width,
+        include_walsh64=include_walsh64,
     )
 
 
@@ -302,12 +312,15 @@ def _border_return_high_transitions_admitted(
     *,
     evaluator: GrowthArithmeticEvaluator,
     width: int,
+    include_walsh64: bool = False,
 ) -> tuple[dict[str, object], ...]:
     """Inspect returns after the seam owner has validated this macro once."""
     from number_compiler.arithmetic.fields.two_adic import v2_positive
 
     if type(evaluator) is not GrowthArithmeticEvaluator:
         raise TypeError("6305 high transitions require their growth evaluator")
+    if type(include_walsh64) is not bool:
+        raise TypeError("affine carry Walsh demand must be Boolean")
     current = macro.source
     if macro.entry_port is BorderEntryPort.DIGIT_SIX:
         current //= 2
@@ -317,13 +330,23 @@ def _border_return_high_transitions_admitted(
         current = (3 * current + 1) // 2
 
     transitions: list[dict[str, object]] = []
+    carry_cursor: Border6305CarryCylinder | None = None
+    radial_growths = 0
+    radial_halvings = 0
     for zero_tail in macro.zero_tails:
         if current % 10 != 3:
             raise ValueError("6305 return is detached from its 3 boundary")
+        if carry_cursor is None:
+            carry_cursor = Border6305CarryCylinder.from_three_digit(current)
+        if carry_cursor.zero_tail != zero_tail:
+            raise ValueError("6305 zero tail differs from its upper carry cursor")
+        upper_odd = carry_cursor.upper_odd
+        endpoint = carry_cursor.endpoint
+        correction = carry_cursor.affine_binary_correction
         current_bits = current.bit_length()
         tail_bits = zero_tail + 2
-        work_units = max(1, 4 * current_bits + tail_bits + width)
-        operand_bits = 3 * current_bits + tail_bits + width
+        work_units = max(1, 5 * current_bits + 2 * tail_bits + width)
+        operand_bits = 4 * current_bits + 2 * tail_bits + width
         storage_bits = 2 * current_bits + tail_bits + width + 32
         with evaluator._charge_work(
             work_units,
@@ -331,34 +354,53 @@ def _border_return_high_transitions_admitted(
             operand_bits,
             storage_bits=storage_bits,
         ):
-            upper_numerator = 3 * ((current - 3) // 10) + 1
-            if v2_positive(upper_numerator) != zero_tail:
-                raise ValueError("6305 zero tail differs from its upper valuation")
-            upper_odd = upper_numerator >> zero_tail
-            endpoint = (15 * upper_odd + 1) // 2
-            correction = 2 if zero_tail == 0 else 1
+            source_residue, source_modulus = carry_cursor.source_congruence(3)
+            if current % source_modulus != source_residue:
+                raise AssertionError("6305 source cylinder lost its lower carry")
             if ((9 * current) >> tail_bits) + correction != endpoint:
                 raise AssertionError("6305 return carry disagrees with its endpoint")
             high = affine_high_digit_transport(
                 endpoint, 3 + (1 << (zero_tail + 1)), tail_bits, width
             )
-        transitions.append(
-            {
-                "from_digit": current % 10,
-                "to_digit": endpoint % 10,
-                "zero_tail": zero_tail,
-                "normalized_steps": zero_tail + 2,
-                "physical_ticks": zero_tail + 4,
-                "upper_odd_mod4": upper_odd % 4,
-                "upper_odd_mod8": upper_odd % 8,
-                "next_border": "3_return" if endpoint % 10 == 3 else "8_exit",
-                "high_digit_transport": asdict(high),
-                "homogeneous_high_binary": high.homogeneous_high_binary,
-                "endpoint_high_binary": high.endpoint_high_binary,
-                "high_xor_binary": high.high_xor_binary,
-            }
-        )
+        radial_growths += 2
+        radial_halvings += tail_bits
+        following = carry_cursor.next_return()
+        transition: dict[str, object] = {
+            "from_digit": current % 10,
+            "to_digit": carry_cursor.endpoint_digit,
+            "zero_tail": zero_tail,
+            "normalized_steps": zero_tail + 2,
+            "physical_ticks": zero_tail + 4,
+            "forced_units_digit": 0,
+            "forced_units_carry": 1,
+            "source_cylinder_residue": source_residue,
+            "source_cylinder_modulus": source_modulus,
+            "upper_odd_mod4": upper_odd % 4,
+            "upper_odd_mod8": upper_odd % 8,
+            "forced_endpoint_mod5": 3,
+            "forced_endpoint_mod20": carry_cursor.endpoint_residue20,
+            "next_border": "3_return" if following is not None else "8_exit",
+            "next_zero_tail": following.zero_tail if following else None,
+            "affine_binary_correction": correction,
+            "radial_return_scale": {
+                "growths": radial_growths,
+                "halvings": radial_halvings,
+                "scope": "homogeneous scale from the first 3-border return",
+            },
+            "high_digit_transport": asdict(high),
+            "homogeneous_high_binary": high.homogeneous_high_binary,
+            "endpoint_high_binary": high.endpoint_high_binary,
+            "high_xor_binary": high.high_xor_binary,
+        }
+        if include_walsh64:
+            from number_compiler.arithmetic.fields.walsh import walsh64_mod5
+
+            pivot = carry_cursor.affine_pivot_mask(64)
+            transition["affine_carry_xor_low64"] = pivot
+            transition["affine_carry_walsh64_mod5"] = walsh64_mod5(pivot)
+        transitions.append(transition)
         current = endpoint
+        carry_cursor = following
 
     if current % 10 not in (3, 8):
         raise AssertionError("6305 return ended outside the admitted exit digits")

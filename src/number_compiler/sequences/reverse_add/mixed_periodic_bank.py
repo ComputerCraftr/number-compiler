@@ -17,12 +17,16 @@ the intervening generations.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from ._temporal_slp import concatenate_temporal_slp
+
+if TYPE_CHECKING:
+    from number_compiler.resources.ledger import ResourceLedger
 
 
 class IncompleteMixedBorder(ValueError):
@@ -329,6 +333,35 @@ class MixedTemporalAction:
         return "CONDITIONAL_PERIODIC_MIXED_INTERIOR;NO_COMPLETE_ROOT_AUTHORITY"
 
 
+@contextmanager
+def _controlled_bank_workspace(
+    ledger: ResourceLedger, owner: int
+) -> Iterator[Callable[[int, int], None]]:
+    """Track incremental construction capacity until output publication."""
+    reserved_entries = 0
+    reserved_nodes = 0
+    active = True
+
+    def reserve(entries: int, nodes: int) -> None:
+        nonlocal reserved_entries, reserved_nodes
+        if not active:
+            raise RuntimeError("controlled-bank workspace is closed")
+        if type(entries) is not int or type(nodes) is not int:
+            raise TypeError("workspace reservations must be exact integers")
+        if entries < 0 or nodes < 0:
+            raise ValueError("workspace reservations must be nonnegative")
+        ledger.reserve(owner, entries=entries, nodes=nodes)
+        reserved_entries += entries
+        reserved_nodes += nodes
+
+    try:
+        yield reserve
+    finally:
+        active = False
+        if reserved_entries or reserved_nodes:
+            ledger.release(owner, entries=reserved_entries, nodes=reserved_nodes)
+
+
 class ControlledMixedBank:
     """Binary-squared functional future bank under a *certified* control word.
 
@@ -343,6 +376,7 @@ class ControlledMixedBank:
         growth_pattern: Iterable[int],
         *,
         max_states: int = 10000,
+        workspace_reserve: Callable[[int, int], None] | None = None,
     ) -> None:
         self.source = source
         self.pattern = tuple(growth_pattern)
@@ -354,30 +388,47 @@ class ControlledMixedBank:
             raise ValueError("nonempty finite Boolean growth control required")
         if not 1 <= max_states <= 10_000_000:
             raise ValueError("invalid finite bank discovery budget")
+        if workspace_reserve is not None and not callable(workspace_reserve):
+            raise TypeError("workspace reservation callback must be callable")
+        self._workspace_reserve = workspace_reserve
         from .bank_width_clock import WidthMacro
 
         if not WidthMacro.from_bits(self.pattern).repeat(3).admitted():
             raise IncompleteMixedBorder("growth control violates universal width clock")
+        # Charge the arena sentinel and initial owner structures before
+        # allocating them. Each orbit insertion below reserves enough for
+        # its state/index/output row; Moore refinement receives a separate
+        # reservation before constructing its signatures and partitions.
+        self._reserve(entries=4, nodes=1)
         self.arena = MixedOutputArena()
         self.states: list[MixedPeriodicCore] = []
         self.ids: dict[MixedPeriodicCore, int] = {}
         self.one: list[tuple[int, int]] = []
+        next_states: list[MixedPeriodicCore] = []
         s = source
         while s not in self.ids:
             if len(self.states) >= max_states:
                 raise IncompleteMixedBorder("mixed-bank orbit exceeds state budget")
-            self.ids[s] = len(self.states)
-            self.states.append(s)
+            period = len(self.pattern)
+            self._reserve(
+                entries=7 + 3 * period,
+                nodes=2 * period + 1,
+            )
+            current = s
+            self.ids[current] = len(self.states)
+            self.states.append(current)
             root = 0
             for bit in self.pattern:
                 s, frame = s.advance(bit)
                 root = self.arena.concat(root, self.arena.emit(frame))
             self.one.append((-1, root))
-        for i, q in enumerate(self.states):
-            t = q
-            for bit in self.pattern:
-                t, _ = t.advance(bit)
-            self.one[i] = (self.ids[t], self.one[i][1])
+            next_states.append(s)
+        for i, target in enumerate(next_states):
+            self.one[i] = (self.ids[target], self.one[i][1])
+        self._reserve(
+            entries=len(self.states) * (2 * len(self.pattern) + 8),
+            nodes=0,
+        )
         self.classes = self._moore_minimize()
         self.moore_state_count = len(set(self.classes))
         reps: dict[int, int] = {}
@@ -394,6 +445,14 @@ class ControlledMixedBank:
                 for raw in self.representatives
             )
         ]
+
+    def _reserve(self, *, entries: int, nodes: int) -> None:
+        """Reserve temporary capacity before growing constructor-owned arrays."""
+        if entries < 0 or nodes < 0:
+            raise ValueError("bank reservation quantities must be nonnegative")
+        if self._workspace_reserve is None:
+            return
+        self._workspace_reserve(entries, nodes)
 
     def _moore_minimize(self) -> tuple[int, ...]:
         """Refine complete period outputs and all successor continuations."""
@@ -468,7 +527,15 @@ class ControlledMixedBank:
             width_action = width_action.then(WidthMacro.event(g))
         if not width_action.admitted():
             raise IncompleteMixedBorder("temporal growth word violates width theorem")
-        self._ensure(max(0, blocks.bit_length() - 1))
+        binary_depth = max(0, blocks.bit_length() - 1)
+        # Squaring retains one raw jump and one output transition per Moore
+        # state and binary level. Reserve before growing the layer arrays or
+        # adding their SLP nodes; the constructor reservation stays live too.
+        self._reserve(
+            entries=binary_depth * (len(self.states) + self.moore_state_count),
+            nodes=binary_depth * self.moore_state_count + 2 * len(self.pattern) + 4,
+        )
+        self._ensure(binary_depth)
         q = self.ids[self.source]
         root = 0
         i = 0

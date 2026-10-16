@@ -33,17 +33,17 @@ from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
 )
+from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     MAX_PROTECTED_PERIOD,
-    ExactTemporalPairPort,
     ProtectedPeriodicBank,
     protected_periodic_bank,
 )
 from number_compiler.sequences.double_reverse.radix25_temporal_bank import (
     JointRadix25TemporalBank,
     Radix25ShiftPort,
+    joint_radix25_temporal_bank,
     radix25_shift_port,
-    temporal_bank_walsh64,
 )
 from number_compiler.sequences.double_reverse.source_adapter import (
     _DoubleReverseAction,
@@ -51,10 +51,26 @@ from number_compiler.sequences.double_reverse.source_adapter import (
     _DoubleReverseSource,
     _DoubleReverseSourceAdapter,
 )
+from number_compiler.sequences.double_reverse.source_bound_bank import (
+    DoubleReverseBankMixin,
+)
 from number_compiler.sequences.double_reverse.temporal_border_bank import (
     OBSERVERS,
     TemporalBorderEnvelope,
-    power_temporal_border,
+    _power_temporal_border_with_prefix,
+)
+from number_compiler.sequences.double_reverse.temporal_carry_safety import (
+    ComponentSafetyProof,
+    SourceCarrySafety,
+    forced_carry_prefix,
+    lift_from_slp,
+)
+from number_compiler.sequences.double_reverse.temporal_carry_safety_audit import (
+    CarrySafetyCacheKey,
+    IssuedCarrySafety,
+    audit_double_reverse_carry_safety,
+    carry_safety_result_node_cost,
+    temporal_carry_safety_for_term,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     DoubleReverseTemporalHashlife,
@@ -81,7 +97,7 @@ from number_compiler.sequences.double_reverse.temporal_square import (
 )
 
 
-class DoubleReverseTerm:
+class DoubleReverseTerm(DoubleReverseBankMixin):
     """A resource-bounded exact term of ``2 * reverse(n)`` iteration."""
 
     __slots__ = (
@@ -89,7 +105,10 @@ class DoubleReverseTerm:
         "_active_symbol_walks",
         "_adapter",
         "_arena",
+        "_audit_carry_safety",
         "_authority",
+        "_carry_safety_cache",
+        "_carry_safety_owner",
         "_cleanup_complete",
         "_closed",
         "_dispose_resources_complete",
@@ -158,6 +177,19 @@ class DoubleReverseTerm:
                 self._threshold_memo,
             ) = self._create_execution(rollback)
             self._image: SourceImageID | None = None
+            self._carry_safety_owner = self._ledger.register(
+                f"double-reverse-{self._ledger.owner_count}-carry-safety",
+                "double_reverse_temporal_memo",
+            )
+            self._carry_safety_cache: OwnedMemo[
+                CarrySafetyCacheKey, IssuedCarrySafety
+            ] = OwnedMemo(
+                self._ledger,
+                self._carry_safety_owner,
+                node_cost=carry_safety_result_node_cost,
+            )
+            rollback.enter_context(cleanup_on_error(self._carry_safety_cache.dispose))
+            self._audit_carry_safety = self._carry_safety_cache._data
             self._authority = (
                 self.seed,
                 self.generation,
@@ -176,6 +208,9 @@ class DoubleReverseTerm:
                 self._threshold_memo,
                 self._adapter.temporal_hashlife,
                 self._adapter.temporal_memos,
+                (self._source.issuer, self._source.seed, self._source.root),
+                self._carry_safety_owner,
+                self._carry_safety_cache,
             )
             initialize_output_stream_metrics(
                 self._ledger, "double_reverse_output_stream"
@@ -232,6 +267,25 @@ class DoubleReverseTerm:
             ):
                 self._ledger.bump(counter, 0)
             self._ledger.register_execution_root(self)
+            rollback.enter_context(
+                cleanup_on_error(
+                    lambda: self._ledger.remove_payload_audit_contract(
+                        self, "double_reverse"
+                    )
+                )
+            )
+            self._ledger.register_payload_audit_contract(
+                self,
+                "double_reverse",
+                (
+                    PayloadAuditStoreBinding(
+                        self._carry_safety_owner,
+                        "_audit_carry_safety",
+                        "double_reverse_temporal_memo",
+                    ),
+                ),
+                audit_double_reverse_carry_safety,
+            )
 
     @staticmethod
     def _digits_lsd(value: int) -> Iterator[int]:
@@ -384,7 +438,7 @@ class DoubleReverseTerm:
 
     def prepare_endpoint(self) -> None:
         """Construct the exact endpoint before entering source-read-only scope."""
-        self._check_open()
+        self._validate_source_binding()
         if (
             self._authority[:4]
             != (self.seed, self.generation, self.max_steps, self.max_state_bits)
@@ -401,6 +455,8 @@ class DoubleReverseTerm:
             or self._authority[14] is not self._threshold_memo
             or self._authority[15] is not self._adapter.temporal_hashlife
             or self._authority[16] is not self._adapter.temporal_memos
+            or self._authority[18] != self._carry_safety_owner
+            or self._authority[19] is not self._carry_safety_cache
         ):
             raise ValueError("double-reverse term binding changed")
         if self._image is None:
@@ -419,6 +475,30 @@ class DoubleReverseTerm:
                 _double_reverse_keys.DOUBLE_REVERSE_ENDPOINT_PROJECTOR_DISCARDS,
                 discarded,
             )
+
+    def _validate_source_binding(self) -> None:
+        """Check the exact source/root snapshot without constructing an endpoint."""
+        self._check_open()
+        source = self._source
+        if (
+            self._authority[:4]
+            != (self.seed, self.generation, self.max_steps, self.max_state_bits)
+            or self._authority[4] is not self._ledger
+            or self._authority[5] != self._ledger.max_nodes
+            or self._authority[6] != self._ledger.max_cache_entries
+            or self._authority[7] is not self._arena
+            or self._authority[8] is not source
+            or self._authority[9] is not self._adapter
+            or self._authority[15] is not self._adapter.temporal_hashlife
+            or self._authority[16] is not self._adapter.temporal_memos
+            or self._authority[17] != (source.issuer, source.seed, source.root)
+            or self._authority[18] != self._carry_safety_owner
+            or self._authority[19] is not self._carry_safety_cache
+            or source.issuer is not self._issuer
+            or source.seed != self.seed
+        ):
+            raise ValueError("double-reverse source binding changed")
+        self._adapter.validate_source(source)
 
     def _release_ephemeral_projection_tables(self) -> int:
         """Drop transient transducer dictionaries after retaining exact SLP roots."""
@@ -571,16 +651,23 @@ class DoubleReverseTerm:
         if entry.certified_phase is None:
             raise AssertionError("admitted prefix cursor lacks a certified phase")
         engine = self._adapter.temporal_hashlife
+        if engine.validate_source_prefix(entry) is not entry:
+            raise AssertionError("temporal border lost its owner-issued prefix")
         root = engine.root_of(entry.target)
         edge = engine.edge_signature(root)
         if edge is None:
             raise AssertionError("certified temporal border has no edge cells")
         horizon = self.generation - entry.physical_steps
+        lifted = lift_from_slp(self._arena, root)
+        if lifted.edge != edge:
+            raise AssertionError("three-cell safety ports disagree with the source")
+        forced_prefix = forced_carry_prefix(lifted)
         envelopes = tuple(
-            power_temporal_border(
+            _power_temporal_border_with_prefix(
                 edge,
                 horizon,
                 observer,
+                forced_prefix=forced_prefix,
                 ledger=self._ledger,
                 scratch_owner=self._scratch_owner,
             )
@@ -592,79 +679,17 @@ class DoubleReverseTerm:
         )
         return entry.physical_steps, envelopes
 
-    def exact_temporal_pair(self, pair_position: int) -> ExactTemporalPairPort:
-        """Read one exact final pair, consuming a guarded bank when admitted.
+    def temporal_carry_safety(
+        self,
+    ) -> tuple[int, SourceCarrySafety, tuple[ComponentSafetyProof, ...]]:
+        """Report source-derived carries and bounded component refinements.
 
-        A complete protected source halo can make the bank the actual output
-        producer. If its source guard refuses, the two exact pointed cones
-        remain the fallback. Neither path publishes a complete endpoint root.
+        This finite border analysis does not predict transitions after an SCC
+        exit or across a shrinking frontier. A short original seed first needs
+        an independently certified temporal-prefix entry.
         """
-        self._check_open()
-        pair_position = require_integer(pair_position, "pair position", 0)
-        if self.generation < 2:
-            raise UncertifiedPointedStencilError(
-                "pointed pair requires at least two physical generations"
-            )
-        entry = self._certified_prefix_entry(
-            max_prefix=min(32, self.generation - 2),
-            require_even_remainder=True,
-        )
-        root, phase, steps, width = self._pointed_shape(entry)
-        if 2 * pair_position >= width:
-            raise IndexError(pair_position)
-        source_width = self._arena.nodes[root].length
-        right_position = source_width - 1 - pair_position
-        final_pair: tuple[int, int] | None = None
-        # Two cheap source witnesses avoid asking the temporal bank to fold a
-        # large halo for plainly nonperiodic rays. The full causal halo is
-        # still independently checked by protected_periodic_bank below.
-        if (
-            steps <= pair_position
-            and pair_position + steps + 2 <= source_width
-            and right_position + steps + 2 <= source_width
-            and self._symbol_at(root, pair_position)
-            == self._symbol_at(root, pair_position + 2)
-            and self._symbol_at(root, right_position)
-            == self._symbol_at(root, right_position + 2)
-        ):
-            try:
-                bank = protected_periodic_bank(
-                    self._arena,
-                    root,
-                    phase,
-                    pair_position,
-                    steps,
-                    2,
-                    physical_prefix=entry.physical_steps,
-                    ledger=self._ledger,
-                    scratch_owner=self._scratch_owner,
-                )
-            except ValueError:
-                # A failed finite guard returns control to the exact cone path.
-                pass
-            else:
-                final_pair = bank.at(steps - 1).next_digits
-                self._ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_POINTED_REUSE
-                )
-        if final_pair is None:
-            engine = self._adapter.temporal_hashlife
-            left = engine.pointed_stencil(root, steps, phase, pair_position)
-            right = engine.pointed_stencil(
-                root, steps, phase, width - 1 - pair_position
-            )
-            final_pair = left.digit, right.digit
-        result = ExactTemporalPairPort.from_digits(
-            pair_position,
-            width,
-            entry.physical_steps,
-            steps,
-            *final_pair,
-        )
-        self._ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_EXACT_PAIR_PUBLICATIONS
-        )
-        return result
+        self._validate_source_binding()
+        return temporal_carry_safety_for_term(self)
 
     def protected_temporal_bank(
         self, pair_position: int, *, period: int = 2
@@ -745,33 +770,22 @@ class DoubleReverseTerm:
             raise AssertionError("authenticated bank lacks its boundary phase")
         root, phase, steps, _width = self._pointed_shape(entry)
         try:
-            bank = protected_periodic_bank(
+            return joint_radix25_temporal_bank(
                 self._arena,
                 root,
                 phase,
                 pair_position,
                 steps,
-                period,
                 physical_prefix=entry.physical_steps,
-                ledger=self._ledger,
-                scratch_owner=self._scratch_owner,
-            )
-            walsh = temporal_bank_walsh64(bank, start_tick=walsh_start)
-            source = radix25_shift_port(
-                self._arena,
-                root,
+                period=period,
                 places=places,
                 max_bits=self.max_state_bits,
-                physical_prefix=entry.physical_steps,
+                walsh_start=walsh_start,
                 ledger=self._ledger,
                 scratch_owner=self._scratch_owner,
             )
         except ValueError as exc:
             raise UncertifiedPointedStencilError(str(exc)) from exc
-        self._ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS
-        )
-        return JointRadix25TemporalBank(entry.physical_steps, source, bank, walsh)
 
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
@@ -942,6 +956,10 @@ class DoubleReverseTerm:
         if not self._dispose_resources_complete:
             cleanup_all(
                 (
+                    lambda: self._ledger.remove_payload_audit_contract(
+                        self, "double_reverse"
+                    ),
+                    self._carry_safety_cache.dispose,
                     self._scheduler.dispose_source_images,
                     self._adapter.dispose,
                     self._arena.dispose,

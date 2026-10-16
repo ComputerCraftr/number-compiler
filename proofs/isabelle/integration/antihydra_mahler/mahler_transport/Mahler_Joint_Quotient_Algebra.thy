@@ -297,6 +297,22 @@ theorem joint_observer_source_scope:
   using admitted source_guard_composition fractional_endpoint_composition
   by blast+
 
+text \<open>The centered arithmetic source still has an exact successor after
+the source-7 fractional guard has become empty.  The latter removes only the
+fractional witness; it is not a claim that the physical Antihydra run
+terminates or fails to terminate.\<close>
+
+theorem source7_arithmetic_successor_without_safe_fraction:
+  "mahler_orbit 7 2 = 17"
+  "\<not> cylinder_guard 7 2 t"
+proof -
+  show "mahler_orbit 7 2 = 17"
+    by (simp add: mahler_D_step_def)
+  show "\<not> cylinder_guard 7 2 t"
+    using root_shell_source7_empty_after_two[of 0 "2*t"]
+    by (simp add: root_shell_guard_def)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms branch_suffix_then branch_then_assoc encoded_branch_then_python
@@ -305,7 +321,8 @@ ML \<open>
       source_one_rejects_source_event_two source_one_rejects_odd_zero_event_one
       joint_lanes_use_source_event
       joint_lanes_bind_both_sources
-      joint_observer_source_scope})
+      joint_observer_source_scope
+      source7_arithmetic_successor_without_safe_fraction})
     then () else error "Joint quotient algebra depends on an oracle";
 \<close>
 

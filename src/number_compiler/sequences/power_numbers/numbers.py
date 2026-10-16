@@ -41,8 +41,24 @@ if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.terminal_source_demand import (
         SourceTerminalDemand,
     )
+    from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+        BoundedCompleteUnitCertificate,
+        BoundedFermatCounterCertificate,
+        DyadicBooleanCounterWindow,
+    )
     from number_compiler.sequences.power_numbers.three_dyadic_pivot_moore import (
         DyadicPivotMoore,
+    )
+    from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
+        DyadicCertifiedTape,
+    )
+    from number_compiler.sequences.power_numbers.three_power_adaptive_interior import (
+        AdaptiveInteriorAction,
+        AdaptiveRefinedTape,
+    )
+    from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
+        ThreePowerBilateralInteriorQuotient,
+        ThreePowerBilateralQuotient,
     )
     from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
         ThreePowerJointQuotient,
@@ -103,6 +119,104 @@ class FermatNumberSpec:
         )
 
         return SourceTerminalDemand.for_candidate("fermat", self.index)
+
+    def demand_three_power_bilateral_border(
+        self,
+        level: int,
+        *,
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+        max_work_units: int = 25_000_000,
+    ) -> ThreePowerBilateralQuotient:
+        """Source-authenticated *ordinary* 3X border/carry constraints.
+
+        Combines binary and decimal low carry orbits with certified leading
+        Sturmian prefixes. The unknown interior remains a set of possible
+        transfers; no false F_n prime bit or dyadic temporal step is inferred.
+        """
+        from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
+            demand_three_power_bilateral_quotient,
+        )
+
+        return demand_three_power_bilateral_quotient(
+            self.index,
+            level,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+            max_work_units=max_work_units,
+        )
+
+    def demand_three_power_bilateral_interior(
+        self,
+        level: int,
+        *,
+        binary_windows: tuple[tuple[int, int], ...] = (),
+        decimal_windows: tuple[tuple[int, int], ...] = (),
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+        max_work_units: int = 25_000_000,
+    ) -> ThreePowerBilateralInteriorQuotient:
+        """Propagate certified binary/decimal interior windows in both directions.
+
+        Keeps conditional carry transfer and absolute H5 of witnessed islands.
+        It does NOT interpret the ordinary 3X step as the dyadic square.
+        """
+        from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
+            demand_three_power_bilateral_interior,
+        )
+
+        return demand_three_power_bilateral_interior(
+            self.index,
+            level,
+            binary_windows=binary_windows,
+            decimal_windows=decimal_windows,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+            max_work_units=max_work_units,
+        )
+
+    def demand_three_power_inward_phase_quotient(
+        self,
+        level: int,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        binary_windows: tuple[tuple[int, int], ...] = (),
+        decimal_windows: tuple[tuple[int, int], ...] = (),
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+    ) -> ThreePowerBilateralInteriorQuotient:
+        """Use phase-selected inward carry/H5 masks in both radial borders.
+
+        All phase masks derive from this source level, never from a sampled
+        2rev10 trajectory.  This local source quotient is not a prime bit.
+        """
+        from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
+            demand_three_power_inward_phase_quotient,
+        )
+
+        return demand_three_power_inward_phase_quotient(
+            self.index,
+            level,
+            phase_binary_places=phase_binary_places,
+            phase_decimal_places=phase_decimal_places,
+            binary_windows=binary_windows,
+            decimal_windows=decimal_windows,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+        )
 
     def demand_joint_three_power_quotient(
         self,
@@ -165,6 +279,140 @@ class FermatNumberSpec:
         )
 
         return DyadicPivotMoore(level, offsets)
+
+    def demand_bounded_boolean_counter_certificate(
+        self,
+    ) -> BoundedFermatCounterCertificate:
+        """Source-derived complete small-index proof; refuse before expansion.
+
+        This explicitly budgeted proof uses finite-precision Boolean counter
+        windows and does not promote the unrestricted primality query.
+        """
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            demand_bounded_fermat_counter_certificate,
+        )
+
+        return demand_bounded_fermat_counter_certificate(self.index)
+
+    def demand_bounded_complete_unit_certificate(
+        self,
+    ) -> BoundedCompleteUnitCertificate:
+        """Demand the full terminal 2-adic unit under its separate bit budget.
+
+        This explicit source-width operation is opt-in and does not change the
+        production primality route or claim a uniform cost bound in the index.
+        """
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            demand_bounded_complete_unit_certificate,
+        )
+
+        return demand_bounded_complete_unit_certificate(self.index)
+
+    def demand_dyadic_boolean_counter(
+        self, level: int, width: int, *, offset: int = 0
+    ) -> DyadicBooleanCounterWindow:
+        """Source-authenticated binary counter with signed positional classes.
+
+        No terminal prime result is issued: the requested finite window does
+        not imply completeness of the global negacyclic remainder.
+        """
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            MAX_COUNTER_FOLD_WIDTH,
+            demand_dyadic_boolean_counter,
+        )
+
+        if type(self.index) is not int or self.index < 1:
+            raise ValueError(("invalid-Fermat-index", self.index))
+        if type(level) is not int or level < 1:
+            raise ValueError(("invalid-dyadic-source-level", level))
+        if not self.exponent_extent.contains_index(level):
+            raise ValueError(("level-exceeds-Fermat-source", level, self.index))
+        if self.index > MAX_COUNTER_FOLD_WIDTH.bit_length() - 1:
+            raise ValueError("Fermat counter fold width exceeds the explicit budget")
+        return demand_dyadic_boolean_counter(
+            level, width, fermat_width=1 << self.index, offset=offset
+        )
+
+    def demand_three_power_output_tape(
+        self,
+        level: int,
+        *,
+        low_bits: int = 128,
+        leading_bits: int = 32,
+        max_precision_bits: int = 8_192,
+        max_work_units: int = 25_000_000,
+    ) -> DyadicCertifiedTape:
+        """Join the certified radial prefix and exact low Boolean tape.
+
+        Only the returned leading and low intervals are readable; any
+        uncovered middle positions remain UNKNOWN. The finite source update
+        is not a candidate-modulus primality computation.
+        """
+        if type(self.index) is not int or not 1 <= self.index <= 16:
+            raise ValueError("Fermat source index must be positive")
+        if (
+            type(level) is not int
+            or level < 1
+            or not self.exponent_extent.contains_index(level)
+        ):
+            raise ValueError("three-power level lies outside the Fermat source horizon")
+        from number_compiler.arithmetic.fields.homogeneous_growth import (
+            GrowthArithmeticEvaluator,
+        )
+        from number_compiler.resources.ledger import ResourceLedger
+        from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
+            ThreeDyadicRadialCounterTransducer,
+        )
+
+        with GrowthArithmeticEvaluator(
+            ResourceLedger(),
+            max_precision_bits=max_precision_bits,
+            max_work_units=max_work_units,
+        ) as evaluator:
+            return ThreeDyadicRadialCounterTransducer(level).composed_step(
+                evaluator,
+                fermat_width=1 << self.index,
+                low_bits=low_bits,
+                leading_bits=leading_bits,
+            )
+
+    def demand_adaptive_three_power_interior(
+        self,
+        level: int,
+        windows: tuple[tuple[int, int], ...],
+        *,
+        radix_demands: tuple[tuple[int, int], ...] = ((2, 6), (5, 4), (10, 4)),
+    ) -> AdaptiveInteriorAction:
+        """Demand source-authenticated interior bits and bounded radix ports."""
+        from number_compiler.sequences.power_numbers.three_power_adaptive_interior import (
+            demand_three_power_adaptive_interior,
+        )
+
+        return demand_three_power_adaptive_interior(
+            self.index, level, windows, radix_demands=radix_demands
+        )
+
+    def demand_adaptive_three_power_output_tape(
+        self,
+        level: int,
+        windows: tuple[tuple[int, int], ...],
+        *,
+        radix_demands: tuple[tuple[int, int], ...] = ((2, 6), (5, 4), (10, 4)),
+        low_bits: int = 128,
+        leading_bits: int = 32,
+    ) -> AdaptiveRefinedTape:
+        """Add genuinely source-derived interior intervals to the partial tape."""
+        from number_compiler.sequences.power_numbers.three_power_adaptive_interior import (
+            AdaptiveRefinedTape,
+        )
+
+        tape = self.demand_three_power_output_tape(
+            level, low_bits=low_bits, leading_bits=leading_bits
+        )
+        action = self.demand_adaptive_three_power_interior(
+            level, windows, radix_demands=radix_demands
+        )
+        return AdaptiveRefinedTape(tape, action)
 
     def demand_three_power_multiradix_port(
         self, level: int, base: int, places: int

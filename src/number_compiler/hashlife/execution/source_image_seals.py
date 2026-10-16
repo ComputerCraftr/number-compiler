@@ -7,7 +7,10 @@ from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
-from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    enter_ordered_children,
+    enter_tuple_node,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -438,9 +441,7 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
             else:
                 raise TypeError("publication contains an unsupported value")
             ledger.check_capacity(nodes=retained_nodes + len(pending) + len(children))
-            active.add(identity)
-            pending.append((current, True))
-            pending.extend((child, False) for child in reversed(children))
+            enter_ordered_children(pending, active, current, children)
             consumed += 8 + 8 * len(children)
         return PublicationSeal(_root_anchor(value), tuple(guards), retained_nodes)
     finally:

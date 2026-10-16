@@ -129,3 +129,9 @@ def test_multiradix_budget_and_public_record_validation_precede_work() -> None:
         )
     with pytest.raises(ValueError):
         ThreePowerRadixBoundary(1, 1, 3, 0, 0, 0, 0, 0, 0)
+
+
+def test_multiradix_producer_seal_rejects_bool_integer_alias() -> None:
+    port = FermatNumberSpec(4).demand_three_power_multiradix_port(1, 2, 1)
+    object.__setattr__(port, "places", True)
+    assert not port.producer_verified

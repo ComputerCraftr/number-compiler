@@ -498,6 +498,39 @@ class CrossFamilyPortAction:
             raise ValueError("source is outside the cross-family parity cylinder")
         return self.action.endpoint(source)
 
+    def demanded_odd_position_moore(
+        self,
+        source: int,
+        radix: int,
+        position: int,
+        *,
+        max_states: int = 4096,
+        include_walsh64: bool = False,
+    ) -> dict[str, object]:
+        """Minimize one digit observer for this already-issued parity word.
+
+        The complete finite orbit is conditional on reapplying the same
+        word. It is not evidence that a future Collatz selector chooses that
+        word again.
+        """
+        from number_compiler.sequences.collatz.position_cycle_harmonics import (
+            minimize_fixed_word_odd_position,
+        )
+
+        if type(include_walsh64) is not bool:
+            raise TypeError("position Walsh64 demand must be Boolean")
+        if not self.admits(source):
+            raise ValueError("position Moore observer requires an admitted source")
+        quotient = minimize_fixed_word_odd_position(
+            self.action, radix, position, max_states=max_states
+        )
+        packet = quotient.observation(source)
+        if include_walsh64:
+            packet["conditional_digit_change_walsh64_mod5"] = (
+                quotient.walsh64_future_digit_changes(source)
+            )
+        return packet
+
     @property
     def radial_clock(self) -> RadialSturmianClock:
         self._verify_issued()

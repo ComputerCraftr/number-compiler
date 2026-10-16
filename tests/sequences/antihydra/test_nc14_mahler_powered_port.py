@@ -36,7 +36,8 @@ def test_radix_ports_are_optional_and_share_admitted_mahler_extent() -> None:
     assert packet["base"] == 6
     difference = packet["dyadic_block_difference"]
     assert isinstance(difference, tuple)
-    assert difference[1] == 3
+    expected_power = pow(3, result.returns, 6**4)
+    assert difference == ((8 * expected_power) % (6**4), 3, expected_power)
     assert demanded["scale"] == ordinary["scale"]
     assert demanded["cap"] == ordinary["cap"]
     assert result.ledger.counters[_antihydra_keys.MAHLER_RADIX_PORT_DEMANDS] == 1

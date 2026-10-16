@@ -409,11 +409,12 @@ def _powered_envelope(
     )
 
 
-def power_temporal_border(
+def _power_temporal_border_with_prefix(
     edge: Edge,
     steps: int,
     observer: TemporalObserver = "gt_high",
     *,
+    forced_prefix: tuple[int, int] | None = None,
     ledger: ResourceLedger | None = None,
     scratch_owner: int | None = None,
 ) -> TemporalBorderEnvelope:
@@ -436,6 +437,12 @@ def power_temporal_border(
         raise ValueError("joint bank is a temporal equality contract, not a scalar sum")
     if (ledger is None) != (scratch_owner is None):
         raise ValueError("temporal border resource owner is incomplete")
+    if forced_prefix is not None and (
+        type(forced_prefix) is not tuple
+        or len(forced_prefix) != 2
+        or any(type(bit) is not int or bit not in (0, 1) for bit in forced_prefix)
+    ):
+        raise ValueError("source carry prefix must contain two exact Boolean ports")
     reservation = (
         nullcontext()
         if ledger is None
@@ -443,12 +450,66 @@ def power_temporal_border(
     )
     with reservation:
         moore = minimize_temporal_border(observer, ledger=ledger)
-        result = _powered_envelope(moore, edge, steps, ledger=ledger)
+        if forced_prefix is None:
+            result = _powered_envelope(moore, edge, steps, ledger=ledger)
+        else:
+            current = moore.class_of(edge)
+            forced_sum = 0
+            prefix_length = min(steps, 2)
+            for bit in forced_prefix[:prefix_length]:
+                forced_sum += moore.emissions[current][bit][0]
+                current = moore.transitions[current][bit]
+            remaining = steps - prefix_length
+            representative_edge = next(
+                candidate
+                for candidate in EDGE_STATES
+                if moore.class_of(candidate) == current
+            )
+            tail = _powered_envelope(
+                moore, representative_edge, remaining, ledger=ledger
+            )
+            next_outputs = tail.possible_next_outputs
+            if steps < 2:
+                next_outputs = (moore.emissions[current][forced_prefix[steps]],)
+            result = TemporalBorderEnvelope(
+                observer,
+                edge,
+                steps,
+                moore.initial_class_count,
+                moore.state_count,
+                moore.rounds,
+                next_outputs,
+                forced_sum + tail.minimum_emission_sum,
+                forced_sum + tail.maximum_emission_sum,
+                tail.possible_end_classes,
+            )
     if ledger is not None:
         ledger.bump(
             _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_ENVELOPE_PUBLICATIONS
         )
     return result
+
+
+def power_temporal_border(
+    edge: Edge,
+    steps: int,
+    observer: TemporalObserver = "gt_high",
+    *,
+    ledger: ResourceLedger | None = None,
+    scratch_owner: int | None = None,
+) -> TemporalBorderEnvelope:
+    """Power an unguarded border relation over every inward-carry history.
+
+    Source-derived forced carry ports are intentionally accepted only by the
+    family term's internal path after its owner validates an issued prefix.
+    """
+    return _power_temporal_border_with_prefix(
+        edge,
+        steps,
+        observer,
+        ledger=ledger,
+        scratch_owner=scratch_owner,
+    )
 
 
 @dataclass(frozen=True, slots=True)

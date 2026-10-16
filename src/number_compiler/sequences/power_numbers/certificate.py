@@ -1,15 +1,19 @@
-"""Scalable Fermat/Mersenne theorem certificates.
+"""Fermat/Mersenne theorem certificates with explicit finite proof boundaries.
 
-Production consumes only the constrained terminal étale threshold.  A proved
-PASS/FAIL/SPLIT is used immediately; an incomplete shadow-cylinder recovery is
-reported as ``UNKNOWN``.  Reference special-form recurrences live outside the
-production package and cannot complete this certificate path.
+Production uses a fully source-covered Boolean counter and Pépin's sufficient
+criterion for Fermat indices 1–3.  Other indices use the constrained terminal
+étale threshold; incomplete source recovery is reported as ``UNKNOWN``.
+Finite residue windows never stand in for global coverage, and reference
+special-form recurrences cannot complete this certificate path.
 """
 
 from __future__ import annotations
 
+from typing import Final
+
 from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.sequence_types import SpecialDepthCertificateSummary
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     PureTwoPrimaryClockShape,
     pure_two_primary_clock_shape,
@@ -21,6 +25,10 @@ from number_compiler.sequences.power_numbers.numbers import mersenne_exponent_is
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     SpecialTerminalThresholdResult,
     terminal_threshold_probe,
+)
+
+_BOUNDED_BOOLEAN_FULL_COVERAGE_PEPIN_METHOD: Final[str] = (
+    "bounded-boolean-counter-full-coverage-pepin"
 )
 
 
@@ -121,26 +129,27 @@ def fermat_depth_certificate(
     allow_classical_ceiling: bool = False,
     collect_gcd_packet: bool = False,
 ) -> SpecialDepthCertificateSummary:
-    """Classify ``F_index`` from the constrained terminal étale threshold.
+    """Classify ``F_index`` from bounded full-source coverage or the threshold.
 
-    ``max_exact_width`` is retained as a compatibility keyword but is
-    intentionally ignored.  Production never re-enters the old exhaustive
-    bounded carrier or factor-slot tropical scan.
+    Indices 1–3 may use the bounded Boolean-counter proof only after every
+    signed transition through the terminal unit is source-authenticated.  The
+    terminal threshold handles remaining indices and can return ``UNKNOWN``
+    when its finite source demand is incomplete. ``max_exact_width`` is kept
+    as a compatibility keyword but ignored. Production never re-enters the
+    old exhaustive bounded carrier or factor-slot tropical scan.
 
     ``allow_classical_ceiling`` remains only as a compatibility keyword.  True
     is rejected because special-form recurrence completion is not a production
     theorem source.
     """
-    n = int(index)
-    if n < 0:
-        raise ValueError(n)
+    n = require_integer(index, "Fermat index", 0)
     if max_exact_width is not None and int(max_exact_width) < 1:
         raise ValueError(max_exact_width)
     _certificate_flags(collect_gcd_packet, allow_classical_ceiling)
     require_special_candidate_budget("fermat", n, max_candidate_bits)
     width = 1 << n
     modulus_bits = width + 1
-    if n in (0, 1):
+    if n == 0:
         return SpecialDepthCertificateSummary(
             FamilyId.FERMAT,
             n,
@@ -149,6 +158,45 @@ def fermat_depth_certificate(
             "exact-small-special-form",
             scalable_construction=True,
         )
+
+    if n <= 3:
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            demand_bounded_fermat_counter_certificate,
+        )
+
+        complete_counter = demand_bounded_fermat_counter_certificate(n)
+        if not complete_counter.complete_source_verified:
+            raise ArithmeticError(
+                "Fermat counter did not verify complete source coverage"
+            )
+        if complete_counter.verdict == "PRIME":
+            if n == 1:
+                # The pure-clock metadata is defined only from F2 onward.
+                # F1 is still proved by the complete source and Pépin bridge;
+                # leave its unrelated clock fields absent.
+                return SpecialDepthCertificateSummary(
+                    FamilyId.FERMAT,
+                    n,
+                    modulus_bits,
+                    "prime",
+                    _BOUNDED_BOOLEAN_FULL_COVERAGE_PEPIN_METHOD,
+                    scalable_construction=False,
+                )
+            shape = _proved_pure_clock_shape("fermat", n)
+            return SpecialDepthCertificateSummary(
+                FamilyId.FERMAT,
+                n,
+                modulus_bits,
+                "prime",
+                _BOUNDED_BOOLEAN_FULL_COVERAGE_PEPIN_METHOD,
+                shape.quotient_classes,
+                max(1, (shape.quotient_classes - 1).bit_length()),
+                target_depth=shape.target_depth,
+                scalable_construction=False,
+                stable_image_states=shape.stable_image_states,
+                image_depth_classes=shape.image_depth_classes,
+                moore_equals_image_depth=True,
+            )
 
     threshold = terminal_threshold_probe(
         "fermat", n, max_candidate_bits=max_candidate_bits
@@ -175,9 +223,7 @@ def mersenne_depth_certificate(
     The compatibility ceiling keyword rejects true.  Unresolved terminal bits
     remain ``unknown`` while exact small cases and exponent rejection survive.
     """
-    p = int(exponent)
-    if p < 2:
-        raise ValueError(p)
+    p = require_integer(exponent, "Mersenne exponent", 2)
     if max_exact_exponent is not None and int(max_exact_exponent) < 3:
         raise ValueError(max_exact_exponent)
     _certificate_flags(collect_gcd_packet, allow_classical_ceiling)

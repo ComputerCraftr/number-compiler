@@ -9,11 +9,16 @@ import pytest
 
 from number_compiler.api.number_api import NumberCompiler, PoweredReverseAddTermPayload
 from number_compiler.api.query_types import ReverseAddTermQuery
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.bank_width_clock import WidthMacro
 from number_compiler.sequences.reverse_add.mixed_periodic_bank import (
+    ControlledMixedBank,
     IncompleteMixedBorder,
+    MixedFrame,
+    MixedPeriodicCore,
+    _controlled_bank_workspace,
 )
 from number_compiler.sequences.reverse_add.q19_border_control import (
     BoundaryControlNotAuthorized,
@@ -21,6 +26,7 @@ from number_compiler.sequences.reverse_add.q19_border_control import (
 )
 from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
     SourceGuardedGTBankAction,
+    _finite_proved_action,
     conditional_alternating_first_growth,
 )
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
@@ -93,6 +99,64 @@ def test_nc10_temporal_banks_are_reusable_in_nc12() -> None:
     # Even though it is algebraically powerable, 10^18 quiet *whole-source*
     # steps are universally impossible. The bank makes no such claim.
     assert not WidthMacro.from_bits((0,)).repeat(10**18).admitted()
+
+
+def test_controlled_bank_reserves_before_allocating_and_releases_on_rejection() -> None:
+    # The initial arena and first orbit row fit; a later orbit or Moore
+    # reservation does not. This exercises cleanup after work already exists.
+    ledger = ResourceLedger(max_cache_entries=30)
+    workspace = ledger.register("controlled-bank-test-workspace", "bank_workspace")
+
+    with (
+        _controlled_bank_workspace(ledger, workspace) as reserve,
+        pytest.raises(BlockContextBudgetExceeded),
+    ):
+        ControlledMixedBank(
+            MixedPeriodicCore((5, 16)),
+            (0, 0, 0, 0, 1),
+            max_states=8,
+            workspace_reserve=reserve,
+        )
+
+    assert ledger.entries == 0
+    assert ledger.nodes == 0
+    assert ledger.peak_entries == 26
+    assert ledger.peak_nodes == 12
+    ledger.mark_disposed(workspace)
+
+
+def test_controlled_bank_reuses_each_orbit_transition_for_linking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    advance = MixedPeriodicCore.advance
+
+    def counted(
+        self: MixedPeriodicCore, growth: int
+    ) -> tuple[MixedPeriodicCore, MixedFrame]:
+        nonlocal calls
+        calls += 1
+        return advance(self, growth)
+
+    monkeypatch.setattr(MixedPeriodicCore, "advance", counted)
+    bank = ControlledMixedBank(MixedPeriodicCore((5, 16)), (0, 1), max_states=8)
+    assert calls == len(bank.states) * len(bank.pattern)
+
+
+def test_finite_control_fallback_reserves_before_allocating_its_output_arena() -> None:
+    ledger = ResourceLedger(max_nodes=0)
+    workspace = ledger.register("finite-bank-test-workspace", "bank_workspace")
+
+    with (
+        _controlled_bank_workspace(ledger, workspace) as reserve,
+        pytest.raises(BlockContextBudgetExceeded),
+    ):
+        _finite_proved_action((5, 16), (0, 0, 0, 0, 1), workspace_reserve=reserve)
+
+    assert ledger.entries == 0
+    assert ledger.nodes == 0
+    assert ledger.peak_nodes == 0
+    ledger.mark_disposed(workspace)
 
 
 def test_width_control_dfa_all_entry_phases() -> None:

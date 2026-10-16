@@ -87,9 +87,17 @@ class ReverseAddObservationOptions:
     width: int = 2
     max_digits: int = 4096
     modulus: int | None = None
+    pair_bank_position: int = 0
+    bank_morphism_count: int = 16
+    grammar_period: int = 2
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
+        require_integer(self.pair_bank_position, "--spatial-pair-bank-position", 0)
+        require_integer(self.bank_morphism_count, "--spatial-bank-morphism-count", 1)
+        require_integer(self.grammar_period, "--temporal-grammar-period", 1)
+        if self.grammar_period > 32:
+            raise ValueError("reverse/add bank period must be in 1..32")
         require_integer(self.max_digits, "--max-digits", 1)
         require_integer(self.width, "--width", 1)
         if self.modulus is not None:
@@ -109,6 +117,7 @@ class DoubleReverseObservationOptions:
     modulus: int | None = None
     stencil_position: int = 0
     pair_bank_position: int = 0
+    bank_morphism_count: int = 16
     grammar_position: int = 0
     grammar_period: int = 2
     radix_places: int = 8
@@ -118,6 +127,7 @@ class DoubleReverseObservationOptions:
         _validate_info_names(self.info)
         require_integer(self.stencil_position, "--spatial-stencil-position", 0)
         require_integer(self.pair_bank_position, "--spatial-pair-bank-position", 0)
+        require_integer(self.bank_morphism_count, "--spatial-bank-morphism-count", 1)
         require_integer(self.grammar_position, "--temporal-grammar-position", 0)
         require_integer(self.grammar_period, "--temporal-grammar-period", 1)
         require_integer(self.radix_places, "--arithmetic-radix-places", 1)

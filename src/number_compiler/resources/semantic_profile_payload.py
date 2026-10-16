@@ -7,6 +7,7 @@ and never executes a runtime, observes a source, or changes ledger counters.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -22,6 +23,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     SemanticFunctionID,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.arithmetic.functions.semantic_functions import (
+    SemanticFunctionArena,
+)
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     ReachableCodec,
@@ -212,8 +216,10 @@ class SemanticProfilePayloadRegistry:
         expected_key = (arena.token, record.action)
         expected = self._expected_profiles.get(expected_key)
         if expected is None:
-            if not hooks.admits_source_profile(arena.runtime, record.action):
-                return False
+            # The public source_profile hook performs the admission check
+            # before invoking its family loader. Keep this one checked path;
+            # repeating the validator before and after the load rewalks the
+            # same immutable action tree without strengthening this audit.
             expected = hooks.source_profile(arena.runtime, record.action)
             self._expected_profiles[expected_key] = expected
         if (
@@ -259,8 +265,6 @@ class SemanticProfilePayloadRegistry:
             )
             or definition != expected
         ):
-            return False
-        if not hooks.admits_source_profile(arena.runtime, record.action):
             return False
         node = arena.runtime.actions.resolve(record.action)
         return node.kind == "compose"
@@ -417,6 +421,46 @@ class SemanticProfilePayloadRegistry:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _TableCofactor:
+    variable: PortVariable | None
+    low: tuple[int, ...] = ()
+    high: tuple[int, ...] = ()
+    values: tuple[int, ...] = ()
+
+
+def _table_cofactor(
+    functions: SemanticFunctionArena, current: tuple[int, ...]
+) -> _TableCofactor | None:
+    """Read one joint output cofactor, independently of its input cube."""
+    nodes = tuple(functions.nodes[index] for index in current)
+    decisions = [node.variable for node in nodes if node.variable is not None]
+    if decisions:
+        variable = min(decisions)
+        return _TableCofactor(
+            variable,
+            tuple(
+                node.low if node.variable == variable else index
+                for index, node in zip(current, nodes)
+            ),
+            tuple(
+                node.high if node.variable == variable else index
+                for index, node in zip(current, nodes)
+            ),
+        )
+    values: list[int] = []
+    for node in nodes:
+        terminal = node.terminal
+        if (
+            terminal is None
+            or terminal.kind != "atom"
+            or type(terminal.value) is not int
+        ):
+            return None
+        values.append(terminal.value)
+    return _TableCofactor(None, values=tuple(values))
+
+
 def _table_agrees(
     structures: StructureArena,
     value: FactoredFunctionID | None,
@@ -455,6 +499,10 @@ def _table_agrees(
         )
     )
     pending = [(roots, 0, 0, 0, 0)]
+    # Arena-local handles are meaningful only during this audit. Reuse the
+    # structural step across cubes, but still check every cube against the
+    # independent certificate. A fresh audit rereads all current nodes.
+    cofactors: dict[tuple[int, ...], _TableCofactor] = {}
     visited: set[tuple[tuple[int, ...], int, int, int, int]] = set()
     while pending:
         current, code_mask, code_value, arg_mask, arg_value = pending.pop()
@@ -462,10 +510,14 @@ def _table_agrees(
         if visit_key in visited:
             continue
         visited.add(visit_key)
-        nodes = tuple(functions.nodes[index] for index in current)
-        decisions = [node.variable for node in nodes if node.variable is not None]
-        if decisions:
-            variable = min(decisions)
+        step = cofactors.get(current)
+        if step is None:
+            step = _table_cofactor(functions, current)
+            if step is None:
+                return False
+            cofactors[current] = step
+        variable = step.variable
+        if variable is not None:
             if (variable.time, variable.side, variable.role) == (
                 code.variable.time,
                 code.variable.side,
@@ -474,13 +526,7 @@ def _table_agrees(
                 if not 0 <= variable.bit < code.bits:
                     return False
                 mask, number = code_mask | 1 << variable.bit, code_value
-                for bit in (0, 1):
-                    child = tuple(
-                        (node.high if bit else node.low)
-                        if node.variable == variable
-                        else index
-                        for index, node in zip(current, nodes)
-                    )
+                for bit, child in enumerate((step.low, step.high)):
                     pending.append(
                         (child, mask, number | bit << variable.bit, arg_mask, arg_value)
                     )
@@ -495,13 +541,7 @@ def _table_agrees(
             ):
                 if not 0 <= variable.bit < argument.bits:
                     return False
-                for bit in (0, 1):
-                    child = tuple(
-                        (node.high if bit else node.low)
-                        if node.variable == variable
-                        else index
-                        for index, node in zip(current, nodes)
-                    )
+                for bit, child in enumerate((step.low, step.high)):
                     pending.append(
                         (
                             child,
@@ -514,47 +554,58 @@ def _table_agrees(
             else:
                 return False
             continue
-        if any(
-            node.terminal is None
-            or node.terminal.kind != "atom"
-            or type(node.terminal.value) is not int
-            for node in nodes
-        ):
-            return False
-        terminals = tuple(node.terminal for node in nodes)
+        terminals = step.values
         output_count = len(factored.bits)
         observed = sum(
-            terminal.value << bit
-            for bit, terminal in enumerate(terminals[:output_count])
-            if terminal is not None
+            value << bit for bit, value in enumerate(terminals[:output_count])
         )
-        valid_terminal = terminals[output_count]
+        valid = terminals[output_count]
         domain_terminal = terminals[output_count + 1] if domain is not None else None
-        assert valid_terminal is not None
-        valid = valid_terminal.value
-        for ordinal in _cube_values(code.bits, code_mask, code_value):
-            expected_domain = int(ordinal < len(definition.states))
-            if domain_terminal is not None and domain_terminal.value != expected_domain:
+        state_count = len(definition.states)
+        code_free = ((1 << code.bits) - 1) & ~code_mask
+        code_max = code_value | code_free
+        code_has_state = code_value < state_count
+        code_all_states = code_max < state_count
+        if domain_terminal is not None:
+            if code_all_states:
+                expected_domain = 1
+            elif not code_has_state:
+                expected_domain = 0
+            else:
                 return False
+            if domain_terminal != expected_domain:
+                return False
+
+        if argument is None:
+            argument_has_value = argument_all_values = True
+            argument_min = argument_max = 0
+        else:
+            argument_free = ((1 << argument.bits) - 1) & ~arg_mask
+            argument_min = arg_value
+            argument_max = arg_value | argument_free
+            argument_has_value = argument_min < definition.argument_count
+            argument_all_values = argument_max < definition.argument_count
+        any_admitted = code_has_state and argument_has_value
+        all_admitted = code_all_states and argument_all_values
+        if valid == 0:
+            if any_admitted:
+                return False
+            continue
+        if valid != 1 or not all_admitted:
+            return False
+
+        for ordinal in _cube_values(code.bits, code_mask, code_value):
             for selector in _cube_values(
                 0 if argument is None else argument.bits, arg_mask, arg_value
             ):
-                admitted = ordinal < len(definition.states) and (
-                    argument is None or selector < definition.argument_count
+                reachable_state = definition.states[ordinal]
+                expected = (
+                    reachable_state.anchor
+                    if argument is None
+                    else definition.functions[reachable_state.continuation][selector]
                 )
-                if valid != int(admitted):
+                if observed != expected:
                     return False
-                if admitted:
-                    reachable_state = definition.states[ordinal]
-                    expected = (
-                        reachable_state.anchor
-                        if argument is None
-                        else definition.functions[reachable_state.continuation][
-                            selector
-                        ]
-                    )
-                    if observed != expected:
-                        return False
     return True
 
 

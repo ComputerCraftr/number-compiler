@@ -13,6 +13,10 @@ from number_compiler.sequences.collatz.border_identity import (
     GuardedBorderPath,
 )
 from number_compiler.sequences.collatz.boundary_macros import boundary_metric_suffix
+from number_compiler.sequences.collatz.joint_radix_border import (
+    candidate_family_for_residue160,
+    has_border_parent_from_residue160,
+)
 from number_compiler.sequences.collatz.skew_cylinder_repeat import (
     GuardedSkewCylinderPower,
 )
@@ -25,6 +29,7 @@ from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (
+    BoundaryWitness,
     UnifiedSkewChain,
     select_unified_skew_chain,
 )
@@ -49,6 +54,25 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.tape_width import (
         CollatzWidthSpineAccumulator,
     )
+    from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
+
+
+def d8_frame_has_guarded_seam(
+    frame: D8CylinderFrame, remaining: int, ledger: ResourceLedger
+) -> bool:
+    """Expose a candidate seam without materializing an observer's affine frame.
+
+    The normal selector still authenticates the source after the batch closes.
+    The high source fiber gives a conservative lower bound for the existing
+    64-bit selector gate; this probe does not authorize an action itself.
+    """
+    if remaining < 128 or frame.source.bit_length() <= frame.consumed + 63:
+        return False
+    ledger.bump(_collatz_keys.COLLATZ_RADIX6_SOURCE_CANDIDATE_CHECKS)
+    residue = frame.residue(160)
+    return candidate_family_for_residue160(
+        residue
+    ) is not None or has_border_parent_from_residue160(residue)
 
 
 def consume_unified_skew_chain(
@@ -296,4 +320,95 @@ def consume_unified_skew_chain(
     )
 
 
-__all__ = ["consume_unified_skew_chain"]
+def attempt_unified_skew_reentry(
+    seed: int,
+    current: int,
+    remaining: int,
+    physical_ticks: int,
+    *,
+    retry: bool,
+    require_mixed_prefix: bool,
+    homogeneous_prefix: bool,
+    normalized: int,
+    division_ticks: int,
+    odd_ticks: int,
+    one_symbols: int,
+    zero_symbols: int,
+    run_actions: int,
+    control_bits: int,
+    templates: BoundaryActionTemplateMemo,
+    ledger: ResourceLedger,
+    scratch: RunArithmeticWorkspace,
+    include_joint: bool,
+    width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder,
+    parity_builder: ParityProgramBuilder | None,
+    normalized_f5: CollatzF5AffineAction | None,
+    physical_f5: CollatzF5AffineAction | None,
+    macros: CollatzDyadicMacros | None,
+    include_quadratic_clock: bool,
+) -> tuple[
+    bool,
+    tuple[
+        MixedRunExecutorState,
+        UnifiedSkewChain,
+        int | None,
+        BoundaryWitness | None,
+    ]
+    | None,
+]:
+    """Try one reentry and rebase its complete local state to global clocks."""
+    if not (
+        retry
+        and not require_mixed_prefix
+        and not homogeneous_prefix
+        and (
+            (current == seed and normalized == 0)
+            or (
+                remaining >= 128
+                and (
+                    current.bit_length() >= 64
+                    or include_joint
+                    or include_quadratic_clock
+                )
+            )
+        )
+    ):
+        return retry, None
+    selected = consume_unified_skew_chain(
+        current,
+        remaining,
+        control_bits=control_bits,
+        templates=templates,
+        ledger=ledger,
+        scratch=scratch,
+        include_joint=include_joint,
+        width_spine=width_spine,
+        joint_builder=joint_builder,
+        parity_builder=parity_builder,
+        normalized_f5=normalized_f5,
+        physical_f5=physical_f5,
+        macros=macros,
+        include_quadratic_clock=include_quadratic_clock,
+    )
+    if selected is None:
+        return False, None
+    skew_state, chain = selected
+    state = MixedRunExecutorState(
+        skew_state.current,
+        skew_state.remaining,
+        normalized + skew_state.normalized,
+        division_ticks + skew_state.division_ticks,
+        odd_ticks + skew_state.odd_ticks,
+        one_symbols + skew_state.one_symbols,
+        zero_symbols + skew_state.zero_symbols,
+        run_actions + skew_state.run_actions,
+        skew_state.normalized_f5,
+        skew_state.physical_f5,
+    )
+    offset, witness = chain.first_boundary or (None, None)
+    global_offset = None if offset is None else physical_ticks - remaining + offset
+    return True, (state, chain, global_offset, witness)
+
+
+__all__ = ["attempt_unified_skew_reentry", "consume_unified_skew_chain"]

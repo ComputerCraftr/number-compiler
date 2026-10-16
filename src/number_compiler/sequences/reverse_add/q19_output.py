@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterator
 from contextlib import ExitStack, closing
-from dataclasses import dataclass
-from functools import cache
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
@@ -27,6 +25,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_periodic_cone import (
         CertifiedUniformizingCone,
     )
+    from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
+        ReverseAddSpatialBankMorphism,
+    )
     from number_compiler.sequences.reverse_add.q19_uniform_cone import (
         CertifiedUniformCone,
     )
@@ -39,11 +40,7 @@ from number_compiler.arithmetic.automata.slp import (
     BimachineSLPProjector,
 )
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
-from number_compiler.arithmetic.automata.transducer import (
-    build_pair_step_bimachine,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
@@ -58,132 +55,14 @@ from number_compiler.sequences.reverse_add.q19_occurrence import (
 from number_compiler.sequences.reverse_add.q19_punctured_producer import (
     PuncturedPairProducer,
 )
+from number_compiler.sequences.reverse_add.q19_word_summary import (
+    _Q19,
+    _UPPER,
+    _pair_step_law,
+    _WordSummary,
+)
 
-_NEUTRAL = 0
-_LOWER = -1
-_UPPER = 1
 _LedgerSLPArena = LedgerSLPArena
-
-
-@dataclass(frozen=True, slots=True)
-class _FrozenPairDFA:
-    alphabet: tuple[int, ...]
-    start: int
-    trans: tuple[tuple[int | None, ...], ...]
-    states: tuple[int, ...]
-    right: bool
-
-    def step(self, state: int, symbol: int) -> int | None:
-        if not 0 <= state < len(self.trans) or not 0 <= symbol < len(self.alphabet):
-            return None
-        return self.trans[state][symbol]
-
-
-@dataclass(frozen=True, slots=True)
-class _FrozenPairStepLaw:
-    base: int
-    alphabet: tuple[int, ...]
-    left: _FrozenPairDFA
-    right: _FrozenPairDFA
-    resolver: Callable[[int, int, int], tuple[int, ...] | None]
-
-    def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:
-        return self.resolver(int(left), int(symbol), int(right))
-
-
-@cache
-def _pair_step_law() -> _FrozenPairStepLaw:
-    """One immutable finite decimal law shared by request-local output owners."""
-    machine = build_pair_step_bimachine(10)
-    machine.cache_enabled = False
-    machine.clear_output_cache()
-    left = _FrozenPairDFA(
-        machine.left.alphabet,
-        machine.left.start,
-        tuple(
-            tuple(machine.left.step(state, symbol) for symbol in machine.alphabet)
-            for state in machine.left.states
-        ),
-        tuple(machine.left.states),
-        machine.left.right,
-    )
-    right = _FrozenPairDFA(
-        machine.right.alphabet,
-        machine.right.start,
-        tuple(
-            tuple(machine.right.step(state, symbol) for symbol in machine.alphabet)
-            for state in machine.right.states
-        ),
-        tuple(machine.right.states),
-        machine.right.right,
-    )
-    return _FrozenPairStepLaw(
-        machine.base,
-        tuple(machine.alphabet),
-        left,
-        right,
-        machine.resolver,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _Q19:
-    length: int
-    domain: int
-    f9: int
-
-    @classmethod
-    def identity(cls) -> _Q19:
-        return cls(0, _NEUTRAL, 0)
-
-    @classmethod
-    def atom(cls, value: int) -> _Q19:
-        if type(value) is not int or not 0 <= value <= 18:
-            raise ValueError("decimal pair symbols must lie in 0..18")
-        defect = value - 9
-        return cls(1, _LOWER if defect < 0 else _UPPER if defect > 0 else 0, defect % 9)
-
-    def then(self, right: _Q19) -> _Q19:
-        if type(right) is not _Q19:
-            raise TypeError("Q19 composition requires another summary")
-        if right.length == 0:
-            return self
-        if self.length == 0:
-            return right
-        domain = right.domain if right.domain != _NEUTRAL else self.domain
-        phase = (self.f9 + pow(2, self.length, 9) * right.f9) % 9
-        return _Q19(self.length + right.length, domain, phase)
-
-    def repeat(self, count: int) -> _Q19:
-        if type(count) is not int or count < 0:
-            raise ValueError("Q19 repetition count must be nonnegative")
-        return binary_power(
-            self,
-            count,
-            identity=_Q19.identity(),
-            compose=lambda first, second: first.then(second),
-        ).value
-
-    def validate_symmetric(self) -> None:
-        if self.length < 1:
-            raise ValueError("pair output must be nonempty")
-        if self.length & 1:
-            if self.domain == _NEUTRAL:
-                raise ValueError("odd symmetric pair output has a neutral center")
-        elif self.f9 % 3:
-            raise ValueError("even symmetric pair output has an invalid F9 phase")
-
-
-@dataclass(frozen=True, slots=True)
-class _WordSummary:
-    symbols: int
-    forward: _Q19
-    reverse: _Q19
-    prefix_forward: _Q19
-    prefix_reverse: _Q19
-    first_symbol: int | None
-    last_symbol: int | None
-    runs: int
 
 
 class ReversePairQ19OutputOwner:
@@ -294,6 +173,10 @@ class ReversePairQ19OutputOwner:
                 self._issuance_registry.controlled_gt_banks.owner
             )
             self._controlled_gt_banks = self._issuance_registry.controlled_gt_banks
+            self._spatial_bank_windows_owner = (
+                self._issuance_registry.spatial_bank_windows.owner
+            )
+            self._spatial_bank_windows = self._issuance_registry.spatial_bank_windows
             self._scratch_owner = ledger.register(
                 prefix + "-workspace", "reverse_pair_output_workspace"
             )
@@ -312,6 +195,7 @@ class ReversePairQ19OutputOwner:
                 self._border_certificates,
                 self._controlled_gt_banks,
                 self._issuance_registry,
+                self._spatial_bank_windows,
             )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
@@ -328,6 +212,7 @@ class ReversePairQ19OutputOwner:
         self._audit_issued = self._issued._data
         self._audit_border_certificates = self._border_certificates._data
         self._audit_controlled_gt_banks = self._controlled_gt_banks._data
+        self._audit_spatial_bank_windows = self._spatial_bank_windows._data
         (
             self._audit_projector_forward,
             self._audit_projector_reverse,
@@ -386,6 +271,11 @@ class ReversePairQ19OutputOwner:
                     "_audit_controlled_gt_banks",
                     "reverse_pair_q19_conditional_gt_bank",
                 ),
+                PayloadAuditStoreBinding(
+                    self._spatial_bank_windows_owner,
+                    "_audit_spatial_bank_windows",
+                    "reverse_pair_q19_spatial_bank_window",
+                ),
                 *(
                     PayloadAuditStoreBinding(
                         owner,
@@ -424,6 +314,7 @@ class ReversePairQ19OutputOwner:
             self._border_certificates,
             self._controlled_gt_banks,
             self._issuance_registry,
+            self._spatial_bank_windows,
         )
         if len(self._binding) != len(current) or any(
             original is not bound
@@ -434,6 +325,10 @@ class ReversePairQ19OutputOwner:
             self._controlled_gt_banks
         ):
             raise ValueError("Q19 controlled bank registry changed")
+        if self._issuance_registry.spatial_bank_window_next != len(
+            self._spatial_bank_windows
+        ):
+            raise ValueError("Q19 spatial bank window registry changed")
 
     def _append_word_symbol(self, blocks: list[tuple[int, int]], symbol: int) -> None:
         node = self.arena.terminal(symbol)
@@ -853,6 +748,31 @@ class ReversePairQ19OutputOwner:
             max_states=max_states,
         )
 
+    def authorize_spatial_bank_morphism(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        start: int,
+        count: int,
+        growth_control: tuple[int, ...] | CertifiedBorderGrowth,
+        period_size: int = 2,
+        max_states: int = 10000,
+    ) -> ReverseAddSpatialBankMorphism:
+        """Issue a protected multi-cell GT/EQ/LT output morphism."""
+        from .q19_spatial_bank_morphism import authorize_spatial_bank_morphism
+
+        return authorize_spatial_bank_morphism(
+            self,
+            occurrence,
+            steps=steps,
+            start=start,
+            count=count,
+            growth_control=growth_control,
+            period_size=period_size,
+            max_states=max_states,
+        )
+
     def _range_summary(
         self, root: int, begin: int, end: int, *, reverse: bool = False
     ) -> _Q19:
@@ -955,6 +875,7 @@ class ReversePairQ19OutputOwner:
             cleanup: list[Callable[[], object]] = [
                 self._unregister_payload_audit_contract,
                 self._issued.dispose,
+                self._spatial_bank_windows.dispose,
                 self._controlled_gt_banks.dispose,
                 self._border_certificates.dispose,
                 self._summaries.dispose,

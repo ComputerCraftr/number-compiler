@@ -1,5 +1,5 @@
 theory Fermat_Dyadic_Unit_Pivot
-  imports Fermat_Binomial_Negacyclic_Source
+  imports Fermat_Binomial_Negacyclic_Source Shared_Carry_Dynamics.Shared_Carry_Tape
 begin
 
 text \<open>The normalized dyadic unit is a source-local coordinate for
@@ -20,6 +20,41 @@ lemma fermat_dyadic_unit_successor_exact:
   shows "fermat_dyadic_unit (Suc t) = fermat_dyadic_unit t +
       2^(Suc t) * fermat_dyadic_unit t^2"
   using assms by (cases t) simp_all
+
+lemma fermat_dyadic_unit_successor_block_composition:
+  fixes t low_width high_width unit addend :: nat
+  assumes t_positive: "1 \<le> t"
+    and unit: "unit = fermat_dyadic_unit t"
+    and addend: "addend = 2^(Suc t) * unit^2"
+  shows "fermat_dyadic_unit (Suc t) mod 2^(low_width + high_width) =
+    (unit mod 2^low_width + addend mod 2^low_width) mod 2^low_width +
+      2^low_width * ((unit div 2^low_width + addend div 2^low_width +
+        ((unit mod 2^low_width + addend mod 2^low_width) div 2^low_width))
+          mod 2^high_width)"
+proof -
+  let ?base = "2^low_width"
+  have source_split: "unit = unit mod ?base + ?base * (unit div ?base)"
+    by (simp add: mod_mult_div_eq mult.commute)
+  have addend_split: "addend = addend mod ?base + ?base * (addend div ?base)"
+    by (simp add: mod_mult_div_eq mult.commute)
+  have block:
+    "((unit mod ?base + ?base * (unit div ?base)) +
+        (addend mod ?base + ?base * (addend div ?base))) mod
+      2^(low_width + high_width) =
+      (unit mod ?base + addend mod ?base) mod ?base +
+        ?base * ((unit div ?base + addend div ?base +
+          ((unit mod ?base + addend mod ?base) div ?base)) mod 2^high_width)"
+    using binary_boolean_add_block_composition[
+      where low_left="unit mod ?base" and low_right="addend mod ?base"
+        and high_left="unit div ?base" and high_right="addend div ?base"
+        and incoming=0 and low_width=low_width and high_width=high_width]
+    by simp
+  have successor: "fermat_dyadic_unit (Suc t) = unit + addend"
+    using t_positive by (simp add: fermat_dyadic_unit_successor_exact unit addend)
+  show ?thesis
+    using source_split addend_split block successor
+    by (simp add: unit addend algebra_simps)
+qed
 
 lemma fermat_dyadic_unit_initial_values:
   "fermat_dyadic_unit 1 = 1"
@@ -208,9 +243,130 @@ proof -
   have increment_zero:
     "((2::nat)^(Suc t) * fermat_dyadic_unit t^2) mod (2::nat)^p = 0"
     using multiple by (simp add: mod_eq_0_iff_dvd)
+  have addition_split:
+    "(fermat_dyadic_unit t +
+        (2::nat)^(Suc t) * fermat_dyadic_unit t^2) mod (2::nat)^p =
+      (fermat_dyadic_unit t mod (2::nat)^p +
+        ((2::nat)^(Suc t) * fermat_dyadic_unit t^2) mod (2::nat)^p)
+        mod (2::nat)^p"
+    by (rule mod_add_eq[symmetric])
   show ?thesis
-    using next_unit increment_zero
-    by (simp add: mod_add_eq[symmetric])
+    using next_unit increment_zero addition_split by simp
+qed
+
+definition fermat_unit_complete_width :: "nat \<Rightarrow> nat" where
+  "fermat_unit_complete_width t =
+    (8 * 2^(Suc t) + 4) div 5 - (t + 3)"
+
+lemma fermat_dyadic_unit_small_complete_quotients:
+  assumes range: "1 \<le> t" "t \<le> 6"
+  shows "fermat_dyadic_unit t div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+    and "fermat_dyadic_unit (Suc t) div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+proof -
+  have constructor_cases:
+    "t = Suc 0 \<or> t = Suc (Suc 0) \<or>
+      t = Suc (Suc (Suc 0)) \<or>
+      t = Suc (Suc (Suc (Suc 0))) \<or>
+      t = Suc (Suc (Suc (Suc (Suc 0)))) \<or>
+      t = Suc (Suc (Suc (Suc (Suc (Suc 0)))))"
+    using range by arith
+  show "fermat_dyadic_unit t div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+    using constructor_cases
+    by (elim disjE; simp add: fermat_unit_complete_width_def
+        fermat_dyadic_unit.simps)
+  show "fermat_dyadic_unit (Suc t) div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+    using constructor_cases
+    by (elim disjE; simp add: fermat_unit_complete_width_def
+        fermat_dyadic_unit.simps)
+qed
+
+lemma integer_difference_from_complete_binary_window:
+  fixes source target start width :: nat
+  assumes low: "source mod (2::nat)^start = target mod (2::nat)^start"
+    and source_fit: "source div 2^start < 2^width"
+    and target_fit: "target div 2^start < 2^width"
+  shows "int target - int source =
+    (2::int)^start *
+      (int ((target div 2^start) mod 2^width) -
+        int ((source div 2^start) mod 2^width))"
+proof -
+  have source_decomp:
+    "source = source mod 2^start + 2^start * (source div 2^start)"
+    by (rule sym[OF mod_mult_div_eq])
+  have target_decomp:
+    "target = target mod 2^start + 2^start * (target div 2^start)"
+    by (rule sym[OF mod_mult_div_eq])
+  have low_int:
+    "int (source mod 2^start) = int (target mod 2^start)"
+    using low by simp
+  have source_int:
+    "int source = int (source mod 2^start) +
+      (2::int)^start * int (source div 2^start)"
+  proof -
+    have cast: "int source = int
+        (source mod 2^start + 2^start * (source div 2^start))"
+      by (rule arg_cong[OF source_decomp])
+    show ?thesis using cast
+      by (simp only: of_nat_add of_nat_mult of_nat_power of_nat_numeral)
+  qed
+  have target_int:
+    "int target = int (target mod 2^start) +
+      (2::int)^start * int (target div 2^start)"
+  proof -
+    have cast: "int target = int
+        (target mod 2^start + 2^start * (target div 2^start))"
+      by (rule arg_cong[OF target_decomp])
+    show ?thesis using cast
+      by (simp only: of_nat_add of_nat_mult of_nat_power of_nat_numeral)
+  qed
+  have source_window:
+    "(source div 2^start) mod 2^width = source div 2^start"
+    using source_fit by simp
+  have target_window:
+    "(target div 2^start) mod 2^width = target div 2^start"
+    using target_fit by simp
+  show ?thesis using source_int target_int low_int
+      source_window target_window by (simp add: algebra_simps)
+qed
+
+theorem fermat_dyadic_unit_small_transition_complete:
+  assumes range: "1 \<le> t" "t \<le> 6"
+  shows "fermat_dyadic_unit t mod (2::nat)^(Suc t) =
+      fermat_dyadic_unit (Suc t) mod (2::nat)^(Suc t)"
+    and "int (fermat_dyadic_unit (Suc t)) - int (fermat_dyadic_unit t) =
+      (2::int)^(Suc t) *
+        (int ((fermat_dyadic_unit (Suc t) div 2^(Suc t)) mod
+            2^fermat_unit_complete_width t) -
+          int ((fermat_dyadic_unit t div 2^(Suc t)) mod
+            2^fermat_unit_complete_width t))"
+proof -
+  have low:
+    "fermat_dyadic_unit t mod (2::nat)^(Suc t) =
+      fermat_dyadic_unit (Suc t) mod (2::nat)^(Suc t)"
+    using fermat_dyadic_unit_fixed_prefix[OF range(1), of "Suc t"] by simp
+  have source_fit:
+    "fermat_dyadic_unit t div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+    using fermat_dyadic_unit_small_complete_quotients(1)[OF range(1) range(2)] .
+  have target_fit:
+    "fermat_dyadic_unit (Suc t) div 2^(Suc t) <
+      2^fermat_unit_complete_width t"
+    using fermat_dyadic_unit_small_complete_quotients(2)[OF range(1) range(2)] .
+  show "fermat_dyadic_unit t mod (2::nat)^(Suc t) =
+      fermat_dyadic_unit (Suc t) mod (2::nat)^(Suc t)"
+    by (rule low)
+  show "int (fermat_dyadic_unit (Suc t)) - int (fermat_dyadic_unit t) =
+      (2::int)^(Suc t) *
+        (int ((fermat_dyadic_unit (Suc t) div 2^(Suc t)) mod
+            2^fermat_unit_complete_width t) -
+          int ((fermat_dyadic_unit t div 2^(Suc t)) mod
+            2^fermat_unit_complete_width t))"
+    by (rule integer_difference_from_complete_binary_window[OF low
+          source_fit target_fit])
 qed
 
 text \<open>A guarded run edit belongs to the normalized unit window.  The
@@ -326,11 +482,16 @@ qed
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms fermat_dyadic_unit_source_equation fermat_dyadic_unit_positive
+    @{thms fermat_dyadic_unit_successor_block_composition
+      fermat_dyadic_unit_source_equation fermat_dyadic_unit_positive
       fermat_dyadic_unit_odd fermat_dyadic_unit_pivot_factorization
       fermat_dyadic_unit_pivot_exact_valuation
       fermat_dyadic_unit_initial_values
-      fermat_dyadic_unit_fixed_prefix fermat_run_weight_sum
+      fermat_dyadic_unit_fixed_prefix
+      fermat_dyadic_unit_small_complete_quotients
+      integer_difference_from_complete_binary_window
+      fermat_dyadic_unit_small_transition_complete
+      fermat_run_weight_sum
       fermat_guarded_unit_run_delta fermat_guarded_unit_run_fold_update}) then ()
     else error "Dyadic Fermat unit/pivot laws depend on an oracle";
 \<close>

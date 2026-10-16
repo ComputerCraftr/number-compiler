@@ -70,7 +70,8 @@ from number_compiler.sequences.collatz.temporal_run_finalize import (
     finalize_collatz_temporal_run,
 )
 from number_compiler.sequences.collatz.temporal_unified_skew_execution import (
-    consume_unified_skew_chain,
+    attempt_unified_skew_reentry,
+    d8_frame_has_guarded_seam,
 )
 from number_compiler.sequences.collatz.terminal_run_execution import (
     consume_pending_odd_half_step,
@@ -126,23 +127,42 @@ def execute_collatz_temporal_run(
     first_boundary: tuple[int, int, int, BoundaryActionIdentity] | None = None
     first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None = None
     unified_skew_chain = None
-    unified_skew_chain_attempted = False
+    # Retry once per authenticated source seam.  A failed selector is held
+    # off at the unchanged source, avoiding a hot-loop compilation tax.
+    unified_skew_retry = not require_mixed_prefix
     pending_normalized_source: int | None = None
     d8_table: D8TemporalTable | None = None
     lookup_enabled = macros is not None
     previous_source, previous_width, previous_ones = seed, 0, 0
     share_width = temporal_run_share_width(seed, physical_ticks)
 
+    def current_state() -> MixedRunExecutorState:
+        return MixedRunExecutorState(
+            current,
+            remaining,
+            normalized,
+            division_ticks,
+            odd_ticks,
+            one_symbols,
+            zero_symbols,
+            run_actions,
+            normalized_f5,
+            physical_f5,
+        )
+
     def apply_boundary_application(
         state: MixedRunExecutorState,
         macro: CollatzBoundaryMacro | BorderReturnMacro | None,
         *,
         boundary_offset: int | None = None,
+        rearm_unified: bool = False,
     ) -> None:
         nonlocal current, remaining, normalized, division_ticks, odd_ticks
         nonlocal one_symbols, zero_symbols, run_actions, normalized_f5, physical_f5
         nonlocal first_boundary, first_boundary_macro
-        nonlocal previous_source, previous_width, previous_ones
+        nonlocal previous_source, previous_width, previous_ones, unified_skew_retry
+        if macro is not None or rearm_unified:
+            unified_skew_retry = True
         if first_boundary is None and include_innovation_tape and macro is not None:
             first_boundary = (
                 physical_ticks - remaining
@@ -213,18 +233,7 @@ def execute_collatz_temporal_run(
             one_symbols,
         )
         cycle = pump_normalized_one_cycle(
-            MixedRunExecutorState(
-                current,
-                remaining,
-                normalized,
-                division_ticks,
-                odd_ticks,
-                one_symbols,
-                zero_symbols,
-                run_actions,
-                normalized_f5,
-                physical_f5,
-            ),
+            current_state(),
             ledger=ledger,
             width_spine=width_spine,
             include_joint=include_joint_cocycle,
@@ -246,23 +255,14 @@ def execute_collatz_temporal_run(
                 physical_f5,
             ) = state
             cycle_repetitions += repetitions
+            if repetitions:
+                unified_skew_retry = True
             if not remaining:
                 break
 
         if macros is not None and remaining >= 16:
             cached_state = consume_cached_mixed_state(
-                MixedRunExecutorState(
-                    current,
-                    remaining,
-                    normalized,
-                    division_ticks,
-                    odd_ticks,
-                    one_symbols,
-                    zero_symbols,
-                    run_actions,
-                    normalized_f5,
-                    physical_f5,
-                ),
+                current_state(),
                 ledger=ledger,
                 include_width=width_spine.complete,
                 width_spine=width_spine,
@@ -273,22 +273,11 @@ def execute_collatz_temporal_run(
                 scratch=scratch,
             )
             if cached_state is not None:
-                apply_boundary_application(cached_state, None)
+                apply_boundary_application(cached_state, None, rearm_unified=True)
                 continue
 
         cached_state, lookup_enabled = try_consume_cached_dyadic_action(
-            MixedRunExecutorState(
-                current,
-                remaining,
-                normalized,
-                division_ticks,
-                odd_ticks,
-                one_symbols,
-                zero_symbols,
-                run_actions,
-                normalized_f5,
-                physical_f5,
-            ),
+            current_state(),
             lookup_enabled,
             ledger=ledger,
             macros=macros,
@@ -300,7 +289,7 @@ def execute_collatz_temporal_run(
             joint_builder=joint_builder,
         )
         if cached_state is not None:
-            apply_boundary_application(cached_state, None)
+            apply_boundary_application(cached_state, None, rearm_unified=True)
             continue
 
         if current & 1 and remaining >= 5:
@@ -335,6 +324,7 @@ def execute_collatz_temporal_run(
                 run_actions = terminal.run_actions
                 normalized_f5 = terminal.normalized_f5
                 physical_f5 = terminal.physical_f5
+                unified_skew_retry = True
                 continue
 
         low, available, homogeneous_symbols = leading_homogeneous_run(
@@ -343,35 +333,60 @@ def execute_collatz_temporal_run(
         homogeneous_prefix = homogeneous_symbols >= 8
 
         # Keep maximal homogeneous actions on their existing powered path.
-        if (
-            not unified_skew_chain_attempted
-            and not require_mixed_prefix
-            and current == seed
-            and normalized == 0
-        ):
-            unified_skew_chain_attempted = True
-            if not homogeneous_prefix:
-                selected = consume_unified_skew_chain(
-                    current,
-                    remaining,
-                    control_bits=control_bits,
-                    templates=boundary_templates,
-                    ledger=ledger,
-                    scratch=scratch,
-                    include_joint=include_joint_cocycle,
-                    width_spine=width_spine,
-                    joint_builder=joint_builder,
-                    parity_builder=parity_builder,
-                    normalized_f5=normalized_f5,
-                    physical_f5=physical_f5,
-                    macros=macros,
-                    include_quadratic_clock=include_innovation_tape,
-                )
-                if selected is not None:
-                    state, unified_skew_chain = selected
-                    offset, witness = unified_skew_chain.first_boundary or (None, None)
-                    apply_boundary_application(state, witness, boundary_offset=offset)
-                    continue
+        # A seam can issue a new exact source, so permit one bounded unified
+        # trace attempt there.  For later sources, skip compilation while the
+        # cheap selectors have a short horizon or a small integer source.
+        # A cold source-cache producer must first publish its complete root
+        # cylinder.  A skew action can cross that dyadic boundary in one step,
+        # leaving no admitted root-prefix occurrence for later high fibers.
+        # Cached actions were tried above, so defer only fresh ordinary traces;
+        # explicit joint/width/innovation consumers retain their seam route.
+        defer_for_root_checkpoint = (
+            macros is not None
+            and share_width >= 64
+            and normalized > 0
+            and normalized < share_width
+            and not include_joint_cocycle
+            and not include_innovation_tape
+            and not width_spine.complete
+        )
+        reentry = None
+        if not defer_for_root_checkpoint:
+            unified_skew_retry, reentry = attempt_unified_skew_reentry(
+                seed,
+                current,
+                remaining,
+                physical_ticks,
+                retry=unified_skew_retry,
+                require_mixed_prefix=require_mixed_prefix,
+                homogeneous_prefix=homogeneous_prefix,
+                normalized=normalized,
+                division_ticks=division_ticks,
+                odd_ticks=odd_ticks,
+                one_symbols=one_symbols,
+                zero_symbols=zero_symbols,
+                run_actions=run_actions,
+                control_bits=control_bits,
+                templates=boundary_templates,
+                ledger=ledger,
+                scratch=scratch,
+                include_joint=include_joint_cocycle,
+                width_spine=width_spine,
+                joint_builder=joint_builder,
+                parity_builder=parity_builder,
+                normalized_f5=normalized_f5,
+                physical_f5=physical_f5,
+                macros=macros,
+                include_quadratic_clock=include_innovation_tape,
+            )
+        if reentry is not None:
+            state, chain, global_offset, witness = reentry
+            apply_boundary_application(state, witness, boundary_offset=global_offset)
+            # Do not label a later-source chain as the root-prefix chain.
+            if chain.source == seed:
+                unified_skew_chain = chain
+            unified_skew_retry = True
+            continue
 
         border_state, border = None, None
         # Root-relative D8 also owns large fibers: rebasing here would split
@@ -380,18 +395,7 @@ def execute_collatz_temporal_run(
         boundary_plan = admit_physical_boundary_plan(current, remaining, ledger)
         if not homogeneous_prefix and not root_d8_batch_admitted:
             border_state, border = consume_border_return(
-                MixedRunExecutorState(
-                    current,
-                    remaining,
-                    normalized,
-                    division_ticks,
-                    odd_ticks,
-                    one_symbols,
-                    zero_symbols,
-                    run_actions,
-                    normalized_f5,
-                    physical_f5,
-                ),
+                current_state(),
                 seed=seed,
                 ledger=ledger,
                 scratch=scratch,
@@ -423,7 +427,8 @@ def execute_collatz_temporal_run(
             boundary_plan = None
         selected_mixed = None
         if (
-            boundary_plan is not None
+            not defer_for_root_checkpoint
+            and boundary_plan is not None
             and boundary_plan.physical_ticks < remaining
             and remaining >= 128
             and current.bit_length() >= 64
@@ -447,18 +452,7 @@ def execute_collatz_temporal_run(
                 )
         if boundary_plan is not None:
             boundary_state, named_boundary, lookup_enabled = consume_named_boundary(
-                MixedRunExecutorState(
-                    current,
-                    remaining,
-                    normalized,
-                    division_ticks,
-                    odd_ticks,
-                    one_symbols,
-                    zero_symbols,
-                    run_actions,
-                    normalized_f5,
-                    physical_f5,
-                ),
+                current_state(),
                 boundary_plan,
                 seed=seed,
                 ledger=ledger,
@@ -476,8 +470,13 @@ def execute_collatz_temporal_run(
             continue
 
         # Use mixed discovery only where its bounded preview can replace work.
-        if selected_mixed is not None or (
-            not homogeneous_prefix and remaining >= 128 and current.bit_length() >= 64
+        if not defer_for_root_checkpoint and (
+            selected_mixed is not None
+            or (
+                not homogeneous_prefix
+                and remaining >= 128
+                and current.bit_length() >= 64
+            )
         ):
             progress, d8_table = select_and_consume_mixed_run(
                 current,
@@ -517,6 +516,7 @@ def execute_collatz_temporal_run(
                 run_actions = progress.run_actions
                 normalized_f5 = progress.application.normalized_f5
                 physical_f5 = progress.application.physical_f5
+                unified_skew_retry = True
                 previous_source, previous_width, previous_ones = (
                     current,
                     normalized,
@@ -663,6 +663,7 @@ def execute_collatz_temporal_run(
                                 one_symbols,
                             )
                             width_spine.reset_segment()
+                        unified_skew_retry = True
                         continue
             else:
                 frame = D8CylinderFrame(current)
@@ -794,6 +795,10 @@ def execute_collatz_temporal_run(
                             odd_symbols=ones,
                             ledger=ledger,
                         )
+                    if (include_joint_cocycle or include_innovation_tape) and (
+                        d8_frame_has_guarded_seam(advanced, remaining, ledger)
+                    ):
+                        break
                 if accepted:
                     scratch.require_bits(
                         8
@@ -832,6 +837,7 @@ def execute_collatz_temporal_run(
                             one_symbols,
                         )
                         width_spine.reset_segment()
+                    unified_skew_retry = True
                     continue
 
         if current & 1 == 0:
@@ -883,6 +889,7 @@ def execute_collatz_temporal_run(
                     run_length=length,
                     odd_run=False,
                 )
+            unified_skew_retry = True
             continue
 
         complete = min(available, remaining // 2)
@@ -939,6 +946,7 @@ def execute_collatz_temporal_run(
                     run_length=complete,
                     odd_run=True,
                 )
+            unified_skew_retry = True
         if remaining:
             if complete >= available or remaining != 1 or not current & 1:
                 continue

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.fields.morphism_core import binary_power
 
 _FIELD_ACTION_ISSUER = object()
 
@@ -281,16 +282,13 @@ class DyadicTerminalFieldAction:
     def power(self, count: int) -> DyadicTerminalFieldAction:
         """Repeat this block chronologically by exponentiation by squaring."""
         count = require_integer(count, "dyadic action repetition", 0)
-        result = self.identity()
-        base = self
-        remaining = count
-        while remaining:
-            if remaining & 1:
-                result = result.then(base)
-            remaining >>= 1
-            if remaining:
-                base = base.then(base)
-        return result
+        powered = binary_power(
+            self,
+            count,
+            identity=self.identity(),
+            compose=lambda first, second: first.then(second),
+        )
+        return powered.value
 
     @property
     def source_modulus(self) -> int:

@@ -66,7 +66,7 @@ def test_large_source_d8_batch_materializes_its_high_fiber_once(
     # This regression is specifically about the D8 materialization route; the
     # independently tested source-certified chain may now own this same seed.
     monkeypatch.setattr(
-        "number_compiler.sequences.collatz.temporal_run_executor.consume_unified_skew_chain",
+        "number_compiler.sequences.collatz.temporal_unified_skew_execution.consume_unified_skew_chain",
         lambda *_args, **_kwargs: None,
     )
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
+from itertools import islice
 
 
 def canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
@@ -172,6 +173,155 @@ class FiniteObserverMinimization:
     classes: int
     class_ids: tuple[int, ...]
     rounds: int
+
+
+@dataclass(frozen=True, slots=True)
+class FiniteOrbitMoore:
+    """Exact future-output quotient of a supplied closed unary state graph.
+
+    Class identifiers are local to this result. The object carries no source
+    authority; callers must authenticate the graph before asking this module
+    to minimize it.
+    """
+
+    class_ids: tuple[int, ...]
+    class_outputs: tuple[Hashable, ...]
+    class_successors: tuple[int, ...]
+    refinement_rounds: int
+    represented_horizon: int
+
+    @property
+    def source_state_count(self) -> int:
+        return len(self.class_ids)
+
+    @property
+    def class_count(self) -> int:
+        return len(self.class_outputs)
+
+    def class_of(self, state: int) -> int:
+        if type(state) is not int or not 0 <= state < len(self.class_ids):
+            raise ValueError("finite orbit state is outside its declared universe")
+        return self.class_ids[state]
+
+    def output(self, class_id: int) -> Hashable:
+        if type(class_id) is not int or not 0 <= class_id < self.class_count:
+            raise ValueError("finite orbit class is outside its quotient")
+        return self.class_outputs[class_id]
+
+    def advance(self, class_id: int, steps: int) -> int:
+        """Advance a quotient class by any nonnegative number of unary steps."""
+        if type(class_id) is not int or not 0 <= class_id < self.class_count:
+            raise ValueError("finite orbit class is outside its quotient")
+        if type(steps) is not int or steps < 0:
+            raise ValueError("finite orbit step count must be nonnegative")
+        target = class_id
+        remaining = steps
+        jump = self.class_successors
+        while remaining:
+            if remaining & 1:
+                target = jump[target]
+            remaining >>= 1
+            if remaining:
+                jump = tuple(jump[jump[state]] for state in range(self.class_count))
+        return target
+
+
+MAX_FINITE_ORBIT_STATES = 65_536
+
+
+def _validate_orbit_labels(labels: tuple[Hashable, ...]) -> None:
+    """Retain value labels only; mutable hashability is not semantic stability."""
+    pending: list[tuple[object, int]] = [(label, 0) for label in labels]
+    visits = 0
+    while pending:
+        value, depth = pending.pop()
+        visits += 1
+        if type(value) in (type(None), bool, int, str, bytes):
+            continue
+        if type(value) is not tuple:
+            raise TypeError("finite orbit labels must be immutable hashable values")
+        if depth >= 64 or visits + len(pending) + len(value) > 1_048_576:
+            raise ValueError("finite orbit label structure exceeds its budget")
+        pending.extend((child, depth + 1) for child in value)
+
+
+def minimize_finite_orbit(
+    successors: Sequence[int],
+    outputs: Sequence[Hashable],
+    *,
+    max_states: int = MAX_FINITE_ORBIT_STATES,
+    on_refinement: Callable[[int], None] | None = None,
+) -> FiniteOrbitMoore:
+    """Minimize complete future outputs on a finite deterministic orbit.
+
+    The horizon doubles at each pass. For any pair of source states, their
+    product walk has at most ``n²`` states, so equal output prefixes of length
+    ``n²`` imply equal infinite futures. A stable partition can terminate the
+    refinement earlier. This handles arbitrary closed functional graphs, not
+    just one lasso or one cycle.
+    """
+    if type(max_states) is not int or not 1 <= max_states <= MAX_FINITE_ORBIT_STATES:
+        raise ValueError("finite orbit state budget is outside the supported bound")
+    if not isinstance(successors, Sequence) or not isinstance(outputs, Sequence):
+        raise TypeError("finite orbit inputs must be finite sequences")
+    size = len(successors)
+    if size == 0:
+        raise ValueError("finite orbit must contain at least one state")
+    if size > max_states:
+        raise ValueError("finite orbit exceeds its state budget")
+    if len(outputs) != size:
+        raise ValueError("finite orbit successors and outputs must align")
+    if on_refinement is not None and not callable(on_refinement):
+        raise TypeError("finite orbit work callback must be callable")
+
+    targets = tuple(islice(successors, size + 1))
+    labels = tuple(islice(outputs, size + 1))
+    if len(targets) != size or len(labels) != size:
+        raise ValueError("finite orbit sequence length does not match its declaration")
+    _validate_orbit_labels(labels)
+    for target in targets:
+        if type(target) is not int or not 0 <= target < size:
+            raise ValueError("finite orbit successor leaves its declared universe")
+    classes = partition_by_signature(labels)
+    represented = 1
+    jump = targets
+    rounds = 0
+    distinguishing_bound = size * size
+    while represented < distinguishing_bound:
+        refined = partition_by_signature(
+            tuple((classes[state], classes[jump[state]]) for state in range(size))
+        )
+        if on_refinement is not None:
+            on_refinement(size)
+        rounds += 1
+        represented *= 2
+        if partition_equivalent(classes, refined):
+            classes = refined
+            break
+        classes = refined
+        jump = tuple(jump[jump[state]] for state in range(size))
+
+    class_count = max(classes, default=-1) + 1
+    representatives = partition_representatives(classes, class_count)
+    class_outputs = tuple(labels[state] for state in representatives)
+    successor_by_class = [-1] * class_count
+    for state, class_id in enumerate(classes):
+        successor_class = classes[targets[state]]
+        if successor_by_class[class_id] < 0:
+            successor_by_class[class_id] = successor_class
+        elif successor_by_class[class_id] != successor_class:
+            raise AssertionError("Moore class is not successor closed")
+        if labels[state] != class_outputs[class_id]:
+            raise AssertionError("Moore class has multiple current outputs")
+    if any(successor < 0 for successor in successor_by_class):
+        raise AssertionError("finite orbit quotient contains an empty class")
+    return FiniteOrbitMoore(
+        tuple(classes),
+        class_outputs,
+        tuple(successor_by_class),
+        rounds,
+        represented,
+    )
 
 
 def minimize_finite_observer(

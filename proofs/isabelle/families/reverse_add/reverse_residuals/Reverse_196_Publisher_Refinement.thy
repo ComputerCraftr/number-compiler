@@ -1,5 +1,6 @@
 theory Reverse_196_Publisher_Refinement
   imports Reverse_196_Universal_Emit Reverse_Invariant
+    Reverse_Pair_Temporal_Moments
 begin
 
 lemma emit_nth_carry_prefix:
@@ -81,6 +82,35 @@ lemma length_digits_exact:
 lemma length_step_exact [simp]:
   "length (step ss) = length (digits ss)"
   by (simp add: step_def)
+
+text \<open>The physical Q19 middle is a carry transfer, not an independently
+chosen high-window ingress.  Splitting the producer's actual coefficient word
+into low, middle and high parts forces the low overflow through the middle
+before normalizing the high part and its optional leading digit.\<close>
+
+lemma emit_append:
+  "emit carry (low @ high) =
+    emit carry low @ emit (carry_out carry low) high"
+  by (induct low arbitrary: carry) (simp_all add: carry_out_def)
+
+definition reverse_q19_middle_transfer :: "nat list \<Rightarrow> bool \<Rightarrow> bool" where
+  "reverse_q19_middle_transfer middle carry = carry_out carry middle"
+
+theorem reverse_q19_bilateral_carry_normalization:
+  "digits (low @ middle @ high) =
+    emit False low @
+    emit (carry_out False low) middle @
+    emit (reverse_q19_middle_transfer middle (carry_out False low)) high @
+    (if carry_out
+      (reverse_q19_middle_transfer middle (carry_out False low)) high
+     then [1] else [])"
+  by (simp add: digits_def emit_append carry_out_append
+      reverse_q19_middle_transfer_def)
+
+corollary reverse_q19_middle_ingress_is_source_transfer:
+  "reverse_q19_middle_transfer middle (carry_out False low) =
+    carry_out False (low @ middle)"
+  by (simp add: reverse_q19_middle_transfer_def carry_out_append)
 
 lemma digits_nth_no_growth:
   assumes bound: "i < length ss" and no_growth: "\<not> carry_out False ss"
@@ -442,12 +472,21 @@ corollary reverse_two_port_publisher_refines_all_196_steps:
     step (run step n [7,18,7])"
   using reverse_two_port_publisher_refines_step all_196_pair_fields_valid by blast
 
+lemma valid_pair_run:
+  assumes "valid_pair ss"
+  shows "valid_pair (run step n ss)"
+  using assms
+  by (induction n arbitrary: ss) (auto intro: valid_pair_successor)
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms reverse_two_port_scan_no_growth
       reverse_two_port_publisher_no_growth reverse_two_port_scan_growth
       reverse_two_port_publisher_growth reverse_two_port_publisher_refines_step
-      reverse_two_port_publisher_refines_all_196_steps}) then ()
+      reverse_two_port_publisher_refines_all_196_steps
+      reverse_q19_bilateral_carry_normalization
+      reverse_q19_middle_ingress_is_source_transfer
+      valid_pair_run}) then ()
     else error "Reverse 196 publisher refinement depends on an oracle";
 \<close>
 

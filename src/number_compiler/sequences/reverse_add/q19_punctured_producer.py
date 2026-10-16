@@ -15,10 +15,10 @@ from number_compiler.sequences.reverse_add.punctured_temporal import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.reverse_add.q19_output import (
+    from number_compiler.sequences.reverse_add.q19_occurrence import (
         ReversePairOutputOccurrence,
-        _WordSummary,
     )
+    from number_compiler.sequences.reverse_add.q19_word_summary import _WordSummary
 
 
 class _OutputOwner(Protocol):

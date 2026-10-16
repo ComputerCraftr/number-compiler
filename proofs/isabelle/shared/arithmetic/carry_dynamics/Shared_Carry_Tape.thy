@@ -343,6 +343,110 @@ lemma wire_word_scan_append [simp]:
     wire_word_scan (wire_word_scan c left) right"
   by (induction left arbitrary: c) simp_all
 
+theorem binary_boolean_add_block_composition:
+  fixes low_left low_right high_left high_right incoming low_width high_width :: nat
+  shows "((low_left + 2^low_width * high_left) +
+      (low_right + 2^low_width * high_right) + incoming) mod
+        2^(low_width + high_width) =
+    (low_left + low_right + incoming) mod 2^low_width +
+      2^low_width * ((high_left + high_right +
+        ((low_left + low_right + incoming) div 2^low_width)) mod
+          2^high_width)"
+proof -
+  let ?base = "2^low_width"
+  let ?top = "2^high_width"
+  let ?low_sum = "low_left + low_right + incoming"
+  let ?low = "?low_sum mod ?base"
+  let ?high = "high_left + high_right + (?low_sum div ?base)"
+  let ?whole = "(low_left + ?base * high_left) +
+      (low_right + ?base * high_right) + incoming"
+  have split_low: "?low_sum mod ?base + ?base * (?low_sum div ?base) = ?low_sum"
+    by (simp add: mod_mult_div_eq mult.commute)
+  have split_whole: "?whole = ?low + ?base * ?high"
+    using split_low by (simp add: algebra_simps)
+  have low_bound: "?low < ?base"
+    by (simp add: mod_less)
+  have high_quotient: "(?low + ?base * ?high) div ?base = ?high"
+    using low_bound by (simp add: div_mult_self2)
+  have high_remainder: "(?low + ?base * ?high) mod ?base = ?low"
+    using low_bound by simp
+  have joined_remainder:
+    "(?low + ?base * ?high) mod (?base * ?top) =
+      ?base * (?high mod ?top) + ?low"
+  proof -
+    have "(?low + ?base * ?high) mod (?base * ?top) =
+        ?base * (((?low + ?base * ?high) div ?base) mod ?top) +
+          ((?low + ?base * ?high) mod ?base)"
+      by (rule mod_mult2_eq)
+    then show ?thesis using high_quotient high_remainder by simp
+  qed
+  have modulus: "(2::nat)^(low_width + high_width) = ?base * ?top"
+    by (simp add: power_add mult.commute)
+  show ?thesis
+    using split_whole joined_remainder modulus by simp
+qed
+
+theorem binary_boolean_signed_fold_composition:
+  "(int (low_output + base * high_output) -
+      int (low_source + base * high_source)) mod int modulus =
+    ((int low_output - int low_source) +
+      int base * (int high_output - int high_source)) mod int modulus"
+  by (simp add: algebra_simps)
+
+
+lemma decimal_double_digit_carry:
+  fixes a carry :: nat
+  assumes digit: "a < 10" and carry: "carry \<le> 1"
+  shows "2*a + carry = (2*a + carry) mod 10 +
+    10*(if 5 \<le> a then 1 else 0)"
+proof (cases "5 \<le> a")
+  case True
+  have small: "2*(a-5) + carry < 10" using digit carry True by arith
+  have expanded: "2*a + carry = 10 + (2*(a-5) + carry)"
+    using True by arith
+  show ?thesis using True small by (simp add: expanded)
+next
+  case False
+  have small: "2*a + carry < 10" using digit carry False by arith
+  show ?thesis using False small by simp
+qed
+
+lemma decimal_double_three_digits:
+  fixes a b c :: nat
+  assumes ab: "a < 10" and bb: "b < 10"
+  shows "(2 * (100*c + 10*b + a)) mod 1000 =
+    100*((2*c + (if 5 \<le> b then 1 else 0)) mod 10) +
+    10*((2*b + (if 5 \<le> a then 1 else 0)) mod 10) + (2*a mod 10)"
+proof -
+  let ?ca = "if 5 \<le> a then (1::nat) else 0"
+  let ?cb = "if 5 \<le> b then (1::nat) else 0"
+  let ?ra = "2*a mod 10"
+  let ?rb = "(2*b + ?ca) mod 10"
+  let ?rc = "(2*c + ?cb) mod 10"
+  let ?carry = "(2*c + ?cb) div 10"
+  have ca: "2*a = ?ra + 10*?ca"
+    using decimal_double_digit_carry[OF ab, of 0] by simp
+  have carry_bound: "?ca \<le> 1" by simp
+  have cb: "2*b + ?ca = ?rb + 10*?cb"
+    by (rule decimal_double_digit_carry[OF bb carry_bound])
+  have cc: "2*c + ?cb = ?rc + 10*?carry"
+    by (simp add: mod_mult_div_eq mult.commute)
+  have combine: "\<And>a b c u v x y z q::nat.
+      2*a = x+10*u \<Longrightarrow> 2*b+u = y+10*v \<Longrightarrow>
+      2*c+v = z+10*q \<Longrightarrow>
+      2*(100*c+10*b+a) = 100*z+10*y+x+1000*q"
+    by (simp only: algebra_simps; linarith)
+  have decomposition:
+    "2*(100*c + 10*b + a) = 100*?rc + 10*?rb + ?ra + 1000*?carry"
+    by (rule combine[OF ca cb cc])
+  have bounds: "?ra < 10" "?rb < 10" "?rc < 10"
+    using mod_less_divisor[of "2*a" 10]
+      mod_less_divisor[of "2*b + ?ca" 10]
+      mod_less_divisor[of "2*c + ?cb" 10] by arith+
+  have bound: "100*?rc + 10*?rb + ?ra < 1000" using bounds by arith
+  show ?thesis using decomposition bound by simp
+qed
+
 
 ML \<open>
   val checked = @{thms carry_finish_fold carry_finish_append
@@ -358,7 +462,9 @@ ML \<open>
     carry_domain_wires_bool_exact carry_domain_wires_compose
     carry_domain_wire_word_exact
     identity_wires_valid identity_wires_apply wire_word_action_valid
-    wire_word_action_exact wire_word_scan_append};
+    wire_word_action_exact wire_word_scan_append
+    binary_boolean_add_block_composition
+    binary_boolean_signed_fold_composition decimal_double_three_digits};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared carry-tape proof depends on an oracle";
 \<close>

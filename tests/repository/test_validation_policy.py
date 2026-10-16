@@ -7,6 +7,7 @@ import os
 import sys
 import textwrap
 import time
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -120,6 +121,43 @@ def test_selection_command_uses_one_guarded_pytest_process(tmp_path: Path) -> No
     assert "-m" not in command[pytest_module + 1 :]
     assert command[-2] == selector
     assert any(argument.startswith("--junitxml=") for argument in command)
+
+
+def test_default_unit_skips_already_excluded_validation_tree(
+    tmp_path: Path,
+) -> None:
+    selectors, mark = release._pytest_selection("unit", ())
+    command = release._pytest_command(tmp_path, "unit", selectors, mark)
+
+    assert mark == "not validation"
+    assert command[command.index("--ignore") + 1] == "tests/validation"
+    assert command[-2] == "tests"
+    assert ("-m", mark) in tuple(pairwise(command))
+
+
+def test_explicit_and_p0_selections_do_not_skip_requested_files(
+    tmp_path: Path,
+) -> None:
+    validation_selector = "tests/validation/test_example.py::test_requested"
+    explicit_selectors, explicit_mark = release._pytest_selection(
+        "unit", (validation_selector,)
+    )
+    explicit_command = release._pytest_command(
+        tmp_path, "unit", explicit_selectors, explicit_mark
+    )
+    assert validation_selector in explicit_command
+    assert "--ignore" not in explicit_command
+
+    p0_selectors, p0_mark = release._pytest_selection("p0", ())
+    p0_command = release._pytest_command(tmp_path, "p0", p0_selectors, p0_mark)
+    assert p0_mark == ""
+    assert "--ignore" not in p0_command
+    assert all(selector in p0_command for selector in release.P0)
+
+    all_selectors, all_mark = release._pytest_selection("all", ())
+    all_command = release._pytest_command(tmp_path, "all", all_selectors, all_mark)
+    assert all_mark == ""
+    assert "--ignore" not in all_command
 
 
 def test_timeout_override_parser_handles_both_compact_spellings() -> None:

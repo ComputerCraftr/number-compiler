@@ -65,6 +65,8 @@ class D8CylinderFrame:
     origin: int = 0
     gain: int = 1
     _local_word: int = field(init=False, repr=False, compare=False)
+    _source_byte: int = field(init=False, repr=False, compare=False)
+    _high_fiber_mod5: int | None = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if any(
@@ -74,17 +76,63 @@ class D8CylinderFrame:
             raise TypeError("D8 cylinder frame requires exact integers")
         if self.source <= 0 or min(self.consumed, self.origin) < 0 or self.gain <= 0:
             raise ValueError("D8 cylinder frame has an invalid coordinate")
-        if self.consumed >= self.source.bit_length():
-            byte = 0
-        else:
-            byte = (self.source & (255 << self.consumed)) >> self.consumed
+        byte = self._read_source_byte(self.source, self.consumed)
+        object.__setattr__(self, "_source_byte", byte)
+        object.__setattr__(self, "_high_fiber_mod5", None)
         object.__setattr__(self, "_local_word", self.origin + self.gain * byte)
+
+    @staticmethod
+    def _read_source_byte(source: int, consumed: int) -> int:
+        if consumed >= source.bit_length():
+            return 0
+        return (source & (255 << consumed)) >> consumed
+
+    @staticmethod
+    def _compute_high_fiber_mod5(source: int, consumed: int) -> int:
+        return (source >> consumed) % 5
+
+    def _after_eight(self, *, origin: int, gain: int) -> D8CylinderFrame:
+        """Advance one byte while transporting the high fiber's F5 residue."""
+        if type(self) is not D8CylinderFrame:
+            raise TypeError("D8 residue transport requires an exact cylinder frame")
+        if type(origin) is not int or origin < 0 or type(gain) is not int or gain <= 0:
+            raise ValueError("advanced D8 frame has invalid affine coordinates")
+        result = object.__new__(D8CylinderFrame)
+        consumed = self.consumed + 8
+        source_byte = self._read_source_byte(self.source, consumed)
+        object.__setattr__(result, "source", self.source)
+        object.__setattr__(result, "consumed", consumed)
+        object.__setattr__(result, "origin", origin)
+        object.__setattr__(result, "gain", gain)
+        object.__setattr__(result, "_source_byte", source_byte)
+        high_fiber_mod5 = self._high_fiber_mod5
+        object.__setattr__(
+            result,
+            "_high_fiber_mod5",
+            None
+            if high_fiber_mod5 is None
+            else (high_fiber_mod5 - self._source_byte) % 5,
+        )
+        object.__setattr__(result, "_local_word", origin + gain * source_byte)
+        return result
 
     def local_word(self) -> int:
         return self._local_word
 
     def materialize(self) -> int:
         return self.origin + self.gain * (self.source >> self.consumed)
+
+    def residue(self, modulus: int) -> int:
+        """Read an exact bounded residue without materializing the high fiber."""
+        if type(modulus) is not int or modulus < 1 or 160 % modulus:
+            raise ValueError("D8 frame residue modulus must divide 160")
+        low = self._source_byte & 31
+        high_fiber_mod5 = self._high_fiber_mod5
+        if high_fiber_mod5 is None:
+            high_fiber_mod5 = self._compute_high_fiber_mod5(self.source, self.consumed)
+            object.__setattr__(self, "_high_fiber_mod5", high_fiber_mod5)
+        high = low + 32 * (((high_fiber_mod5 - low) * 3) % 5)
+        return (self.origin % modulus + (self.gain % modulus) * high) % modulus
 
     def above_cycle(self) -> bool:
         # A high fiber at least four excludes normalized cycle states 1/2.
@@ -534,11 +582,9 @@ class D8TemporalTable:
         residue = local & 255
         row = self._select_row(residue + 256)
         multiplier = 3 ** row[0]
-        expected = D8CylinderFrame(
-            frame.source,
-            frame.consumed + 8,
-            row[1] + multiplier * (local >> 8),
-            multiplier * frame.gain,
+        expected = frame._after_eight(
+            origin=row[1] + multiplier * (local >> 8),
+            gain=multiplier * frame.gain,
         )
         if (
             row[0] != ones
@@ -572,11 +618,9 @@ class D8TemporalTable:
         row = self._select_row(residue + 256)
         ones, target_origin = row
         multiplier = 3**ones
-        result = D8CylinderFrame(
-            frame.source,
-            frame.consumed + 8,
-            target_origin + multiplier * (local >> 8),
-            multiplier * frame.gain,
+        result = frame._after_eight(
+            origin=target_origin + multiplier * (local >> 8),
+            gain=multiplier * frame.gain,
         )
         self.ledger.bump(
             _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_CYLINDER_TRANSITIONS

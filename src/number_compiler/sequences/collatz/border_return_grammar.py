@@ -26,6 +26,9 @@ from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_carry_cylinder import (
+    next_6305_upper_numerator,
+)
 from number_compiler.sequences.collatz.border_identity import (
     BorderEntryPort,
     BorderExitPort,
@@ -39,6 +42,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.position_cycle_harmonics import (
+        PositionHarmonicSpectrum,
+    )
     from number_compiler.sequences.collatz.temporal_f5_observer import (
         CollatzF5AffineAction,
     )
@@ -94,6 +100,109 @@ class BorderReturnMacro:
         """Return the finite program cap, not a future convergence bound."""
         return _MAX_RETURNS_PER_ACTION
 
+    def demanded_position_harmonics(
+        self,
+        radix: int,
+        position: int,
+        *,
+        walsh64: bool = False,
+    ) -> PositionHarmonicSpectrum:
+        """Read digit frequencies at the exact source-bound return seams.
+
+        The homogeneous zero-tail-free case uses its centered affine orbit.
+        Variable tails keep their issued upper cursors and are bounded by this
+        producer's finite 64-return cap; no zero-tail digits are replayed.
+        """
+        from number_compiler.arithmetic.contracts.block_effect import (
+            BlockContextBudgetExceeded,
+        )
+        from number_compiler.arithmetic.fields.homogeneous_growth import (
+            HomogeneousGrowthScale,
+        )
+        from number_compiler.arithmetic.fields.walsh import walsh64_mod5
+        from number_compiler.sequences.collatz.border_carry_cylinder import (
+            Border6305CarryCylinder,
+        )
+        from number_compiler.sequences.collatz.position_cycle_harmonics import (
+            PositionHarmonicSpectrum,
+        )
+
+        validate_border_return_macro(self)
+        if not self.zero_tails:
+            raise ValueError("position harmonic needs an admitted 6305 return")
+        if type(radix) is not int or not 2 <= radix <= 64:
+            raise ValueError("position radix must be 2..64")
+        if type(position) is not int or position < 0:
+            raise ValueError("position must be nonnegative")
+        if (position + 1) * radix.bit_length() > 4096:
+            raise BlockContextBudgetExceeded(
+                "position exceeds the exact modulus budget"
+            )
+        if type(walsh64) is not bool:
+            raise TypeError("Walsh64 demand must be Boolean")
+        if walsh64 and len(self.zero_tails) < 64:
+            raise ValueError("Walsh64 needs 64 authenticated border returns")
+
+        current = self.source
+        if self.entry_port is BorderEntryPort.DIGIT_SIX:
+            current //= 2
+        elif self.entry_port is BorderEntryPort.DIGIT_ZERO:
+            current >>= v2_positive(current)
+        if current % 10 == 5:
+            current = (3 * current + 1) // 2
+        if current % 10 != 3:
+            raise ValueError("issued return word has no three-digit source seam")
+
+        if not any(self.zero_tails):
+            initial = Border6305CarryCylinder.from_three_digit(current)
+            if initial.zero_tail != 0:
+                raise AssertionError("all-zero return word has a nonzero initial tail")
+            return initial.demanded_position_harmonics(
+                len(self.zero_tails), radix, position, walsh64=walsh64
+            )
+
+        modulus = radix ** (position + 1)
+        place = modulus // radix
+        counts = [0] * radix
+        mask = 0
+        cursor: Border6305CarryCylinder | None = None
+        total_halvings = 0
+        for index, zero_tail in enumerate(self.zero_tails):
+            if cursor is None:
+                cursor = Border6305CarryCylinder.from_three_digit(current)
+            if cursor.zero_tail != zero_tail:
+                raise AssertionError("variable-tail orbit lost its issued upper cursor")
+            before_digit = (current // place) % radix
+            endpoint = cursor.endpoint
+            counts[before_digit] += 1
+            if walsh64 and index < 64 and ((endpoint // place) % radix != before_digit):
+                mask |= 1 << index
+            total_halvings += zero_tail + 2
+            following = cursor.next_return()
+            if index + 1 < len(self.zero_tails) and following is None:
+                raise AssertionError(
+                    "issued variable-tail word crosses a terminal border"
+                )
+            current, cursor = endpoint, following
+
+        return PositionHarmonicSpectrum(
+            radix=radix,
+            position=position,
+            repetitions=len(self.zero_tails),
+            counts=tuple(counts),
+            forced_position_interval=None,
+            forced_position_digit=None,
+            two_adic_forced_through=None,
+            ternary_forced_from=None,
+            odd_preperiod=None,
+            odd_period=None,
+            evaluated_cells=len(self.zero_tails),
+            radial_scale=HomogeneousGrowthScale(
+                2 * len(self.zero_tails), total_halvings
+            ),
+            walsh64_change_mod5=walsh64_mod5(mask) if walsh64 else None,
+        )
+
     def f5_action(self) -> CollatzF5AffineAction:
         from number_compiler.sequences.collatz.temporal_f5_observer import (
             _project_dyadic_fields_f5,
@@ -135,6 +244,19 @@ class BorderReturnMacro:
             "normalized_symbols": self.normalized_symbols,
             "odd_symbols": self.odd_symbols,
             "zero_tail_valuations": self.zero_tails,
+            "return_forced_decimal_carry": {
+                "source_units": 3,
+                "product_units": 0,
+                "carry_into_next_decimal_position": 1,
+            },
+            "return_radial_scale": {
+                "growths": 2 * len(self.zero_tails),
+                "halvings": sum(self.zero_tails) + 2 * len(self.zero_tails),
+                "scope": "completed 6305 returns; entry and exit are separate",
+            },
+            "return_affine_binary_corrections": tuple(
+                2 if exponent == 0 else 1 for exponent in self.zero_tails
+            ),
             "return_physical_ticks": self.return_physical_ticks,
             "return_normalized_steps": self.return_normalized_steps,
             "return_clock_scope": (
@@ -369,17 +491,24 @@ def select_border_return_macro(
             upper=raw.bit_length(),
         )
 
-    while state.decimal_residue(10) == 3 and len(tails) < max_returns:
+    # The lower decimal carry is fixed by the entry digit 3. Carry its exact
+    # upper numerator across returns so the hot loop need not reconstruct q
+    # from the complete endpoint after each selected return.
+    upper_numerator: int | None = None
+    returns_to_three = state.decimal_residue(10) == 3
+    last_upper_odd: int | None = None
+    while returns_to_three and len(tails) < max_returns:
         account_operands(current)
-        q = (current - 3) // 10
-        t = 3 * q + 1
-        account_operands(q, t)
+        if upper_numerator is None:
+            upper_numerator = 3 * ((current - 3) // 10) + 1
+        account_operands(upper_numerator)
         if ledger is not None:
             ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS)
-        exponent = v2_positive(t)
+        exponent = v2_positive(upper_numerator)
         if budget < exponent + 4:
             break
-        odd = t >> exponent
+        odd = upper_numerator >> exponent
+        last_upper_odd = odd
         physical_before = physical
         normalized_before = normalized
         account_operands(exponent, odd, budget)
@@ -420,32 +549,41 @@ def select_border_return_macro(
         ):
             raise AssertionError("border return lost its distinct clocks")
         tails.append(exponent)
-        if odd % 4 == 3:
-            if state.decimal_residue(10) != 3:
-                raise AssertionError("upper borrow return did not reach a 3 digit")
+        upper_numerator = next_6305_upper_numerator(odd)
+        returns_to_three = upper_numerator is not None
+        # The independently transported F5 and parity ports check the exact
+        # output of the upper carry cylinder before another return is admitted.
+        if state.residue5 != 3 or (not state.even) != returns_to_three:
+            raise AssertionError("upper/lower carry ports disagree with F5 and parity")
+        if returns_to_three:
             returns += 1
         else:
-            if state.decimal_residue(10) != 8:
-                raise AssertionError("upper carry exit did not reach an 8 digit")
             break
 
     if not tails:
         record_refusal()
         return None
 
-    if state.decimal_residue(10) == 3:
+    if returns_to_three:
         exit_port = (
             BorderExitPort.RETURN_TO_THREE
             if budget
             else BorderExitPort.RETURN_AT_HORIZON
         )
-    elif state.decimal_residue(10) == 8:
-        if state.decimal_residue(20) == 8:
+    else:
+        if last_upper_odd is None:
+            raise AssertionError("8 exit lacks the upper odd carry coordinate")
+        endpoint_residue20 = ((15 * (last_upper_odd & 7) + 1) >> 1) % 20
+        if endpoint_residue20 == 8:
             exit_port = BorderExitPort.EIGHT_TO_FOUR
-        elif state.decimal_residue(20) == 18:
+        elif endpoint_residue20 == 18:
             exit_port = BorderExitPort.EIGHT_TO_NINE
         else:
-            raise AssertionError("8 border has an impossible source residue")
+            raise AssertionError("8 border has an impossible upper carry residue")
+        if state.residue5 != 3 or state.even is False:
+            raise AssertionError("8 border disagrees with transported F5/parity ports")
+        if state.decimal_residue(10) != 8:
+            raise AssertionError("upper carry exit did not reach an 8 digit")
         if budget:
             # Project the complete 8->9 suffix before mutating the local run
             # program.  In particular, a rejected candidate never allocates

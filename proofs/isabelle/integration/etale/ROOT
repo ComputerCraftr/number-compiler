@@ -1,6 +1,6 @@
 session Etale_Primary_Carry in etale = "HOL-Number_Theory" +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_S_Arithmetic Shared_Growth_Arithmetic
+  sessions Shared_S_Arithmetic Shared_Growth_Arithmetic Shared_Carry_Dynamics
   theories
     Primary_Carry_Jet
     Fermat_Mersenne_Source_Bound_Refinement
@@ -9,6 +9,7 @@ session Etale_Primary_Carry in etale = "HOL-Number_Theory" +
     Special_Factor_Progressions
     Fermat_Binomial_Negacyclic_Source
     Fermat_Dyadic_Unit_Pivot
+    Fermat_Binomial_Unit_Producer
     Fermat_Integral_Ideal_Pepin_Bridge
     Transverse_Frobenius_Holonomy
     Mersenne_Etale_Zero_Section

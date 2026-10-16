@@ -824,11 +824,30 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             self._innovation_tape_modulus = modulus
 
     def observe_boundary_macro(
-        self, *, modulus: int | None = None
+        self,
+        *,
+        modulus: int | None = None,
+        position_spectrum_requests: tuple[tuple[int, int], ...] = (),
+        odd_position_moore_requests: tuple[tuple[int, int], ...] = (),
+        position_moore_walsh64: bool = False,
     ) -> dict[str, object]:
-        """Observe the first macro actually admitted by this physical image."""
+        """Observe the first admitted macro and any explicitly requested ports.
+
+        Position spectra and odd-radix Moore machines are optional rich
+        observations. Ordinary term, digit and metrics requests never invoke
+        them. Their futures are conditional on repeating this exact admitted
+        parity word; they do not predict the next Collatz selector.
+        """
         from number_compiler.sequences.collatz.boundary_observation import (
+            observe_empty_source_innovation_tape,
             observe_guarded_boundary,
+            validate_position_requests,
+        )
+
+        validate_position_requests(
+            position_spectrum_requests,
+            odd_position_moore_requests,
+            position_moore_walsh64,
         )
 
         if not self._innovation_tape_demanded:
@@ -848,25 +867,18 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             if workspace is not None:
                 global_tape = workspace.innovation_observation
             else:
-                from number_compiler.sequences.collatz.innovation_input_tape import (
-                    ParityProgramBuilder,
+                global_tape = observe_empty_source_innovation_tape(
+                    self.seed, prepared_modulus, self._ledger
                 )
-                from number_compiler.sequences.collatz.innovation_port_moore import (
-                    observe_parity_program,
-                )
-
-                with ParityProgramBuilder(self.seed, self._ledger) as builder:
-                    program = builder.finish(self.seed, steps=0, one_symbols=0)
-                    global_tape = observe_parity_program(
-                        program,
-                        prepared_modulus,
-                        ledger=self._ledger,
-                        physical_endpoint=self.seed,
-                        physical_ticks=0,
-                        phase=0,
-                    )
         return observe_guarded_boundary(
-            self.seed, witness, selected_modulus, self._ledger, global_tape
+            self.seed,
+            witness,
+            selected_modulus,
+            self._ledger,
+            global_tape,
+            position_spectrum_requests=position_spectrum_requests,
+            odd_position_moore_requests=odd_position_moore_requests,
+            position_moore_walsh64=position_moore_walsh64,
         )
 
     @source_reads_only

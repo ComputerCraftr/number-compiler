@@ -51,6 +51,8 @@ def _copied_border_with_word(
         "window_digits",
         "max_visited_states",
         "source_pair_inspections",
+        "outer_pairs",
+        "window_tiles",
         "physical_growth_certified",
         "full_integer_certified",
         "_seal",
@@ -275,3 +277,32 @@ def test_warm_border_certificate_preserves_source_probe_budget() -> None:
     finally:
         cold_owner.dispose()
         assert cold_ledger.entries == cold_ledger.nodes == 0
+
+
+def test_border_certificate_rejects_mutated_nested_window_tile_fields() -> None:
+    seed = 874321
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(seed, 10), base=10)
+    try:
+        certificate = owner.certify_border_growth(
+            owner.initial, steps=2, window_digits=1, max_states=2
+        )
+        tile = next(tile for tile in certificate.window_tiles if tile is not None)
+        mutations = (
+            ("k", tile.k, tile.k + 1),
+            ("high", tile.high, tile.high + 1),
+            ("low", tile.low, (tile.low + 1) % (10**tile.k)),
+        )
+        for field, original, changed in mutations:
+            object.__setattr__(tile, field, changed)
+            try:
+                with pytest.raises(
+                    ValueError, match="border growth certificate was changed"
+                ):
+                    certificate.validate(owner, owner.initial)
+            finally:
+                object.__setattr__(tile, field, original)
+        certificate.validate(owner, owner.initial)
+    finally:
+        owner.dispose()
+        assert ledger.entries == ledger.nodes == 0

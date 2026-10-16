@@ -13,6 +13,9 @@ Period: 2026-10-11 through 2026-10-17 (Sunday–Saturday).
 | [Comma labelled-selector proof cutover](comma.md) | 0 |
 | [NC8 boundary and joint cocycle integration](hashlife.md) | 0 |
 | [NC14 source-bound radix and carry integration](nc14-radix.md) | 0 |
+| [NC15 output morphisms and Boolean counter integration](nc15-banks.md) | 0 |
+| [NC15 shared carry actions, source safety and validation cost](nc15-carry-safety.md) | 0 |
+| [NC15 shared harmonic banks and finite temporal actions](nc15-harmonics.md) | 0 |
 <!-- sprint-topics:end -->
 
 ## Provenance

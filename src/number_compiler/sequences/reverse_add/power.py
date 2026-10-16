@@ -45,6 +45,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.boundary_window import (
         ReverseBoundaryWindowObservation,
     )
+    from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
+        ReverseAddSpatialBankMorphism,
+    )
     from number_compiler.sequences.reverse_add.source_images import (
         ReverseSourceImageWorkspace,
     )
@@ -52,6 +55,9 @@ if TYPE_CHECKING:
         ReverseInnovationBank,
         SkewMoment,
         SourceBoundMoment,
+    )
+    from number_compiler.sequences.reverse_add.temporal_residue99 import (
+        ReverseAddResidue99,
     )
 
 
@@ -278,6 +284,28 @@ class ReverseAddPoweredTerm:
                 scratch=scratch,
                 first_width=first_width,
             )
+
+    def temporal_spatial_bank_morphism(
+        self, start: int, count: int, *, period: int = 2
+    ) -> ReverseAddSpatialBankMorphism:
+        """Publish a source-issued protected spatial bank without an integer."""
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        if self.base != 10:
+            raise ValueError("spatial bank morphism requires decimal reversal")
+        return self._source_workspace().certified_spatial_bank_morphism(
+            start, count, period=period
+        )
+
+    def temporal_residue99(self) -> ReverseAddResidue99:
+        """Predict mod-99 without initializing the Q19 source workspace."""
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        if self.base != 10:
+            raise ValueError("temporal residue99 is decimal-only")
+        from .temporal_residue99 import from_seed
+
+        return from_seed(self.seed, self.generation)
 
     def temporal_matrix(self, *, max_bits: int = 16384) -> SourceBoundMoment:
         """Project the authenticated endpoint into its exact skew matrix."""

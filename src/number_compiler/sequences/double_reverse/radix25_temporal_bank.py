@@ -15,6 +15,9 @@ from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.integer_congruence import join_congruences
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import (
+    double_reverse as _double_reverse_keys,
+)
 
 from ._temporal_bank_authority import (
     FrozenMap,
@@ -26,6 +29,7 @@ from ._temporal_bank_authority import (
 from .protected_temporal_bank import (
     PERIODIC_CHANNELS,
     ProtectedPeriodicBank,
+    protected_periodic_bank,
 )
 from .temporal_ports import DecimalCarryPort, decimal_carry_port
 
@@ -176,7 +180,9 @@ def temporal_bank_walsh64(
     masks = {name: 0 for name in BOOL_CHANNELS}
     f5_masks = [0] * 5
     for lane in range(WALSH64_LANES):
-        frame = bank.at(start_tick + lane)
+        # The public read above validated the complete source-authority chain;
+        # use the owner-private accessor for this bounded internal scan.
+        frame = bank._at_trusted(start_tick + lane)
         for name in BOOL_CHANNELS:
             bit = frame.scalar(name)
             if bit not in (0, 1):
@@ -232,12 +238,56 @@ class JointRadix25TemporalBank:
             raise ValueError("radix and Walsh actions have different source widths")
 
 
+def joint_radix25_temporal_bank(
+    arena: SLPArena,
+    root: int,
+    phase: int,
+    pair_position: int,
+    f_steps: int,
+    *,
+    physical_prefix: int,
+    period: int,
+    places: int,
+    max_bits: int,
+    walsh_start: int,
+    ledger: ResourceLedger,
+    scratch_owner: int,
+) -> JointRadix25TemporalBank:
+    """Join a protected temporal bank, Walsh lanes and radix source port."""
+    if type(f_steps) is not int or f_steps < WALSH64_LANES:
+        raise ValueError("joint Walsh64 bank needs 64 two-step temporal frames")
+    bank = protected_periodic_bank(
+        arena,
+        root,
+        phase,
+        pair_position,
+        f_steps,
+        period,
+        physical_prefix=physical_prefix,
+        ledger=ledger,
+        scratch_owner=scratch_owner,
+    )
+    walsh = temporal_bank_walsh64(bank, start_tick=walsh_start)
+    source = radix25_shift_port(
+        arena,
+        root,
+        places=places,
+        max_bits=max_bits,
+        physical_prefix=physical_prefix,
+        ledger=ledger,
+        scratch_owner=scratch_owner,
+    )
+    ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS)
+    return JointRadix25TemporalBank(physical_prefix, source, bank, walsh)
+
+
 __all__ = [
     "BOOL_CHANNELS",
     "WALSH64_LANES",
     "JointRadix25TemporalBank",
     "Radix25ShiftPort",
     "Walsh64TemporalPort",
+    "joint_radix25_temporal_bank",
     "radix25_shift_port",
     "temporal_bank_walsh64",
 ]

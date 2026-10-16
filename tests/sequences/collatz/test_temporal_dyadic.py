@@ -117,6 +117,47 @@ def test_cylinder_transition_composes_without_materializing_midpoints(
         assert h1 + h2 == ones
 
 
+def test_frame_residue_tracks_bounded_fiber_without_materializing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = D8TemporalTable.for_ledger(ResourceLedger())
+    direct = D8CylinderFrame(0x123456789ABCDEF, consumed=16, origin=17, gain=9)
+    assert direct.residue(160) == direct.materialize() % 160
+
+    def forbidden(frame: D8CylinderFrame) -> int:
+        raise AssertionError("residue probe materialized the high fiber")
+
+    monkeypatch.setattr(D8CylinderFrame, "materialize", forbidden)
+    for source in range(1, 257):
+        assert D8CylinderFrame(source).residue(160) == source % 160
+
+    source = (1 << 1024) + (73 << 8) + 0xA5
+    frame = D8CylinderFrame(source)
+    for _ in range(12):
+        expected = (frame.origin + frame.gain * (source >> frame.consumed)) % 160
+        assert frame.residue(160) == expected
+        frame, _ones, _residue, _origin = table.transition(frame)
+
+
+def test_unobserved_frame_creation_and_advance_skip_f5_residue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = D8TemporalTable.for_ledger(ResourceLedger())
+
+    def forbidden(source: int, consumed: int) -> int:
+        raise AssertionError("unrequested frame computed its F5 residue")
+
+    monkeypatch.setattr(
+        D8CylinderFrame,
+        "_compute_high_fiber_mod5",
+        staticmethod(forbidden),
+    )
+    frame = D8CylinderFrame((1 << 4096) + 0xA5)
+    assert frame._high_fiber_mod5 is None
+    advanced, _ones, _residue, _origin = table.transition(frame)
+    assert advanced._high_fiber_mod5 is None
+
+
 @pytest.mark.validation
 def test_exhaustive_d16_centered_composition_and_occurrence_counts() -> None:
     table = D8TemporalTable.for_ledger(ResourceLedger())

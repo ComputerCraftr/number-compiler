@@ -109,7 +109,7 @@ def test_growth_table_fixture_loader_preserves_tuple_shapes_and_rejects_corrupti
     tmp_path: Path,
 ) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[3]
+        Path(__file__).resolve().parents[4]
         / "devtools"
         / "verification"
         / "data"

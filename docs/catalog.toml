@@ -438,3 +438,27 @@ kind = "sprint-topic"
 topic = "nc14-radix"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-nc15-banks"
+path = "docs/sprints/week-of-2026-10-11/nc15-banks.md"
+kind = "sprint-topic"
+topic = "nc15-banks"
+status = "current"
+week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-nc15-carry-safety"
+path = "docs/sprints/week-of-2026-10-11/nc15-carry-safety.md"
+kind = "sprint-topic"
+topic = "nc15-carry-safety"
+status = "current"
+week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-nc15-harmonics"
+path = "docs/sprints/week-of-2026-10-11/nc15-harmonics.md"
+kind = "sprint-topic"
+topic = "nc15-harmonics"
+status = "current"
+week_start = "2026-10-11"

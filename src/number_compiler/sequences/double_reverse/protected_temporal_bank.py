@@ -25,6 +25,8 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_interval,
 )
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.functions.finite_observer import minimize_finite_orbit
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
@@ -34,6 +36,7 @@ from ._temporal_bank_authority import (
     FrozenMap,
     _SourceAuthorizedRecord,
     issue_source_record,
+    validate_source_record,
 )
 from .stencil_moore import stencil_cell
 from .temporal_hashlife import edge_phase, growth_ports
@@ -85,15 +88,12 @@ class _Match:
     def power(self, count: int) -> _Match:
         if type(count) is not int or count < 0:
             raise ValueError("negative periodic repeat count")
-        result = self.identity(len(self.matches))
-        block = self
-        while count:
-            if count & 1:
-                result = result.then(block)
-            count >>= 1
-            if count:
-                block = block.then(block)
-        return result
+        return binary_power(
+            self,
+            count,
+            identity=self.identity(len(self.matches)),
+            compose=lambda first, second: first.then(second),
+        ).value
 
 
 def certified_periodic_region(
@@ -359,64 +359,48 @@ def _moore_counts(
     if len(frames) != len(next_indices):
         raise ValueError("Moore state/transition length mismatch")
     answer: dict[str, int] = {}
-    if ledger is not None:
-        ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS
-        )
+
+    def refinement_work(size: int) -> None:
+        if ledger is not None:
+            ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_SWEEPS
+            )
+            ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_ROUNDS
+            )
+            ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_STATE_VISITS,
+                size,
+            )
+
     for channel in (*PERIODIC_CHANNELS, "joint"):
-        labels: list[object] = (
-            [
-                (
-                    frame.digits,
-                    frame.next_digits,
-                    tuple(frame.scalar(name) for name in PERIODIC_CHANNELS),
-                )
-                for frame in frames
-            ]
+        labels = tuple(
+            (
+                frame.digits,
+                frame.next_digits,
+                tuple(frame.scalar(name) for name in PERIODIC_CHANNELS),
+            )
             if channel == "joint"
-            else [frame.scalar(channel) for frame in frames]
+            else frame.scalar(channel)
+            for frame in frames
         )
         if ledger is not None:
             ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
                 len(frames) * (len(PERIODIC_CHANNELS) if channel == "joint" else 1),
             )
-        classes = _canonical(labels, ledger=ledger)
-        # Binary lifting of complete future output words. Once the word
-        # length reaches the number of reachable states, equality is the
-        # stable Moore congruence of this deterministic finite machine.
-        # Signatures are interned tuples (no probabilistic hashing).
-        jump = next_indices
-        represented = 1
-        while represented < len(frames):
-            if ledger is not None:
-                ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_SWEEPS
-                )
-            classes = _canonical(
-                [(classes[i], classes[jump[i]]) for i in range(len(frames))],
-                ledger=ledger,
+        if ledger is not None:
+            ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS
             )
-            jump = tuple(jump[jump[i]] for i in range(len(frames)))
-            represented *= 2
-            if ledger is not None:
-                ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_ROUNDS
-                )
-        answer[channel] = len(set(classes))
-    return answer
-
-
-def _canonical(
-    keys: list[object], *, ledger: ResourceLedger | None = None
-) -> tuple[int, ...]:
-    if ledger is not None:
-        ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_STATE_VISITS,
-            len(keys),
+        quotient = minimize_finite_orbit(
+            next_indices,
+            labels,
+            max_states=MAX_PROTECTED_TEMPORAL_STATES,
+            on_refinement=refinement_work if ledger is not None else None,
         )
-    ids: dict[object, int] = {}
-    return tuple(ids.setdefault(key, len(ids)) for key in keys)
+        answer[channel] = quotient.class_count
+    return answer
 
 
 @dataclass(frozen=True, slots=True)
@@ -496,6 +480,11 @@ class ProtectedPeriodicBank(_SourceAuthorizedRecord):
 
     @property
     def represented_steps(self) -> int:
+        validate_source_record(self)
+        return self._represented_steps_trusted()
+
+    def _represented_steps_trusted(self) -> int:
+        """Compute the lasso extent after the caller has checked authority."""
         return (
             len(self.prefix_frames)
             + len(self.motif) * self.repeat_count
@@ -503,6 +492,11 @@ class ProtectedPeriodicBank(_SourceAuthorizedRecord):
         )
 
     def at(self, tick: int) -> PeriodicBankFrame:
+        validate_source_record(self)
+        return self._at_trusted(tick)
+
+    def _at_trusted(self, tick: int) -> PeriodicBankFrame:
+        """Read a frame after one source-authority check at the API boundary."""
         if type(tick) is not int or not 0 <= tick < self.f_steps:
             raise IndexError(tick)
         if tick < len(self.prefix_frames):
@@ -516,6 +510,7 @@ class ProtectedPeriodicBank(_SourceAuthorizedRecord):
         return self.suffix[tick]
 
     def counts(self) -> dict[str, int]:
+        validate_source_record(self)
         return {
             channel: (
                 sum(frame.scalar(channel) for frame in self.prefix_frames)
@@ -686,7 +681,7 @@ def protected_periodic_bank(
                 tuple(frames[start : start + tail]),
                 _moore_counts(frames_tuple, next_indices, ledger=ledger),
             )
-    if result.represented_steps != f_steps:
+    if result._represented_steps_trusted() != f_steps:
         raise AssertionError("pumped bank temporal duration is inconsistent")
     issue_source_record(result, arena, source_root, source_generation=physical_prefix)
     if ledger is not None:

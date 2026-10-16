@@ -14,6 +14,12 @@ knowledge modulo ``F_n = 2**(2**n)+1``.  This module never claims otherwise.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+        DyadicBooleanCounterWindow,
+    )
 
 from number_compiler.arithmetic.fields.integer_congruence import join_congruences
 from number_compiler.arithmetic.fields.walsh import WalshH5, walsh64
@@ -312,6 +318,39 @@ class ThreePowerJointQuotient:
             or self.small_modulus_squarings != 2 * len(self.radix_ports)
         ):
             raise ValueError("invalid source work ledger")
+
+    def demand_boolean_counter(
+        self, width: int, *, offset: int = 0
+    ) -> DyadicBooleanCounterWindow:
+        """Authenticate a moving binary XOR/counter/fold observation.
+
+        The source is shared with the existing CRT packet; the power-of-two
+        CRT projection must match the independent 2-adic binomial owner.
+        Neither observer implies completeness of the candidate's global fold.
+        """
+        from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
+            MAX_COUNTER_FOLD_WIDTH,
+            demand_dyadic_boolean_counter,
+        )
+
+        if self.index > MAX_COUNTER_FOLD_WIDTH.bit_length() - 1:
+            raise ValueError("Fermat width exceeds Boolean-counter budget")
+        two_component = self.crt_modulus & -self.crt_modulus
+        check = (
+            None
+            if two_component == 1
+            else (
+                two_component.bit_length() - 1,
+                self.crt_unit % two_component,
+            )
+        )
+        return demand_dyadic_boolean_counter(
+            self.level,
+            width,
+            fermat_width=1 << self.index,
+            offset=offset,
+            source_low_check=check,
+        )
 
     @property
     def terminal_status(self) -> str:

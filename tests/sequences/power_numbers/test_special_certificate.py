@@ -14,10 +14,13 @@ def test_demanded_depth_certificates_never_fall_back_from_missing_extractor() ->
         assert cert.status == "prime"
         assert cert.specialization_raw_squarings == 0
         assert cert.carrier_states_enumerated == 0
-    # F3 is now proved directly by the square-root divisor bound.
+    for n in (1, 2, 3):
+        cert = fermat_depth_certificate(n)
+        assert cert.method == "bounded-boolean-counter-full-coverage-pepin"
+    # F1–F3 use the full-coverage source-counter Pepin certificate.
     f3 = fermat_depth_certificate(3)
     assert f3.status == "prime"
-    assert f3.method == "terminal-threshold:fermat-sqrt-divisor-lower-bound"
+    assert f3.method == "bounded-boolean-counter-full-coverage-pepin"
     for n in (4, 5):
         cert = fermat_depth_certificate(n)
         assert cert.status == "unknown"
@@ -200,6 +203,14 @@ def test_direct_special_certificates_reject_symbolic_width_before_large_shift() 
         fermat_depth_certificate(1_000_000)
     with pytest.raises(ValueError, match="candidate exceeds max_candidate_bits"):
         mersenne_depth_certificate(1_000_001)
+
+
+def test_special_certificate_indices_reject_coercible_nonintegers() -> None:
+    for malformed in (True, 1.0, 1.5):
+        with pytest.raises(TypeError, match="must be an integer"):
+            fermat_depth_certificate(cast(int, malformed))
+        with pytest.raises(TypeError, match="must be an integer"):
+            mersenne_depth_certificate(cast(int, malformed))
 
 
 def test_removed_recurrence_policy_cannot_be_enabled_even_after_cache_hit() -> None:

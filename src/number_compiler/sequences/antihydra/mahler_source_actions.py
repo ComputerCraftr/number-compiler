@@ -8,6 +8,7 @@ Cold discovery belongs to the shared arithmetic walker, not this consumer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import gcd
 from operator import add, lt, mul
 from typing import TYPE_CHECKING, Final, Literal, Self, cast
 
@@ -22,7 +23,6 @@ from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianCloc
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.three_power_radix import (
     ThreePowerRadixOrbit,
-    difference_power_block,
 )
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.hashlife.execution.dyadic_return_records import (
@@ -43,10 +43,14 @@ from number_compiler.sequences.antihydra.machine import MACHINE_SHA256
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
+    from number_compiler.sequences.antihydra.mahler_joint_future import (
+        MahlerJointInteriorWindow,
+    )
 
 
 # Trusted producer-path marker only; domain action admission remains local.
 _SOURCE_ACTION_PUBLISHER = object()
+MAX_MAHLER_SOURCE_EXTENT: Final[int] = 4096
 _INTEGER_ROOT_ACTION_CACHE_VERSION: Final[str] = "integer-root-v2-publisher-qualified"
 _CENTERED_PARITY_SAFETY_TAG: Final[str] = (
     "centered-parity-strict-margin-positive-infinity"
@@ -64,6 +68,8 @@ class MahlerSourceBoundSafetyAction:
     def __post_init__(self) -> None:
         if type(self.extent) is not int or self.extent < 0:
             raise ValueError("Mahler action extent must be a natural integer")
+        if self.extent > MAX_MAHLER_SOURCE_EXTENT:
+            raise BlockContextBudgetExceeded("Mahler source extent exceeds hard limit")
         if type(self.offset_hat) is not int or (
             self.cap_hat is not None and type(self.cap_hat) is not int
         ):
@@ -106,8 +112,36 @@ class MahlerSourceBoundSafetyAction:
         """Chronologically compose complete source-bound Mahler actions."""
         if type(after) is not MahlerSourceBoundSafetyAction:
             raise TypeError("Mahler composition requires another source-bound action")
+        after.__post_init__()
+        if self.extent + after.extent > MAX_MAHLER_SOURCE_EXTENT:
+            raise BlockContextBudgetExceeded(
+                "Mahler composition exceeds hard extent limit"
+            )
+        return self._then_with_authenticated_gain(after, 3**after.extent, ledger=ledger)
+
+    def _then_with_authenticated_gain(
+        self,
+        after: MahlerSourceBoundSafetyAction,
+        after_gain: int,
+        *,
+        ledger: ResourceLedger | None = None,
+    ) -> MahlerSourceBoundSafetyAction:
+        """Compose using the exact multiplier already carried by a joint action.
+
+        This private path avoids rebuilding ``3**after.extent`` during source
+        action powering.  Its caller is the checked joint-action owner, whose
+        ``after_gain`` is validated together with the source cylinder.
+        """
+        if type(after) is not MahlerSourceBoundSafetyAction:
+            raise TypeError("Mahler composition requires another source-bound action")
+        if type(after_gain) is not int or after_gain < 1:
+            raise ValueError("Mahler composition needs a positive exact multiplier")
         self.__post_init__()
         after.__post_init__()
+        if self.extent + after.extent > MAX_MAHLER_SOURCE_EXTENT:
+            raise BlockContextBudgetExceeded(
+                "Mahler composition exceeds hard extent limit"
+            )
         if not self.extent:
             return after
         if not after.extent:
@@ -115,7 +149,7 @@ class MahlerSourceBoundSafetyAction:
         offset, cap = compose_increasing_minplus_values(
             self.offset_hat,
             self.cap_hat,
-            3**after.extent,
+            after_gain,
             after.offset_hat << self.extent,
             None if after.cap_hat is None else after.cap_hat << self.extent,
             multiply=mul,
@@ -141,6 +175,8 @@ class MahlerSourceBoundSafetyAction:
             raise ValueError("Mahler repetitions must be a natural integer")
         if type(max_coefficient_bits) is not int or max_coefficient_bits < 1:
             raise ValueError("Mahler coefficient budget must be positive")
+        if self.extent * repetitions > MAX_MAHLER_SOURCE_EXTENT:
+            raise BlockContextBudgetExceeded("Mahler power exceeds hard extent limit")
         result = MahlerSourceBoundSafetyAction()
         factor = self
         remaining = repetitions
@@ -195,12 +231,53 @@ class MahlerSourceBoundSafetyAction:
         places: int,
         walsh: bool = False,
         ledger: ResourceLedger | None = None,
+        source: int | None = None,
+        endpoint_h: int | None = None,
+        binary_places: int = 16,
+        decimal_places: int = 4,
+        _workspace: object | None = None,
+        _workspace_transfer: SkewTransfer[int] | None = None,
+        _window_memo: OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow]
+        | None = None,
     ) -> dict[str, object]:
-        """Observe the homogeneous 3**extent action on explicit demand only."""
+        """Demand homogeneous ports and, when supplied, a source-bound future.
+
+        The finite successor selector is derived from the exact original
+        source cylinder and its strict fractional guard. It remains an
+        observer and does not authorize an Antihydra physical transition.
+        """
+        self.__post_init__()
         if self.extent < 1:
             raise ValueError("positive Mahler extent required for difference ports")
         if walsh and (base != 64 or places != 64):
             raise ValueError("Walsh64 requires 64 radix-64 positions")
+        if _workspace is None:
+            if endpoint_h is not None or _workspace_transfer is not None:
+                raise ValueError("source endpoint requires a workspace-issued transfer")
+        else:
+            from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+            from number_compiler.sequences.antihydra.arithmetic_images import (
+                AntihydraArithmeticImageWorkspace,
+            )
+
+            if (
+                source != 7
+                or type(endpoint_h) is not int
+                or endpoint_h < 1
+                or type(_workspace) is not AntihydraArithmeticImageWorkspace
+                or type(_workspace_transfer) is not SkewTransfer
+                or _workspace.returns != self.extent
+            ):
+                raise ValueError("root source detail requires its admitted transfer")
+            endpoint_limit_bits = (
+                max(
+                    _workspace_transfer.upper.bit_length() + 4,
+                    abs(_workspace_transfer.offset).bit_length(),
+                )
+                + 1
+            )
+            if endpoint_h.bit_length() > endpoint_limit_bits:
+                raise ValueError("root endpoint exceeds its admitted transfer bound")
         if ledger is not None:
             if type(ledger) is not ResourceLedger:
                 raise TypeError("Mahler radix-port metrics require a query ledger")
@@ -208,9 +285,138 @@ class MahlerSourceBoundSafetyAction:
         orbit = ThreePowerRadixOrbit("ordinary", self.extent, base)
         ports = orbit.ordinary_ports(places)
         pivot = ports.difference_xor_mask
-        raw, valuation, normalized = difference_power_block(
-            self.extent, 2, base**places
-        )
+        # For this fixed two-step gap, 3**(R+2)-3**R is exactly 8*3**R,
+        # with v2=3.  Reuse the last source residue already present in the
+        # shared radix tape instead of launching a second modular power pass.
+        modulus = base**places
+        normalized = ports.tape[-1].source_remainder
+        raw, valuation = (8 * normalized) % modulus, 3
+        joint: dict[str, object] | None = None
+        if source is not None:
+            from number_compiler.sequences.antihydra.mahler_joint_future import (
+                MahlerJointFutureAction,
+                MahlerJointInteriorWindow,
+            )
+
+            if type(source) is not int or source < 0:
+                raise ValueError(
+                    "joint Mahler port requires a nonnegative integer source"
+                )
+            if _workspace is not None:
+                assert endpoint_h is not None
+                future = MahlerJointFutureAction._from_admitted_root_workspace(
+                    _workspace, endpoint_h, self, _workspace_transfer
+                )
+            else:
+                future = MahlerJointFutureAction.from_source_prefix(
+                    source, self.extent, max_steps=4096
+                )
+                if future.safety != self:
+                    raise ValueError(
+                        "Mahler safety action is not from the source prefix"
+                    )
+            window_key = (
+                future.semantic_id,
+                source,
+                binary_places,
+                decimal_places,
+            )
+            if _window_memo is not None and _window_memo.ledger is not ledger:
+                raise ValueError("Mahler window memo belongs to another ledger")
+            cached_window = (
+                None if _window_memo is None else _window_memo.get(window_key)
+            )
+            if cached_window is None:
+                window = future.source_window(
+                    source, bits=binary_places, decimal_places=decimal_places
+                )
+                window.verify_issued()
+                if _window_memo is not None:
+                    # This observer cache is a single-entry exact-demand memo.
+                    # It is per source workspace, ledger-owned, and its key
+                    # includes the full future action as well as precision.
+                    _window_memo.clear()
+                    _window_memo[window_key] = window
+            else:
+                if type(cached_window) is not MahlerJointInteriorWindow:
+                    raise ValueError("Mahler observer memo contains another value")
+                window = cached_window
+                window.verify_issued()
+                if (
+                    window.source != source
+                    or window.bits != binary_places
+                    or window.decimal_places != decimal_places
+                    or window.source_endpoint != future.endpoint(source)
+                ):
+                    raise ValueError("Mahler observer memo detached from its source")
+            high_fiber = (source - future.residue) >> future.extent
+            fiber_residue, fiber_modulus = future.interior_fiber_class(
+                high_fiber, bits=binary_places, decimal_places=decimal_places
+            )
+            a5, b5, mod5 = future.five_adic_affine(decimal_places)
+            if (a5 * source + b5) % mod5 != window.source_endpoint % mod5:
+                raise ArithmeticError("5-adic temporal action detached from its source")
+            joint = {
+                "scope": "finite exact source-cylinder observer; no all-time authority",
+                "source_residue": future.residue,
+                "source_modulus": future.source_modulus,
+                "innovation": future.innovation,
+                "source_endpoint": window.source_endpoint,
+                "interior_fiber_modulus": fiber_modulus,
+                "interior_fiber_residue": fiber_residue,
+                "interior_fiber_exact": True,
+                "guard": (
+                    (future.guard.lower.numerator, future.guard.lower.denominator),
+                    (future.guard.upper.numerator, future.guard.upper.denominator),
+                ),
+                "guard_empty": future.guard.empty,
+                "future_source_classes": tuple(
+                    {
+                        "epsilon": branch.epsilon,
+                        "high_fiber_parity": branch.high_fiber_parity,
+                        "source_residue": branch.action.residue,
+                        "source_modulus": branch.action.source_modulus,
+                        "guard": (
+                            (
+                                branch.action.guard.lower.numerator,
+                                branch.action.guard.lower.denominator,
+                            ),
+                            (
+                                branch.action.guard.upper.numerator,
+                                branch.action.guard.upper.denominator,
+                            ),
+                        ),
+                    }
+                    for branch in future.successor_branches()
+                ),
+                "selected_next_bit": window.epsilon,
+                "selected_next_source": window.next_source,
+                "binary_next_low": window.next_binary,
+                "binary_generate_mask": window.generate_mask,
+                "binary_propagate_mask": window.propagate_mask,
+                "binary_xor_mask": window.xor_mask,
+                "binary_difference_borrows": window.binary_difference_borrows,
+                "decimal_next_low": window.next_decimal,
+                "decimal_difference_borrows": window.decimal_difference_borrows,
+                "five_next_low": window.next_five,
+                "five_adic_affine": (a5, b5, mod5),
+                "five_primary_multiplier_period": (2 * 5 ** (decimal_places - 1))
+                // gcd(2 * 5 ** (decimal_places - 1), future.extent),
+                "counter_two_carry_contexts": window.counter.next_carries,
+                "counter_walsh_h5": tuple(
+                    (harmonic.phi2, harmonic.phi3_a, harmonic.phi3_b)
+                    for harmonic in window.counter.harmonics
+                ),
+                "fraction_safety_claim": "none without a fractional witness",
+                "all_time_claim": False,
+            }
+        elif (
+            endpoint_h is not None
+            or _workspace is not None
+            or _workspace_transfer is not None
+            or _window_memo is not None
+        ):
+            raise ValueError("endpoint/gain requires an authenticated original source")
         return {
             "source_extent": self.extent,
             "radial_scale": (self.extent, self.extent),
@@ -221,7 +427,11 @@ class MahlerSourceBoundSafetyAction:
             "difference_xor_mask": pivot,
             "dyadic_block_difference": (raw, valuation, normalized),
             "walsh64_mod5": walsh64_mod5(pivot) if walsh else None,
-            "scope": "homogeneous multiplier observation; not a safety or branch guard",
+            "joint_source_successor": joint,
+            "scope": (
+                "source-bound finite successor and interior ports when a source is supplied; "
+                "homogeneous otherwise"
+            ),
         }
 
     @property

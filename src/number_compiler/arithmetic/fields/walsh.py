@@ -101,3 +101,12 @@ def walsh64(mask: int) -> tuple[int, ...]:
 def walsh64_mod5(mask: int) -> tuple[int, ...]:
     """Project the shared integer transform to the invertible F5 transform."""
     return tuple(value % 5 for value in walsh64(mask))
+
+
+def walsh_h5_at_offset(mask: int, width: int, offset: int) -> WalshH5:
+    """Observe an H5 mask at an absolute bit offset, without its length phase."""
+    if type(offset) is not int or offset < 0:
+        raise ValueError("H5 offset must be a nonnegative exact integer")
+    relative = WalshH5.from_mask(mask, width)
+    shifted = WalshH5(offset % 6, 0, 0, 0).then(relative)
+    return WalshH5(0, shifted.phi2, shifted.phi3_a, shifted.phi3_b)

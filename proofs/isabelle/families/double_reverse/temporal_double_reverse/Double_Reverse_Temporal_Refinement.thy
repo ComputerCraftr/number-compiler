@@ -319,6 +319,169 @@ next
     by (simp add: double_reverse_growth_then_def)
 qed
 
+text \<open>The mod-99 clock composes only after the width growth and skew
+moment of the first source interval are supplied.  It is a scalar quotient
+action; this theorem does not authorize any digit word or source interior.\<close>
+
+definition double_reverse_mod99_clock_exponent ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "double_reverse_mod99_clock_exponent width steps skew =
+    steps * (width - 1) + skew"
+
+definition double_reverse_mod99_clock_action ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "double_reverse_mod99_clock_action width steps skew residue =
+    (residue * 2 ^ steps *
+      10 ^ double_reverse_mod99_clock_exponent width steps skew) mod 99"
+
+lemma double_reverse_mod99_clock_exponent_compose:
+  assumes width: "0 < width"
+  shows "double_reverse_mod99_clock_exponent width (first + second)
+      (first_skew + second_skew + second * first_growth) =
+    double_reverse_mod99_clock_exponent width first first_skew +
+    double_reverse_mod99_clock_exponent (width + first_growth)
+      second second_skew"
+proof -
+  obtain width' where width_eq: "width = Suc width'"
+    using width by (cases width) auto
+  show ?thesis
+    unfolding double_reverse_mod99_clock_exponent_def width_eq
+    by (simp add: algebra_simps)
+qed
+
+theorem double_reverse_mod99_clock_action_compose:
+  assumes width: "0 < width"
+  shows "double_reverse_mod99_clock_action width (first + second)
+      (first_skew + second_skew + second * first_growth) residue =
+    double_reverse_mod99_clock_action (width + first_growth)
+      second second_skew
+      (double_reverse_mod99_clock_action width first first_skew residue)"
+proof -
+  have exponent:
+    "double_reverse_mod99_clock_exponent width (first + second)
+        (first_skew + second_skew + second * first_growth) =
+      double_reverse_mod99_clock_exponent width first first_skew +
+      double_reverse_mod99_clock_exponent (width + first_growth)
+        second second_skew"
+    by (rule double_reverse_mod99_clock_exponent_compose[OF width])
+  have factor:
+    "residue * 2 ^ (first + second) *
+        10 ^ double_reverse_mod99_clock_exponent width (first + second)
+          (first_skew + second_skew + second * first_growth) =
+      (residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew) *
+        2 ^ second *
+        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+          second second_skew"
+    using exponent
+    by (simp add: power_add algebra_simps)
+  have regroup:
+    "residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew *
+        2 ^ second *
+        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+          second second_skew =
+      (residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew) *
+        (2 ^ second *
+          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+            second second_skew)"
+    by (simp only: mult.assoc)
+  have regroup_residue:
+    "residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
+        2 ^ second *
+        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+          second second_skew =
+      (residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99) *
+        (2 ^ second *
+          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+            second second_skew)"
+    by (simp only: mult.assoc)
+  have modular:
+    "(residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew *
+        2 ^ second *
+        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+          second second_skew) mod 99 =
+      (residue * 2 ^ first *
+        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
+        2 ^ second *
+        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+          second second_skew) mod 99"
+  proof -
+    have "(residue * 2 ^ first *
+          10 ^ double_reverse_mod99_clock_exponent width first first_skew *
+          2 ^ second *
+          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+            second second_skew) mod 99 =
+        ((residue * 2 ^ first *
+          10 ^ double_reverse_mod99_clock_exponent width first first_skew) *
+          (2 ^ second *
+            10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+              second second_skew)) mod 99"
+      by (simp only: regroup)
+    also have "... = ((residue * 2 ^ first *
+          10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99) *
+          (2 ^ second *
+            10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+              second second_skew)) mod 99"
+      by (rule mod_mult_left_eq[symmetric])
+    also have "... = (residue * 2 ^ first *
+          10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
+          2 ^ second *
+          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
+            second second_skew) mod 99"
+      by (simp only: regroup_residue)
+    finally show ?thesis .
+  qed
+  show ?thesis
+    unfolding double_reverse_mod99_clock_action_def factor
+    by (rule modular)
+qed
+
+text \<open>A pointed output coordinate is expressed from the final word and
+translated back to the entry source by subtracting the left-side births.
+The mirror coordinate has a separate right-side birth offset; this is why
+the two growth ports cannot be collapsed into a single width increment.\<close>
+
+definition double_reverse_entry_pair_start :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "double_reverse_entry_pair_start final_pair_start left_births =
+    final_pair_start - left_births"
+
+lemma double_reverse_entry_pair_start_inverse:
+  assumes translated: "entry_pair + left_births = final_pair_start"
+  shows "double_reverse_entry_pair_start final_pair_start left_births =
+    entry_pair"
+  using translated
+  unfolding double_reverse_entry_pair_start_def
+  by presburger
+
+lemma double_reverse_final_mirror_coordinate:
+  fixes entry_pair source_width left_births right_births final_pair_start :: nat
+  assumes entry: "entry_pair < source_width"
+    and translated: "entry_pair + left_births = final_pair_start"
+  shows "source_width + left_births + right_births - 1 - final_pair_start =
+    source_width - 1 - entry_pair + right_births"
+proof -
+  have final_start: "final_pair_start = entry_pair + left_births"
+    using translated by simp
+  show ?thesis
+    using entry final_start
+    by (subst final_start; arith)
+qed
+
+lemma double_reverse_final_pair_interval_to_entry:
+  assumes start: "entry_pair + left_births = final_pair_start"
+    and offset: "entry_offset < pair_count"
+  shows "double_reverse_entry_pair_start
+      (final_pair_start + entry_offset) left_births =
+    entry_pair + entry_offset"
+  using start offset
+  unfolding double_reverse_entry_pair_start_def
+  by presburger
+
 text \<open>For the physical rule (X_{i+1}=2R_i), the last reversed value
 must be retained separately from the sum of increments.  The interval
 descriptor records both quantities and composes only adjacent occurrences.\<close>
@@ -437,6 +600,17 @@ proof -
     by (simp add: algebra_simps)
 qed
 
+lemma double_reverse_radius_one_carry_primitive:
+  assumes digits: "left < 10" "center < 10" "right < 10"
+  shows "double_reverse_two_pass_cell left center right =
+    (2 * ((2*center + threshold5_digit left) mod 10) +
+      (if (2*right + threshold5_digit center) mod 10 \<ge> 5
+       then 1 else 0)) mod 10"
+  using digits
+  unfolding double_reverse_two_pass_cell_def
+    double_reverse_first_pass_cell_def
+  by simp
+
 text \<open>The guarded periodic bank emits an exact five-way partition of a
 source-aligned decimal pair.  Its two borrow outputs are conditional local
 responses for incoming borrow 0 or 1; they are not a reconstructed
@@ -501,6 +675,76 @@ both possible inward carries at the shrinking-side edge and the forced
 carry-independent branch at the other edge.  It proves border closure and
 phase advance, not generation of an arbitrary interior word by Hashlife.\<close>
 
+text \<open>A three-cell lift retains the exact high/low feedback which the
+two-cell relation omits.  Its fourth-from-low carry is the only free port;
+the current and next inward carries are derived from the source's low triple
+and the computed successor low triple.  This refinement is local and does
+not claim arbitrary-source temporal closure.\<close>
+
+type_synonym double_reverse_digit_triple = "nat \<times> nat \<times> nat"
+
+definition double_reverse_three_cell_low ::
+    "double_reverse_digit_triple \<Rightarrow> double_reverse_digit_triple" where
+  "double_reverse_three_cell_low high = (case high of (a,b,c) \<Rightarrow>
+    ((2*c + threshold5_digit b) mod 10,
+     (2*b + threshold5_digit a) mod 10, (2*a) mod 10))"
+
+definition double_reverse_three_cell_high ::
+    "double_reverse_digit_triple \<Rightarrow> double_reverse_digit_triple
+      \<Rightarrow> nat \<Rightarrow> double_reverse_digit_triple option" where
+  "double_reverse_three_cell_high high low fourth =
+    (case (high,low) of ((a,b,c),(x,y,z)) \<Rightarrow>
+      if 5 \<le> z then Some (1, (2*z + threshold5_digit y) mod 10,
+        (2*y + threshold5_digit x) mod 10)
+      else if 2*z + threshold5_digit y = 0 then None
+      else Some (2*z + threshold5_digit y,
+        (2*y + threshold5_digit x) mod 10, (2*x + fourth) mod 10))"
+
+definition double_reverse_three_cell_forced_carries ::
+    "double_reverse_digit_triple \<Rightarrow> double_reverse_digit_triple
+      \<Rightarrow> nat \<times> nat" where
+  "double_reverse_three_cell_forced_carries high low =
+    (case (high,low) of ((a,b,c),(x,y,z)) \<Rightarrow>
+      (threshold5_digit x,
+       threshold5_digit ((2*c + threshold5_digit b) mod 10)))"
+
+lemma double_reverse_three_cell_carry_feedback:
+  "double_reverse_three_cell_forced_carries high low =
+    (threshold5_digit (fst low),
+     threshold5_digit (fst (double_reverse_three_cell_low high)))"
+  by (cases high; cases low; simp add: double_reverse_three_cell_forced_carries_def
+      double_reverse_three_cell_low_def)
+
+lemma double_reverse_three_cell_fourth_carry_locality:
+  "(case double_reverse_three_cell_high high low first of
+      None \<Rightarrow> None
+    | Some (a,b,c) \<Rightarrow> Some (a,b)) =
+   (case double_reverse_three_cell_high high low second of
+      None \<Rightarrow> None
+    | Some (a,b,c) \<Rightarrow> Some (a,b))"
+  by (cases high; cases low; simp add: double_reverse_three_cell_high_def)
+lemma double_reverse_three_cell_source_step:
+  fixes n source_low a b c :: nat
+  assumes source_low_def: "source_low = double_reverse_reverse10 n mod 1000"
+    and a_def: "a = source_low mod 10"
+    and b_def: "b = (source_low div 10) mod 10"
+    and c_def: "c = source_low div 100"
+  shows "double_reverse_T n mod 1000 =
+    100*((2*c + threshold5_digit b) mod 10) +
+    10*((2*b + threshold5_digit a) mod 10) + (2*a mod 10)"
+proof -
+  have ab: "a < 10" using mod_less_divisor[of source_low 10] a_def by arith
+  have bb: "b < 10" using mod_less_divisor[of "source_low div 10" 10] b_def by arith
+  have source_digits: "source_low = 100*c + 10*b + a"
+    using div_mult_mod_eq[of source_low 10] div_mult_mod_eq[of "source_low div 10" 10]
+    by (simp only: a_def b_def c_def div_mult2_eq[symmetric] arith_simps; linarith)
+  have actual: "double_reverse_T n mod 1000 = (2*source_low) mod 1000"
+    unfolding double_reverse_T_def source_low_def
+    by (rule mod_mult_right_eq[symmetric])
+  show ?thesis
+    unfolding actual source_digits threshold5_digit_def
+    by (rule decimal_double_three_digits[OF ab bb])
+qed
 type_synonym double_reverse_boundary_edge = "nat \<times> nat \<times> nat \<times> nat"
 
 definition double_reverse_closed_border :: "double_reverse_boundary_edge set" where
@@ -716,6 +960,11 @@ lemma double_reverse_ordered_pair_regression:
 ML \<open>
   val checked = @{thms double_reverse_phase_add double_reverse_growth_trace_add
     double_reverse_growth_trace_two double_reverse_growth_trace_even
+    double_reverse_mod99_clock_exponent_compose
+    double_reverse_mod99_clock_action_compose
+    double_reverse_entry_pair_start_inverse
+    double_reverse_final_mirror_coordinate
+    double_reverse_final_pair_interval_to_entry
     double_reverse_interval_moments_source_aligned
     double_reverse_endpoint_matrix_refines_source
     double_reverse_reverse10_ignores_trailing_zero
@@ -724,9 +973,13 @@ ML \<open>
     double_reverse_T2_ignores_zero_suffix
     double_reverse_T_mod_power_two double_reverse_T_mod_power_five
     double_reverse_two_pass_cell_refines_kernel
+    double_reverse_radius_one_carry_primitive
     double_reverse_pair_band_partition
     double_reverse_decimal_pair_band_partition
     double_reverse_conditional_borrow_ports
+    double_reverse_three_cell_carry_feedback
+    double_reverse_three_cell_fourth_carry_locality
+    double_reverse_three_cell_source_step
     double_reverse_closed_border_ingress_closed
     double_reverse_closed_border_phase_step
     double_reverse_closed_border_two_phase_steps

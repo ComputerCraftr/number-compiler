@@ -49,6 +49,12 @@ table below owns the supported source parameters and observations.
 
 `2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
 
+`temporal.carry-safety` on `2rev10` reports the source-derived three-cell
+carry constraints and conditional component bounds. It does not construct the
+full border graph or authorize repeating an entire source from a compatible
+border trace. The source width change includes trailing-zero contraction.
+Summary and metrics requests do not demand this analysis.
+
 For `2rev10`, `arithmetic.radix25-shift` projects the original decimal
 source through its exact radix-2/5 shift and carry correction.
 `temporal.radix-walsh` demands a source-certified finite temporal bank and its
@@ -60,6 +66,29 @@ spectral projections.
 
 ```sh
 number-compiler 2rev10 --seed 196 --nth 0 --no-value --info arithmetic.radix25-shift --arithmetic-radix-places 8 --format json
+```
+
+Both decimal reversal families support `--info temporal.residue99` without
+rendering an endpoint. Reverse/add predicts modulo 99; the certified 2rev10
+width clock predicts modulo 99 and 198. These scalar projections do not select
+future carry banks or authorize a full digit word.
+
+`--info spatial.bank-morphism` emits a compressed output for an authenticated
+protected source region. Use `--spatial-pair-bank-position`,
+`--spatial-bank-morphism-count` and `--temporal-grammar-period`. For reverse/add,
+the pair position is LSD-first; for 2rev10 it is the final outer-to-inner pair
+position, including the accumulated border displacement. Unsupported source
+halos refuse rather than inferring periodicity from a band mask. Reverse/add also
+reports a bounded `inward_harmonic_bank`: five must/may masks for one
+source-admitted successor. Unresolved reflected carries remain conditional;
+this packet does not certify repeated future forcing.
+
+For 2rev10, `spatial.bank-window` instead reads an exact finite window of at most
+64 final pairs. It does not claim temporal pumping or build the full target.
+
+```sh
+number-compiler reverse-add --seed 196 --nth-power10 12 --no-value --info temporal.residue99 --format json
+number-compiler 2rev10 --seed 196 --nth 64 --no-value --info spatial.bank-window --spatial-pair-bank-position 0 --spatial-bank-morphism-count 14 --format json
 ```
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
@@ -109,8 +138,8 @@ The following capability table is generated from the CLI registry. `number-theor
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.stencil` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `spatial.stencil`, `temporal.bank`, `spatial.pair-bank`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.stencil`, `spatial.bank-morphism` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `temporal.residue99`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
 | `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
@@ -355,7 +384,10 @@ or use a bounded Moore observation class as an endpoint cache key.
 `collatz --info temporal.macro` reports the first guarded boundary macro
 actually executed by the source-image constructor. `--info temporal.innovation-borrow`
 requests the signed normalized second-innovation tape for the requested prefix at an odd
-modulus between 3 and 4096 (default 257). Both may accompany a value request.
+modulus between 3 and 4096 (default 257). It also reports bounded radix-6 and
+radix-10 position spectra when the admitted return supports them. These
+spectra describe certified return sources, not a prediction of an unknown
+parity itinerary. Both may accompany a value request.
 
 ```bash
 number-compiler collatz --seed 2174 --nth 13 --no-value --info temporal.innovation-borrow --temporal-innovation-borrow-modulus 49 --format json

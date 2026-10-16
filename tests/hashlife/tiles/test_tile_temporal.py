@@ -239,36 +239,37 @@ def test_cached_composite_prefix_dispatches_composite_suffix_iteratively() -> No
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3, 6, 7, 15, 31))
-@pytest.mark.parametrize("steps", (1, 2, 3, 6))
 def test_collatz_temporal_results_preserve_branch_dependent_odd_weight(
     seed: int,
-    steps: int,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
     _ledger, tiles, adapter, scheduler = _runtime(2)
     primitive = adapter.admit(effect)
-    action = adapter.power(primitive, steps)
     values = _collatz_source(seed, 16, effect.blank)
     source = _tile(tiles, adapter, primitive, values)
-    expected, odd = _physical(seed, steps)
     try:
-        result = scheduler.complete(
-            action,
-            source.tile,
-            adapter.initial_ports(primitive),
-            adapter.wiring(action),
-        )
-        try:
-            output = _symbols(tiles, result.output)
-            actual = sum(
-                bit << index for index, bit in enumerate(output) if bit != effect.blank
+        for steps in (1, 2, 3, 6):
+            action = adapter.power(primitive, steps)
+            expected, odd = _physical(seed, steps)
+            result = scheduler.complete(
+                action,
+                source.tile,
+                adapter.initial_ports(primitive),
+                adapter.wiring(action),
             )
-            assert actual == expected
-            assert result.result.physical_ticks == steps
-            assert result.result.event_weight == odd
-            assert result.result.frame_shift == 0
-        finally:
-            result.close()
+            try:
+                output = _symbols(tiles, result.output)
+                actual = sum(
+                    bit << index
+                    for index, bit in enumerate(output)
+                    if bit != effect.blank
+                )
+                assert actual == expected
+                assert result.result.physical_ticks == steps
+                assert result.result.event_weight == odd
+                assert result.result.frame_shift == 0
+            finally:
+                result.close()
     finally:
         source.close()
 

@@ -367,7 +367,7 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
         raise AssertionError("warm paired macro fell through to skew selection")
 
     monkeypatch.setattr(
-        "number_compiler.sequences.collatz.temporal_run_executor.consume_unified_skew_chain",
+        "number_compiler.sequences.collatz.temporal_unified_skew_execution.consume_unified_skew_chain",
         reject_skew_reconstruction,
     )
     receiving = PoweredCollatzTerm(receiving_source, 48, shared_cache=True)

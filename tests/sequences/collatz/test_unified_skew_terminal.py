@@ -462,6 +462,19 @@ class UnifiedSkewTerminalRegression(unittest.TestCase):
         self.assertEqual(border["unified_skew_joined_segments"], 3)
         self.assertEqual(border["normalized_signed_tape"]["normalized_steps"], 13)
         self.assertEqual(border["normalized_signed_tape"]["normalized_endpoint"], 1)
+        innovation = packet["info"]["temporal.innovation-borrow"]
+        position = innovation["position_cycle_harmonics"]
+        self.assertEqual(position["status"], "complete")
+        self.assertEqual(
+            tuple(
+                (
+                    item["radix"],
+                    item["position_lsd_zero_indexed"],
+                )
+                for item in position["spectra"]
+            ),
+            ((6, 0), (10, 0)),
+        )
 
     def test_full_chain_does_not_enter_d8_selector(self) -> None:
         from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable

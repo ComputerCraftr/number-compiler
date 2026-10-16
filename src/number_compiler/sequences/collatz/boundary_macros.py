@@ -46,6 +46,9 @@ from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Sour
 COLLATZ_BOUNDARY_MACRO_ACTION_TAG: Final[str] = "collatz-boundary-macro-v1"
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.position_cycle_harmonics import (
+        PositionHarmonicSpectrum,
+    )
     from number_compiler.sequences.collatz.temporal_run_quotient import (
         CollatzF5AffineAction,
     )
@@ -150,6 +153,22 @@ class CollatzBoundaryMacro:
     @property
     def display_label(self) -> str:
         return self.identity.display_label
+
+    def demanded_motif_position_harmonics(
+        self,
+        radix: int,
+        position: int,
+        *,
+        walsh64: bool = False,
+    ) -> PositionHarmonicSpectrum:
+        """Read one position over the issued repeated motif, on demand."""
+        from number_compiler.sequences.collatz.position_cycle_harmonics import (
+            issued_boundary_motif_orbit,
+        )
+
+        return issued_boundary_motif_orbit(self).spectrum(
+            radix, position, walsh64=walsh64
+        )
 
     def f5_action(self) -> CollatzF5AffineAction:
         """Project the authenticated integer endpoint action onto F5."""

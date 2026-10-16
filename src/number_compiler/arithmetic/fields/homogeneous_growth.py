@@ -393,37 +393,62 @@ class GrowthArithmeticEvaluator:
         series as the existing radix-order evaluator. Ambiguous comparisons
         are the caller's responsibility to refine, never guessed here.
         """
+        return self.radix_log_ratio_bounds(
+            numerator, denominator, 2, precision_bits=precision_bits
+        )
+
+    def radix_log_ratio_bounds(
+        self,
+        numerator: int,
+        denominator: int,
+        radix: int,
+        *,
+        precision_bits: int = 64,
+    ) -> tuple[Fraction, Fraction]:
+        """Certified ``log_radix(numerator/denominator)`` for ``1<=ratio<=radix``.
+
+        The same ledger-owned rational logarithm intervals used by the
+        Sturmian width oracle authenticate decimal leading-digit thresholds.
+        No floating logarithms, source powers, or digit vectors are formed.
+        """
         self._ensure_open()
-        require_integer(numerator, "binary threshold numerator", 1)
-        require_integer(denominator, "binary threshold denominator", 1)
+        require_integer(numerator, "threshold numerator", 1)
+        require_integer(denominator, "threshold denominator", 1)
+        require_integer(radix, "threshold radix", 2)
         require_integer(precision_bits, "logarithm precision", 1)
         if precision_bits > self.max_precision_bits:
             self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
-            raise BlockContextBudgetExceeded("logarithm precision budget exceeded")
-        operand_bits = numerator.bit_length() + denominator.bit_length()
+            raise BlockContextBudgetExceeded("radix logarithm precision budget")
+        operand_bits = (
+            numerator.bit_length() + denominator.bit_length() + radix.bit_length()
+        )
         with self._charge_work(max(1, operand_bits), 0, operand_bits):
-            if numerator < denominator or numerator > 2 * denominator:
-                raise ValueError("binary logarithm threshold must be in [1,2]")
+            if not denominator <= numerator <= radix * denominator:
+                raise ValueError("radix logarithm ratio must be in [1, radix]")
             if numerator == denominator:
                 return Fraction(0), Fraction(0)
-            if numerator == 2 * denominator:
+            if numerator == radix * denominator:
                 return Fraction(1), Fraction(1)
-        # This charged identity interval populates/reuses the existing log2
-        # constants. There is no independent unowned logarithm cache.
+        # Populate the same memoized interval constants as radix_order().
         self._charged_order_interval(
-            HomogeneousGrowthScale.identity(), 2, precision_bits
+            HomogeneousGrowthScale.identity(), radix, precision_bits
         )
-        constants = self._logs.get((2, precision_bits))
+        constants = self._logs.get((radix, precision_bits))
         if constants is None:
             raise BlockContextBudgetExceeded("owned logarithm constants were evicted")
+        power = 0
+        scaled_denominator = denominator
+        while numerator >= 2 * scaled_denominator:
+            scaled_denominator <<= 1
+            power += 1
         operand_bits = numerator.bit_length() + denominator.bit_length()
-        with self._charge_log_work(numerator, precision_bits, operand_bits):
-            low, high, _terms = _logarithm_interval_scaled(
-                numerator, denominator, precision_bits
+        with self._charge_log_work(radix, precision_bits, operand_bits):
+            low, high, _ = _logarithm_interval_scaled(
+                numerator, scaled_denominator, precision_bits
             )
             return (
-                Fraction(low, constants.ln_two[1]),
-                Fraction(high, constants.ln_two[0]),
+                Fraction(power * constants.ln_two[0] + low, constants.ln_radix[1]),
+                Fraction(power * constants.ln_two[1] + high, constants.ln_radix[0]),
             )
 
     def continued_fraction_prefix(
