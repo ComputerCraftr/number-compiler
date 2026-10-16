@@ -31,6 +31,9 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    UncertifiedPointedStencilError,
+)
 
 from ._temporal_bank_authority import (
     FrozenMap,
@@ -60,6 +63,10 @@ PERIODIC_CHANNELS = (
 )
 MAX_PROTECTED_PERIOD = 8
 MAX_PROTECTED_TEMPORAL_STATES = 4096
+
+
+class ProtectedPeriodicBankRefused(UncertifiedPointedStencilError):
+    """A valid source request lacks a finite protected periodic bank."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -583,9 +590,11 @@ def protected_periodic_bank(
         or left_bounds[1] > width
         or right_bounds[1] > width
     ):
-        raise ValueError("source lacks the protected temporal halo")
+        raise ProtectedPeriodicBankRefused("source lacks the protected temporal halo")
     if left_origin + period > width or right_origin + period > width:
-        raise ValueError("period sampling exceeds the source digit region")
+        raise ProtectedPeriodicBankRefused(
+            "period sampling exceeds the source digit region"
+        )
     left_period = tuple(
         symbol_at(arena, source_root, left_origin + i) for i in range(period)
     )
@@ -605,7 +614,9 @@ def protected_periodic_bank(
             scratch_owner=scratch_owner,
         )
     ):
-        raise ValueError("source periodic halo does not match its GT/EQ/LT bank")
+        raise ProtectedPeriodicBankRefused(
+            "source periodic halo does not match its GT/EQ/LT bank"
+        )
 
     with ExitStack() as scratch:
         frames: list[PeriodicBankFrame] = []
@@ -616,7 +627,9 @@ def protected_periodic_bank(
         # exact finite protected action, but NOT a universal Moore certificate.
         while len(frames) < f_steps and state not in seen:
             if len(frames) >= MAX_PROTECTED_TEMPORAL_STATES:
-                raise ValueError("protected bank exceeds temporal state budget")
+                raise ProtectedPeriodicBankRefused(
+                    "protected bank exceeds temporal state budget"
+                )
             if ledger is not None:
                 scratch.enter_context(
                     ledger.reservation(
@@ -696,6 +709,7 @@ __all__ = [
     "ExactTemporalPairPort",
     "PeriodicBankFrame",
     "ProtectedPeriodicBank",
+    "ProtectedPeriodicBankRefused",
     "certified_periodic_region",
     "certified_periodic_regions",
     "protected_periodic_bank",

@@ -29,6 +29,11 @@ from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_carry_cylinder import (
     next_6305_upper_numerator,
 )
+from number_compiler.sequences.collatz.border_harmonic_ring import (
+    ConstantTail6305Ring,
+    PeriodicTail6305Ring,
+    ZeroTailFreeBorderRing,
+)
 from number_compiler.sequences.collatz.border_identity import (
     BorderEntryPort,
     BorderExitPort,
@@ -107,101 +112,12 @@ class BorderReturnMacro:
         *,
         walsh64: bool = False,
     ) -> PositionHarmonicSpectrum:
-        """Read digit frequencies at the exact source-bound return seams.
-
-        The homogeneous zero-tail-free case uses its centered affine orbit.
-        Variable tails keep their issued upper cursors and are bounded by this
-        producer's finite 64-return cap; no zero-tail digits are replayed.
-        """
-        from number_compiler.arithmetic.contracts.block_effect import (
-            BlockContextBudgetExceeded,
-        )
-        from number_compiler.arithmetic.fields.homogeneous_growth import (
-            HomogeneousGrowthScale,
-        )
-        from number_compiler.arithmetic.fields.walsh import walsh64_mod5
-        from number_compiler.sequences.collatz.border_carry_cylinder import (
-            Border6305CarryCylinder,
-        )
-        from number_compiler.sequences.collatz.position_cycle_harmonics import (
-            PositionHarmonicSpectrum,
+        """Read exact source-bound seam harmonics without expanding fixed powers."""
+        from number_compiler.sequences.collatz.border_macro_harmonics import (
+            demanded_position_harmonics,
         )
 
-        validate_border_return_macro(self)
-        if not self.zero_tails:
-            raise ValueError("position harmonic needs an admitted 6305 return")
-        if type(radix) is not int or not 2 <= radix <= 64:
-            raise ValueError("position radix must be 2..64")
-        if type(position) is not int or position < 0:
-            raise ValueError("position must be nonnegative")
-        if (position + 1) * radix.bit_length() > 4096:
-            raise BlockContextBudgetExceeded(
-                "position exceeds the exact modulus budget"
-            )
-        if type(walsh64) is not bool:
-            raise TypeError("Walsh64 demand must be Boolean")
-        if walsh64 and len(self.zero_tails) < 64:
-            raise ValueError("Walsh64 needs 64 authenticated border returns")
-
-        current = self.source
-        if self.entry_port is BorderEntryPort.DIGIT_SIX:
-            current //= 2
-        elif self.entry_port is BorderEntryPort.DIGIT_ZERO:
-            current >>= v2_positive(current)
-        if current % 10 == 5:
-            current = (3 * current + 1) // 2
-        if current % 10 != 3:
-            raise ValueError("issued return word has no three-digit source seam")
-
-        if not any(self.zero_tails):
-            initial = Border6305CarryCylinder.from_three_digit(current)
-            if initial.zero_tail != 0:
-                raise AssertionError("all-zero return word has a nonzero initial tail")
-            return initial.demanded_position_harmonics(
-                len(self.zero_tails), radix, position, walsh64=walsh64
-            )
-
-        modulus = radix ** (position + 1)
-        place = modulus // radix
-        counts = [0] * radix
-        mask = 0
-        cursor: Border6305CarryCylinder | None = None
-        total_halvings = 0
-        for index, zero_tail in enumerate(self.zero_tails):
-            if cursor is None:
-                cursor = Border6305CarryCylinder.from_three_digit(current)
-            if cursor.zero_tail != zero_tail:
-                raise AssertionError("variable-tail orbit lost its issued upper cursor")
-            before_digit = (current // place) % radix
-            endpoint = cursor.endpoint
-            counts[before_digit] += 1
-            if walsh64 and index < 64 and ((endpoint // place) % radix != before_digit):
-                mask |= 1 << index
-            total_halvings += zero_tail + 2
-            following = cursor.next_return()
-            if index + 1 < len(self.zero_tails) and following is None:
-                raise AssertionError(
-                    "issued variable-tail word crosses a terminal border"
-                )
-            current, cursor = endpoint, following
-
-        return PositionHarmonicSpectrum(
-            radix=radix,
-            position=position,
-            repetitions=len(self.zero_tails),
-            counts=tuple(counts),
-            forced_position_interval=None,
-            forced_position_digit=None,
-            two_adic_forced_through=None,
-            ternary_forced_from=None,
-            odd_preperiod=None,
-            odd_period=None,
-            evaluated_cells=len(self.zero_tails),
-            radial_scale=HomogeneousGrowthScale(
-                2 * len(self.zero_tails), total_halvings
-            ),
-            walsh64_change_mod5=walsh64_mod5(mask) if walsh64 else None,
-        )
+        return demanded_position_harmonics(self, radix, position, walsh64=walsh64)
 
     def f5_action(self) -> CollatzF5AffineAction:
         from number_compiler.sequences.collatz.temporal_f5_observer import (
@@ -365,6 +281,23 @@ def select_border_return_macro(
                 sum(value.bit_length() for value in values),
             )
 
+    def account_field_composition(
+        first: DyadicTerminalFieldAction, second: DyadicTerminalFieldAction
+    ) -> None:
+        """Charge the coefficient operands of one actual affine composition."""
+        account_operands(*first.coefficient_snapshot(), *second.coefficient_snapshot())
+
+    def compose_fields(
+        first: DyadicTerminalFieldAction, second: DyadicTerminalFieldAction
+    ) -> DyadicTerminalFieldAction:
+        if first.steps and second.steps:
+            account_field_composition(first, second)
+        return first.then(second)
+
+    def account_power(base: int, exponent: int, result: int) -> None:
+        """Charge the exact operands of a constructed integer power."""
+        account_operands(base, exponent, result)
+
     def record_refusal() -> None:
         if ledger is not None:
             ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_REFUSALS)
@@ -404,6 +337,10 @@ def select_border_return_macro(
         return None
 
     runs: list[tuple[int, int]] = []
+    # The legacy published runs stay bounded/explicit for provenance. Keep a
+    # *separate* compressed action DAG for temporal composition: bulk powers
+    # must not be expanded and built a second time at final publication.
+    action_fragments: list[DyadicTerminalFieldAction | tuple[int, int]] = []
     tails: list[int] = []
     current = source
     budget = available_physical_ticks
@@ -437,6 +374,7 @@ def select_border_return_macro(
             runs[-1] = (old, length + count)
         else:
             runs.append((bit, count))
+        action_fragments.append((bit, count))
         before_width = current.bit_length()
         after_width = target.bit_length()
         width = width.then(
@@ -449,6 +387,214 @@ def select_border_return_macro(
         budget -= ticks
         physical += ticks
         normalized += count
+
+    def preflight_additional_steps(additional_steps: int) -> None:
+        if preflight is not None:
+            preflight(sum(count for _, count in runs) + additional_steps)
+
+    def append_constant_tail_bulk(ring: ConstantTail6305Ring, copies: int) -> None:
+        """Emit one certified affine power for a constant-tail mixed 6305 band.
+
+        The named ring is monotone in its source: for a repeated j-word,
+        *each physical intermediate* is increasing as a function of the
+        return source. The return sources themselves are monotone, so their
+        first and last copies suffice to certify all physical width extrema.
+        Metadata parity runs are retained at the existing bounded <=64
+        return horizon; arithmetic, valuations and F5 are powered once.
+        """
+        nonlocal current, budget, physical, normalized, width, state
+        if copies < 2 or not ring.admits(copies) or ring.source != current:
+            raise AssertionError("mixed ring has no source-closed repetition")
+        j = ring.tail
+        duration = copies * (j + 4)
+        if duration > budget or len(tails) + copies > max_returns:
+            raise AssertionError("mixed ring exceeded a source-bound clock")
+        preflight_additional_steps(copies * ring.steps)
+        source_start = current
+        one = DyadicTerminalFieldAction.one_run(1)
+        zero = DyadicTerminalFieldAction.zero_run(j)
+        account_operands(*one.coefficient_snapshot(), *zero.coefficient_snapshot())
+        motif = compose_fields(compose_fields(one, zero), one)
+        action = motif.power(copies, on_compose=account_field_composition)
+        target = ring.endpoint(copies, on_power=account_power)
+        if not action.certifies(current) or action.endpoint(current) != target:
+            raise AssertionError("mixed ring lost the authenticated parity cylinder")
+        last_source = ring.endpoint(copies - 1, on_power=account_power)
+        lows: list[int] = []
+        highs: list[int] = []
+        for boundary_source in (current, last_source):
+            upper = 3 * ((boundary_source - 3) // 10) + 1
+            if v2_positive(upper) != j:
+                raise AssertionError("constant-tail ring lost its border valuation")
+            odd = upper >> j
+            # Physical step extrema: initial source, 3x+1, odd half,
+            # entire zero tail (5u), 15u+1, completed odd half.
+            raw_first = 3 * boundary_source + 1
+            raw_last = 15 * odd + 1
+            lows.append(
+                min(
+                    boundary_source, raw_first // 2, 5 * odd, raw_last // 2
+                ).bit_length()
+            )
+            highs.append(max(raw_first, raw_last).bit_length())
+        beginning_width = current.bit_length()
+        width = width.then(
+            BlankLedger(
+                target.bit_length() - beginning_width,
+                min(lows) - beginning_width,
+                max(highs) - beginning_width,
+            )
+        )
+        for _ in range(copies):
+            for bit, length in ((1, 1), (0, j), (1, 1)):
+                if length:
+                    if runs and runs[-1][0] == bit:
+                        old_bit, old_length = runs[-1]
+                        runs[-1] = old_bit, old_length + length
+                    else:
+                        runs.append((bit, length))
+        tails.extend((j,) * copies)
+        action_fragments.append(action)
+        state = state.after_action(action, target, 2 * copies)
+        account_operands(source_start, target, copies)
+        current = target
+        budget -= duration
+        physical += duration
+        normalized += ring.steps * copies
+
+    def append_periodic_tail_bulk(ring: PeriodicTail6305Ring, groups: int) -> None:
+        """Publish a certified cross-tail power without scanning its interior.
+
+        Every physical prefix of a fixed motif is increasing in its source,
+        and the sources of consecutive copies are monotone under its affine
+        map. First/last motif copies thus certify *all* width extrema.
+        Complete return metadata stays bounded by the existing 64-record
+        publisher; the affine/carry/F5/rotation is powered as one action.
+        """
+        nonlocal current, budget, physical, normalized, width, state
+        motif = ring.motif
+        extent = len(motif) * groups
+        duration = groups * ring.physical_ticks
+        if (
+            groups < 3
+            or not ring.admits(groups)
+            or ring.source != current
+            or len(tails) + extent > max_returns
+            or duration > budget
+        ):
+            raise AssertionError("changing-tail ring exceeded its exact source guard")
+        preflight_additional_steps(groups * ring.steps)
+        source_start = current
+        word = ring.word(on_compose=account_field_composition)
+        powered = word.power(groups, on_compose=account_field_composition)
+        target = ring.endpoint(groups, on_power=account_power)
+        if not powered.certifies(current) or powered.endpoint(current) != target:
+            raise AssertionError("changing-tail power lost its parity certificate")
+        first_source = current
+        last_source = ring.endpoint(groups - 1, on_power=account_power)
+        lower_width, upper_width = first_source.bit_length(), first_source.bit_length()
+        for beginning in (first_source, last_source):
+            local = beginning
+            for j in motif:
+                upper = 3 * ((local - 3) // 10) + 1
+                if v2_positive(upper) != j:
+                    raise AssertionError(
+                        "changing-tail width proof lost its upper cursor"
+                    )
+                odd = upper >> j
+                raw_first = 3 * local + 1
+                first_half = raw_first >> 1
+                five_odd = 5 * odd
+                raw_last = 15 * odd + 1
+                following = raw_last >> 1
+                lower_width = min(
+                    lower_width,
+                    local.bit_length(),
+                    first_half.bit_length(),
+                    five_odd.bit_length(),
+                    following.bit_length(),
+                )
+                upper_width = max(
+                    upper_width,
+                    raw_first.bit_length(),
+                    raw_last.bit_length(),
+                )
+                if following % 10 != 3:
+                    raise AssertionError("changing-tail word escaped its 3-border")
+                local = following
+        start_width = current.bit_length()
+        width = width.then(
+            BlankLedger(
+                target.bit_length() - start_width,
+                lower_width - start_width,
+                upper_width - start_width,
+            )
+        )
+        for _ in range(groups):
+            for j in motif:
+                for bit, count in ((1, 1), (0, j), (1, 1)):
+                    if not count:
+                        continue
+                    if runs and runs[-1][0] == bit:
+                        old_bit, old_count = runs[-1]
+                        runs[-1] = old_bit, old_count + count
+                    else:
+                        runs.append((bit, count))
+        tails.extend(motif * groups)
+        action_fragments.append(powered)
+        state = state.after_action(powered, target, 2 * extent)
+        account_operands(source_start, target, groups)
+        current = target
+        budget -= duration
+        physical += duration
+        normalized += ring.steps * groups
+
+    def periodic_tail_candidate(
+        numerator: int, first_tail: int
+    ) -> tuple[PeriodicTail6305Ring, int] | None:
+        """Speculatively inspect at most four border *numerators*.
+
+        No interior digit or hypothetical full endpoint is computed before a
+        three-copy modular guard succeeds. The guard is a necessary and
+        sufficient future certificate for this specific repeated motif.
+        """
+        # The earlier fixed-tail and zero-tail rings retain their fast path.
+        # Avoid extra lookahead on ordinary short source/physical horizons.
+        if (
+            current.bit_length() < 64
+            or budget < 36
+            or max_returns - len(tails) < 9
+            or first_tail > 128
+        ):
+            return None
+        observed: list[int] = []
+        upper = numerator
+        tick_sum = 0
+        for period in range(1, 5):
+            j = v2_positive(upper)
+            if j > 128:
+                return None
+            odd = upper >> j
+            if odd & 3 != 3:
+                return None
+            observed.append(j)
+            tick_sum += j + 4
+            upper = (9 * odd + 1) >> 2
+            if period < 2 or len(set(observed)) == 1:
+                continue
+            if 3 * tick_sum > budget or 3 * period > max_returns - len(tails):
+                continue
+            motif = tuple(observed)
+            if 3 * sum(tail + 2 for tail in motif) + 1 > 2048:
+                continue
+            guard, modulus = PeriodicTail6305Ring.guard_residue(motif, 3)
+            if current & (modulus - 1) != guard:
+                continue
+            ring = PeriodicTail6305Ring.from_source(current, motif)
+            groups = ring.admitted_count(ticks=budget, returns=max_returns - len(tails))
+            if groups >= 3:
+                return ring, groups
+        return None
 
     # The initial 6->3, 0*->5, and 5->6->(3 or 8) are explicitly
     # source-authenticated entrance ports.  They are not guessed predecessors.
@@ -496,6 +642,36 @@ def select_border_return_macro(
     # from the complete endpoint after each selected return.
     upper_numerator: int | None = None
     returns_to_three = state.decimal_residue(10) == 3
+    # One exact two-sided cylinder proves a whole consecutive 3->3 band.
+    # Admit and transport its radix/F5 state in a single action instead of
+    # enumerating each interior return. Keep the existing variable-tail loop
+    # for the first exit and all other sources.
+    # Four returns need v2(x+1)>=9, equivalently x == -1 mod 512.
+    # Test that one low-word predicate first; ordinary short 6305 inputs
+    # never pay for a harmonic-ring object or an additional big-int valuation.
+    if returns_to_three and budget >= 16 and max_returns >= 4 and current & 511 == 511:
+        if ledger is not None:
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS)
+        ring = ZeroTailFreeBorderRing.from_source(current)
+        bulk = ring.admissible_count(ticks=budget, returns=max_returns)
+        if bulk >= 4:
+            preflight_additional_steps(2 * bulk)
+            target = ring.endpoint(bulk, on_power=account_power)
+            # `append` advances `current`; charge the operands from the
+            # pre-action source while that source is still available.
+            account_operands(current, target, bulk)
+            append(
+                1,
+                2 * bulk,
+                target,
+                lower=current.bit_length(),
+                upper=(2 * target).bit_length(),
+            )
+            tails.extend((0,) * bulk)
+            returns += bulk
+            upper_numerator = 3 * ((current - 3) // 10) + 1
+            if not (state.residue5 == 3 and not state.even):
+                raise AssertionError("bulk 6305 ring lost F5 or returned border")
     last_upper_odd: int | None = None
     while returns_to_three and len(tails) < max_returns:
         account_operands(current)
@@ -509,6 +685,40 @@ def select_border_return_macro(
             break
         odd = upper_numerator >> exponent
         last_upper_odd = odd
+        # The constant-j motif may be pumped even when j>0.  A three-copy
+        # cylinder has one exact low-bit residue modulo 2**(3*(j+2)+1).
+        # Reject ordinary candidates on that cheap modular guard before
+        # constructing a defect, odd-prime action, or extra full endpoint.
+        if (
+            exponent > 0
+            and budget >= 3 * (exponent + 4)
+            and max_returns - len(tails) >= 3
+            and 3 * (exponent + 2) + 1 <= 2048
+        ):
+            guard, modulus = ConstantTail6305Ring.guard_residue(exponent, 3)
+            if current & (modulus - 1) == guard:
+                constant_ring = ConstantTail6305Ring.from_source(current)
+                copies = constant_ring.admitted_count(
+                    ticks=budget, returns=max_returns - len(tails)
+                )
+                if copies >= 3:
+                    append_constant_tail_bulk(constant_ring, copies)
+                    returns += copies
+                    upper_numerator = 3 * ((current - 3) // 10) + 1
+                    returns_to_three = True
+                    if state.residue5 != 3 or state.even:
+                        raise AssertionError("constant-tail ring lost F5/2-adic exit")
+                    continue
+        periodic = periodic_tail_candidate(upper_numerator, exponent)
+        if periodic is not None:
+            periodic_ring, groups = periodic
+            append_periodic_tail_bulk(periodic_ring, groups)
+            returns += groups * len(periodic_ring.motif)
+            upper_numerator = 3 * ((current - 3) // 10) + 1
+            returns_to_three = True
+            if state.residue5 != 3 or state.even:
+                raise AssertionError("changing-tail power lost its F5/parity border")
+            continue
         physical_before = physical
         normalized_before = normalized
         account_operands(exponent, odd, budget)
@@ -654,13 +864,18 @@ def select_border_return_macro(
     if preflight is not None:
         preflight(sum(count for _, count in runs))
     fields = DyadicTerminalFieldAction.identity()
-    for bit, count in runs:
-        segment = (
-            DyadicTerminalFieldAction.one_run(count)
-            if bit
-            else DyadicTerminalFieldAction.zero_run(count)
-        )
-        fields = fields.then(segment)
+    for fragment in action_fragments:
+        if isinstance(fragment, DyadicTerminalFieldAction):
+            segment = fragment
+        else:
+            bit, count = fragment
+            segment = (
+                DyadicTerminalFieldAction.one_run(count)
+                if bit
+                else DyadicTerminalFieldAction.zero_run(count)
+            )
+            account_operands(*segment.coefficient_snapshot())
+        fields = compose_fields(fields, segment)
     odd_count = sum(length for bit, length in runs if bit)
     if (
         fields.steps != normalized

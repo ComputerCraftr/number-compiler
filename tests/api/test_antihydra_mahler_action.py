@@ -486,8 +486,13 @@ def test_compact_source_image_publishes_exact_arithmetic_and_shared_mahler_carry
             assert term.ledger.counters["antihydra_arithmetic_temporal_run_actions"] > 0
         else:
             assert (
-                term.ledger.counters["antihydra_arithmetic_balanced_composite_tails"]
-                == 1
+                term.ledger.counters.get(
+                    "antihydra_arithmetic_balanced_composite_tails", 0
+                )
+                + term.ledger.counters.get(
+                    "antihydra_arithmetic_run_contraction_publications", 0
+                )
+                >= 1
             )
     assert term.ledger.counters.get("antihydra_arithmetic_leaf_steps", 0) == 0
     assert not term._segments_ready

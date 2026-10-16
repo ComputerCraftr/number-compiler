@@ -214,6 +214,37 @@ REVERSE_Q19_TEMPORAL_STENCIL_OUTPUT_BITS: Final = (
 REVERSE_Q19_TEMPORAL_STENCIL_OUTPUT_FIELDS: Final = (
     "reverse_q19_temporal_stencil_output_fields"
 )
+REVERSE_Q19_TEMPORAL_RING_CONSTRAINT_CELLS: Final = (
+    "reverse_q19_temporal_ring_constraint_cells"
+)
+REVERSE_Q19_TEMPORAL_RING_FAILURES: Final = "reverse_q19_temporal_ring_failures"
+REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS: Final = (
+    "reverse_q19_temporal_ring_output_lane_visits"
+)
+REVERSE_Q19_TEMPORAL_RING_PROPAGATION_ROUNDS: Final = (
+    "reverse_q19_temporal_ring_propagation_rounds"
+)
+REVERSE_Q19_INWARD_SYMMETRIC_FILTER_VALUE_VISITS: Final = (
+    "reverse_q19_inward_symmetric_filter_value_visits"
+)
+REVERSE_Q19_DIRECTED_DIAGONAL_INLET_VISITS: Final = (
+    "reverse_q19_directed_diagonal_inlet_visits"
+)
+REVERSE_Q19_BORDER_WIDTH_POWER_REQUESTS: Final = (
+    "reverse_q19_border_width_power_requests"
+)
+REVERSE_Q19_BORDER_WIDTH_POWER_REFUSALS: Final = (
+    "reverse_q19_border_width_power_refusals"
+)
+REVERSE_Q19_BORDER_WIDTH_STATE_VISITS: Final = "reverse_q19_border_width_state_visits"
+REVERSE_Q19_BORDER_WIDTH_STATES: Final = "reverse_q19_border_width_states"
+REVERSE_Q19_BORDER_WIDTH_EDGES: Final = "reverse_q19_border_width_edges"
+REVERSE_Q19_BORDER_WIDTH_COMPOSITION_PAIRS: Final = (
+    "reverse_q19_border_width_composition_pairs"
+)
+REVERSE_Q19_BORDER_WIDTH_RELATION_CELLS: Final = (
+    "reverse_q19_border_width_relation_cells"
+)
 REVERSE_Q19_UNIFORM_GUARD_NODE_VISITS: Final = "reverse_q19_uniform_guard_node_visits"
 REVERSE_Q19_UNIFORM_GUARD_OPERAND_BITS: Final = "reverse_q19_uniform_guard_operand_bits"
 REVERSE_RECURSIVE_COMPLETED_CHILD_JOINS: Final = (

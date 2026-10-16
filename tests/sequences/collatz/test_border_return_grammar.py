@@ -3,6 +3,10 @@
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as collatz_metric_keys
+from number_compiler.sequences.collatz.border_harmonic_ring import (
+    ZeroTailFreeBorderRing,
+)
 from number_compiler.sequences.collatz.border_identity import (
     BorderEntryPort,
     BorderExitPort,
@@ -13,6 +17,9 @@ from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     select_border_return_macro,
     validate_border_return_macro,
+)
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol,
@@ -232,6 +239,74 @@ def test_rejected_entry_candidate_skips_zero_exponent_preflight() -> None:
     )
     assert macro is None
     assert preflight_calls == []
+
+
+def test_bulk_preflight_refusal_precedes_power_and_endpoint_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_preflight(_required: int) -> None:
+        raise RuntimeError("bulk scratch refused")
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("bulk construction ran before its preflight")
+
+    monkeypatch.setattr(ZeroTailFreeBorderRing, "endpoint", forbidden)
+    monkeypatch.setattr(
+        DyadicTerminalFieldAction,
+        "one_run",
+        classmethod(forbidden),
+    )
+    monkeypatch.setattr(DyadicTerminalFieldAction, "power", forbidden)
+
+    with pytest.raises(RuntimeError, match="bulk scratch refused"):
+        select_border_return_macro(1023, 16, preflight=reject_preflight)
+
+
+def test_bulk_publication_keeps_powered_action_and_charges_original_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    source = 1023
+    operand_charges: list[int] = []
+    original_bump = ResourceLedger.bump
+
+    def capture_operand_charge(
+        owner: ResourceLedger, counter: str, amount: int = 1
+    ) -> None:
+        if (
+            owner is ledger
+            and counter
+            == collatz_metric_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_OPERAND_BITS
+        ):
+            operand_charges.append(amount)
+        original_bump(owner, counter, amount)
+
+    monkeypatch.setattr(ResourceLedger, "bump", capture_operand_charge)
+    original_one_run = DyadicTerminalFieldAction.one_run
+    one_run_calls = 0
+
+    def count_one_run(
+        cls: type[DyadicTerminalFieldAction], length: int
+    ) -> DyadicTerminalFieldAction:
+        nonlocal one_run_calls
+        one_run_calls += 1
+        return original_one_run(length)
+
+    monkeypatch.setattr(
+        DyadicTerminalFieldAction, "one_run", classmethod(count_one_run)
+    )
+    macro = select_border_return_macro(source, 16, ledger=ledger)
+
+    assert macro is not None and macro.repetitions == 4
+    # The repeated action was built once from its motif. Publication consumes
+    # that completed action instead of rebuilding one field per output label.
+    assert one_run_calls == 1
+    expected_source_charge = (
+        source.bit_length()
+        + macro.endpoint.bit_length()
+        + macro.repetitions.bit_length()
+    )
+    assert expected_source_charge in operand_charges
 
 
 def test_assembled_return_is_one_hashlife_action_and_exact_observer() -> None:

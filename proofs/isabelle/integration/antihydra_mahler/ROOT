@@ -12,8 +12,10 @@ session Mahler_Safety_Cylinders in mahler_safety = Antihydra +
     Mahler_Safety_Ledger_Separation
 session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
   options [document = false, quick_and_dirty = false]
+  sessions Collatz_Cylinder_Refinement
   theories
     Mahler_Source_Cylinder_Transport
+    Mahler_Odd_Source_Scheduler_Refinement
     Mahler_Source_Event_Safety
     Mahler_Joint_Quotient_Algebra
     Mahler_Reachable_Repetition

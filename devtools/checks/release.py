@@ -254,6 +254,9 @@ def _session_build_summary(
         if match is None:
             continue
         status, name = match.groups()
+        if status == "Finished" and name == "at" and name not in inventory:
+            # Isabelle's build footer is a timestamp, not a rebuilt session.
+            continue
         if status in {"Running", "Building"}:
             started.add(name)
         elif status == "Finished":

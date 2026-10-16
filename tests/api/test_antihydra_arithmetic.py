@@ -213,6 +213,7 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
 
     expected = _reference(129)[0]
     assert projected.materialize(max_bits=4096) == expected
+    arithmetic_result = owner.result()
     arithmetic_work = owner.ledger.counters.get("arithmetic_block_applications", 0)
     assert arithmetic_work == 0 and not owner._segments
     assert projected.payload.info()["h"] == expected
@@ -253,6 +254,9 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
     assert owner.ledger.counters["arithmetic_block_applications"] > arithmetic_work
     assert owner.ledger.counters.get("physical_roof_evaluations", 0) > 0
     assert owner.ledger.counters.get("physical_roof_branch_discovery_steps", 0) == 0
+    assert physical.returns == reference.returns
+    assert physical.physical_ticks != physical.returns
+    assert physical.odd_events == arithmetic_result.odd_events
 
 
 def test_arithmetic_budgets_and_blank_source_are_fail_closed() -> None:

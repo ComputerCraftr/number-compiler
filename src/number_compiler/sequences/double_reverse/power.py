@@ -714,20 +714,17 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         if entry.certified_phase is None:
             raise AssertionError("admitted temporal bank lacks its certified phase")
         root, phase, steps, _width = self._pointed_shape(entry)
-        try:
-            return protected_periodic_bank(
-                self._arena,
-                root,
-                phase,
-                pair_position,
-                steps,
-                period,
-                physical_prefix=entry.physical_steps,
-                ledger=self._ledger,
-                scratch_owner=self._scratch_owner,
-            )
-        except ValueError as exc:
-            raise UncertifiedPointedStencilError(str(exc)) from exc
+        return protected_periodic_bank(
+            self._arena,
+            root,
+            phase,
+            pair_position,
+            steps,
+            period,
+            physical_prefix=entry.physical_steps,
+            ledger=self._ledger,
+            scratch_owner=self._scratch_owner,
+        )
 
     def source_radix25_shift(self, *, places: int = 8) -> Radix25ShiftPort:
         """Project the initial decimal source through the radix-2/5 shift law."""

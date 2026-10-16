@@ -719,7 +719,6 @@ next
       using append Suc.prems tail by blast
   qed
 qed
-
 theorem collatz_guarded_word_repetition_dyadic_cylinder:
   assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
   shows "collatz_guarded_normalized_word_admitted
@@ -753,7 +752,6 @@ next
   qed
   show ?thesis using criterion Suc power_identity by simp
 qed
-
 text \<open>The runtime's global Sturmian exponents are additive across a
 source-guarded repeated block: `count_list bits True` is the 3-exponent,
 `length bits` is the normalized division exponent, and each odd normalized
@@ -789,13 +787,104 @@ proof -
     using length_repeat count_repeat
     by (simp add: collatz_physical_ticks_def algebra_simps)
 qed
+text \<open>The NC16 6305 border word is a particular supplied word, not a
+selector for later tails.  Its normalized affine action is computed once from
+the shared dyadic-word algebra; the extra odd-endpoint bit is handled by the
+existing repetition-cylinder theorem below this action boundary.\<close>
 
+definition collatz_6305_return_word :: "nat \<Rightarrow> bool list" where
+  "collatz_6305_return_word j = True # replicate j False @ [True]"
+lemma collatz_dyadic_false_run_action:
+  "collatz_joint_dyadic_word (replicate j False @ [True]) =
+    \<lparr>joint_dyadic_steps = j+1,
+      joint_dyadic_gain = 3, joint_dyadic_offset = 2^j,
+      joint_dyadic_sum_gain = 2^(j+1)+1,
+      joint_dyadic_sum_offset = 2^j\<rparr>"
+proof (induction j)
+  case 0
+  then show ?case
+    by (simp add: collatz_joint_dyadic_then_def
+        collatz_joint_dyadic_atom_def collatz_joint_dyadic_identity_def)
+next
+  case (Suc j)
+  have word:
+    "replicate (Suc j) False @ [True] =
+      False # (replicate j False @ [True])"
+    by simp
+  show ?case
+    using Suc.IH
+    by (simp only: collatz_joint_dyadic_word.simps word)
+      (simp add: collatz_joint_dyadic_then_def collatz_joint_dyadic_atom_def
+        power_Suc algebra_simps)
+qed
+theorem collatz_6305_return_action_exact:
+  "collatz_joint_dyadic_word (collatz_6305_return_word j) =
+    \<lparr>joint_dyadic_steps = j+2,
+      joint_dyadic_gain = 9,
+      joint_dyadic_offset = 3+2^(j+1),
+      joint_dyadic_sum_gain = 3*2^(j+2)+3,
+      joint_dyadic_sum_offset = 3*2^(j+1)+1\<rparr>"
+proof -
+  have tail:
+    "collatz_joint_dyadic_word (replicate j False @ [True]) =
+      \<lparr>joint_dyadic_steps = j+1,
+        joint_dyadic_gain = 3, joint_dyadic_offset = 2^j,
+        joint_dyadic_sum_gain = 2^(j+1)+1,
+        joint_dyadic_sum_offset = 2^j\<rparr>"
+    by (rule collatz_dyadic_false_run_action)
+  show ?thesis
+    using tail
+    by (simp add: collatz_6305_return_word_def
+        collatz_joint_dyadic_word.simps collatz_joint_dyadic_then_def
+        collatz_joint_dyadic_atom_def power_Suc algebra_simps)
+qed
+theorem collatz_6305_return_affine_endpoint:
+  "collatz_joint_dyadic_endpoint
+      (collatz_joint_dyadic_word (collatz_6305_return_word j)) (of_nat x) =
+    (9*of_nat x + of_nat (3+2^(j+1))) / (2::rat)^(j+2)"
+  by (simp add: collatz_joint_dyadic_endpoint_def
+      collatz_6305_return_action_exact)
+theorem collatz_6305_return_powered_source_cylinder:
+  assumes source: "collatz_guarded_normalized_word_admitted
+      (collatz_6305_return_word j) x"
+  shows "collatz_guarded_normalized_word_admitted
+      (concat (replicate repeats (collatz_6305_return_word j))) x
+      \<longleftrightarrow>
+    (2::int)^(repeats*(j+2)) dvd
+      ((2::int)^(j+2)-9)*int x - int (3+2^(j+1))"
+proof -
+  have word_length: "length (collatz_6305_return_word j) = j+2"
+    by (simp add: collatz_6305_return_word_def)
+  have word_action:
+    "collatz_joint_dyadic_word (collatz_6305_return_word j) =
+      \<lparr>joint_dyadic_steps = j+2,
+        joint_dyadic_gain = 9,
+        joint_dyadic_offset = 3+2^(j+1),
+        joint_dyadic_sum_gain = 3*2^(j+2)+3,
+        joint_dyadic_sum_offset = 3*2^(j+1)+1\<rparr>"
+    by (rule collatz_6305_return_action_exact)
+  have one_word_defect:
+    "collatz_temporal_word_defect (collatz_6305_return_word j) x =
+      ((2::int)^(j+2)-9)*int x - int (3+2^(j+1))"
+    unfolding collatz_temporal_word_defect_def
+    by (simp only: word_action word_length collatz_joint_dyadic_word_steps;
+        simp add: power_Suc algebra_simps)
+  have generic:
+    "collatz_guarded_normalized_word_admitted
+        (concat (replicate repeats (collatz_6305_return_word j))) x
+        \<longleftrightarrow>
+      (2::int)^(repeats * length (collatz_6305_return_word j)) dvd
+        collatz_temporal_word_defect (collatz_6305_return_word j) x"
+    by (rule collatz_guarded_word_repetition_dyadic_cylinder[OF source])
+  show ?thesis
+    using generic
+    by (simp add: one_word_defect word_length)
+qed
 text \<open>The residue-cylinder theorem is the induction principle used when a
 fixed word is considered again at a later endpoint.  The defect recurrence
 tracks its exact affine displacement.  A caller may combine these facts with
 its own source-issued repeat budget; this theory does not convert a parity
 continuation into a named-family transition.\<close>
-
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_temporal_source_step_translation
@@ -811,7 +900,9 @@ ML \<open>
       collatz_temporal_word_defect_power_shift
       collatz_guarded_word_repetition_cylinder
       collatz_guarded_word_repetition_dyadic_cylinder
-      collatz_repeated_word_clock}) then ()
+      collatz_repeated_word_clock collatz_6305_return_action_exact
+      collatz_6305_return_affine_endpoint
+      collatz_6305_return_powered_source_cylinder}) then ()
     else error "Temporal Collatz squaring depends on an oracle";
 \<close>
 

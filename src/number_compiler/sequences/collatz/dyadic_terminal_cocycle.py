@@ -8,6 +8,7 @@ they do not store a parity itinerary or an absolute accumulator value.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import pairwise
 
@@ -279,14 +280,30 @@ class DyadicTerminalFieldAction:
             previous_offset,
         )
 
-    def power(self, count: int) -> DyadicTerminalFieldAction:
+    def power(
+        self,
+        count: int,
+        *,
+        on_compose: Callable[
+            [DyadicTerminalFieldAction, DyadicTerminalFieldAction], None
+        ]
+        | None = None,
+    ) -> DyadicTerminalFieldAction:
         """Repeat this block chronologically by exponentiation by squaring."""
         count = require_integer(count, "dyadic action repetition", 0)
+
+        def compose(
+            first: DyadicTerminalFieldAction, second: DyadicTerminalFieldAction
+        ) -> DyadicTerminalFieldAction:
+            if on_compose is not None and first.steps and second.steps:
+                on_compose(first, second)
+            return first.then(second)
+
         powered = binary_power(
             self,
             count,
             identity=self.identity(),
-            compose=lambda first, second: first.then(second),
+            compose=compose,
         )
         return powered.value
 

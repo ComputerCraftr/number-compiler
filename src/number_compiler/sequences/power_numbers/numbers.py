@@ -63,6 +63,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
         ThreePowerJointQuotient,
     )
+    from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
+        SourceWeightedTriplingAction,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +209,37 @@ class FermatNumberSpec:
         )
 
         return demand_three_power_inward_phase_quotient(
+            self.index,
+            level,
+            phase_binary_places=phase_binary_places,
+            phase_decimal_places=phase_decimal_places,
+            binary_windows=binary_windows,
+            decimal_windows=decimal_windows,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+        )
+
+    def demand_three_power_signed_border_action(
+        self,
+        level: int,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        binary_windows: tuple[tuple[int, int], ...] = (),
+        decimal_windows: tuple[tuple[int, int], ...] = (),
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+    ) -> SourceWeightedTriplingAction:
+        """Demand signed source ports, retaining unknown middle contributions."""
+        from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
+            demand_signed_tripling_action,
+        )
+
+        return demand_signed_tripling_action(
             self.index,
             level,
             phase_binary_places=phase_binary_places,

@@ -21,6 +21,7 @@ from number_compiler.resources.metric_keys import (
     arithmetic_fields as _fields_keys,
 )
 from number_compiler.resources.metric_keys import comma as _comma_keys
+from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
@@ -53,6 +54,22 @@ _ACTION_PREFIXES = (
     "dyadic_return",
     "comma",
 )
+
+
+def _named_work(
+    counters: Mapping[str, int], prefix: str
+) -> tuple[tuple[str, int], ...] | None:
+    """Snapshot an instrumented owner without inventing measurements."""
+    return (
+        tuple(
+            sorted(
+                (name.removeprefix(prefix), value)
+                for name, value in counters.items()
+                if name.startswith(prefix)
+            )
+        )
+        or None
+    )
 
 
 def _count(counters: Mapping[str, int], key: str) -> int | None:
@@ -418,6 +435,10 @@ def collect_temporal_diagnostics(
                         if name.startswith(f"{prefix}_border_return_")
                     )
                 ),
+                odd_macro_work=_named_work(counters, f"{prefix}_temporal_odd_macro_"),
+                mixed_clock_work=_named_work(
+                    counters, f"{prefix}_temporal_mixed_clock_macro_"
+                ),
             )
         )
 
@@ -607,6 +628,76 @@ def collect_temporal_diagnostics(
             ),
             reverse_recursive_pair_width_failures=_count(
                 counters, _reverse_add_keys.REVERSE_RECURSIVE_PAIR_WIDTH_FAILURES
+            ),
+            reverse_q19_temporal_ring_constraint_cells=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_CONSTRAINT_CELLS
+            ),
+            reverse_q19_temporal_ring_propagation_rounds=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_PROPAGATION_ROUNDS
+            ),
+            reverse_q19_temporal_ring_output_lane_visits=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
+            ),
+            reverse_q19_temporal_ring_failures=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_FAILURES
+            ),
+            reverse_q19_inward_symmetric_filter_value_visits=_count(
+                counters,
+                _reverse_add_keys.REVERSE_Q19_INWARD_SYMMETRIC_FILTER_VALUE_VISITS,
+            ),
+            reverse_q19_directed_diagonal_inlet_visits=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_DIRECTED_DIAGONAL_INLET_VISITS
+            ),
+            reverse_q19_border_width_power_requests=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REQUESTS
+            ),
+            reverse_q19_border_width_power_refusals=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REFUSALS
+            ),
+            reverse_q19_border_width_state_visits=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_STATE_VISITS
+            ),
+            reverse_q19_border_width_states=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_STATES
+            ),
+            reverse_q19_border_width_edges=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_EDGES
+            ),
+            reverse_q19_border_width_composition_pairs=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_COMPOSITION_PAIRS
+            ),
+            reverse_q19_border_width_relation_cells=_count(
+                counters, _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_RELATION_CELLS
+            ),
+            double_reverse_birth_layer_source_port_reads=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_SOURCE_PORT_READS,
+            ),
+            double_reverse_birth_layer_strip_steps=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_STRIP_STEPS
+            ),
+            double_reverse_birth_layer_model_states=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_MODEL_STATES
+            ),
+            double_reverse_birth_layer_publications=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS
+            ),
+            double_reverse_birth_layer_refusals=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_REFUSALS
+            ),
+            double_reverse_open_ring_source_ports=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_OPEN_RING_SOURCE_PORTS
+            ),
+            double_reverse_open_ring_window_publications=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_OPEN_RING_WINDOW_PUBLICATIONS,
+            ),
+            double_reverse_open_ring_moore_publications=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_OPEN_RING_MOORE_PUBLICATIONS,
+            ),
+            double_reverse_open_ring_guard_refusals=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_OPEN_RING_GUARD_REFUSALS
             ),
         ),
         family_work=tuple(families),

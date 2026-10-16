@@ -81,6 +81,38 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
 
 
+@pytest.mark.parametrize(
+    "owner,lane,prefix,measurements",
+    (
+        (
+            "antihydra_arithmetic",
+            "odd_macro_work",
+            "temporal_odd_macro_",
+            {"evaluations": 2, "return_steps": 17, "partial_fallbacks": 0},
+        ),
+        (
+            "collatz_physical",
+            "mixed_clock_work",
+            "temporal_mixed_clock_macro_",
+            {"actions": 1, "physical_ticks": 132, "repetitions": 12},
+        ),
+    ),
+)
+def test_macro_snapshot_preserves_actual_counts_and_unavailable_state(
+    owner: str, lane: str, prefix: str, measurements: dict[str, int]
+) -> None:
+    counters = {f"{owner}_action_publications": 1}
+    assert getattr(_collect(counters).family_work[0], lane) is None
+    counters.update(
+        {f"{owner}_{prefix}{name}": value for name, value in measurements.items()}
+    )
+    before = dict(counters)
+    report = _collect(counters)
+    assert dict(getattr(report.family_work[0], lane) or ()) == measurements
+    assert counters == before
+    assert report.application.exact_hits is None
+
+
 def test_guarded_templates_do_not_count_as_applied_occurrences() -> None:
     record = _collect(
         {

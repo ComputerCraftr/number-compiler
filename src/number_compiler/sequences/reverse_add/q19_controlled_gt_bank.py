@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from .q19_output import ReversePairQ19OutputOwner
     from .radix19_cochain import Radix19CarryBlock
     from .temporal_residue99 import ReverseAddResidue99
+    from .temporal_ring_harmonics import ReverseAddTemporalRingBank
 
 _ISSUER = object()
 
@@ -144,6 +145,30 @@ class SourceGuardedGTBankAction:
         self.owner.validate_issued_occurrence(self.source)
         if self.border_certificate is not None:
             self.border_certificate.validate(self.owner, self.source)
+
+    def temporal_ring_bank(
+        self,
+        *,
+        start: int = 0,
+        duration: int | None = None,
+        positions: tuple[int, ...] = (0,),
+        source_pair_prefix: int = 0,
+        include_source_digits: bool = False,
+        max_cells: int = 16384,
+    ) -> ReverseAddTemporalRingBank:
+        """Demand the same authenticated macro-conditioned inward ring ports."""
+        self._validate()
+        if self.border_certificate is None:
+            raise ValueError("a live border certificate is required for ring authority")
+        return self.border_certificate.temporal_ring_bank(
+            start=start,
+            duration=duration,
+            positions=positions,
+            source_pair_prefix=source_pair_prefix,
+            include_source_digits=include_source_digits,
+            max_cells=max_cells,
+            bank_action=self,
+        )
 
     def temporal_residue99(self) -> ReverseAddResidue99:
         """Independent mod-99 future output from the same issued pair source.

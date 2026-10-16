@@ -393,6 +393,79 @@ theorem binary_boolean_signed_fold_composition:
       int base * (int high_output - int high_source)) mod int modulus"
   by (simp add: algebra_simps)
 
+text \<open>The signed output of ordinary tripling a binary block is kept as an
+integer so concatenation does not hide a natural-number subtraction or assume
+that an unknown middle block has value zero.  The lower block's outgoing carry
+is exactly the upper block's incoming carry.\<close>
+
+definition signed_tripling_emission ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> int" where
+  "signed_tripling_emission width source incoming outgoing =
+    3 * int source + int incoming - int (2^width) * int outgoing"
+
+theorem signed_tripling_weighted_concat:
+  "signed_tripling_emission (low_width + high_width)
+      (low_source + 2^low_width * high_source) incoming outgoing =
+    signed_tripling_emission low_width low_source incoming middle +
+      int (2^low_width) *
+        signed_tripling_emission high_width high_source middle outgoing"
+  by (simp add: signed_tripling_emission_def power_add algebra_simps)
+
+theorem signed_tripling_concat_preserves_block_bounds:
+  assumes low: "0 \<le> signed_tripling_emission low_width low_source incoming middle"
+      and low_bound: "signed_tripling_emission low_width low_source incoming middle <
+        int (2^low_width)"
+      and high: "0 \<le> signed_tripling_emission high_width high_source middle outgoing"
+      and high_bound: "signed_tripling_emission high_width high_source middle outgoing <
+        int (2^high_width)"
+  shows "0 \<le> signed_tripling_emission (low_width + high_width)
+      (low_source + 2^low_width * high_source) incoming outgoing"
+    and "signed_tripling_emission (low_width + high_width)
+      (low_source + 2^low_width * high_source) incoming outgoing <
+        int (2^(low_width + high_width))"
+proof -
+  have weighted:
+    "signed_tripling_emission (low_width + high_width)
+        (low_source + 2^low_width * high_source) incoming outgoing =
+      signed_tripling_emission low_width low_source incoming middle +
+        int (2^low_width) *
+          signed_tripling_emission high_width high_source middle outgoing"
+    by (rule signed_tripling_weighted_concat)
+  have low_base: "0 < int (2^low_width)" by simp
+  have low_base_nonnegative: "0 \<le> int (2^low_width)"
+    using low_base by arith
+  have high_le_base: "signed_tripling_emission high_width high_source middle outgoing
+      \<le> int (2^high_width) - 1"
+    using high_bound by presburger
+  have scaled_high:
+    "int (2^low_width) * signed_tripling_emission high_width high_source middle outgoing
+      \<le> int (2^low_width) * (int (2^high_width) - 1)"
+    by (rule mult_left_mono[OF high_le_base]) simp
+  have low_product_nonnegative:
+    "0 \<le> int (2^low_width) *
+      signed_tripling_emission high_width high_source middle outgoing"
+    using low_base_nonnegative high by (rule mult_nonneg_nonneg)
+  show lower:
+    "0 \<le> signed_tripling_emission (low_width + high_width)
+        (low_source + 2^low_width * high_source) incoming outgoing"
+    using low low_product_nonnegative weighted by arith
+  have product_base:
+    "int (2^(low_width + high_width)) =
+      int (2^low_width) * int (2^high_width)"
+    by (simp add: power_add)
+  have split_upper:
+    "signed_tripling_emission low_width low_source incoming middle +
+        int (2^low_width) *
+          signed_tripling_emission high_width high_source middle outgoing <
+      int (2^low_width) * int (2^high_width)"
+    using low_bound scaled_high by (simp add: algebra_simps; arith)
+  show upper:
+    "signed_tripling_emission (low_width + high_width)
+        (low_source + 2^low_width * high_source) incoming outgoing <
+      int (2^(low_width + high_width))"
+    using split_upper weighted product_base by arith
+qed
+
 
 lemma decimal_double_digit_carry:
   fixes a carry :: nat
@@ -448,6 +521,49 @@ proof -
 qed
 
 
+text \<open>The cyclic histogram is a positional projection, not a temporal
+source-period assertion. Carry contributions cancel at evaluation z=2 except
+for the two true endpoints. This identity holds for arbitrary signed digits
+and carries; source admission remains a separate obligation.\<close>
+
+definition binary_weighted_sum :: "(nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "binary_weighted_sum f n = (\<Sum>i<n. f i * 2^i)"
+
+lemma binary_weighted_sum_Suc:
+  "binary_weighted_sum f (Suc n) = binary_weighted_sum f n + f n * 2^n"
+  by (simp add: binary_weighted_sum_def sum.lessThan_Suc)
+
+theorem signed_carry_histogram_endpoints:
+  "binary_weighted_sum (\<lambda>i. 3 * digits i + carries i - 2 * carries (Suc i)) n =
+    3 * binary_weighted_sum digits n + carries 0 - 2^n * carries n"
+proof (induction n)
+  case 0
+  then show ?case by (simp add: binary_weighted_sum_def)
+next
+  case (Suc n)
+  then show ?case
+    by (simp add: binary_weighted_sum_Suc power_Suc algebra_simps)
+qed
+
+lemma signed_position_double_width:
+  "(2::int)^(2*w) mod (2^w+1) = 1 mod (2^w+1)"
+proof -
+  have expansion: "(2::int)^(2*w) = (2^w-1)*(2^w+1)+1"
+    by (simp add: mult.commute power_mult power2_eq_square algebra_simps)
+  show ?thesis by (subst expansion) simp
+qed
+
+theorem signed_position_clock_transport:
+  "(2::int)^(position+2*w) mod (2^w+1) = 2^position mod (2^w+1)"
+proof -
+  have reduce: "(2::int)^(position+2*w) mod (2^w+1) =
+    ((2^position mod (2^w+1)) * (2^(2*w) mod (2^w+1))) mod (2^w+1)"
+    by (simp add: power_add mod_mult_eq)
+  show ?thesis
+    by (simp only: reduce signed_position_double_width; simp add: mod_mult_eq)
+qed
+
+
 ML \<open>
   val checked = @{thms carry_finish_fold carry_finish_append
     advance_phase_append advance_phase_by_length carry_finish_equal_prefix
@@ -464,7 +580,10 @@ ML \<open>
     identity_wires_valid identity_wires_apply wire_word_action_valid
     wire_word_action_exact wire_word_scan_append
     binary_boolean_add_block_composition
-    binary_boolean_signed_fold_composition decimal_double_three_digits};
+    binary_boolean_signed_fold_composition signed_tripling_weighted_concat
+    signed_tripling_concat_preserves_block_bounds decimal_double_three_digits
+    signed_carry_histogram_endpoints signed_position_double_width
+    signed_position_clock_transport};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared carry-tape proof depends on an oracle";
 \<close>

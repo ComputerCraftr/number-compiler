@@ -756,14 +756,32 @@ def minimize_fixed_word_odd_position(
                 "odd-digit observer exceeds finite state budget"
             )
         modulus *= radix
-    gain = word.gain % modulus
-    offset = word.offset % modulus
     denominator_inverse = pow(2, -word.steps, modulus)
-    rows = tuple(
-        ((gain * residue + offset) * denominator_inverse) % modulus
-        for residue in range(modulus)
+    # The equivalence is on the *modular action*, not the source word.
+    # Different authenticated border families with the same port action
+    # reuse one future-right-congruent Moore quotient.
+    return _build_odd_position_moore(
+        radix,
+        position,
+        modulus,
+        max_states,
+        (word.gain * denominator_inverse) % modulus,
+        (word.offset * denominator_inverse) % modulus,
     )
-    place = _integer_power(radix, position)
+
+
+def _build_odd_position_moore(
+    radix: int,
+    position: int,
+    modulus: int,
+    max_states: int,
+    multiplier: int,
+    translation: int,
+) -> OddPositionMoore:
+    rows = tuple(
+        (multiplier * residue + translation) % modulus for residue in range(modulus)
+    )
+    place = modulus // radix
     labels = tuple(residue // place for residue in range(modulus))
     result = minimize_finite_orbit(rows, labels, max_states=max_states)
     representatives = partition_representatives(result.class_ids, result.class_count)

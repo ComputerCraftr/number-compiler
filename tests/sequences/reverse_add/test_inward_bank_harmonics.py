@@ -21,10 +21,7 @@ from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
-
-
-def _reverse(value: int) -> int:
-    return int(str(value)[::-1])
+from tests.support.reverse_add_source_data import reverse_add_source_data
 
 
 def _pair_accessor(symbols: tuple[int, ...]) -> Callable[[int], int]:
@@ -43,20 +40,6 @@ def _symmetric_pair_accessor(
     return pair_at
 
 
-def _source_data(x: int) -> tuple[int, list[int], list[int], int, list[int]]:
-    d = digits_lsd(x, 10)
-    w = len(d)
-    s = [d[i] + d[w - 1 - i] for i in range(w)]
-    c = [0]
-    for z in s:
-        c.append(int(z + c[-1] >= 10))
-    nxt = x + _reverse(x)
-    to_d = digits_lsd(nxt, 10)
-    target = [to_d[i] + to_d[-i - 1] for i in range(len(to_d))]
-    assert len(to_d) == w + c[-1]
-    return w, s, c, c[-1], target
-
-
 def test_no_future_integer_is_needed_for_exact_selected_bands() -> None:
     rng = Random(20261015)
     for seed in [
@@ -70,7 +53,7 @@ def test_no_future_integer_is_needed_for_exact_selected_bands() -> None:
         10089,
         *[rng.randrange(10 ** (k - 1), 10**k) for k in range(3, 45)],
     ]:
-        w, s, c, g, target = _source_data(seed)
+        w, s, c, g, target = reverse_add_source_data(seed)
         for i in range(w // 2):
             for budget in (0, 1, 2, 4, 8, 100):
                 result = inward_bank_select(
@@ -97,7 +80,7 @@ def test_no_future_integer_is_needed_for_exact_selected_bands() -> None:
 
 def test_gt_reset_and_eq_wire_are_not_interchangeable() -> None:
     for seed in (17071, 17971, 174571, 10089, 10189):
-        w, s, c, g, target = _source_data(seed)
+        w, s, c, g, target = reverse_add_source_data(seed)
         last = w // 2 - 1
         result = inward_bank_select(
             width=w,
@@ -110,7 +93,7 @@ def test_gt_reset_and_eq_wire_are_not_interchangeable() -> None:
         )
         assert result.forced_coefficient == target[last]
     # False high port is explicitly contradictory to an inward reset.
-    w, s, c, g, target = _source_data(17971)
+    w, s, c, g, target = reverse_add_source_data(17971)
     if s[1] != 9:
         with pytest.raises(ValueError):
             inward_bank_select(
@@ -129,7 +112,7 @@ def test_inward_unknown_requires_a_set_valued_mask() -> None:
     witnessed = False
     for _ in range(300):
         x = rng.randrange(10**12, 10**13)
-        w, s, c, g, _target = _source_data(x)
+        w, s, c, g, _target = reverse_add_source_data(x)
         for i in range(1, w // 2):
             result = inward_bank_select(
                 width=w,
@@ -157,7 +140,7 @@ def test_owner_source_bound_port_requires_no_completed_target(
         owner = ReversePairQ19OutputOwner(ledger, digits_lsd(x, 10), base=10)
         try:
             stencil = GuardedPairStencil.from_occurrence(owner, owner.initial)
-            w, _s, _c, _g, target = _source_data(x)
+            w, _s, _c, _g, target = reverse_add_source_data(x)
             assert stencil.source_width == w
 
             def forbidden(*_args: object, **_kwargs: object) -> None:
@@ -232,7 +215,7 @@ def test_symbolic_walsh_is_issued_only_for_forced_64_lanes() -> None:
 
 def test_center_and_width_invalid_requests_are_not_silent() -> None:
     x = 196
-    w, s, _c, g, _target = _source_data(x)
+    w, s, _c, g, _target = reverse_add_source_data(x)
     with pytest.raises(ValueError):
         inward_bank_select(
             width=w,

@@ -3,3 +3,4 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
   theories
     Double_Reverse_Temporal_Refinement
     Double_Reverse_Periodic_Ring_Action
+    Double_Reverse_Birth_Layer_Refinement

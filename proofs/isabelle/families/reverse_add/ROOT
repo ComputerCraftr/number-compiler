@@ -26,6 +26,9 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Mod9_Skew
     Reverse_Threshold_Geometry
     Reverse_Carry_Harmonic_Ports
+    Reverse_Directed_Growth_Action
+    Reverse_Inward_Constraint_Soundness
+    Reverse_Symmetric_Transfer
     Reverse_Contextual_Fixed_Point
     Reverse_Boundary_Germ_Local
 session Reverse_Cylinder_Length_Refinement in reverse_length = Reverse_Residuals +

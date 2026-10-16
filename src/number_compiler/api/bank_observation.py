@@ -165,3 +165,84 @@ def reverse_bank_packet(
         "complete_integer_certified": False,
         "scope": "protected source-owned output morphism; not a whole-root temporal power",
     }
+
+
+def double_reverse_birth_layers_packet(
+    term: DoubleReverseTerm, options: DoubleReverseObservationOptions
+) -> dict[str, object]:
+    from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+        UncertifiedPointedStencilError,
+    )
+
+    try:
+        certificate = term.birth_layer_periods(
+            options.bank_morphism_count, lookback_f_steps=options.open_ring_lookback
+        )
+    except UncertifiedPointedStencilError as error:
+        return {"status": "unavailable", "reason": str(error)}
+    return certificate.validated_projection()
+
+
+def double_reverse_open_ring_packet(
+    term: DoubleReverseTerm, options: DoubleReverseObservationOptions
+) -> dict[str, object]:
+    from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+        UncertifiedPointedStencilError,
+    )
+
+    try:
+        bank = term.open_temporal_bank_window(
+            options.pair_bank_position,
+            options.bank_morphism_count,
+            lookback_f_steps=options.open_ring_lookback,
+        )
+    except UncertifiedPointedStencilError as error:
+        return {"status": "unavailable", "reason": str(error)}
+    counts, words = bank.validated_projection(_PAIR_CHANNELS)
+    return {
+        "physical_prefix": bank.physical_prefix,
+        "f_steps": bank.f_steps,
+        "width_in": bank.width_in,
+        "width_out": bank.width_out,
+        "final_pair_start": bank.final_pair_start,
+        "pair_count": bank.pair_count,
+        "counts": counts,
+        "output_words": {channel: words[channel][0] for channel in _PAIR_CHANNELS},
+        "input_period": bank.input_period,
+        "moore_classes": bank.moore_classes,
+        "moore_preperiod": bank.moore_preperiod,
+        "moore_cycle": bank.moore_cycle,
+        "temporal_repeat_certified": False,
+        "scope": "source-issued finite inlet program; no unbounded source repetition",
+    }
+
+
+def reverse_open_ring_packet(
+    term: ReverseAddPoweredTerm, options: ReverseAddObservationOptions
+) -> dict[str, object]:
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        ReverseTemporalRingRefused,
+    )
+
+    try:
+        bank = term.temporal_ring_bank(
+            options.pair_bank_position, options.bank_morphism_count
+        )
+    except ReverseTemporalRingRefused as error:
+        return {"status": "unavailable", "reason": str(error)}
+    domains = bank.validated_pair_domains()
+    sources = tuple(source for source, _target in domains)
+    targets = tuple(target for _source, target in domains)
+    return {
+        "start": bank.start,
+        "duration": bank.duration,
+        "positions": bank.positions,
+        "widths": bank.widths,
+        "source_pair_domains": sources,
+        "target_pair_domains": targets,
+        "harmonics": tuple(asdict(word) for word in bank.bank_words),
+        "finite_moore_classes": bank.finite_moore_classes,
+        "complete_integer_certified": bank.complete_integer_certified,
+        "temporal_repeat_certified": bank.temporal_repeat_certified,
+        "scope": "finite conditional inward carry domains; no complete-root jump",
+    }

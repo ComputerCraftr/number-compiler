@@ -200,6 +200,20 @@ def observe_double_reverse(context: QueryContext, name: ObservationId) -> Packet
                 "scope": "source-bound radix-2/5 projection; not future branch authority",
             },
         )
+    if name is ObservationId.TEMPORAL_BIRTH_LAYERS:
+        from number_compiler.api.bank_observation import (
+            double_reverse_birth_layers_packet,
+        )
+
+        return _publish(
+            context, name, double_reverse_birth_layers_packet(payload.term, options)
+        )
+    if name is ObservationId.TEMPORAL_OPEN_RING:
+        from number_compiler.api.bank_observation import double_reverse_open_ring_packet
+
+        return _publish(
+            context, name, double_reverse_open_ring_packet(payload.term, options)
+        )
     if name is ObservationId.TEMPORAL_RESIDUE99:
         from number_compiler.api.bank_observation import double_reverse_residue_packet
 
@@ -431,6 +445,10 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse/add query published a foreign term payload")
+    if name is ObservationId.TEMPORAL_OPEN_RING:
+        from number_compiler.api.bank_observation import reverse_open_ring_packet
+
+        return _publish(context, name, reverse_open_ring_packet(payload.term, options))
     if name is ObservationId.TEMPORAL_MACRO:
         return _publish(context, name, asdict(payload.term.observe_boundary_macro()))
     if name is ObservationId.TEMPORAL_RESIDUE99:

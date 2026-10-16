@@ -29,6 +29,7 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
     HomogeneousGrowthScale,
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
+from number_compiler.arithmetic.fields.three_power_radix import decimal_tripling_order
 from number_compiler.arithmetic.fields.walsh import WalshH5, walsh_h5_at_offset
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.power_numbers._harmonic_authority import (
@@ -103,7 +104,7 @@ def _source_radix_prefix(level: int, base: int, places: int) -> int:
             raise ValueError("source-decimal-orbit-precision-budget")
         # The exact order of 3 modulo 10**j contains both primary factors;
         # use dyadic exponent reduction modulo the order, not 2**level steps.
-        order: int = 2 ** max(2, places - 2) * 5 ** (places - 1)
+        order = decimal_tripling_order(places)
         exponent = pow(2, level, order)
         modulus: int = 10**places
         return pow(3, exponent, modulus)
@@ -164,6 +165,21 @@ class RefinedMiddleRelation:
 _REFINED_MIDDLE_ISSUER = new_harmonic_issuer(RefinedMiddleRelation)
 
 
+def _validate_middle_windows_shape(windows: tuple[tuple[int, int], ...]) -> None:
+    if type(windows) is not tuple or len(windows) > 9:
+        raise ValueError("invalid middle source-window request")
+    for item in windows:
+        if (
+            type(item) is not tuple
+            or len(item) != 2
+            or any(type(value) is not int for value in item)
+        ):
+            raise TypeError("middle window is (absolute-start,width)")
+        start, width = item
+        if start < 0 or width < 1:
+            raise ValueError("source window is outside the unknown interior")
+
+
 def refine_middle_source_windows(
     border: RadixBilateralTripling,
     windows: tuple[tuple[int, int], ...],
@@ -177,9 +193,7 @@ def refine_middle_source_windows(
     """
     if type(border) is not RadixBilateralTripling or not border.producer_verified:
         raise TypeError("middle refinement requires an authenticated border")
-    if type(windows) is not tuple or len(windows) > 9:
-        # Eight adaptive islands plus one contiguous phase-bank prefix.
-        raise ValueError("invalid middle source-window request")
+    _validate_middle_windows_shape(windows)
     left = border.low_places
     right = border.source_digits - border.high_places
     if left > right:
@@ -188,13 +202,6 @@ def refine_middle_source_windows(
     observed = []
     prefix = 0
     if windows:
-        for item in windows:
-            if (
-                type(item) is not tuple
-                or len(item) != 2
-                or any(type(v) is not int for v in item)
-            ):
-                raise TypeError("middle window is (absolute-start,width)")
         previous = left
         for start, width in windows:
             if width <= 0 or start < previous or start + width > right:
@@ -604,6 +611,14 @@ def demand_three_power_bilateral_interior(
     phase_binary_places: int | None = None,
     phase_decimal_places: int | None = None,
 ) -> ThreePowerBilateralInteriorQuotient:
+    _validate_middle_windows_shape(binary_windows)
+    _validate_middle_windows_shape(decimal_windows)
+    for depth, bound in (
+        (phase_binary_places, MAX_BINARY_WINDOW_PRECISION),
+        (phase_decimal_places, MAX_DECIMAL_WINDOW_PRECISION),
+    ):
+        if depth is not None and (type(depth) is not int or not 1 <= depth <= bound):
+            raise ValueError("phase depth exceeds source precision budget")
     bilateral = demand_three_power_bilateral_quotient(
         index,
         level,

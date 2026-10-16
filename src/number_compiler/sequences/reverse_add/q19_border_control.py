@@ -13,11 +13,16 @@ that the observed word continues periodically or controls arbitrary depths.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import chain
 from typing import TYPE_CHECKING, Literal
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
 from ._q19_issuance import issue_q19_record
@@ -31,14 +36,70 @@ from .border_carry_safety import (
     border_carry_port,
     conditional_return_from_trace,
 )
+from .diagonal_growth_bank import BorderWidthWork
 
 if TYPE_CHECKING:
     from .conditional_f5_macro import SourceCertifiedF5Macro
+    from .diagonal_growth_bank import (
+        CertifiedDiagonalComparison,
+        WidthGrowthBounds,
+    )
+    from .macro_conditioned_harmonics import AuthenticatedMacroWindow
+    from .q19_controlled_gt_bank import SourceGuardedGTBankAction
     from .q19_occurrence import ReversePairOutputOccurrence
     from .q19_output import ReversePairQ19OutputOwner
     from .q19_word_summary import _Q19
+    from .temporal_inward_constraints import ReverseInwardConstraints
+    from .temporal_ring_harmonics import ReverseAddTemporalRingBank
 
 _ISSUER = object()
+_BORDER_WIDTH_METRIC_KEYS = {
+    BorderWidthWork.STATE_VISIT: _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_STATE_VISITS,
+    BorderWidthWork.STATE: _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_STATES,
+    BorderWidthWork.EDGE: _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_EDGES,
+    BorderWidthWork.COMPOSITION_PAIR: (
+        _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_COMPOSITION_PAIRS
+    ),
+    BorderWidthWork.RELATION_CELL: (
+        _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_RELATION_CELLS
+    ),
+}
+
+
+@contextmanager
+def _border_width_scratch(
+    owner: ReversePairQ19OutputOwner,
+) -> Iterator[Callable[[int, int], None]]:
+    """Dynamically reserve the live graph frontier on its owner ledger."""
+    entries = nodes = 0
+
+    def adjust(entry_delta: int, node_delta: int) -> None:
+        nonlocal entries, nodes
+        if entry_delta >= 0 and node_delta >= 0:
+            owner.ledger.reserve(
+                owner._scratch_owner, entries=entry_delta, nodes=node_delta
+            )
+            entries += entry_delta
+            nodes += node_delta
+            return
+        if entry_delta > 0 or node_delta > 0:
+            raise ValueError("scratch reservation deltas must share a sign")
+        release_entries, release_nodes = -entry_delta, -node_delta
+        if release_entries > entries or release_nodes > nodes:
+            raise RuntimeError("width scratch release exceeds its reservation")
+        owner.ledger.release(
+            owner._scratch_owner,
+            entries=release_entries,
+            nodes=release_nodes,
+        )
+        entries -= release_entries
+        nodes -= release_nodes
+
+    try:
+        yield adjust
+    finally:
+        if entries or nodes:
+            owner.ledger.release(owner._scratch_owner, entries=entries, nodes=nodes)
 
 
 def _typed_scalar_snapshot(value: object) -> tuple[object, object]:
@@ -317,6 +378,217 @@ class CertifiedBorderGrowth:
                 )
             result.append(port)
         return tuple(result)
+
+    def directed_growth_diagonal(
+        self,
+        first_start: int,
+        second_start: int,
+        *,
+        window: int = 9,
+        continuation: int = 0,
+    ) -> CertifiedDiagonalComparison:
+        """Compare two finite slices of this exact source growth tape."""
+        from .diagonal_growth_bank import certify_diagonal_comparison
+
+        return certify_diagonal_comparison(
+            self,
+            first_start=first_start,
+            second_start=second_start,
+            window=window,
+            continuation=continuation,
+        )
+
+    def universal_border_width_bounds(
+        self,
+        steps: int,
+        *,
+        max_states: int = 500,
+        max_edges: int = 1500,
+        max_composition_pairs: int = 2_000_000,
+        max_relation_cells: int = 250_000,
+    ) -> WidthGrowthBounds:
+        """Bound width for all bilateral middle maps at a finite horizon.
+
+        The query is available only at the original source root, whose border
+        tile and exact width are admitted together. It never reuses a later
+        Q19 root after that root's entry transition was consumed.
+        """
+        from .diagonal_growth_bank import (
+            BorderWidthPowerRefused,
+            UniversalBorderWidthPower,
+        )
+
+        self.validate(self.owner, self.source)
+        self.owner.ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REQUESTS
+        )
+        if self.source is not self.owner.initial:
+            self.owner.ledger.bump(
+                _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REFUSALS
+            )
+            raise BorderWidthPowerRefused(
+                "later issued Q19 root has an already-consumed entry transition"
+            )
+        if not self.window_tiles or self.window_tiles[0] is None:
+            self.owner.ledger.bump(
+                _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REFUSALS
+            )
+            raise BorderWidthPowerRefused(
+                "source-root certificate has no exact admitted entry tile"
+            )
+
+        def charge(kind: BorderWidthWork, amount: int) -> None:
+            self.owner.ledger.bump(_BORDER_WIDTH_METRIC_KEYS[kind], amount)
+
+        try:
+            with _border_width_scratch(self.owner) as adjust_memory:
+                power = UniversalBorderWidthPower(
+                    self.window_tiles[0],
+                    entry_width=self.source.pair_width,
+                    max_states=max_states,
+                    max_edges=max_edges,
+                    max_composition_pairs=max_composition_pairs,
+                    max_relation_cells=max_relation_cells,
+                    on_work=charge,
+                    on_memory_change=adjust_memory,
+                )
+                try:
+                    result = power.bounds(steps)
+                finally:
+                    # Drop all request-local sparse rows before the context
+                    # releases their ledger reservation, including on refusal.
+                    del power
+                return result
+        except (BorderWidthPowerRefused, BlockContextBudgetExceeded):
+            self.owner.ledger.bump(
+                _reverse_add_keys.REVERSE_Q19_BORDER_WIDTH_POWER_REFUSALS
+            )
+            raise
+
+    def inward_temporal_constraints(
+        self,
+        *,
+        max_cells: int = 16384,
+        include_source_pairs: bool = False,
+        include_source_digits: bool = False,
+        source_pair_prefix: int = 0,
+        max_modular_digits: int = 128,
+    ) -> ReverseInwardConstraints:
+        """Join NC16 border, bilateral carry, F5 and modular ports *across time*.
+
+        The first growth bit of a later Q19 occurrence was already applied
+        to issue that occurrence. It is not replayed as a future transition.
+        A finite constraint fixed point never certifies a temporal repetition.
+        """
+        from .q19_conditional_stencil import GuardedPairStencil
+        from .temporal_inward_constraints import ReverseInwardConstraints
+
+        self.validate(self.owner, self.source)
+        if type(max_modular_digits) is not int or max_modular_digits < 0:
+            raise ValueError("invalid modular-source digit budget")
+        if type(source_pair_prefix) is not int or source_pair_prefix < 0:
+            raise ValueError("invalid source-pair prefix")
+        later = self.source is not self.owner.initial
+        skip = int(later)
+        w = self.source.output_width if later else self.source.pair_width
+        growth = self.growth_word[skip:]
+        widths = [w]
+        for g in growth:
+            widths.append(widths[-1] + g)
+        system = ReverseInwardConstraints(
+            tuple(widths),
+            max_cells=max_cells,
+            on_middle_filter_visit=lambda: self.owner.ledger.bump(
+                _reverse_add_keys.REVERSE_Q19_INWARD_SYMMETRIC_FILTER_VALUE_VISITS
+            ),
+        )
+
+        def source_digits() -> tuple[int, ...]:
+            if later:
+                return tuple(self.owner.digit(self.source, i) for i in range(w))
+            return self.owner._digits
+
+        digits = None
+        if include_source_digits or w <= max_modular_digits:
+            digits = source_digits()
+        if include_source_digits:
+            assert digits is not None
+            system.constrain_prefix(0, "".join(str(d) for d in reversed(digits)))
+        if source_pair_prefix > (w + 1) // 2:
+            raise ValueError("source-pair probe reaches beyond center")
+        if include_source_pairs or source_pair_prefix:
+            count = (w + 1) // 2 if include_source_pairs else source_pair_prefix
+            stencil = (
+                GuardedPairStencil.from_occurrence(self.owner, self.source)
+                if later
+                else None
+            )
+            for i in range(count):
+                pair = (
+                    stencil.cell_at(self.owner, i).coefficient
+                    if stencil
+                    else self.owner._pair_value_at(self.source, i)
+                )
+                system.constrain_pair(0, i, pair)
+        if self.window_tiles:
+            for i, tile in enumerate(self.window_tiles[skip:]):
+                if tile is None or i >= len(widths):
+                    continue
+                if widths[i] < 2 * tile.k + 1:
+                    continue
+                system.constrain_prefix(i, str(tile.high).zfill(tile.k))
+                system.constrain_suffix(i, str(tile.low).zfill(tile.k))
+        if self.outer_pairs:
+            for i, outer_pair in enumerate(self.outer_pairs[skip:]):
+                if outer_pair is None or i >= len(widths):
+                    continue
+                system.constrain_digit(i, 0, outer_pair[0])
+                system.constrain_digit(i, widths[i] - 1, outer_pair[1])
+        # The mod-99 law is source-universal for actual reverse/add widths.
+        # Its restriction mod 9 and 11 is a *joint* CRT port, not an
+        # independent guessed harmonic. A too-large source stays unresolved.
+        if digits is not None:
+            residue = sum(d * pow(10, i, 99) for i, d in enumerate(digits)) % 99
+            for i, current_width in enumerate(widths):
+                for modulus in (9, 11, 99):
+                    system.constrain_residue(i, modulus, residue % modulus)
+                if i + 1 < len(widths):
+                    residue = residue * (2 if current_width & 1 else 11) % 99
+        return system
+
+    def macro_conditioned_harmonics(
+        self, *, start: int = 0, duration: int | None = None
+    ) -> AuthenticatedMacroWindow:
+        """Extract an authenticated finite cycle with its own F5 harmonics."""
+        from .macro_conditioned_harmonics import authorize_finite_macro_window
+
+        self.validate(self.owner, self.source)
+        return authorize_finite_macro_window(self, start=start, duration=duration)
+
+    def temporal_ring_bank(
+        self,
+        *,
+        start: int = 0,
+        duration: int | None = None,
+        positions: tuple[int, ...] = (0,),
+        source_pair_prefix: int = 0,
+        include_source_digits: bool = False,
+        max_cells: int = 16384,
+        bank_action: SourceGuardedGTBankAction | None = None,
+    ) -> ReverseAddTemporalRingBank:
+        """Issue a finite two-sided macro/inner-position output action."""
+        from .temporal_ring_harmonics import authorize_temporal_ring_bank
+
+        return authorize_temporal_ring_bank(
+            self,
+            start=start,
+            duration=duration,
+            positions=positions,
+            source_pair_prefix=source_pair_prefix,
+            include_source_digits=include_source_digits,
+            max_cells=max_cells,
+            bank_action=bank_action,
+        )
 
     def initial_two_sided_carry(self) -> BilateralCarryAlternative | None:
         """Check the original low-overflow/middle/high seam from its Q19 SLP."""

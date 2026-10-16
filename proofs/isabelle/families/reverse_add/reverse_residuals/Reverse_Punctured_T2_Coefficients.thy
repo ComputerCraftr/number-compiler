@@ -175,8 +175,15 @@ next
   have final_equation:
     "target + 10*(out_left + out_right) = 10*(s div 5) + 9"
     using target_expand source_expand by arith
+  have modulo_equation:
+    "(target + 10*(out_left + out_right)) mod 10 =
+      (10*(s div 5) + 9) mod 10"
+    using arg_cong[where f="\<lambda>value. value mod 10", OF final_equation] .
+  have target_mod: "target mod 10 = 9"
+    using modulo_equation
+    by (simp only: mod_mult_self2 mod_mult_self4; simp)
   show "target = 9"
-    using final_equation target_bound by presburger
+    using target_mod target_bound by presburger
 qed
 
 lemma punctured_no_growth_gt_high_birth:

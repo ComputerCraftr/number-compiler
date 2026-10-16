@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.radix19_cochain import (
         Radix19CarryBlock,
     )
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        ReverseAddTemporalRingBank,
+    )
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import (
@@ -177,6 +180,14 @@ class ReversePairQ19OutputOwner:
                 self._issuance_registry.spatial_bank_windows.owner
             )
             self._spatial_bank_windows = self._issuance_registry.spatial_bank_windows
+            self._temporal_ring_banks_owner = (
+                self._issuance_registry.temporal_ring_banks.owner
+            )
+            self._temporal_ring_banks = self._issuance_registry.temporal_ring_banks
+            self._diagonal_comparisons_owner = (
+                self._issuance_registry.diagonal_comparisons.owner
+            )
+            self._diagonal_comparisons = self._issuance_registry.diagonal_comparisons
             self._scratch_owner = ledger.register(
                 prefix + "-workspace", "reverse_pair_output_workspace"
             )
@@ -196,6 +207,8 @@ class ReversePairQ19OutputOwner:
                 self._controlled_gt_banks,
                 self._issuance_registry,
                 self._spatial_bank_windows,
+                self._temporal_ring_banks,
+                self._diagonal_comparisons,
             )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
@@ -213,6 +226,8 @@ class ReversePairQ19OutputOwner:
         self._audit_border_certificates = self._border_certificates._data
         self._audit_controlled_gt_banks = self._controlled_gt_banks._data
         self._audit_spatial_bank_windows = self._spatial_bank_windows._data
+        self._audit_temporal_ring_banks = self._temporal_ring_banks._data
+        self._audit_diagonal_comparisons = self._diagonal_comparisons._data
         (
             self._audit_projector_forward,
             self._audit_projector_reverse,
@@ -276,6 +291,16 @@ class ReversePairQ19OutputOwner:
                     "_audit_spatial_bank_windows",
                     "reverse_pair_q19_spatial_bank_window",
                 ),
+                PayloadAuditStoreBinding(
+                    self._temporal_ring_banks_owner,
+                    "_audit_temporal_ring_banks",
+                    "reverse_pair_q19_temporal_ring_bank",
+                ),
+                PayloadAuditStoreBinding(
+                    self._diagonal_comparisons_owner,
+                    "_audit_diagonal_comparisons",
+                    "reverse_pair_q19_directed_diagonal_comparison",
+                ),
                 *(
                     PayloadAuditStoreBinding(
                         owner,
@@ -315,6 +340,8 @@ class ReversePairQ19OutputOwner:
             self._controlled_gt_banks,
             self._issuance_registry,
             self._spatial_bank_windows,
+            self._temporal_ring_banks,
+            self._diagonal_comparisons,
         )
         if len(self._binding) != len(current) or any(
             original is not bound
@@ -329,6 +356,14 @@ class ReversePairQ19OutputOwner:
             self._spatial_bank_windows
         ):
             raise ValueError("Q19 spatial bank window registry changed")
+        if self._issuance_registry.temporal_ring_bank_next != len(
+            self._temporal_ring_banks
+        ):
+            raise ValueError("Q19 temporal ring bank registry changed")
+        if self._issuance_registry.diagonal_comparison_next != len(
+            self._diagonal_comparisons
+        ):
+            raise ValueError("Q19 diagonal comparison registry changed")
 
     def _append_word_symbol(self, blocks: list[tuple[int, int]], symbol: int) -> None:
         node = self.arena.terminal(symbol)
@@ -773,6 +808,39 @@ class ReversePairQ19OutputOwner:
             max_states=max_states,
         )
 
+    def authorize_temporal_ring_bank(
+        self,
+        occurrence: ReversePairOutputOccurrence,
+        *,
+        steps: int,
+        start: int = 0,
+        duration: int | None = None,
+        positions: tuple[int, ...] = (0,),
+        source_pair_prefix: int = 0,
+        window_digits: int = 3,
+        max_states: int = 8192,
+        max_cells: int = 16384,
+        include_source_digits: bool = False,
+    ) -> ReverseAddTemporalRingBank:
+        """Build a *finite*, source-certified reverse/add macro ring bank.
+
+        No 2rev10 periods are imported and no full-root REPEAT is authorized.
+        """
+        cert = self.certify_border_growth(
+            occurrence,
+            steps=steps,
+            window_digits=window_digits,
+            max_states=max_states,
+        )
+        return cert.temporal_ring_bank(
+            start=start,
+            duration=duration,
+            positions=positions,
+            source_pair_prefix=source_pair_prefix,
+            max_cells=max_cells,
+            include_source_digits=include_source_digits,
+        )
+
     def _range_summary(
         self, root: int, begin: int, end: int, *, reverse: bool = False
     ) -> _Q19:
@@ -875,6 +943,8 @@ class ReversePairQ19OutputOwner:
             cleanup: list[Callable[[], object]] = [
                 self._unregister_payload_audit_contract,
                 self._issued.dispose,
+                self._diagonal_comparisons.dispose,
+                self._temporal_ring_banks.dispose,
                 self._spatial_bank_windows.dispose,
                 self._controlled_gt_banks.dispose,
                 self._border_certificates.dispose,

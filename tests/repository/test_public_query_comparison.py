@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from devtools.benchmarks.public_query_comparison import Sample, compare
+from number_compiler.api.number_api import NumberCompiler
 
 
 def test_public_routes_agree_and_warm_priming_is_retained() -> None:
@@ -18,9 +19,13 @@ def test_public_routes_agree_and_warm_priming_is_retained() -> None:
     for row in rows:
         expected = 27 if row["horizon"] == 0 else 41
         if row["route"] == "cli":
-            assert int(row["value"], row["output_base"]) == expected
+            value = row["value"]
+            assert value is not None
+            assert int(value, row["output_base"]) == expected
         else:
-            assert int(row["value"]) == (expected >> 2) & 1
+            value = row["value"]
+            assert value is not None
+            assert int(value) == (expected >> 2) & 1
 
 
 def test_mismatched_cli_sample_is_retained_before_rejection(
@@ -37,6 +42,81 @@ def test_mismatched_cli_sample_is_retained_before_rejection(
         compare("collatz", [0], 1, ["bypass"], seed=27, on_sample=retained.append)
     assert len(retained) == 1
     assert retained[0]["value"] == "0"
+
+
+def test_info_only_comparison_skips_value_reference_and_point_demand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from devtools.benchmarks import public_query_comparison as module
+
+    def forbidden_project(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("info-only comparison constructed a value reference")
+
+    calls: list[list[str]] = []
+
+    def observe(
+        arguments: list[str], *, fresh: bool
+    ) -> tuple[float, dict[str, object]]:
+        calls.append(arguments)
+        assert "--no-value" in arguments
+        return 0.01, {
+            "value": None,
+            "info": {"arithmetic.mahler": {"status": "available"}},
+        }
+
+    monkeypatch.setattr(NumberCompiler, "project", forbidden_project)
+    monkeypatch.setattr(module, "cli_sample", observe)
+    rows = compare(
+        "antihydra",
+        [16],
+        1,
+        ["bypass"],
+        info=("arithmetic.mahler",),
+        no_value=True,
+    )
+    assert len(rows) == 1
+    assert rows[0]["route"] == "cli"
+    assert rows[0]["value"] is None
+    assert len(calls) == 1
+
+
+def test_mismatched_observation_sample_is_retained_before_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from devtools.benchmarks import public_query_comparison as module
+
+    calls = 0
+
+    def changing(
+        _arguments: list[str], *, fresh: bool
+    ) -> tuple[float, dict[str, object]]:
+        nonlocal calls
+        calls += 1
+        return 0.01, {
+            "value": None,
+            "info": {
+                "arithmetic.mahler": {"revision": calls},
+                "metrics": None,
+            },
+        }
+
+    monkeypatch.setattr(module, "cli_sample", changing)
+    retained: list[Sample] = []
+    with pytest.raises(AssertionError, match="observation changed"):
+        compare(
+            "antihydra",
+            [0],
+            1,
+            ["bypass", "warm"],
+            info=("arithmetic.mahler", "metrics"),
+            no_value=True,
+            on_sample=retained.append,
+        )
+    assert len(retained) == 2
+    assert retained[-1]["info"] == {
+        "arithmetic.mahler": {"revision": 2},
+        "metrics": None,
+    }
 
 
 def test_sample_journal_survives_failure_without_rewriting_the_growing_report(

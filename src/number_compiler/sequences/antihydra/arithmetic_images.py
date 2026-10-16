@@ -7,7 +7,7 @@ and converts demanded bounded leaves to the existing guarded roof consumer.
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterator
+from collections.abc import Callable, Hashable, Iterator
 from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -38,9 +38,17 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
+from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
+    MahlerOddMacroSelection,
+    select_source_certified_odd_macro,
+)
+from number_compiler.sequences.antihydra.mahler_source_actions import (
+    MAX_MAHLER_SOURCE_EXTENT,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.mahler_source_actions import (
@@ -102,7 +110,23 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 counter_family="mahler" if prepare_mahler else "antihydra",
             )
         consumer = self._mahler_consumer
-        try:
+        consumer_closed = False
+
+        def close_consumer() -> None:
+            nonlocal consumer_closed
+            if consumer is not None and not consumer_closed:
+                consumer.close()
+                consumer_closed = True
+
+        def cleanup_failed_construction() -> None:
+            cleanups: list[Callable[[], object]] = []
+            if consumer is not None and not consumer_closed:
+                cleanups.append(close_consumer)
+            if hasattr(self, "_closed"):
+                cleanups.append(self.dispose)
+            cleanup_all(cleanups)
+
+        with cleanup_on_error(cleanup_failed_construction):
             super().__init__(ledger, 8, returns, ANTIHYDRA_ARITHMETIC_LAW)
             if consumer is not None:
                 source = self.source_node(self.root_source)
@@ -128,46 +152,39 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                         f"mahler-root-action-{self.image_owner}",
                         "arithmetic_source_action",
                     )
+                    self.mahler_binding_owner = owner
                     bindings: LedgerDict[
                         tuple[DyadicReturnSourceID, DyadicReturnActionID],
                         tuple[int, int, int | None],
                     ] = ledger.make_dict(owner, nodes_per_entry=3)
-                    ledger.reserve(owner, entries=1, nodes=3)
-                    try:
-                        wire = normal.wire()
-                        bindings[(self.root_source, self.root_action)] = wire
-                    except BaseException:
-                        ledger.release(owner, entries=1, nodes=3)
-                        raise
-                    self.mahler_binding_owner = owner
                     self.mahler_bindings = bindings
+                    ledger.reserve(owner, entries=1, nodes=3)
+                    wire = normal.wire()
+                    bindings[(self.root_source, self.root_action)] = wire
                     self._mahler_wire = wire
-        except BaseException:
-            if hasattr(self, "_closed"):
-                self.dispose()
-            raise
-        finally:
-            self._mahler_consumer = None
-            if consumer is not None:
-                consumer.close()
-        from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
-        )
+            from number_compiler.sequences.antihydra.payload_audit import (
+                register_antihydra_payload_contract,
+            )
 
-        register_antihydra_payload_contract(self)
+            register_antihydra_payload_contract(self)
+            close_consumer()
+            self._mahler_consumer = None
 
     def dispose(self) -> None:
-        bindings = self.mahler_bindings
+        cleanup_all((self._dispose_mahler_bindings, super().dispose))
+
+    def _dispose_mahler_bindings(self) -> None:
         owner = self.mahler_binding_owner
-        if bindings is not None and owner is not None:
-            size = len(bindings)
-            bindings.clear()
-            self.ledger.release(owner, entries=size, nodes=3 * size)
-            self.ledger.mark_disposed(owner)
-            self.mahler_bindings = None
-            self.mahler_binding_owner = None
-            self._mahler_wire = None
-        super().dispose()
+        if owner is None:
+            return
+        retained = self.ledger.inventory_owner(owner)
+        if self.mahler_bindings is not None:
+            self.mahler_bindings.clear()
+        self.ledger.release(owner, entries=retained.entries, nodes=retained.nodes)
+        self.ledger.mark_disposed(owner)
+        self.mahler_bindings = None
+        self.mahler_binding_owner = None
+        self._mahler_wire = None
 
     def mahler_root_wire(self) -> tuple[int, int, int | None] | None:
         """Read the exact companion of this already admitted source/action."""
@@ -251,7 +268,41 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             remaining -= length
 
     def _run_candidate(
-        self, action: DyadicReturnActionID, source: SourceImageView
+        self,
+        action: DyadicReturnActionID,
+        source: SourceImageView,
+        *,
+        macro_selection: MahlerOddMacroSelection | None = None,
+        scratch: RunArithmeticWorkspace | None = None,
+        source_h: int | None = None,
+    ) -> SourceImageCandidate:
+        if scratch is not None:
+            return self._run_candidate_with_scratch(
+                action,
+                source,
+                macro_selection=macro_selection,
+                scratch=scratch,
+                source_h=source_h,
+            )
+        with RunArithmeticWorkspace.for_ledger(
+            self.ledger, self.counter_prefix
+        ).scope() as local_scratch:
+            return self._run_candidate_with_scratch(
+                action,
+                source,
+                macro_selection=macro_selection,
+                scratch=local_scratch,
+                source_h=source_h,
+            )
+
+    def _run_candidate_with_scratch(
+        self,
+        action: DyadicReturnActionID,
+        source: SourceImageView,
+        *,
+        macro_selection: MahlerOddMacroSelection | None,
+        scratch: RunArithmeticWorkspace,
+        source_h: int | None,
     ) -> SourceImageCandidate:
         node = self.action_node(action)
         source_id = source.binding.source
@@ -261,9 +312,123 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         if not admitted.exact or admitted.precision != node.width:
             raise ValueError("Antihydra run requires its complete exact source")
         self._bump("temporal_run_routes")
-        with RunArithmeticWorkspace.for_ledger(
+        scratch.require_bits(
+            8
+            * (
+                max(
+                    admitted.residue.bit_length(),
+                    admitted.precision + admitted.lift.bit_length()
+                    if admitted.lift
+                    else 0,
+                )
+                + 16
+            )
+        )
+        if source_h is None:
+            source_h = self._source_value(admitted)
+        endpoint_d = source_h - 1
+        delta, minimum, odd_steps = 0, 0, 0
+        remaining = node.width
+        if macro_selection is not None:
+            if macro_selection.prefix_steps:
+                for (
+                    prefix_width,
+                    run_delta,
+                    run_minimum,
+                    run_odds,
+                    endpoint_d,
+                ) in self._punctured_steps(
+                    source_h, macro_selection.prefix_steps, scratch
+                ):
+                    delta, minimum = compose_prefix_safety_values(
+                        delta, minimum, run_delta, run_minimum
+                    )
+                    odd_steps += run_odds
+                    remaining -= prefix_width
+            if endpoint_d != macro_selection.source:
+                raise ArithmeticError("odd macro selector changed its admitted source")
+            powered_extent = macro_selection.extent
+            scratch.require_bits(
+                8 * (endpoint_d.bit_length() + 2 * powered_extent + 3 * node.width + 32)
+            )
+            powered = macro_selection.ring.power(
+                macro_selection.repetitions,
+                max_extent=MAX_MAHLER_SOURCE_EXTENT,
+            )
+            powered_endpoint, powered_balance = powered.advance(endpoint_d, delta)
+            delta, minimum = compose_prefix_safety_values(
+                delta, minimum, powered.delta, powered.minimum
+            )
+            if powered_balance != delta:
+                raise ArithmeticError("powered odd macro changed its ledger cocycle")
+            odd_steps += powered.extent - powered.odd_events
+            endpoint_d = powered_endpoint
+            remaining -= powered_extent
+            self._bump("temporal_odd_macro_evaluations")
+            self._bump("temporal_odd_macro_repetitions", macro_selection.repetitions)
+            self._bump("temporal_odd_macro_return_steps", powered_extent)
+            self._bump(
+                "temporal_odd_macro_operand_bits",
+                endpoint_d.bit_length()
+                + powered.joint.gain.bit_length()
+                + powered.joint.innovation.bit_length(),
+            )
+            self._bump(
+                "temporal_odd_macro_residual_steps",
+                node.width - macro_selection.prefix_steps - powered_extent,
+            )
+        residual_source_h = endpoint_d + 1
+        for (
+            length,
+            run_delta,
+            run_minimum,
+            run_odds,
+            residual_endpoint_d,
+        ) in self._punctured_steps(residual_source_h, remaining, scratch):
+            delta, minimum = compose_prefix_safety_values(
+                delta, minimum, run_delta, run_minimum
+            )
+            # Shared dyadic images count odd h, the complement of centered D.
+            odd_steps += run_odds
+            endpoint_d = residual_endpoint_d
+        # Every centered branch has slope 3/2. Recover the branch affine
+        # intercept from its exact source and endpoint once, rather than
+        # repeatedly composing coefficients against the growing prefix.
+        scratch.require_bits(8 * (source_h.bit_length() + 3 * node.width + 16))
+        upper, lower = 3**node.width, 1 << node.width
+        offset = (endpoint_d + 1) * lower - upper * source_h
+        self._bump(
+            "temporal_composition_operand_bits",
+            upper.bit_length()
+            + lower.bit_length()
+            + abs(offset).bit_length()
+            + source_h.bit_length()
+            + endpoint_d.bit_length(),
+        )
+        transfer = SkewTransfer(upper, offset, lower)
+        return publish_exact_run_candidate(
+            self, action, source, transfer, odd_steps, delta, minimum
+        )
+
+    def _try_odd_macro_candidate(
+        self, action: DyadicReturnActionID, source: SourceImageView
+    ) -> SourceImageCandidate | None:
+        """Power a source-witnessed odd motif before the scheduler opens children."""
+        source_id = source.binding.source
+        if type(source_id) is not DyadicReturnSourceID:
+            raise TypeError("Antihydra macro source has another sort")
+        admitted = self.source_node(source_id)
+        width = self.action_node(action).width
+        if (
+            not admitted.exact
+            or admitted.precision != width
+            or width <= self.MAX_LEAF_STEPS
+        ):
+            return None
+        scratch_workspace = RunArithmeticWorkspace.for_ledger(
             self.ledger, self.counter_prefix
-        ).scope() as scratch:
+        )
+        with scratch_workspace.scope() as scratch:
             scratch.require_bits(
                 8
                 * (
@@ -276,39 +441,49 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     + 16
                 )
             )
-            source_h = self._source_value(admitted)
-            endpoint_d = source_h - 1
-            delta, minimum, odd_steps = 0, 0, 0
-            for (
-                length,
-                run_delta,
-                run_minimum,
-                run_odds,
-                endpoint_d,
-            ) in self._punctured_steps(source_h, node.width, scratch):
-                delta, minimum = compose_prefix_safety_values(
-                    delta, minimum, run_delta, run_minimum
-                )
-                # Shared dyadic images count odd h, the complement of centered D.
-                odd_steps += run_odds
-            # Every centered branch has slope 3/2. Recover the branch affine
-            # intercept from its exact source and endpoint once, rather than
-            # repeatedly composing coefficients against the growing prefix.
-            scratch.require_bits(8 * (source_h.bit_length() + 3 * node.width + 16))
-            upper, lower = 3**node.width, 1 << node.width
-            offset = (endpoint_d + 1) * lower - upper * source_h
+            # An exact source with no high lift is already its low residue;
+            # preserve the no-reconstruction path for small admitted seeds.
+            source_h = (
+                admitted.residue if admitted.lift == 0 else self._source_value(admitted)
+            )
+            centered = source_h - 1
+            self._bump("temporal_odd_macro_selector_calls")
+            if centered <= 0:
+                self._bump("temporal_odd_macro_selector_misses")
+                return None
+            selection = select_source_certified_odd_macro(
+                centered,
+                width,
+                max_extent=min(width, MAX_MAHLER_SOURCE_EXTENT),
+                max_residual_steps=self.MAX_LEAF_STEPS,
+                reserve_bits=scratch.require_bits,
+                on_event_work=self._account_odd_macro_selector_work,
+            )
+            if selection is None:
+                self._bump("temporal_odd_macro_selector_misses")
+                return None
+            residual_steps = width - selection.prefix_steps - selection.extent
+            if residual_steps > self.MAX_LEAF_STEPS:
+                self._bump("temporal_odd_macro_partial_fallbacks")
+                return None
             self._bump(
-                "temporal_composition_operand_bits",
-                upper.bit_length()
-                + lower.bit_length()
-                + abs(offset).bit_length()
-                + source_h.bit_length()
-                + endpoint_d.bit_length(),
+                "temporal_odd_macro_selection_events", selection.witnessed_events
             )
-            transfer = SkewTransfer(upper, offset, lower)
-            return publish_exact_run_candidate(
-                self, action, source, transfer, odd_steps, delta, minimum
+            return self._run_candidate_with_scratch(
+                action,
+                source,
+                macro_selection=selection,
+                scratch=scratch,
+                source_h=source_h,
             )
+
+    def _account_odd_macro_selector_work(
+        self, event_count: int, operand_bits: int
+    ) -> None:
+        if event_count:
+            self._bump("temporal_odd_macro_selector_events", event_count)
+        if operand_bits:
+            self._bump("temporal_odd_macro_selector_operand_bits", operand_bits)
 
     def _punctured_steps(
         self, h: int, width: int, scratch: RunArithmeticWorkspace
@@ -430,18 +605,18 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             width <= self.MAX_LEAF_STEPS or self._whole_initial_run(source, width)
         ):
             candidate = self._run_candidate(action, source)
+        elif self.source_node(source_id).exact:
+            macro_candidate = self._try_odd_macro_candidate(action, source)
+            if macro_candidate is None:
+                self._bump("temporal_balanced_routes")
+                candidate = self.complete_composite_candidate(action, source)
+            else:
+                candidate = macro_candidate
         else:
             self._bump("temporal_balanced_routes")
             candidate = self.complete_composite_candidate(action, source)
         if consumer is not None and candidate is not None:
-            payload = candidate.payload
-            if type(payload) is not DyadicReturnImageID:
-                raise TypeError("Mahler constructor returned another image sort")
-            root_source = self.source_node(self.root_source)
-            publisher = root_source.residue + (
-                root_source.lift << root_source.precision
-            )
-            consumer.publish_root(self.image_node(payload).summary, publisher=publisher)
+            self._publish_mahler_root_candidate(candidate, action, source)
         return candidate
 
     def primitive_run_candidate(
@@ -456,8 +631,33 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             and self.source_node(source_id).exact
             and source.binding.action == self.identity
         ):
-            return self._run_candidate(action, source)
+            candidate = self._run_candidate(action, source)
+            if candidate is not None:
+                self._publish_mahler_root_candidate(candidate, action, source)
+            return candidate
         return None
+
+    def _publish_mahler_root_candidate(
+        self,
+        candidate: SourceImageCandidate,
+        action: Hashable,
+        source: SourceImageView,
+    ) -> None:
+        consumer = self._mahler_consumer
+        if (
+            consumer is None
+            or type(action) is not DyadicReturnActionID
+            or action != self.root_action
+            or source.binding.source != self.root_source
+            or self.action_node(action).width != self.returns
+        ):
+            return
+        payload = candidate.payload
+        if type(payload) is not DyadicReturnImageID:
+            raise TypeError("Mahler constructor returned another image sort")
+        root_source = self.source_node(self.root_source)
+        publisher = root_source.residue + (root_source.lift << root_source.precision)
+        consumer.publish_root(self.image_node(payload).summary, publisher=publisher)
 
     def project(
         self, image: SourceImageView, demand: SourceImageDemand

@@ -59,6 +59,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.temporal_residue99 import (
         ReverseAddResidue99,
     )
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        ReverseAddTemporalRingBank,
+    )
 
 
 def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
@@ -296,6 +299,14 @@ class ReverseAddPoweredTerm:
         return self._source_workspace().certified_spatial_bank_morphism(
             start, count, period=period
         )
+
+    def temporal_ring_bank(
+        self, start: int = 0, count: int = 8
+    ) -> ReverseAddTemporalRingBank:
+        """Finite source-certified GT/EQ/LT, F5 and carry/borrow ring output."""
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        return self._source_workspace().certified_temporal_ring_bank(start, count)
 
     def temporal_residue99(self) -> ReverseAddResidue99:
         """Predict mod-99 without initializing the Q19 source workspace."""

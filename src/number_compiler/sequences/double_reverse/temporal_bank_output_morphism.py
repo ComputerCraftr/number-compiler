@@ -128,6 +128,18 @@ def frame_from_digits(
     )
 
 
+def _authorized_frame_at(
+    record: _SourceAuthorizedRecord,
+    frames: tuple[PeriodicBankFrame, ...],
+    pair_offset: int,
+) -> PeriodicBankFrame:
+    """Read one frame after validating the packet's source authority."""
+    validate_source_record(record)
+    if type(pair_offset) is not int or not 0 <= pair_offset < len(frames):
+        raise IndexError(pair_offset)
+    return frames[pair_offset]
+
+
 def _least_period(frames: tuple[PeriodicBankFrame, ...]) -> int:
     """Minimize the *complete* spatial emission, not just its GT-high bit."""
     n = len(frames)
@@ -313,16 +325,32 @@ class ExactPointedBankWindow(_SourceAuthorizedRecord):
     final_pair_start: int
     frames: tuple[PeriodicBankFrame, ...]
     residue_action: CertifiedResidueTemporalAction
+    open_used: bool = False
+    open_moore_classes: int | None = None
+    open_input_period: int | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.open_used) is not bool:
+            raise ValueError("open-bank use marker must be Boolean")
+        if self.open_moore_classes is not None and (
+            type(self.open_moore_classes) is not int or self.open_moore_classes < 1
+        ):
+            raise ValueError("open-bank Moore class count must be positive")
+        if self.open_input_period is not None and (
+            type(self.open_input_period) is not int or self.open_input_period < 1
+        ):
+            raise ValueError("open-bank input period must be positive")
+        if not self.open_used and (
+            self.open_moore_classes is not None or self.open_input_period is not None
+        ):
+            raise ValueError("unused open bank cannot publish quotient metadata")
 
     @property
     def pair_count(self) -> int:
         return len(self.frames)
 
     def at(self, pair_offset: int) -> PeriodicBankFrame:
-        validate_source_record(self)
-        if type(pair_offset) is not int or not 0 <= pair_offset < len(self.frames):
-            raise IndexError(pair_offset)
-        return self.frames[pair_offset]
+        return _authorized_frame_at(self, self.frames, pair_offset)
 
     def counts(self) -> dict[str, int]:
         validate_source_record(self)

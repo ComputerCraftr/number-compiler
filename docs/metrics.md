@@ -135,6 +135,23 @@ process retention and reuse, explicitly labeled `process_aggregate_not_query_wor
 reading it never creates the cache or a lease. Descriptor-era `shared_cache_*`
 fields describe the prime query snapshot, not these later macrocell operations.
 
+Each `family_work` record may expose `odd_macro_work`, the measured counters
+from that family's guarded odd-event constructor. It is null when the owner
+has not instrumented that path. Selector calls, misses, macro evaluations
+and operand sizes describe work; represented repetitions and return steps
+describe the admitted action's extent. Neither is an occurrence-cache hit.
+An evaluation counts one powered macro evaluation, not its internal coefficient
+compositions; this lane does not measure those individual compositions.
+Return steps are not Antihydra physical Turing-machine ticks. Physical clocks
+continue to come from the independently demanded clock calculation. Reporting
+these counters never runs the selector or requests that physical observation.
+
+Collatz's `mixed_clock_work` reports consumed mixed-clock actions, their
+repetitions and physical ticks from the existing executor counters. A named
+border-action count can be zero when this earlier powered route handles the
+request. The lane is null when no corresponding counter was published; the
+snapshot does not select a macro to populate it.
+
 Public Python metric reports retain per-owner inventory and raw counters, but
 do not initiate deep payload or ownership audits. Explicit
 `collect_ledger_metrics(ledger)` remains the audit entry point; callers can use
@@ -341,3 +358,39 @@ They are construction/observation work, separate from occurrence validation hits
 Joint ordinary-power ports resolve one widest source and project all requested
 carry/borrow channels from its tape; the source growth value is not counted again
 as work for each channel.
+
+## Finite open harmonic banks
+
+The `double_reverse_open_ring_source_ports` counter records source inlet ports
+actually selected for a finite open bank. `double_reverse_open_ring_window_publications`
+counts published source windows; `double_reverse_open_ring_moore_publications`
+counts successful minimized input-driven publications. These are not cache hits.
+`double_reverse_open_ring_guard_refusals` records failed optional admission.
+An observed inlet motif never grants authority beyond its certified horizon.
+The `temporal.open-ring` packet is a demanded observer; metrics-only requests
+do not build it. Execution metrics retain schema 8.
+
+Reverse finite-ring work is recorded separately as
+`reverse_q19_temporal_ring_constraint_cells`,
+`reverse_q19_temporal_ring_propagation_rounds`, and
+`reverse_q19_temporal_ring_output_lane_visits`.
+`reverse_q19_temporal_ring_failures` includes failed guarded construction.
+Reading an already-published packet does not count those operations again.
+These finite-ring counters are exposed under
+`execution_metrics.observations`, with `null` when the corresponding owner
+has not performed that work. Publication counts increase after consistency
+validation; guard refusals do not count as publications or cache hits.
+
+Birth-centered 2rev10 demands have separate `double_reverse_birth_layer_*`
+counts for inward source-port reads, local strip steps, conditional model
+states, successful publications and refusals. These count executed work;
+a reported physical return period is not a cache-hit count. The counters stay
+null until the birth-layer owner is demanded. Scratch space is reserved through
+the existing ledger and released on both successful and failed construction.
+
+Optional reverse width relations report `reverse_q19_border_width_*` requests,
+refusals, visited/discovered states, edges, composition pairs and allocated
+relation cells. Cell allocations are cumulative work, not retained bytes.
+`reverse_q19_directed_diagonal_inlet_visits` counts selected growth inputs;
+`reverse_q19_inward_symmetric_filter_value_visits` counts candidate checks.
+None of these observers runs merely because metrics were requested.

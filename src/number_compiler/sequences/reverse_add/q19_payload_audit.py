@@ -188,6 +188,9 @@ def audit_reverse_pair_output_roots(
 ) -> tuple[set[int], set[int], set[tuple[int, int]]]:
     """Inspect completed records without invoking a projector or point evaluator."""
     from number_compiler.sequences.reverse_add.border_carry_safety import BorderTile
+    from number_compiler.sequences.reverse_add.diagonal_growth_bank import (
+        CertifiedDiagonalComparison,
+    )
     from number_compiler.sequences.reverse_add.q19_border_control import (
         CertifiedBorderGrowth,
     )
@@ -210,6 +213,9 @@ def audit_reverse_pair_output_roots(
         _FrozenPairStepLaw,
         _WordSummary,
     )
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        ReverseAddTemporalRingBank,
+    )
 
     approved: set[int] = set()
     recognized: set[int] = set()
@@ -231,7 +237,7 @@ def audit_reverse_pair_output_roots(
             and root.machine.base == 10
             and type(root.machine) is _FrozenPairStepLaw
             and type(root._binding) is tuple
-            and len(root._binding) == 11
+            and len(root._binding) == 13
             and root._binding[0] is ledger
             and root._binding[1] is root._digits
             and root._binding[2] == 10
@@ -243,10 +249,19 @@ def audit_reverse_pair_output_roots(
             and root._binding[8] is root._controlled_gt_banks
             and root._binding[9] is root._issuance_registry
             and root._binding[10] is root._spatial_bank_windows
+            and root._binding[11] is root._temporal_ring_banks
+            and root._binding[12] is root._diagonal_comparisons
+            and root._issuance_registry.diagonal_comparisons
+            is root._diagonal_comparisons
+            and root._issuance_registry.diagonal_comparison_next
+            == len(root._diagonal_comparisons)
             and root._issuance_registry.spatial_bank_windows
             is root._spatial_bank_windows
             and root._issuance_registry.spatial_bank_window_next
             == len(root._spatial_bank_windows)
+            and root._issuance_registry.temporal_ring_banks is root._temporal_ring_banks
+            and root._issuance_registry.temporal_ring_bank_next
+            == len(root._temporal_ring_banks)
         )
         stores = (
             (arena.nodes, arena.owners[0], "reverse_pair_output_grammar"),
@@ -269,6 +284,16 @@ def audit_reverse_pair_output_roots(
                 root._spatial_bank_windows,
                 root._spatial_bank_windows_owner,
                 "reverse_pair_q19_spatial_bank_window",
+            ),
+            (
+                root._temporal_ring_banks,
+                root._temporal_ring_banks_owner,
+                "reverse_pair_q19_temporal_ring_bank",
+            ),
+            (
+                root._diagonal_comparisons,
+                root._diagonal_comparisons_owner,
+                "reverse_pair_q19_directed_diagonal_comparison",
             ),
             *(
                 (store, store_owner, "reverse_pair_projector_memo")
@@ -541,6 +566,87 @@ def audit_reverse_pair_output_roots(
             valid &= window_valid
             if not window_valid:
                 invalid.add((root._spatial_bank_windows_owner, id(window)))
+        for ring_key, ring_issued in root._temporal_ring_banks.items():
+            recognized.update((id(ring_key), id(ring_issued)))
+            if type(ring_issued) is not tuple or len(ring_issued) != 2:
+                valid = False
+                invalid.add((root._temporal_ring_banks_owner, id(ring_issued)))
+                continue
+            ring, ring_binding = ring_issued
+            recognized.update((id(ring), id(ring_binding)))
+            if type(ring) is not ReverseAddTemporalRingBank:
+                valid = False
+                invalid.add((root._temporal_ring_banks_owner, id(ring)))
+                continue
+            try:
+                ring_valid = (
+                    type(ring_binding) is tuple
+                    and ring_binding == ring._snapshot()
+                    and type(ring_key) is int
+                    and ring_key == ring._registry_key
+                    and ring.certificate.owner is root
+                    and ring.certificate.source.owner is root._authority
+                    and root._border_certificates.get(
+                        (
+                            ring.certificate.source.root,
+                            ring.certificate.source.temporal_steps,
+                            len(ring.certificate.growth_word),
+                            ring.certificate.window_digits,
+                        )
+                    )
+                    is not None
+                )
+                if ring_valid:
+                    ring._check()
+            except (AttributeError, IndexError, TypeError, ValueError):
+                ring_valid = False
+            valid &= ring_valid
+            if not ring_valid:
+                invalid.add((root._temporal_ring_banks_owner, id(ring)))
+        for diagonal_key, diagonal_issued in root._diagonal_comparisons.items():
+            recognized.update((id(diagonal_key), id(diagonal_issued)))
+            if type(diagonal_issued) is not tuple or len(diagonal_issued) != 2:
+                valid = False
+                invalid.add((root._diagonal_comparisons_owner, id(diagonal_issued)))
+                continue
+            comparison, comparison_binding = diagonal_issued
+            recognized.update((id(comparison), id(comparison_binding)))
+            if type(comparison) is not CertifiedDiagonalComparison:
+                valid = False
+                invalid.add((root._diagonal_comparisons_owner, id(comparison)))
+                continue
+            try:
+                comparison_valid = (
+                    type(comparison_binding) is tuple
+                    and comparison_binding == comparison._snapshot()
+                    and type(diagonal_key) is int
+                    and diagonal_key == comparison._registry_key
+                    and comparison.certificate.owner is root
+                    and comparison.certificate.source.owner is root._authority
+                    and root._issued.get(
+                        (
+                            comparison.certificate.source.root,
+                            comparison.certificate.source.temporal_steps,
+                        )
+                    )
+                    is comparison.certificate.source
+                    and root._border_certificates.get(
+                        (
+                            comparison.certificate.source.root,
+                            comparison.certificate.source.temporal_steps,
+                            len(comparison.certificate.growth_word),
+                            comparison.certificate.window_digits,
+                        )
+                    )
+                    is not None
+                )
+                if comparison_valid:
+                    comparison._validate()
+            except (AttributeError, IndexError, TypeError, ValueError):
+                comparison_valid = False
+            valid &= comparison_valid
+            if not comparison_valid:
+                invalid.add((root._diagonal_comparisons_owner, id(comparison)))
         left_states, right_states = root.machine.left.states, root.machine.right.states
         for store, states, arity in (
             (root.projector._fwd, left_states, 2),
@@ -592,6 +698,8 @@ def audit_reverse_pair_output_roots(
                 root._border_certificates.values(),
                 root._controlled_gt_banks.values(),
                 root._spatial_bank_windows.values(),
+                root._temporal_ring_banks.values(),
+                root._diagonal_comparisons.values(),
             ):
                 if type(retained_issue) is tuple and len(retained_issue) == 2:
                     retained_record, retained_binding = retained_issue
@@ -623,6 +731,8 @@ def audit_reverse_pair_output_owner(
         root._border_certificates_owner,
         root._controlled_gt_banks_owner,
         root._spatial_bank_windows_owner,
+        root._temporal_ring_banks_owner,
+        root._diagonal_comparisons_owner,
         *root._projector_owners,
     )
     containers: dict[int, object] = {}
@@ -660,6 +770,16 @@ def audit_reverse_pair_output_owner(
             "reverse_pair_q19_spatial_bank_window",
             root._spatial_bank_windows_owner,
         ),
+        (
+            "_audit_temporal_ring_banks",
+            "reverse_pair_q19_temporal_ring_bank",
+            root._temporal_ring_banks_owner,
+        ),
+        (
+            "_audit_diagonal_comparisons",
+            "reverse_pair_q19_directed_diagonal_comparison",
+            root._diagonal_comparisons_owner,
+        ),
         *(
             (attribute, "reverse_pair_projector_memo", owner)
             for attribute, owner in zip(
@@ -683,6 +803,8 @@ def audit_reverse_pair_output_owner(
             "_audit_border_certificates": "_border_certificates",
             "_audit_controlled_gt_banks": "_controlled_gt_banks",
             "_audit_spatial_bank_windows": "_spatial_bank_windows",
+            "_audit_temporal_ring_banks": "_temporal_ring_banks",
+            "_audit_diagonal_comparisons": "_diagonal_comparisons",
         }.get(attribute)
         if memo_attribute is not None:
             memo = getattr(root, memo_attribute)

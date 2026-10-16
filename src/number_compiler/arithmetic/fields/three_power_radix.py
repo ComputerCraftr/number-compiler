@@ -36,6 +36,13 @@ def _require_base_places(base: int, places: int) -> None:
         raise ValueError("radix places must be in 1..64")
 
 
+def decimal_tripling_order(places: int) -> int:
+    """Exact order of three modulo a bounded decimal source window."""
+    if type(places) is not int or not 1 <= places <= 512:
+        raise ValueError("decimal source places must be in 1..512")
+    return (1 << max(2, places - 2)) * int(5 ** (places - 1))
+
+
 def order_three(base: int, places: int) -> int | None:
     """Exact ord_{base**places}(3); None when the modulus contains 3.
 
@@ -55,7 +62,7 @@ def order_three(base: int, places: int) -> int | None:
     if base == 7:
         return 6 * int(7 ** (places - 1))
     if base == 10:
-        return (1 << max(2, places - 2)) * int(5 ** (places - 1))
+        return decimal_tripling_order(places)
     if base == 11:
         return 5 * int(11 ** max(0, places - 2))
     return 3 * int(13 ** (places - 1))

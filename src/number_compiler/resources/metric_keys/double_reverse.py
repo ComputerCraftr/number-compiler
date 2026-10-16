@@ -189,3 +189,24 @@ DOUBLE_REVERSE_BINARY_SHIFT_PRIMITIVES: Final = "double_reverse_binary_shift_pri
 DOUBLE_REVERSE_PERIODIC_BANK_POINTED_REUSE: Final = (
     "double_reverse_periodic_bank_pointed_reuse"
 )
+DOUBLE_REVERSE_OPEN_RING_SOURCE_PORTS: Final = "double_reverse_open_ring_source_ports"
+DOUBLE_REVERSE_OPEN_RING_WINDOW_PUBLICATIONS: Final = (
+    "double_reverse_open_ring_window_publications"
+)
+DOUBLE_REVERSE_OPEN_RING_MOORE_PUBLICATIONS: Final = (
+    "double_reverse_open_ring_moore_publications"
+)
+DOUBLE_REVERSE_OPEN_RING_GUARD_REFUSALS: Final = (
+    "double_reverse_open_ring_guard_refusals"
+)
+DOUBLE_REVERSE_BIRTH_LAYER_SOURCE_PORT_READS: Final = (
+    "double_reverse_birth_layer_source_port_reads"
+)
+DOUBLE_REVERSE_BIRTH_LAYER_STRIP_STEPS: Final = "double_reverse_birth_layer_strip_steps"
+DOUBLE_REVERSE_BIRTH_LAYER_MODEL_STATES: Final = (
+    "double_reverse_birth_layer_model_states"
+)
+DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS: Final = (
+    "double_reverse_birth_layer_publications"
+)
+DOUBLE_REVERSE_BIRTH_LAYER_REFUSALS: Final = "double_reverse_birth_layer_refusals"

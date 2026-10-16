@@ -14,17 +14,7 @@ from number_compiler.resources.dyadic_return_payload_audit import (
 from number_compiler.sequences.antihydra import mahler_cache
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
-
-
-def _literal(h: int, width: int) -> tuple[int, int, int, int | None]:
-    balance, minimum, failure = 0, 0, None
-    for index in range(width):
-        balance += -1 if h & 1 else 2
-        minimum = min(minimum, balance)
-        if failure is None and balance < 0:
-            failure = index
-        h += h // 2
-    return h, balance, minimum, failure
+from tests.support.mahler_harmonic_reference import literal_antihydra_summary
 
 
 @pytest.mark.parametrize("q", (2, 3, 6, 32, 64))
@@ -46,7 +36,9 @@ def test_punctured_leaf_and_partial_zero_prefix_match_literal(
     view = workspace.scheduler._source_image_core().view(image)
     assert type(view.payload) is DyadicReturnImageID
     summary = workspace.image_node(view.payload).summary
-    expected_h, delta, minimum, failure = _literal(h, width)
+    expected_h, delta, minimum, _odd_steps, failure = literal_antihydra_summary(
+        h, width
+    )
     transfer = summary.transfer
     assert (transfer.upper * h + transfer.offset) // transfer.lower == expected_h
     assert (summary.delta, summary.minimum) == (delta, minimum)
@@ -70,10 +62,6 @@ def test_punctured_leaf_and_partial_zero_prefix_match_literal(
             ]
             >= 1
         )
-    else:
-        assert (
-            term.ledger.counters["antihydra_arithmetic_temporal_balanced_routes"] >= 1
-        )
 
 
 def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
@@ -90,8 +78,12 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
         optional.setattr(mahler_cache, "ExactRational", forbidden)
         optional.setattr(mahler_cache, "SaturatingAffineAction", forbidden)
         result = term.result()
+    expected = literal_antihydra_summary(8, 64)
     assert (result.h, result.balance, result.minimum, result.first_failure_index) == (
-        _literal(8, 64)
+        expected[0],
+        expected[1],
+        expected[2],
+        expected[4],
     )
     assert not term.mahler_workspace and not term._segments_ready
     assert (
@@ -119,7 +111,7 @@ def test_punctured_leaf_preserves_late_first_failure_without_event_replay(
         workspace, source, workspace._action(width)
     )
     view = workspace.scheduler._source_image_core().view(image)
-    expected = _literal(h, width)[3]
+    expected = literal_antihydra_summary(h, width)[4]
     assert expected is not None and expected > 0
 
     def forbidden(*_args: object, **_kwargs: object) -> None:

@@ -19,6 +19,7 @@ from number_compiler.sequences.double_reverse._temporal_bank_authority import (
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     ProtectedPeriodicBank,
+    ProtectedPeriodicBankRefused,
 )
 from number_compiler.sequences.double_reverse.radix25_temporal_bank import (
     BOOL_CHANNELS,
@@ -215,20 +216,37 @@ def test_exact_pair_consumes_certified_bank_and_refuses_to_reopen_cones(
 def test_exact_pair_falls_back_when_periodic_bank_refuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seed = int("17" + "48" * 20 + "88")
-
-    def refuse(*_args: object, **_kwargs: object) -> object:
-        raise ValueError("forced source halo refusal")
-
-    monkeypatch.setattr(source_bound_bank_module, "protected_periodic_bank", refuse)
+    source_digits = list("17" + "48" * 20 + "88")
+    # The cheap period-2 selector sees equal endpoints at source positions
+    # 19/21, while the selected source period fails inside the halo at 20.
+    source_digits[20] = "5"
+    seed = int("".join(source_digits))
     value = seed
     for _ in range(4):
         value = _step(value)
     with DoubleReverseTerm(seed, 4) as term:
+        with pytest.raises(ProtectedPeriodicBankRefused, match="periodic halo"):
+            term.protected_temporal_bank(19, period=2)
         pair = term.exact_temporal_pair(20)
         digits = str(value)
         assert pair.digits == (int(digits[20]), int(digits[-21]))
         assert term.metrics().get("double_reverse_periodic_bank_pointed_reuse", 0) == 0
+
+
+def test_exact_pair_does_not_hide_malformed_periodic_bank_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed = int("17" + "48" * 20 + "88")
+
+    def malformed(*_args: object, **_kwargs: object) -> object:
+        raise ValueError("source root is invalid")
+
+    monkeypatch.setattr(source_bound_bank_module, "protected_periodic_bank", malformed)
+    with (
+        DoubleReverseTerm(seed, 4) as term,
+        pytest.raises(ValueError, match="source root is invalid"),
+    ):
+        term.exact_temporal_pair(20)
 
 
 def test_short_primitive_uses_binary_shift_and_long_source_stays_an_slp() -> None:

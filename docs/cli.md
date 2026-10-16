@@ -135,11 +135,27 @@ than invented zero work.
 
 The following capability table is generated from the CLI registry. `number-theory.root` requires `--defect`; reverse/add and Collatz seed requirements are described above.
 
+`--info temporal.open-ring` demands a finite source-owned inward bank for
+`reverse-add` or an open-inlet bank for `2rev10`. Use
+`--spatial-pair-bank-position` and `--spatial-bank-morphism-count` to select
+its pair window. For `2rev10`, `--temporal-open-ring-lookback` selects 1–32
+certified two-step transitions (default 8). Packets explicitly distinguish
+finite source admission from unbounded repetition; an unclosed inlet cannot
+supply a future periodicity claim. Metrics and ordinary digit output do not
+automatically demand this observation.
+
+`2rev10 --info temporal.birth-layers` follows the canonical moving boundary
+through a finite source-issued suffix. `--spatial-bank-morphism-count` selects
+1–16 retained pairs and `--temporal-open-ring-lookback` selects at most 160
+F-steps for this demand. Reported return periods describe the conditional inlet
+model; they do not extend the source certificate beyond its checked horizon.
+The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
+
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.stencil`, `spatial.bank-morphism` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `temporal.residue99`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.stencil`, `spatial.bank-morphism` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `temporal.residue99`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
 | `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |

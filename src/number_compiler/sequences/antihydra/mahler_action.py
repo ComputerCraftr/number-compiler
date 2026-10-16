@@ -132,6 +132,7 @@ def _action_packet(
     )
     demanded_tripling: dict[str, object] | None = None
     radial_affine_packet: dict[str, object] | None = None
+    odd_macro_packet: dict[str, object] | None = None
     if include_radix_ports and result.returns > 0:
         source_form = workspace.mahler_root_wire()
         if source_form is None:
@@ -177,6 +178,46 @@ def _action_packet(
         joint_successor = demanded_tripling.pop("joint_source_successor", None)
     else:
         joint_successor = None
+    if include_radix_ports:
+        # The admitted arithmetic image supplies this exact endpoint. A point
+        # observer is issued only when its centered value is a positive odd
+        # source; it never discovers another source window or execution step.
+        centered_source = result.h - 1
+        if centered_source > 0 and centered_source & 1:
+            odd_index = result.odd_events
+            if (
+                workspace.seed != 8
+                or odd_index < 0
+                or result.balance != 3 * odd_index - result.returns
+                or (
+                    result.returns == 0
+                    and (centered_source != 7 or result.balance != 0)
+                )
+            ):
+                raise ValueError("Mahler pointed odd-event source lost its authority")
+            from number_compiler.sequences.antihydra.mahler_odd_macro import (
+                odd_seam_pointwise_packet,
+                odd_seam_step,
+            )
+
+            seam = odd_seam_step(
+                centered_source, odd_index, result.returns, result.balance
+            )
+            if result.returns == 0:
+                # Retain the previously published, fully detailed root packet.
+                from number_compiler.sequences.antihydra.mahler_odd_macro import (
+                    odd_seam_packet,
+                )
+
+                odd_macro_packet = odd_seam_packet(
+                    seam,
+                    bits=16,
+                    decimal_places=4,
+                    walsh=False,
+                    include_mixed_ring=True,
+                )
+            else:
+                odd_macro_packet = odd_seam_pointwise_packet(seam, places=4)
     with GrowthArithmeticEvaluator(result.ledger) as radial_evaluator:
         radial_packet = asdict(radial_clock.leading_binary(radial_evaluator))
         growth_packet = asdict(
@@ -184,52 +225,55 @@ def _action_packet(
                 radial_clock.scale, result.ledger, evaluator=radial_evaluator
             )
         )
-        source_operand_bits = (
-            transfer.upper.bit_length()
-            + workspace.seed.bit_length()
-            + abs(transfer.offset).bit_length()
-            + transfer.lower.bit_length()
-            + result.h.bit_length()
-        )
-        result.ledger.bump(
-            _antihydra_keys.MAHLER_RADIAL_AFFINE_OPERAND_BITS, source_operand_bits
-        )
-        work_units = max(1, transfer.upper.bit_length() * workspace.seed.bit_length())
-        with radial_evaluator._charge_work(
-            work_units,
-            0,
-            source_operand_bits,
-            storage_bits=2 * source_operand_bits + 16,
-        ):
-            if (
-                workspace.seed != 8
-                or transfer.lower.bit_length() != result.returns + 1
-                or transfer.lower.bit_count() != 1
-            ):
-                raise ValueError("Mahler high-digit source/denominator is detached")
-            numerator = transfer.upper * workspace.seed + transfer.offset
-            endpoint, remainder = divmod(numerator, transfer.lower)
-            if remainder or endpoint != result.h:
-                raise ValueError("Mahler source transfer lost its integer endpoint")
-            arithmetic_high = affine_high_digit_transport(
-                result.h, transfer.offset, result.returns, 8
+        if include_radix_ports:
+            source_operand_bits = (
+                transfer.upper.bit_length()
+                + workspace.seed.bit_length()
+                + abs(transfer.offset).bit_length()
+                + transfer.lower.bit_length()
+                + result.h.bit_length()
             )
-            pure_h = (transfer.upper * workspace.seed) >> result.returns
-            if result.h != pure_h + arithmetic_high.offset_quotient:
-                raise ValueError("Mahler affine high-digit correction is detached")
-    if include_radix_ports:
-        radial_affine_packet = {
-            "source": workspace.seed,
-            "endpoint_h": result.h,
-            "homogeneous_high_binary": arithmetic_high.homogeneous_high_binary,
-            "endpoint_high_binary": arithmetic_high.endpoint_high_binary,
-            "high_xor_binary": arithmetic_high.high_xor_binary,
-            "high_digit_transport": asdict(arithmetic_high),
-            "scope": (
-                "authenticated finite h image; not the capped Mahler margin "
-                "or a Turing-machine successor"
-            ),
-        }
+            result.ledger.bump(
+                _antihydra_keys.MAHLER_RADIAL_AFFINE_OPERAND_BITS,
+                source_operand_bits,
+            )
+            work_units = max(
+                1, transfer.upper.bit_length() * workspace.seed.bit_length()
+            )
+            with radial_evaluator._charge_work(
+                work_units,
+                0,
+                source_operand_bits,
+                storage_bits=2 * source_operand_bits + 16,
+            ):
+                if (
+                    workspace.seed != 8
+                    or transfer.lower.bit_length() != result.returns + 1
+                    or transfer.lower.bit_count() != 1
+                ):
+                    raise ValueError("Mahler high-digit source/denominator is detached")
+                numerator = transfer.upper * workspace.seed + transfer.offset
+                endpoint, remainder = divmod(numerator, transfer.lower)
+                if remainder or endpoint != result.h:
+                    raise ValueError("Mahler source transfer lost its integer endpoint")
+                arithmetic_high = affine_high_digit_transport(
+                    result.h, transfer.offset, result.returns, 8
+                )
+                pure_h = (transfer.upper * workspace.seed) >> result.returns
+                if result.h != pure_h + arithmetic_high.offset_quotient:
+                    raise ValueError("Mahler affine high-digit correction is detached")
+            radial_affine_packet = {
+                "source": workspace.seed,
+                "endpoint_h": result.h,
+                "homogeneous_high_binary": arithmetic_high.homogeneous_high_binary,
+                "endpoint_high_binary": arithmetic_high.endpoint_high_binary,
+                "high_xor_binary": arithmetic_high.high_xor_binary,
+                "high_digit_transport": asdict(arithmetic_high),
+                "scope": (
+                    "authenticated finite h image; not the capped Mahler margin "
+                    "or a Turing-machine successor"
+                ),
+            }
     demand = semantic.pullback(ThresholdDemand())
     return {
         "source_binding": result.source_binding,
@@ -244,6 +288,11 @@ def _action_packet(
         **(
             {"source_bound_joint_successor": joint_successor}
             if joint_successor is not None
+            else {}
+        ),
+        **(
+            {"source_bound_odd_to_odd": odd_macro_packet}
+            if odd_macro_packet is not None
             else {}
         ),
         **(

@@ -146,6 +146,155 @@ lemma endpoint_projection_ignores_emission:
 
 end
 
+text \<open>A partial count action has one exact finite-step count at each
+admitted source, and explicit refusal elsewhere.  The count type is left
+abstract so callers can use a product/vector monoid without duplicating the
+partial-transition composition law.  This algebra does not authenticate an
+input word or source; those remain obligations of a family publisher.\<close>
+
+record ('s, 'c) partial_count_action =
+  partial_count_steps :: nat
+  partial_count_run :: "'s \<Rightarrow> ('s \<times> 'c) option"
+
+definition partial_count_identity :: "'c \<Rightarrow> ('s, 'c) partial_count_action" where
+  "partial_count_identity zero = \<lparr>
+    partial_count_steps = 0,
+    partial_count_run = (\<lambda>source. Some (source, zero)) \<rparr>"
+
+definition partial_count_then :: "('c \<Rightarrow> 'c \<Rightarrow> 'c) \<Rightarrow>
+    ('s, 'c) partial_count_action \<Rightarrow> ('s, 'c) partial_count_action \<Rightarrow>
+      ('s, 'c) partial_count_action" where
+  "partial_count_then add first after = \<lparr>
+    partial_count_steps = partial_count_steps first + partial_count_steps after,
+    partial_count_run = (\<lambda>source.
+      case partial_count_run first source of None \<Rightarrow> None
+      | Some (middle, first_count) \<Rightarrow>
+          (case partial_count_run after middle of None \<Rightarrow> None
+          | Some (target, after_count) \<Rightarrow>
+              Some (target, add first_count after_count))) \<rparr>"
+
+lemma partial_count_steps_then [simp]:
+  "partial_count_steps (partial_count_then add first after) =
+    partial_count_steps first + partial_count_steps after"
+  by (simp add: partial_count_then_def)
+
+lemma partial_count_run_then_admitted:
+  assumes "partial_count_run first source = Some (middle, left_count)"
+      and "partial_count_run after middle = Some (target, right_count)"
+  shows "partial_count_run (partial_count_then add first after) source =
+    Some (target, add left_count right_count)"
+  using assms by (simp add: partial_count_then_def)
+
+lemma partial_count_run_then_refuses_first:
+  assumes "partial_count_run first source = None"
+  shows "partial_count_run (partial_count_then add first after) source = None"
+  using assms by (simp add: partial_count_then_def)
+
+lemma partial_count_run_then_refuses_after:
+  assumes "partial_count_run first source = Some (middle, count)"
+      and "partial_count_run after middle = None"
+  shows "partial_count_run (partial_count_then add first after) source = None"
+  using assms by (simp add: partial_count_then_def)
+
+theorem partial_count_then_associative:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+  shows "partial_count_then add (partial_count_then add first second) third =
+    partial_count_then add first (partial_count_then add second third)"
+  using add_assoc
+  by (cases first; cases second; cases third)
+    (simp add: partial_count_then_def fun_eq_iff split: option.splits prod.splits)
+
+theorem partial_count_identity_left:
+  assumes left_zero: "\<And>x. add zero x = x"
+  shows "partial_count_then add (partial_count_identity zero) action = action"
+  using left_zero
+  by (cases action) (simp add: partial_count_then_def partial_count_identity_def
+      fun_eq_iff split: option.splits prod.splits)
+
+theorem partial_count_identity_right:
+  assumes right_zero: "\<And>x. add x zero = x"
+  shows "partial_count_then add action (partial_count_identity zero) = action"
+  using right_zero
+  by (cases action) (simp add: partial_count_then_def partial_count_identity_def
+      fun_eq_iff split: option.splits prod.splits)
+
+theorem partial_count_then_chronological_counts:
+  assumes first: "partial_count_run action source = Some (middle, left_count)"
+      and after: "partial_count_run later middle = Some (target, right_count)"
+  shows "partial_count_run (partial_count_then add action later) source =
+      Some (target, add left_count right_count)"
+    and "partial_count_steps (partial_count_then add action later) =
+      partial_count_steps action + partial_count_steps later"
+  using partial_count_run_then_admitted[OF first after]
+  by (simp_all add: partial_count_then_def)
+
+text \<open>A supplied finite word is interpreted by the chronological fold
+below.  Its input letters are already-issued partial actions; an unsupported
+letter therefore remains a refusal at the exact state where it is read.
+This theorem concerns action composition and does not authorize a source
+word that its family-specific issuer has not supplied.\<close>
+
+fun partial_count_word :: "('c \<Rightarrow> 'c \<Rightarrow> 'c) \<Rightarrow> 'c \<Rightarrow>
+    ('s, 'c) partial_count_action list \<Rightarrow> ('s, 'c) partial_count_action" where
+  "partial_count_word add zero [] = partial_count_identity zero"
+| "partial_count_word add zero (letter # rest) =
+    partial_count_then add letter (partial_count_word add zero rest)"
+
+theorem partial_count_word_append:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+  shows "partial_count_word add zero (prefix @ suffix) =
+    partial_count_then add (partial_count_word add zero prefix)
+      (partial_count_word add zero suffix)"
+proof (induction prefix)
+  case Nil
+  have identity:
+    "partial_count_then add (partial_count_identity zero)
+        (partial_count_word add zero suffix) = partial_count_word add zero suffix"
+    by (rule partial_count_identity_left[where add = add and zero = zero
+          and action = "partial_count_word add zero suffix", OF left_zero])
+  show ?case
+    using identity by simp
+next
+  case (Cons letter prefix)
+  show ?case
+    using Cons.IH
+    by (simp add: partial_count_then_associative[OF add_assoc])
+qed
+
+theorem partial_count_word_append_admitted:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+      and prefix: "partial_count_run (partial_count_word add zero prefix) source =
+        Some (middle, prefix_count)"
+      and suffix: "partial_count_run (partial_count_word add zero suffix) middle =
+        Some (target, suffix_count)"
+  shows "partial_count_run (partial_count_word add zero (prefix @ suffix)) source =
+    Some (target, add prefix_count suffix_count)"
+  using partial_count_word_append[OF add_assoc left_zero, of prefix suffix]
+    partial_count_run_then_admitted[OF prefix suffix]
+  by simp
+
+theorem partial_count_word_append_refuses_prefix:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+      and refused: "partial_count_run (partial_count_word add zero prefix) source = None"
+  shows "partial_count_run (partial_count_word add zero (prefix @ suffix)) source = None"
+  using partial_count_word_append[OF add_assoc left_zero, of prefix suffix]
+    partial_count_run_then_refuses_first[OF refused]
+  by simp
+
+theorem partial_count_word_append_refuses_suffix:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+      and prefix: "partial_count_run (partial_count_word add zero prefix) source =
+        Some (middle, prefix_count)"
+      and refused: "partial_count_run (partial_count_word add zero suffix) middle = None"
+  shows "partial_count_run (partial_count_word add zero (prefix @ suffix)) source = None"
+  using partial_count_word_append[OF add_assoc left_zero, of prefix suffix]
+    partial_count_run_then_refuses_after[OF prefix refused]
+  by simp
+
 section \<open>Two Boolean ports and the three monotone endpoint rows\<close>
 
 definition monotone_bool_endpoint :: "(bool \<Rightarrow> bool) \<Rightarrow> bool" where
@@ -185,6 +334,12 @@ ML \<open>
     additive_shift_action.endpoint_application_homomorphism
     additive_shift_action.external_shift_commutes_with_composition
     additive_shift_action.endpoint_projection_ignores_emission
+    partial_count_steps_then partial_count_run_then_admitted
+    partial_count_run_then_refuses_first partial_count_run_then_refuses_after
+    partial_count_then_associative partial_count_identity_left
+    partial_count_identity_right partial_count_then_chronological_counts
+    partial_count_word_append partial_count_word_append_admitted
+    partial_count_word_append_refuses_prefix partial_count_word_append_refuses_suffix
     monotone_bool_has_three_rows three_bool_rows_are_realized};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Port-valued Mealy proof depends on an oracle";

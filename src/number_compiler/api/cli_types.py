@@ -122,9 +122,18 @@ class DoubleReverseObservationOptions:
     grammar_period: int = 2
     radix_places: int = 8
     walsh_start: int = 0
+    open_ring_lookback: int = 8
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
+        require_integer(self.open_ring_lookback, "--temporal-open-ring-lookback", 1)
+        if self.open_ring_lookback > 160:
+            raise ValueError("birth layer lookback exceeds 160 F-steps")
+        if (
+            self.open_ring_lookback > 32
+            and ObservationId.TEMPORAL_OPEN_RING in self.info
+        ):
+            raise ValueError("open ring lookback exceeds 32 F-steps")
         require_integer(self.stencil_position, "--spatial-stencil-position", 0)
         require_integer(self.pair_bank_position, "--spatial-pair-bank-position", 0)
         require_integer(self.bank_morphism_count, "--spatial-bank-morphism-count", 1)

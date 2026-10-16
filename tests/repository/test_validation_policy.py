@@ -225,12 +225,14 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
         "Building HOL-Library\n"
         "Finished HOL-Library (0:00:12.50 elapsed time, 0:00:08 cpu time)\n"
         "Running Theory_Check\n"
-        "Finished Theory_Check (0:00:03.00 elapsed time, 0:00:02 cpu time)\n",
+        "Finished Theory_Check (0:00:03.00 elapsed time, 0:00:02 cpu time)\n"
+        "Finished at Fri Oct 16 20:05:34 GMT 2026\n",
         inventory,
         succeeded=True,
     )
     assert success["rebuilt_sessions"] == ["HOL-Library", "Theory_Check"]
     assert success["reused_sessions"] == ["HOL"]
+    assert success["unmatched_native_session_statuses"] == []
     assert success["finished_session_elapsed_seconds"] == {
         "HOL-Library": 12.5,
         "Theory_Check": 3.0,
@@ -249,6 +251,17 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
         "HOL",
         "HOL-Library",
     ]
+
+
+def test_native_build_footer_preserves_registered_at_session() -> None:
+    summary = release._session_build_summary(
+        "Finished at (0:00:01 elapsed time, 0:00:01 cpu time)\n"
+        "Finished Unexpected_Check (0:00:02 elapsed time, 0:00:01 cpu time)\n",
+        ("at",),
+        succeeded=True,
+    )
+    assert summary["finished_sessions"] == ["Unexpected_Check", "at"]
+    assert summary["unmatched_native_session_statuses"] == ["Unexpected_Check"]
 
 
 def test_native_success_keeps_reported_elapsed_budget_failures_visible() -> None:

@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
         DyadicCertifiedTape,
     )
+    from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
+        SourceWeightedTriplingAction,
+    )
 
 from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
 from number_compiler.arithmetic.fields.integer_congruence import join_congruences
@@ -271,6 +274,38 @@ class SourceTerminalDemand:
     @property
     def missing_proofs(self) -> tuple[str, str]:
         return (SOURCE_TO_FOLD_GAP, FOLD_TO_THRESHOLD_GAP)
+
+    def observe_fermat_signed_border_actions(
+        self,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        max_level: int = MAX_EXPLICIT_OBSERVED_LEVEL,
+    ) -> tuple[SourceWeightedTriplingAction, ...]:
+        """Five source-bound terminal carry/weighted/H5 actions, NO squares.
+
+        Carry resets on the leading digits are exact, and all authenticated
+        low radix/harmonic islands are joined. Unknown interior signed words
+        survive as symbolic U intervals; neither a complete Pépin remainder
+        nor a terminal prime bit is invented. This is explicit/on-demand.
+        """
+        if self.family != "fermat":
+            raise ValueError("three-power border actions are Fermat-source only")
+        if type(max_level) is not int or self.source_level > max_level:
+            raise ValueError("signed border source level exceeds explicit budget")
+        from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
+            demand_signed_tripling_action,
+        )
+
+        return tuple(
+            demand_signed_tripling_action(
+                self.parameter,
+                level,
+                phase_binary_places=phase_binary_places,
+                phase_decimal_places=phase_decimal_places,
+            )
+            for level in self.last_four_source_levels
+        )
 
     def observe_fermat_sources(
         self,

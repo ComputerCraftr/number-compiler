@@ -129,6 +129,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "temporal.macro",
                 "temporal.matrix",
                 "temporal.residue99",
+                "temporal.open-ring",
                 "temporal.stencil",
                 "spatial.bank-morphism",
             ),
@@ -163,7 +164,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "pair_bank_position",
                 OptionSpec(
                     0,
-                    ("spatial.bank-morphism",),
+                    ("spatial.bank-morphism", "temporal.open-ring"),
                     flag_name="spatial_pair_bank_position",
                 ),
             ),
@@ -171,7 +172,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "bank_morphism_count",
                 OptionSpec(
                     16,
-                    ("spatial.bank-morphism",),
+                    ("spatial.bank-morphism", "temporal.open-ring"),
                     flag_name="spatial_bank_morphism_count",
                 ),
             ),
@@ -189,6 +190,12 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
         ),
         output_bound="seed",
         observation_constraints=(
+            (
+                ObservationId.TEMPORAL_OPEN_RING,
+                "base",
+                10,
+                "temporal open ring requires decimal base",
+            ),
             (
                 ObservationId.TEMPORAL_MACRO,
                 "base",
@@ -232,6 +239,8 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "temporal.carry-safety",
                 "spatial.stencil",
                 "temporal.bank",
+                "temporal.open-ring",
+                "temporal.birth-layers",
                 "spatial.pair-bank",
                 "spatial.bank-morphism",
                 "spatial.bank-window",
@@ -254,9 +263,18 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "grammar_period",
                 "radix_places",
                 "walsh_start",
+                "open_ring_lookback",
             ),
         ),
         observer_options=(
+            (
+                "open_ring_lookback",
+                OptionSpec(
+                    8,
+                    ("temporal.open-ring", "temporal.birth-layers"),
+                    flag_name="temporal_open_ring_lookback",
+                ),
+            ),
             (
                 "modulus",
                 OptionSpec(
@@ -281,6 +299,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                         "spatial.pair-bank",
                         "spatial.bank-morphism",
                         "spatial.bank-window",
+                        "temporal.open-ring",
                     ),
                     flag_name="spatial_pair_bank_position",
                 ),
@@ -289,7 +308,12 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "bank_morphism_count",
                 OptionSpec(
                     16,
-                    ("spatial.bank-morphism", "spatial.bank-window"),
+                    (
+                        "spatial.bank-morphism",
+                        "spatial.bank-window",
+                        "temporal.open-ring",
+                        "temporal.birth-layers",
+                    ),
                     flag_name="spatial_bank_morphism_count",
                 ),
             ),

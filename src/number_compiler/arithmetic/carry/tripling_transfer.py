@@ -6,10 +6,9 @@ not a selected source word or a temporal recurrence certificate.
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.fields.morphism_core import binary_power
-
 CarryFn = tuple[int, int, int]
 IDENTITY: CarryFn = (0, 1, 2)
+_MAX_RELATION_ORBIT = 32
 
 
 def digit_transfer(base: int, digit: int) -> CarryFn:
@@ -34,8 +33,9 @@ def compose_sets(
 def unknown_middle_transfer_set(base: int, width: int) -> frozenset[CarryFn]:
     """Exactly all carry functions realizable by ANY width-digit middle.
 
-    Powers the *relation* in O(log width), never reads the middle or assumes
-    a repeated block. In particular its set size is bounded by 3**3.
+    Detects the finite relation's exact orbit, never reads the middle or
+    assumes a repeated source block. Each relation contains at most 3**3
+    carry functions. The orbit limit is a work budget, not a closure claim.
     """
     if (
         type(base) is not int
@@ -46,9 +46,17 @@ def unknown_middle_transfer_set(base: int, width: int) -> frozenset[CarryFn]:
         raise ValueError("invalid unknown middle width")
     if width.bit_length() > 65_536:
         raise ValueError("carry relation exponent exceeds coordinate budget")
-    return binary_power(
-        frozenset(digit_transfer(base, d) for d in range(base)),
-        width,
-        identity=frozenset((IDENTITY,)),
-        compose=compose_sets,
-    ).value
+    atoms = frozenset(digit_transfer(base, d) for d in range(base))
+    current = frozenset((IDENTITY,))
+    seen: dict[frozenset[CarryFn], int] = {}
+    orbit: list[frozenset[CarryFn]] = []
+    for exponent in range(_MAX_RELATION_ORBIT):
+        if exponent == width:
+            return current
+        if current in seen:
+            first = seen[current]
+            return orbit[first + (width - first) % (exponent - first)]
+        seen[current] = exponent
+        orbit.append(current)
+        current = compose_sets(current, atoms)
+    raise ValueError("carry relation orbit exceeds work budget")

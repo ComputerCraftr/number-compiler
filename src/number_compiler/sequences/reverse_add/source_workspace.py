@@ -34,6 +34,9 @@ if TYPE_CHECKING:
         ReverseAddSpatialBankMorphism,
     )
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        ReverseAddTemporalRingBank,
+    )
 
 
 class ReverseSourceImageWorkspace:
@@ -314,6 +317,52 @@ class ReverseSourceImageWorkspace:
     @property
     def syntax_depth_bound(self) -> int:
         return self.actions.node(self.root_action).depth
+
+    def certified_temporal_ring_bank(
+        self, start: int, count: int
+    ) -> ReverseAddTemporalRingBank:
+        """NC16 finite open ring over the actual decimal reverse/add source.
+
+        This is source/carry/modular guarded, not a copied 2rev10 clock or a
+        whole-root output action.  The explicit observer cannot replay a
+        future border phase that its first source cannot certify.
+        """
+        self._check_open()
+        if self.base != 10:
+            raise ValueError("finite decimal ring requires 1..128 steps")
+        if (
+            type(start) is not int
+            or type(count) is not int
+            or start < 0
+            or not 1 <= count <= 64
+        ):
+            raise ValueError("invalid ring positions")
+        from .temporal_ring_harmonics import ReverseTemporalRingRefused
+
+        if not 1 <= self.steps <= 128:
+            self.ledger.bump(_reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_FAILURES)
+            raise ReverseTemporalRingRefused(
+                "finite reverse/add ring supports horizons of 1..128 steps"
+            )
+        source = self.actions.source(self.source)
+        if start + count > (len(source.digits) + 1) // 2:
+            self.ledger.bump(_reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_FAILURES)
+            raise ReverseTemporalRingRefused(
+                "ring crosses the active source pair center"
+            )
+        owner = self.adapter._q19_output_owner(source)
+        self._register_source_payload_audit_contract()
+        return owner.authorize_temporal_ring_bank(
+            owner.initial,
+            steps=self.steps,
+            start=0,
+            duration=self.steps,
+            positions=tuple(range(start, start + count)),
+            source_pair_prefix=min(start + count + 2, (len(source.digits) + 1) // 2),
+            window_digits=3 if len(source.digits) >= 7 else 1,
+            max_states=512,
+            max_cells=8192,
+        )
 
     def certified_spatial_bank_morphism(
         self, start: int, count: int, *, period: int = 2

@@ -1,0 +1,310 @@
+"""Birth-driven periods: exact finite source proofs, not guessed infinite cycles."""
+
+from dataclasses import replace
+from random import Random
+from typing import Never
+
+import pytest
+
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.metric_keys.double_reverse import (
+    DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS,
+)
+from number_compiler.sequences.double_reverse import (
+    temporal_birth_ring as birth_ring_module,
+)
+from number_compiler.sequences.double_reverse._temporal_bank_authority import (
+    validate_source_record,
+)
+from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+from number_compiler.sequences.double_reverse.source_bound_bank import _source_suffix
+from number_compiler.sequences.double_reverse.temporal_birth_induction import (
+    MAX_BIRTH_DURATION_BITS,
+    CertifiedBirthClock,
+    birth_clock_for_source,
+)
+from number_compiler.sequences.double_reverse.temporal_birth_ring import (
+    BirthReturnBudgetExceeded,
+    BirthRingPorts,
+    BirthRingState,
+    assert_birth_layer_step,
+    certified_birth_ring,
+    conditional_birth_return,
+    odd_boundary_pairs,
+    power_birth_model,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife import edge_phase
+
+
+def _next(x: int) -> int:
+    return int(str(x)[::-1]) << 1
+
+
+def _phase(value: int) -> int | None:
+    digits = str(value)
+    if len(digits) < 4:
+        return None
+    return edge_phase(
+        (int(digits[0]), int(digits[1])),
+        (int(digits[-2]), int(digits[-1])),
+    )
+
+
+def test_birth_centered_step_matches_arithmetic_all_phases() -> None:
+    for seed in (1, 196, 173488, 174388):
+        value = seed
+        seen = set()
+        for _ in range(90):
+            word = str(value)
+            phase = _phase(value)
+            pairs = min(8, (len(word) - 2) // 2)
+            if phase is not None and pairs >= 1:
+                seen.add(phase)
+                state = BirthRingState(
+                    tuple(map(int, word[:pairs])),
+                    tuple(map(int, word[-pairs:])),
+                    phase,
+                )
+                inlet = BirthRingPorts(int(word[pairs]), int(word[-pairs - 1]))
+                after, _ = state.advance(inlet)
+                intermediate = str(_next(value))
+                actual_odd = tuple(
+                    (int(intermediate[i]), int(intermediate[-1 - i]))
+                    for i in range(pairs)
+                )
+                assert odd_boundary_pairs(state, inlet) == actual_odd
+                target = str(_next(_next(value)))
+                assert after == BirthRingState(
+                    tuple(map(int, target[:pairs])),
+                    tuple(map(int, target[-pairs:])),
+                    (phase + 2) % 4,
+                )
+                if pairs >= 2:
+                    assert_birth_layer_step(state, inlet)
+            value = _next(value)
+        assert seen == {0, 1, 2, 3}
+
+
+def test_source_independent_layer_intertwining() -> None:
+    rng = Random(11882)
+    for phase in range(4):
+        for width in range(2, 10):
+            for _ in range(50):
+                state = BirthRingState(
+                    tuple(rng.randrange(10) for _ in range(width)),
+                    tuple(rng.randrange(10) for _ in range(width)),
+                    phase,
+                )
+                assert_birth_layer_step(
+                    state, BirthRingPorts(rng.randrange(10), rng.randrange(10))
+                )
+
+
+def test_birth_modular_clock_predicts_every_source_step() -> None:
+    for seed in (1, 196):
+        with DoubleReverseTerm(seed, 300) as term:
+            _entry, source = term._prepare_bank_source(
+                max_prefix=min(32, term.generation - 2)
+            )
+            clock = birth_clock_for_source(source)
+            assert clock.mod9_period == 6
+            assert clock.width_mod9_period == 12
+            assert clock.width_mod99_period == 120
+            value = seed
+            for _ in range(source.physical_prefix):
+                value = _next(value)
+            for steps in range(125):
+                phase, width, residue = clock.state(steps)
+                assert phase == (clock.phase + steps) % 4
+                assert width == len(str(value))
+                assert residue == value % 99
+                value = _next(value)
+            phase, width, residue = clock.state(120 * 10**10)
+            assert phase == clock.phase and residue == clock.residue99
+            assert width - clock.width == 60 * 10**10
+
+
+def test_seed_specific_periods_generated_by_born_inlets() -> None:
+    expected = {
+        196: (4, 12, 12, 12, 12, 12, 24, 48),
+        1: (4, 12, 12, 12, 12, 12, 48, 48),
+    }
+    for seed, wanted in expected.items():
+        # The source report establishes the seventh-layer distinction only
+        # after a 144-F-step witnessed inlet horizon. Use one cone per seed;
+        # shorter prefixes correctly leave that layer uncertified.
+        with DoubleReverseTerm(seed, 1000, max_steps=1000, max_state_bits=8192) as term:
+            record = term.birth_layer_periods(8, lookback_f_steps=144, max_states=1024)
+            validate_source_record(record)
+            got = tuple(
+                layer.conditional_return.physical_pair_period
+                if layer.conditional_return
+                else None
+                for layer in reversed(record.layers)
+            )
+            assert got == wanted
+            assert record.f_steps == 144
+            assert record.final_pairs[0].digits == (1, 8)
+            assert record.independently_powered_pairs == 8
+            assert not any(
+                layer.indefinite_source_authorized for layer in record.layers
+            )
+            assert not record.layers[0].indefinite_source_authorized
+            # The source seal covers every public packet field, not just the
+            # headline phase. Restore after the expected refusal so teardown
+            # can still inspect the record safely.
+            original_phase = record.source_phase
+            object.__setattr__(record, "source_phase", (original_phase + 1) % 4)
+            with pytest.raises(ValueError, match="authority"):
+                record.validated_projection()
+            object.__setattr__(record, "source_phase", original_phase)
+
+
+def test_return_multiplier_is_not_assumed_to_be_two_or_three() -> None:
+    state = BirthRingState((3, 8, 7, 8), (9, 8, 4, 5), 3)
+    motif = (BirthRingPorts(4, 2), BirthRingPorts(3, 9))
+    model = conditional_birth_return(state, motif, max_states=128)
+    assert model.full_state_period == 10
+    assert model.return_multiplier == 5
+    assert model.gt_high_period == 1
+    state_at_big, frame, same_model = power_birth_model(
+        state, motif, 10**80 + 17, max_states=128
+    )
+    assert same_model == model
+    assert state_at_big.pairs == 4 and len(frame) == 4
+
+
+def test_public_birth_powers_respect_the_common_query_bit_budget() -> None:
+    duration = 1 << MAX_BIRTH_DURATION_BITS
+    clock = CertifiedBirthClock(0, 2, 2, 2, 1, 1, 1, (0, 0), (0, 0))
+    with pytest.raises(ValueError, match="query bit budget"):
+        clock.state(duration)
+    with pytest.raises(ValueError, match="query bit budget"):
+        power_birth_model(
+            BirthRingState((1,), (8,), 0),
+            (BirthRingPorts(0, 0),),
+            duration,
+        )
+
+
+def test_public_conditional_models_enforce_the_production_workspace_caps() -> None:
+    motif = (BirthRingPorts(0, 0),)
+    with pytest.raises(ValueError, match="bounded input word"):
+        conditional_birth_return(
+            BirthRingState((1,) * 17, (8,) * 17, 0), motif, max_states=8
+        )
+    with pytest.raises(ValueError, match="bounded input word"):
+        conditional_birth_return(BirthRingState((1,), (8,), 0), motif, max_states=1025)
+    with pytest.raises(ValueError, match="bounded input word"):
+        conditional_birth_return(
+            BirthRingState((1,), (8,), 0), motif * 161, max_states=8
+        )
+
+
+def test_conditional_orbit_budget_refusal_is_typed() -> None:
+    state = BirthRingState((3, 8, 7, 8), (9, 8, 4, 5), 3)
+    motif = (BirthRingPorts(4, 2), BirthRingPorts(3, 9))
+    with pytest.raises(BirthReturnBudgetExceeded, match="did not close"):
+        conditional_birth_return(state, motif, max_states=1)
+
+
+def test_unrelated_model_value_error_is_not_misreported_as_budget_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forced_lasso(_letters: tuple[BirthRingPorts, ...]) -> tuple[int, int]:
+        return 0, 1
+
+    def fail_model(*_args: object, **_kwargs: object) -> Never:
+        raise ValueError("injected unrelated model validation error")
+
+    with DoubleReverseTerm(196, 64) as term:
+        _entry, source = term._prepare_bank_source(
+            max_prefix=min(32, term.generation - 2)
+        )
+        source = _source_suffix(source, min(12, source.f_steps))
+        with monkeypatch.context() as poison:
+            poison.setattr(birth_ring_module, "_finite_lasso", forced_lasso)
+            poison.setattr(
+                birth_ring_module, "_enumerate_conditional_birth_model", fail_model
+            )
+            with pytest.raises(ValueError, match="unrelated model validation error"):
+                certified_birth_ring(source, pairs=2, max_model_states=8)
+
+
+def test_birth_layer_query_does_not_render_a_complete_temporal_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("birth layers must use causal ports, not full rendering")
+
+    with DoubleReverseTerm(196, 64) as term:
+        with monkeypatch.context() as poison:
+            poison.setattr(DoubleReverseTerm, "digit", forbidden)
+            poison.setattr(DoubleReverseTerm, "digits", forbidden)
+            poison.setattr(DoubleReverseTerm, "iter_digits", forbidden)
+            poison.setattr(DoubleReverseTerm, "materialize", forbidden)
+            record = term.birth_layer_periods(4, lookback_f_steps=12, max_states=128)
+        assert record.f_steps == 12
+        assert record.final_pairs
+
+
+def test_failed_birth_publication_releases_its_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_before_publication(*_args: object, **_kwargs: object) -> Never:
+        raise RuntimeError("injected birth publisher failure")
+
+    with DoubleReverseTerm(196, 64) as term:
+        _entry, source = term._prepare_bank_source(
+            max_prefix=min(32, term.generation - 2)
+        )
+        source = _source_suffix(source, min(12, source.f_steps))
+        ledger = source.ledger
+        before = (ledger.entries, ledger.nodes)
+        published = ledger.counters.get(
+            DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS,
+            0,
+        )
+        with monkeypatch.context() as poison:
+            poison.setattr(
+                birth_ring_module,
+                "_certified_birth_ring_reserved",
+                fail_before_publication,
+            )
+            with pytest.raises(RuntimeError, match="injected birth publisher failure"):
+                certified_birth_ring(source, pairs=4, max_model_states=128)
+        assert (ledger.entries, ledger.nodes) == before
+        assert (
+            ledger.counters.get(
+                DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS,
+                0,
+            )
+            == published
+        )
+        ledger.tighten_limits(ledger.nodes, ledger.entries)
+        with pytest.raises(BlockContextBudgetExceeded):
+            certified_birth_ring(source, pairs=4, max_model_states=128)
+        assert (ledger.entries, ledger.nodes) == before
+
+
+def test_forged_birth_ports_and_foreign_source_roots_are_rejected() -> None:
+    with pytest.raises(ValueError, match="decimal digits"):
+        BirthRingPorts(10, 0)
+    with DoubleReverseTerm(196, 64) as term:
+        _entry, source = term._prepare_bank_source(max_prefix=32)
+        foreign_root = (source.root + 1) % len(source.arena.nodes)
+        forged_root = replace(source, root=foreign_root)
+        with pytest.raises(ValueError, match="pointed source"):
+            certified_birth_ring(forged_root, pairs=2)
+        forged_phase = replace(source, phase=(source.phase + 1) % 4)
+        with pytest.raises(ValueError, match="pointed source"):
+            certified_birth_ring(forged_phase, pairs=2)
+
+
+def test_phase_two_birth_reanchors_the_canonical_outer_pair() -> None:
+    # Phase-2 creates a *new* leading 1. The older ray bank follows the
+    # previous leading 4 one cell inward and legitimately reports 7.
+    state = BirthRingState((4,), (2,), 2)
+    after, frames = state.advance(BirthRingPorts(0, 0))
+    assert frames[0].digits == (4, 2)
+    assert after.left == (1,) and after.right == (8,)

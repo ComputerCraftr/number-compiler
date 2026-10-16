@@ -88,6 +88,28 @@ class TemporalObservations:
     reverse_recursive_pair_width_publications: int | None = None
     reverse_recursive_pair_width_descents: int | None = None
     reverse_recursive_pair_width_failures: int | None = None
+    reverse_q19_temporal_ring_constraint_cells: int | None = None
+    reverse_q19_temporal_ring_propagation_rounds: int | None = None
+    reverse_q19_temporal_ring_output_lane_visits: int | None = None
+    reverse_q19_temporal_ring_failures: int | None = None
+    reverse_q19_inward_symmetric_filter_value_visits: int | None = None
+    reverse_q19_directed_diagonal_inlet_visits: int | None = None
+    reverse_q19_border_width_power_requests: int | None = None
+    reverse_q19_border_width_power_refusals: int | None = None
+    reverse_q19_border_width_state_visits: int | None = None
+    reverse_q19_border_width_states: int | None = None
+    reverse_q19_border_width_edges: int | None = None
+    reverse_q19_border_width_composition_pairs: int | None = None
+    reverse_q19_border_width_relation_cells: int | None = None
+    double_reverse_birth_layer_source_port_reads: int | None = None
+    double_reverse_birth_layer_strip_steps: int | None = None
+    double_reverse_birth_layer_model_states: int | None = None
+    double_reverse_birth_layer_publications: int | None = None
+    double_reverse_birth_layer_refusals: int | None = None
+    double_reverse_open_ring_source_ports: int | None = None
+    double_reverse_open_ring_window_publications: int | None = None
+    double_reverse_open_ring_moore_publications: int | None = None
+    double_reverse_open_ring_guard_refusals: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +186,12 @@ class TemporalFamilyWork:
     guarded_prefix_budget_bypasses: int | None = None
     root_checkpoint_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
     border_return_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
+    odd_macro_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
+    mixed_clock_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
 
 
 @dataclass(frozen=True, slots=True)

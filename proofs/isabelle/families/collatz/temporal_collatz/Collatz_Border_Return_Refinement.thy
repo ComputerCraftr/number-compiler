@@ -133,6 +133,107 @@ proof -
     using word_eq by simp
 qed
 
+text \<open>The same selected return is an integer affine action with normalized
+length j+2, gain 9, and offset 3+2^(j+1).  Its next named 3-border is
+conditional: the returned endpoint is odd exactly on the u mod 4 = 3 port.\<close>
+
+theorem collatz_border_return_affine_numerator:
+  fixes q j u :: nat
+  assumes factor: "3*q+1 = 2^j*u"
+      and odd_u: "odd u"
+  shows "9*(10*q+3) + (3+2^(j+1)) =
+    2^(j+2) * ((15*u+1) div 2)"
+proof -
+  have numerator:
+    "9*(10*q+3) + (3+2^(j+1)) = 2^(j+1)*(15*u+1)"
+    using factor by (simp add: algebra_simps)
+  have remainder: "(15*u+1) mod 2 = 0"
+    using odd_u by simp
+  have even_numerator: "even (15*u+1)"
+    using odd_u by simp
+  obtain half_numerator where numerator_factor:
+    "15*u+1 = 2*half_numerator"
+    using even_numerator by (elim evenE)
+  have quotient: "(15*u+1) div 2 = half_numerator"
+    using numerator_factor by simp
+  have half: "2*((15*u+1) div 2) = 15*u+1"
+    using numerator_factor quotient by simp
+  have denominator:
+    "2^(j+2) * ((15*u+1) div 2) = 2^(j+1)*(15*u+1)"
+  proof -
+    have exponent: "(2::nat)^(j+2) = (2::nat)^(j+1)*2"
+      by (simp add: power_Suc mult.commute)
+    have scaled_half:
+      "2^(j+1) * (2*((15*u+1) div 2)) = 2^(j+1)*(15*u+1)"
+      by (rule arg_cong[where f="\<lambda>z::nat. 2^(j+1)*z"]; rule half)
+    show ?thesis
+      using exponent scaled_half by (simp only: exponent mult.assoc scaled_half)
+  qed
+  show ?thesis using numerator denominator by simp
+qed
+
+lemma collatz_border_return_3_port_iff_odd_endpoint:
+  fixes u :: nat
+  assumes odd_u: "odd u"
+  shows "u mod 4 = 3 \<longleftrightarrow> odd ((15*u+1) div 2)"
+proof -
+  have decomposition: "(u div 4)*4 + u mod 4 = u"
+    by (simp add: div_mult_mod_eq mult.commute)
+  have remainder_bound: "u mod (4::nat) < 4" by simp
+  have remainder_mod: "(u mod 4) mod 2 = u mod 2"
+    by (rule mod_mod_cancel) simp
+  have remainder_odd: "odd (u mod 4)"
+  proof -
+    have mod_two: "u mod 2 = 1"
+      using odd_u by (simp only: odd_iff_mod_2_eq_one)
+    have reduced: "(u mod 4) mod 2 = 1"
+      using remainder_mod mod_two by simp
+    show ?thesis using reduced
+      by (simp only: odd_iff_mod_2_eq_one)
+  qed
+  obtain r where remainder: "u mod 4 = 2*r+1"
+    using remainder_odd by (rule oddE)
+  have r_bound: "r \<le> 1" using remainder remainder_bound by arith
+  have r_cases: "r=0 \<or> r=1" using r_bound by arith
+  have ports:
+    "u mod 4 = 1 \<or> u mod 4 = 3"
+    using remainder r_cases by auto
+  show ?thesis
+  proof
+    assume port: "u mod 4 = 3"
+    have source: "u = 4*(u div 4)+3"
+      using decomposition port by (simp add: algebra_simps)
+    show "odd ((15*u+1) div 2)"
+      using source by (simp; presburger)
+  next
+    assume endpoint: "odd ((15*u+1) div 2)"
+    show "u mod 4 = 3"
+    proof (rule ccontr)
+      assume not_port: "u mod 4 \<noteq> 3"
+      have port_one: "u mod 4 = 1" using ports not_port by blast
+      have source: "u = 4*(u div 4)+1"
+        using decomposition port_one by (simp add: algebra_simps)
+      have even_endpoint: "\<not> odd ((15*u+1) div 2)"
+        using source by (simp; presburger)
+      show False using endpoint even_endpoint by contradiction
+    qed
+  qed
+qed
+
+corollary collatz_border_return_3_port_exact_gate:
+  assumes factor: "3*q+1 = 2^j*u"
+      and odd_u: "odd u"
+  shows "u mod 4 = 3 \<longleftrightarrow>
+    odd ((physical_collatz ^^ (j+4)) (10*q+3))"
+proof -
+  have endpoint:
+    "(physical_collatz ^^ (j+4)) (10*q+3) = (15*u+1) div 2"
+    using collatz_border_return_endpoint[OF factor odd_u] by blast
+  show ?thesis
+    using collatz_border_return_3_port_iff_odd_endpoint[OF odd_u] endpoint
+    by simp
+qed
+
 lemma collatz_border_return_3_port:
   fixes k :: nat
   shows "(15*(4*k+3)+1) div 2 = 10*(3*k+2)+3 \<and>
@@ -436,6 +537,9 @@ ML \<open>
   val checked = @{thms physical_collatz_two_on_10q3
     physical_collatz_two_on_5_odd collatz_border_return_endpoint
     collatz_border_return_normalized_word collatz_border_return_physical_clock
+    collatz_border_return_affine_numerator
+    collatz_border_return_3_port_iff_odd_endpoint
+    collatz_border_return_3_port_exact_gate
     collatz_border_return_3_port collatz_border_return_3_upper_numerator
     collatz_border_return_3_successor_split
     collatz_border_return_endpoint_mod5 collatz_border_return_8_exit_4

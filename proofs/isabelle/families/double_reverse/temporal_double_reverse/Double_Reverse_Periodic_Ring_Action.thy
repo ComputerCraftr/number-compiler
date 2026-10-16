@@ -40,6 +40,101 @@ lemma double_reverse_ring_step_digits:
   using double_reverse_ring_step_cell[OF assms]
   by (simp add: double_reverse_t2_digit_def)
 
+lemma double_reverse_open_right_carry_is_five_residue:
+  assumes digits: "center < 10" "right < 10"
+  shows "(if (2*right + threshold5_digit center) mod 10 \<ge> 5
+      then (1::nat) else 0) =
+    (if right mod 5 = 3 \<or> right mod 5 = 4 then 1 else 0) +
+    (if 5 \<le> center \<and> right mod 5 = 2 then 1 else 0)"
+  using digits
+  by (cases "center < 5";
+      simp add: threshold5_digit_def; presburger)
+
+text \<open>This cell law is the open-stencil bridge: the three decimal digits
+are supplied by an externally admitted causal halo, and the proof converts the
+two-pass carry expression to the radix-five selector used by the Moore bank.
+It has no cyclic-neighbor, repeated-input, or infinite-source premise.\<close>
+
+theorem double_reverse_t2_open_stencil_exact:
+  assumes digits: "left < 10" "center < 10" "right < 10"
+  shows "double_reverse_t2_digit left center right =
+    (4*center + 2*(if 5 \<le> left then 1 else 0) +
+      (if right mod 5 = 3 \<or> right mod 5 = 4 then 1 else 0) +
+      (if 5 \<le> center \<and> right mod 5 = 2 then 1 else 0)) mod 10"
+proof -
+  have carry:
+    "(if (2*right + threshold5_digit center) mod 10 \<ge> 5
+        then (1::nat) else 0) =
+      (if right mod 5 = 3 \<or> right mod 5 = 4 then 1 else 0) +
+      (if 5 \<le> center \<and> right mod 5 = 2 then 1 else 0)"
+    by (rule double_reverse_open_right_carry_is_five_residue[OF digits(2,3)])
+  show ?thesis
+    using carry
+    by (simp add: double_reverse_t2_digit_def threshold5_digit_def)
+qed
+
+text \<open>The production open bank consumes a finite, source-issued pair of
+exterior digits at every time step.  This fold keeps those inlets explicit;
+invalid ports refuse rather than being wrapped around a finite ring or
+defaulted to zero.\<close>
+
+definition double_reverse_open_inputs_valid :: "(nat \<times> nat) list \<Rightarrow> bool" where
+  "double_reverse_open_inputs_valid inputs \<longleftrightarrow>
+    list_all (\<lambda>ports. fst ports < 10 \<and> snd ports < 10) inputs"
+
+fun double_reverse_open_stencil_trace :: "nat \<Rightarrow> (nat \<times> nat) list \<Rightarrow> nat" where
+  "double_reverse_open_stencil_trace center [] = center"
+| "double_reverse_open_stencil_trace center ((left,right)#inputs) =
+    double_reverse_open_stencil_trace
+      (double_reverse_t2_digit left center right) inputs"
+
+fun double_reverse_open_stencil_guarded ::
+    "nat \<Rightarrow> (nat \<times> nat) list \<Rightarrow> nat option" where
+  "double_reverse_open_stencil_guarded center [] =
+    (if center < 10 then Some center else None)"
+| "double_reverse_open_stencil_guarded center ((left,right)#inputs) =
+    (if center < 10 \<and> left < 10 \<and> right < 10
+     then double_reverse_open_stencil_guarded
+       (double_reverse_t2_digit left center right) inputs
+     else None)"
+
+lemma double_reverse_t2_output_bounded:
+  "double_reverse_t2_digit left center right < 10"
+  by (simp add: double_reverse_t2_digit_def)
+
+theorem double_reverse_open_stencil_trace_append:
+  "double_reverse_open_stencil_trace center (prefix @ suffix) =
+    double_reverse_open_stencil_trace
+      (double_reverse_open_stencil_trace center prefix) suffix"
+proof (induction prefix arbitrary: center)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons ports prefix)
+  obtain left right where ports: "ports = (left,right)" by (cases ports) auto
+  show ?case
+    using Cons.IH[of "double_reverse_t2_digit left center right"]
+    by (simp add: ports)
+qed
+
+theorem double_reverse_open_stencil_guarded_exact:
+  "double_reverse_open_stencil_guarded center inputs =
+    (if center < 10 \<and> double_reverse_open_inputs_valid inputs
+     then Some (double_reverse_open_stencil_trace center inputs) else None)"
+proof (induction inputs arbitrary: center)
+  case Nil
+  then show ?case by (simp add: double_reverse_open_inputs_valid_def)
+next
+  case (Cons ports inputs)
+  obtain left right where ports: "ports = (left,right)" by (cases ports) auto
+  have bounded: "double_reverse_t2_digit left center right < 10"
+    by (rule double_reverse_t2_output_bounded)
+  show ?case
+    using Cons.IH[of "double_reverse_t2_digit left center right"] bounded
+    by (cases "center < 10"; cases "left < 10"; cases "right < 10";
+        simp add: ports double_reverse_open_inputs_valid_def)
+qed
+
 definition double_reverse_ring_run :: "nat \<Rightarrow> nat list \<Rightarrow> nat list" where
   "double_reverse_ring_run steps word =
     (double_reverse_ring_step ^^ steps) word"
@@ -115,6 +210,10 @@ not authority to publish digits outside that certified interval.\<close>
 ML \<open>
   val checked = @{thms double_reverse_ring_step_length
     double_reverse_ring_step_cell double_reverse_ring_step_digits
+    double_reverse_open_right_carry_is_five_residue
+    double_reverse_t2_open_stencil_exact double_reverse_t2_output_bounded
+    double_reverse_open_stencil_trace_append
+    double_reverse_open_stencil_guarded_exact
     double_reverse_ring_run_add double_reverse_ring_cycle_repeats
     double_reverse_ring_cycle_future_periodic
     double_reverse_ring_observation_periodic};

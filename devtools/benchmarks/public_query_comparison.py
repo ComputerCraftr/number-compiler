@@ -1,4 +1,4 @@
-"""Compare current public CLI outputs and point demands without release thresholds."""
+"""Compare public CLI values or named observations across cache modes."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from time import perf_counter
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, TypeVar
 
 from devtools.paths import report_output
 from number_compiler.api.cli import main as cli_main
@@ -22,6 +22,7 @@ from number_compiler.api.query_types import AntihydraVerifyQuery, CollatzEventQu
 
 Mode = Literal["cold", "warm", "bypass"]
 FAMILIES = tuple(CAPABILITIES)
+_SampleT = TypeVar("_SampleT")
 
 
 class Sample(TypedDict):
@@ -33,7 +34,7 @@ class Sample(TypedDict):
     route: str
     output_base: int
     seconds: float
-    value: str
+    value: str | None
     info: object
 
 
@@ -57,9 +58,105 @@ def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, o
     if code:
         raise ValueError(f"CLI refused comparison: exit {code}: {error or output}")
     packet = json.loads(output)
-    if not isinstance(packet, dict) or not isinstance(packet.get("value"), str):
-        raise TypeError("CLI did not emit an exact digit string")
+    if not isinstance(packet, dict):
+        raise TypeError("CLI did not emit a JSON query packet")
+    value = packet.get("value")
+    if value is not None and not isinstance(value, str):
+        raise TypeError("CLI value must be an exact digit string or null")
     return elapsed, packet
+
+
+def named_counter_lane(value: object, label: str) -> dict[str, int] | None:
+    """Parse a nullable schema-eight named-work lane without inventing zeros."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise TypeError(f"{label} must be a JSON list of counter pairs")
+    counts: dict[str, int] = {}
+    for pair in value:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or not isinstance(pair[0], str)
+            or type(pair[1]) is not int
+            or pair[1] < 0
+        ):
+            raise TypeError(f"{label} contains an invalid counter pair")
+        if pair[0] in counts:
+            raise TypeError(f"{label} repeats a counter name")
+        counts[pair[0]] = pair[1]
+    return counts
+
+
+def family_execution_work(
+    packet: dict[str, object], counter_prefix: str
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+    """Select one instrumented family row from a public CLI metrics packet."""
+    info = packet.get("info")
+    if not isinstance(info, dict) or "metrics" not in info:
+        raise TypeError("CLI did not return its requested metrics packet")
+    metrics = info["metrics"]
+    if not isinstance(metrics, dict):
+        raise TypeError("metrics observation is not an object")
+    execution = metrics.get("execution_metrics")
+    if not isinstance(execution, dict):
+        raise TypeError("metrics omitted execution-work measurements")
+    rows = execution.get("family_work")
+    if not isinstance(rows, list):
+        raise TypeError("execution metrics omitted family work rows")
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("counter_prefix") == counter_prefix
+    ]
+    if len(matches) != 1:
+        raise TypeError(f"execution metrics need one {counter_prefix} family work row")
+    return info, metrics, execution, matches[0]
+
+
+def run_jsonl_report(
+    module: str,
+    report_name: str,
+    scope: str,
+    configuration: dict[str, object],
+    run: Callable[[Callable[[_SampleT], None]], dict[str, object]],
+    *,
+    run_metadata: dict[str, object] | None = None,
+) -> int:
+    """Run and journal a bounded benchmark, preserving partial samples on error."""
+    output = report_output(module, report_name)
+    journal_path = output.with_name("samples.jsonl")
+    payload: dict[str, object] = {
+        "scope": scope,
+        "configuration": configuration,
+        "sample_journal": journal_path.name,
+        "rows": [],
+        "outcome": "running",
+    }
+    if run_metadata is not None:
+        payload.update(run_metadata)
+    retained: list[_SampleT] = []
+    payload["rows"] = retained
+    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    try:
+        with journal_path.open("x", encoding="utf-8") as journal:
+
+            def save_sample(sample: _SampleT) -> None:
+                retained.append(sample)
+                journal.write(json.dumps(sample) + "\n")
+                journal.flush()
+
+            result = run(save_sample)
+    except BaseException as error:
+        payload["outcome"] = "failed_or_interrupted"
+        payload["error"] = {"type": type(error).__name__, "detail": str(error)}
+        output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        raise
+    payload.update(result)
+    payload["outcome"] = "completed"
+    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(output)
+    return 0
 
 
 def compare(
@@ -72,6 +169,8 @@ def compare(
     bases: Sequence[int] = (2, 10),
     position: int = 2,
     max_output_bits: int = 1_000_000,
+    info: Sequence[str] = ("metrics",),
+    no_value: bool = False,
     on_sample: Callable[[Sample], None] | None = None,
 ) -> list[Sample]:
     """Retain every timed sample; check agreement outside each timed demand.
@@ -83,6 +182,13 @@ def compare(
     """
     if family not in FAMILIES or trials < 1 or position < 0 or max_output_bits < 1:
         raise ValueError("invalid public comparison configuration")
+    if type(no_value) is not bool:
+        raise ValueError("no_value must be Boolean")
+    if not info or any(type(name) is not str for name in info):
+        raise ValueError("at least one named CLI observation is required")
+    supported_info = set(family_spec(family).nth_info)
+    if any(name not in supported_info for name in info):
+        raise ValueError("CLI observation is not supported by the selected family")
     if not horizons or any(horizon < 0 for horizon in horizons):
         raise ValueError("horizons must be nonnegative")
     if not bases or any(base < 2 or base > 36 for base in bases):
@@ -92,6 +198,8 @@ def compare(
     source_arguments = (
         option_argv("seed", seed) if "seed" in family_spec(family).parameters else []
     )
+    requested_info = tuple(dict.fromkeys(info))
+    selected_bases = tuple(bases[:1]) if no_value else tuple(bases)
     rows: list[Sample] = []
 
     def record(sample: Sample) -> None:
@@ -106,11 +214,19 @@ def compare(
         assert source_request is not None
         query = source_request.execution
         assert not isinstance(query, (AntihydraVerifyQuery, CollatzEventQuery))
-        projected = NumberCompiler(max_cached_terms=0).project(query)
-        reference = projected.materialize(max_bits=max_output_bits)
-        source_radix = projected.source_radix or 2
-        expected_digit = (reference // source_radix**position) % source_radix
-        expected_outputs = {base: _radix_string(reference, base) for base in bases}
+        if no_value:
+            expected_digit: int | None = None
+            expected_outputs: dict[int, str] = {}
+            source_radix = 2
+        else:
+            projected = NumberCompiler(max_cached_terms=0).project(query)
+            reference = projected.materialize(max_bits=max_output_bits)
+            source_radix = projected.source_radix or 2
+            expected_digit = (reference // source_radix**position) % source_radix
+            expected_outputs = {
+                base: _radix_string(reference, base) for base in selected_bases
+            }
+        semantic_info: object | None = None
         for mode in modes:
             NumberCompiler.clear_shared_cache()
             compiler = NumberCompiler(
@@ -120,7 +236,9 @@ def compare(
             samples = range(-1, trials) if mode == "warm" else range(trials)
             for trial in samples:
                 phase = "priming" if trial == -1 else "measured"
-                ordered_bases = tuple(reversed(bases)) if trial % 2 else tuple(bases)
+                ordered_bases = (
+                    tuple(reversed(selected_bases)) if trial % 2 else selected_bases
+                )
                 for base in ordered_bases:
                     if mode == "bypass":
                         NumberCompiler.clear_shared_cache()
@@ -130,11 +248,19 @@ def compare(
                         *option_argv("output_base", base),
                         *option_argv("max_output_bits", max_output_bits),
                         *option_argv("format", "json"),
-                        *option_argv("info", "metrics"),
+                        *[
+                            argument
+                            for name in requested_info
+                            for argument in option_argv("info", name)
+                        ],
                         *source_arguments,
                     ]
+                    if no_value:
+                        arguments.extend(option_argv("no_value", True))
                     elapsed, packet = cli_sample(arguments, fresh=mode == "cold")
-                    value = str(packet["value"])
+                    raw_value = packet.get("value")
+                    value = raw_value if isinstance(raw_value, str) else None
+                    raw_info = packet.get("info")
                     record(
                         {
                             "family": family,
@@ -146,15 +272,37 @@ def compare(
                             "output_base": base,
                             "seconds": elapsed,
                             "value": value,
-                            "info": packet.get("info"),
+                            "info": raw_info,
                         }
                     )
-                    if value != expected_outputs[base]:
+                    if no_value and raw_value is not None:
+                        raise AssertionError(
+                            "CLI rendered a value for an info-only query"
+                        )
+                    if not no_value and value is None:
+                        raise AssertionError("CLI omitted the requested exact value")
+                    if not no_value and value != expected_outputs[base]:
                         raise AssertionError(
                             "public CLI output differs from API output"
                         )
+                    if not isinstance(raw_info, dict):
+                        raise TypeError("CLI did not return requested information")
+                    if set(raw_info) != set(requested_info):
+                        raise AssertionError("CLI returned the wrong information keys")
+                    stable_info = {
+                        key: item for key, item in raw_info.items() if key != "metrics"
+                    }
+                    if stable_info:
+                        if semantic_info is None:
+                            semantic_info = stable_info
+                        elif stable_info != semantic_info:
+                            raise AssertionError(
+                                "CLI observation changed across cache modes or trials"
+                            )
                 # A cold point demand has a fresh compiler and cleared process caches;
                 # unlike cold CLI timing, its timing excludes interpreter startup.
+                if no_value:
+                    continue
                 if mode in ("cold", "bypass"):
                     NumberCompiler.clear_shared_cache()
                     compiler = NumberCompiler(
@@ -200,8 +348,31 @@ def main() -> int:
     parser.add_argument("--bases", type=int, nargs="+", default=[2, 10])
     parser.add_argument("--position", type=int, default=2)
     parser.add_argument("--max-output-bits", type=int, default=1_000_000)
+    parser.add_argument(
+        "--info",
+        action="append",
+        dest="information",
+        help="repeatable CLI observation; defaults to metrics",
+    )
+    parser.add_argument(
+        "--no-value",
+        action="store_true",
+        help="time information-only CLI requests without output rendering",
+    )
     options = parser.parse_args()
     modes: list[Mode] = options.modes
+    information = tuple(options.information or ("metrics",))
+    selected_spec = family_spec(options.family)
+    unsupported = set(information) - set(selected_spec.nth_info)
+    if unsupported:
+        parser.error(
+            f"unsupported observation for {options.family}: "
+            + ", ".join(sorted(unsupported))
+        )
+    if options.no_value:
+        options.bases = options.bases[:1]
+    configuration = vars(options).copy()
+    configuration["seed"] = options.seed if "seed" in selected_spec.parameters else None
     output = report_output(
         "devtools.benchmarks.public_query_comparison", "comparison.json"
     )
@@ -210,9 +381,12 @@ def main() -> int:
         "cold_cli_includes_interpreter_startup": True,
         "point_timings_include_project": True,
         "warm_priming_samples_retained": True,
-        "configuration": vars(options),
+        "configuration": configuration,
         "bypass_cli_policy": "clear process caches before each query; within-query memoization remains enabled",
         "bypass_point_shared_cache": False,
+        "information": tuple(dict.fromkeys(information)),
+        "no_value": options.no_value,
+        "observation_comparison": "all non-metrics information packets must be structurally equal across cold, warm, and bypass modes",
         "rows": [],
         "outcome": "running",
         "sample_journal": "samples.jsonl",
@@ -240,6 +414,8 @@ def main() -> int:
                 bases=options.bases,
                 position=options.position,
                 max_output_bits=options.max_output_bits,
+                info=information,
+                no_value=options.no_value,
                 on_sample=save_sample,
             )
     except BaseException:
