@@ -12,6 +12,7 @@ from number_compiler.api.cli_types import (
     QueryRequest,
     SpecialObservationOptions,
 )
+from number_compiler.api.matrix_contracts import MatrixCapability
 from number_compiler.api.observation_types import (
     OBSERVATION_REGISTRY,
     IndexUnit,
@@ -131,6 +132,7 @@ class FamilySpec:
     candidate_bound: str | None = None
     candidate_information: tuple[ObservationId, ...] = ()
     output_bound: str | None = None
+    matrix: MatrixCapability | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -243,6 +245,9 @@ class FamilySpec:
 
     def observer_options_map(self) -> dict[str, OptionSpec]:
         available = set(self.nth_info + self.event_info)
+        options = self.observer_options + (
+            () if self.matrix is None else self.matrix.options()
+        )
         return {
             name: OptionSpec(
                 option.default,
@@ -254,7 +259,7 @@ class FamilySpec:
                 option.choices,
                 option.flag_name,
             )
-            for name, option in self.observer_options
+            for name, option in options
             if (
                 supported := tuple(
                     info for info in option.information if info in available
@@ -369,8 +374,8 @@ class FamilySpec:
         return cast(
             ObservationOptions,
             binding.options_type(
-                tuple(observation_id(name) for name in information),
-                *(values[name] for name in binding.fields),
+                info=tuple(observation_id(name) for name in information),
+                **{name: values[name] for name in binding.fields},
             ),
         )
 

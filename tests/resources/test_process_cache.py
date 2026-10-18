@@ -53,6 +53,23 @@ def test_record_issuer_is_identity_checked_and_included_in_retained_bytes() -> N
     assert ordinary_cache.stats().bytes > 0
 
 
+def test_unissued_reader_cannot_consume_another_producers_record() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    partition = ("shared-namespace", "v1", ("source",))
+    with cache.acquire(*partition) as producer:
+        assert producer.put_issued(("payload",), ("producer-a",), issuer)
+
+    # Namespace, version, and source keys are caller-defined. If two families
+    # accidentally collide there, a non-issued reader must still fail closed.
+    with cache.acquire(*partition) as foreign_reader:
+        with pytest.raises(CacheRecordIssuerMismatch):
+            foreign_reader.get(("payload",))
+        with pytest.raises(CacheRecordIssuerMismatch):
+            foreign_reader.get_issued(("payload",), object())
+        assert foreign_reader.get_issued(("payload",), issuer) == ("producer-a",)
+
+
 def test_issued_record_updates_are_atomic_and_preserve_all_concurrent_writes() -> None:
     cache = ProcessCache(max_entries=128, max_bytes=100_000)
     issuer = object()

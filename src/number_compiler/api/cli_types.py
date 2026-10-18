@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeAlias
 
+from number_compiler.api.matrix_contracts import MatrixRequest
 from number_compiler.api.observation_types import (
     FamilyId,
     IndexEncoding,
@@ -123,9 +124,24 @@ class DoubleReverseObservationOptions:
     radix_places: int = 8
     walsh_start: int = 0
     open_ring_lookback: int = 8
+    period_samples: int = 0
+    period_stride: int = 1
+    period_depth: int = 2
+    period_max_lag: int = 16
+    period_drivers: bool = False
+    prefix_horizon: int = 128
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
+        require_integer(self.prefix_horizon, "--temporal-prefix-horizon", 1, 512)
+        require_integer(self.period_samples, "--temporal-period-samples", 0, 128)
+        require_integer(self.period_stride, "--temporal-period-stride", 1, 4096)
+        require_integer(self.period_depth, "--temporal-period-depth", 0, 8)
+        require_integer(self.period_max_lag, "--temporal-period-max-lag", 1, 128)
+        if type(self.period_drivers) is not bool:
+            raise TypeError("temporal period driver demand must be Boolean")
+        if self.period_samples * (2 * self.period_depth + 1) > 2048:
+            raise ValueError("temporal center period sample budget exceeded")
         require_integer(self.open_ring_lookback, "--temporal-open-ring-lookback", 1)
         if self.open_ring_lookback > 160:
             raise ValueError("birth layer lookback exceeds 160 F-steps")
@@ -278,6 +294,7 @@ class SpecialObservationOptions:
     max_digits: int = 4096
     max_candidate_bits: int = 1_000_000
     max_factor_products: int = 4096
+    ordered_carry_windows: bool = False
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
@@ -286,6 +303,8 @@ class SpecialObservationOptions:
         require_integer(self.max_digits, "--max-digits", 1)
         require_integer(self.max_candidate_bits, "--max-candidate-bits", 1)
         require_integer(self.max_factor_products, "--max-factor-products", 1)
+        if type(self.ordered_carry_windows) is not bool:
+            raise TypeError("ordered carry windows demand must be Boolean")
 
 
 ObservationOptions: TypeAlias = (
@@ -309,6 +328,7 @@ class QueryRequest:
     presentation: PresentationOptions = PresentationOptions()
     observations: ObservationOptions = NoObservations()
     max_index_bits: int = 1_000_000
+    matrix: MatrixRequest | None = None
 
     def __post_init__(self) -> None:
         if type(self.presentation) is not PresentationOptions:
@@ -369,6 +389,17 @@ class QueryRequest:
                     "requested information is unavailable for this selector"
                 )
             spec.validate_observation_request(self.execution, self.observations)
+        if ObservationId.TEMPORAL_MATRIX in self.observations.info:
+            if spec.matrix is None or self.matrix is None:
+                raise ValueError("temporal.matrix requires an admitted matrix request")
+            spec.matrix.validate(self.matrix)
+            if (
+                spec.matrix.max_source_index is not None
+                and self.index > spec.matrix.max_source_index
+            ):
+                raise ValueError("matrix source index exceeds admitted budget")
+        elif self.matrix is not None:
+            raise ValueError("matrix request requires --info temporal.matrix")
 
     @property
     def family(self) -> FamilyId:

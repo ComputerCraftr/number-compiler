@@ -14,7 +14,9 @@ from typing import TextIO
 
 import pytest
 
-_RECORD_LIMIT = 32768
+# Absolute ceiling. The effective record allowance is narrowed to the collected
+# selection when pytest finishes collection.
+_RECORD_SAFETY_LIMIT = 65536
 _BYTE_LIMIT = 8 * 1024 * 1024
 _FAILURE_TEXT_LIMIT = 8192
 
@@ -38,7 +40,8 @@ class PhaseTiming:
         self.truncated = False
         self.closed = False
         self.collection_started = 0.0
-        self.record_limit = _RECORD_LIMIT
+        self.record_safety_limit = _RECORD_SAFETY_LIMIT
+        self.record_limit = self.record_safety_limit
         self.byte_limit = _BYTE_LIMIT
         self.failure_text_limit = _FAILURE_TEXT_LIMIT
         self.profile_path = profile_path
@@ -56,6 +59,12 @@ class PhaseTiming:
         self.collection_started = perf_counter()
 
     def pytest_collection_finish(self, session: pytest.Session) -> None:
+        # A normal pytest item emits setup, call, and teardown reports. Keep
+        # room for the collection and session-finish records plus the existing
+        # truncation marker reserve, while retaining an absolute safety ceiling
+        # for retries or unusual reporters.
+        selection_allowance = 3 * len(session.items) + 3
+        self.record_limit = min(self.record_safety_limit, selection_allowance)
         self._write(
             {
                 "phase": "collection",

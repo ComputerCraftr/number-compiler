@@ -24,6 +24,7 @@ def test_twisted_evaluation_commutes_only_at_compatible_moduli() -> None:
             assert projection.support(radix=2, modulus=modulus).divisor == gcd(
                 modulus, sum(c * 2**i for i, c in enumerate(coefficients))
             )
+    projection = TwistedCylinderProjection.observe(iter(coefficients), width=7, sign=1)
     with pytest.raises(ValueError, match="incompatible"):
         projection.support(radix=2, modulus=11)
 

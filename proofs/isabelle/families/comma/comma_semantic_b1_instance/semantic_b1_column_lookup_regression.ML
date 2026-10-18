@@ -2,7 +2,7 @@
    directory/block interval proof cache. *)
 structure Comma_Semantic_B1_Column_Lookup_Regression =
 struct
-  structure Conversion = Comma_Semantic_B1_Column_Conversion
+  structure Lookup = Comma_Semantic_B1_Column_Lookup_Cache
 
   fun require condition message = if condition then () else error message
 
@@ -48,7 +48,7 @@ struct
       val malformed_directory = branch_constructor $ nat 4 $ right $ left
       val lookup = Const (@{const_name comma_semantic_b1_crt_column_dag_lookup},
         dagT --> natT --> resultT)
-      val lookup_rules = Conversion.normalize_lookup_rules ctxt
+      val lookup_rules = Lookup.normalize_lookup_rules ctxt
         @{thms comma_semantic_b1_crt_column_dag_lookup.simps
           comma_semantic_b1_crt_column_block_lookup.simps}
       val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
@@ -59,7 +59,7 @@ struct
       fun value level children =
         Const (@{const_name Some}, payloadT --> resultT) $
           HOLogic.mk_prod (nat level, ids children)
-      fun run tree cid visits = Conversion.controlled_lookup ctxt arithmetic
+      fun run tree cid visits = Lookup.controlled_lookup ctxt arithmetic
           lookup_rules visits NONE
           (Thm.cterm_of ctxt (lookup $ tree $ nat cid))
       val visits = Unsynchronized.ref 0
@@ -154,6 +154,10 @@ struct
         dagT --> natT --> resultT)
       val block_lookup = Const (@{const_name comma_semantic_b1_crt_column_block_lookup},
         blockT --> natT --> resultT)
+      val payloadT = @{typ "nat \<times> nat list"}
+      val block1_extent = length (Comma_Semantic_B1_Column_Catalog.parse_block_tree
+        (2 + Comma_Semantic_B1_Column_Catalog.block_size)
+        (Thm.term_of (Thm.rhs_of block1_definition)))
       fun request cid = lookup $ dag_constant $ nat cid
       fun point cid = #lookup cache block0_constant block0_definition
         2 block0_extent cid (Thm.cterm_of ctxt (request cid))
@@ -181,6 +185,68 @@ struct
           second_capacity_misses = first_capacity_misses andalso
           second_nodes = first_nodes)
         "B1 directory interval cache rebuilt a proof for a repeated block"
+
+      val interval_cache = Lookup.make ctxt arithmetic 2
+      fun interval_request constant cid = block_lookup $ constant $ nat cid
+      fun interval_point visits constant definition base extent cid =
+        #lookup interval_cache visits constant definition base extent cid
+          (Thm.cterm_of ctxt (interval_request constant cid))
+      fun block_value definition base cid =
+        let
+          val nodes = Comma_Semantic_B1_Column_Catalog.parse_block_tree base
+            (Thm.term_of (Thm.rhs_of definition))
+          val selected = List.find
+            (fn ({cid = actual, ...}: Comma_Semantic_B1_Column_Catalog.node) =>
+              actual = cid) nodes
+        in
+          (case selected of
+            SOME ({level, children, ...}: Comma_Semantic_B1_Column_Catalog.node) =>
+              Const (@{const_name Some}, payloadT --> resultT) $
+                HOLogic.mk_prod (nat level, HOLogic.mk_list natT (map nat children))
+          | NONE => error "B1 bounded interval fixture has no source node")
+        end
+      fun check_interval_point definition base cid theorem =
+        let val constant = Thm.term_of (Thm.lhs_of definition) in
+          require (Thm.term_of (Thm.lhs_of theorem) aconv
+              interval_request constant cid andalso
+            Thm.term_of (Thm.rhs_of theorem) aconv
+              (block_value definition base cid) andalso
+            clean_theorem theorem)
+          "B1 bounded interval cache changed its point theorem"
+        end
+      val interval_visits = Unsynchronized.ref 0
+      val first_interval = interval_point interval_visits block0_constant
+        block0_definition 2 block0_extent 2
+      val _ = check_interval_point block0_definition 2 2 first_interval
+      val {retained = first_interval_retained,
+        capacity_misses = first_interval_refusals,
+        evictions = first_interval_evictions,
+        recomputes = first_interval_recomputes, ...} = #stats interval_cache ()
+      val _ = require (first_interval_retained <= 2 andalso
+          first_interval_refusals = 0 andalso first_interval_evictions > 0)
+        "B1 tiny interval cache did not evict completed facts at capacity"
+      val second_interval = interval_point interval_visits block0_constant
+        block0_definition 2 block0_extent 2
+      val _ = check_interval_point block0_definition 2 2 second_interval
+      val {retained = second_interval_retained,
+        capacity_misses = second_interval_refusals,
+        evictions = second_interval_evictions,
+        recomputes = second_interval_recomputes, ...} = #stats interval_cache ()
+      val _ = require (second_interval_retained <= 2 andalso
+          second_interval_refusals = 0 andalso
+          second_interval_evictions > first_interval_evictions andalso
+          second_interval_recomputes > first_interval_recomputes)
+        "B1 interval cache did not safely recompute an evicted interval"
+      val _ = expect_error "B1 interval cache changed a block's root or bounds"
+        "changed block-definition interval cache authority" (fn () =>
+          interval_point interval_visits block0_constant block1_definition
+            2 block0_extent 2)
+      val block1_base = 2 + Comma_Semantic_B1_Column_Catalog.block_size
+      val second_block = interval_point interval_visits block1_constant
+        block1_definition block1_base block1_extent block1_base
+      val _ = check_interval_point block1_definition block1_base
+        block1_base second_block
+
       val foreign_root = Const ("Regression.foreign_column_dag", dagT)
       val _ = expect_error "B1 directory cache received another DAG definition"
         "foreign DAG directory cache authority" (fn () =>

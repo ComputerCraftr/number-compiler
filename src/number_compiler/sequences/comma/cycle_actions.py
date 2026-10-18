@@ -121,23 +121,23 @@ class CycleActionReuse:
         try:
             value = lease.get_issued(key, _CYCLE_PUBLISHER)
             if value is not MISSING:
-                if (
-                    type(value) is not tuple
-                    or len(value) != 3
-                    or any(type(field) is not int or field <= 0 for field in value)
-                    or any(
-                        field.bit_length() > key[2].bit_length() + 10 for field in value
-                    )
+                if type(value) is not tuple or len(value) != 3:
+                    raise ValueError("malformed comma cycle action")
+                fields = cast(CycleSummary, value)
+                if any(type(field) is not int or field <= 0 for field in fields):
+                    raise ValueError("malformed comma cycle action")
+                if any(
+                    field.bit_length() > key[2].bit_length() + 10 for field in fields
                 ):
                     raise ValueError("malformed comma cycle action")
                 self.charge(1)
-                self.charge_bits(sum(field.bit_length() for field in value))
+                self.charge_bits(sum(field.bit_length() for field in fields))
                 # The process key is already the canonical (leading, phase
                 # coset, copies) semantic action. Source transport is reported
                 # by the source-image application lane after admission.
                 self.count("exact_hits")
                 self.count("process_hits")
-                return cast(CycleSummary, value), True
+                return fields, True
         except Exception:
             self.count("admission_rejections")
             raise

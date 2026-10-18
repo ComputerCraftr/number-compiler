@@ -21,6 +21,7 @@ from number_compiler.sequences.reverse_add.border_carry_safety import (
     enumerate_one_digit_cycles,
 )
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
+from tests.support.reverse_add_carry_fixture import source_196_generation_79_border
 
 
 def _tile(value: int, k: int) -> BorderTile:
@@ -137,13 +138,7 @@ def test_live_owner_certifies_initial_middle_transfer_and_releases() -> None:
 
 
 def test_full_k_tile_trace_never_invents_a_window() -> None:
-    x = 196
-    for _ in range(79):
-        x += int(str(x)[::-1])
-    ledger = ResourceLedger()
-    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(x, 10), base=10)
-    try:
-        cert = owner.certify_border_growth(owner.initial, steps=9, window_digits=3)
+    with source_196_generation_79_border() as (x, _ledger, _owner, cert):
         assert len(cert.window_tiles) == 10
         assert cert.window_tiles[0] == _tile(x, 3)
         k_ports = cert.bilateral_window_ports()
@@ -154,9 +149,6 @@ def test_full_k_tile_trace_never_invents_a_window() -> None:
             assert edge.admitted_middle
             assert edge.source.k == edge.target.k == 3
         assert any(edge is not None for edge in k_ports)
-    finally:
-        owner.dispose()
-        assert ledger.entries == ledger.nodes == 0
 
 
 def test_bank_exposes_guarded_bilateral_constraints() -> None:

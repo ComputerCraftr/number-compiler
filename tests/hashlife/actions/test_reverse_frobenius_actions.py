@@ -28,6 +28,12 @@ from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
 
 
+def _primitive_adapter(adapter: object) -> PrimitiveTileKernelAdapter:
+    if type(adapter) is not PrimitiveTileKernelAdapter:
+        raise AssertionError("projection did not install the primitive tile adapter")
+    return adapter
+
+
 def test_public_reverse_action_composes_sector_bounds_before_source_descent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -37,8 +43,7 @@ def test_public_reverse_action_composes_sector_bounds_before_source_descent(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as p:
         application = p._application
-        adapter = p.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
+        adapter = _primitive_adapter(p.scheduler.adapter)
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("temporal sector composition visited source digits")
@@ -325,7 +330,7 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
             admitted_action = next(iter(admitted))
             marker = admitted[admitted_action]
             raw_admitted = cast(
-                "MutableMapping[object, object]",
+                MutableMapping[object, object],
                 admitted,
             )
             raw_admitted[admitted_action] = False
@@ -338,7 +343,7 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
                 engine._cocycle(unrelated)
             for invalid in (True, 0.0):
                 with pytest.raises(TypeError, match="field action ID"):
-                    engine._cocycle(cast("FieldCellActionID", invalid))
+                    engine._cocycle(cast(FieldCellActionID, invalid))
             with pytest.raises(RuntimeError, match="cannot reenter"):
                 engine._run(
                     CausalFrame(

@@ -214,6 +214,3 @@ def section_constructor_frontier(
             "supplied local stride bit"
         ),
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

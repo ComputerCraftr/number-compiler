@@ -406,6 +406,15 @@ def audit_tile_results(
             BoundaryConcatKey,
             SpatialInterfaceKey,
         )
+        execution_key = cast(
+            PoweredResultKey
+            | PoweredInterfaceKey
+            | FusedInterfaceKey
+            | CausalInterfaceKey
+            | DirectedTransferKey
+            | BehaviorBindingKey,
+            key,
+        )
         try:
             if type(key) is SpatialInterfaceKey:
                 spatial_key = key
@@ -488,15 +497,6 @@ def audit_tile_results(
                 approved.update((id(key), id(result)))
                 expected.setdefault(key.input, set()).add(key)
                 continue
-            execution_key = cast(
-                PoweredResultKey
-                | PoweredInterfaceKey
-                | FusedInterfaceKey
-                | CausalInterfaceKey
-                | DirectedTransferKey
-                | BehaviorBindingKey,
-                key,
-            )
             valid &= (
                 type(execution_key.action) is FieldCellActionID
                 and type(execution_key.input) is TileID

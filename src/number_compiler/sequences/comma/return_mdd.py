@@ -318,7 +318,7 @@ def substitute_return_column(
         result = results[initial]
         pending.clear()
         results.clear()
-        del pending, results, initial, state, children, left, right
+        del pending, results
         account_workspace("temporary", -reserved_by_kind["temporary"])
         account_workspace("memo", -reserved_by_kind["memo"])
         return result

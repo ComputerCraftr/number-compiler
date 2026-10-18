@@ -26,7 +26,7 @@ def threshold_views(
 def carry_out(arena: FormulaArena, root: FormulaRoot, spec: RadixSpec) -> Expr:
     forbid_in_powered_jump("carry_out")
     """Exact outgoing carry mask ``L_(i+1)`` in O(log width) IR depth."""
-    key = ("carry", spec.base, canonical_root_key(root))
+    key = ("carry", spec.base, canonical_root_key(root, arena))
     cached = arena.derived_get(key)
     if cached is not None:
         return cached

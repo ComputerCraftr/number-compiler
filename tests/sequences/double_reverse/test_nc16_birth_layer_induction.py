@@ -8,6 +8,8 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.metric_keys.double_reverse import (
+    DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS,
+    DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS,
     DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS,
 )
 from number_compiler.sequences.double_reverse import (
@@ -15,6 +17,10 @@ from number_compiler.sequences.double_reverse import (
 )
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     validate_source_record,
+)
+from number_compiler.sequences.double_reverse.boundary_cycles import (
+    CANDIDATE_COMPONENTS,
+    boundary_steps,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.source_bound_bank import _source_suffix
@@ -32,6 +38,11 @@ from number_compiler.sequences.double_reverse.temporal_birth_ring import (
     conditional_birth_return,
     odd_boundary_pairs,
     power_birth_model,
+)
+from number_compiler.sequences.double_reverse.temporal_diagonal_induction import (
+    SeamGate,
+    certified_closed_outer_pair_return,
+    seam_gate,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import edge_phase
 
@@ -136,6 +147,27 @@ def test_seed_specific_periods_generated_by_born_inlets() -> None:
         with DoubleReverseTerm(seed, 1000, max_steps=1000, max_state_bits=8192) as term:
             record = term.birth_layer_periods(8, lookback_f_steps=144, max_states=1024)
             validate_source_record(record)
+            measured_induction_rows = sum(
+                layer.diagonal_induction.compared_rows
+                for layer in record.layers
+                if layer.diagonal_induction is not None
+            )
+            assert term.metrics()[DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS] == (
+                measured_induction_rows
+            )
+            measured_period_comparisons = term.metrics()[
+                DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS
+            ]
+            assert measured_period_comparisons > 0
+            before_summary = term.metrics()[DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS]
+            record.validated_projection()
+            record.validated_projection()
+            assert term.metrics()[DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS] == (
+                before_summary
+            )
+            assert term.metrics()[DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS] == (
+                measured_period_comparisons
+            )
             got = tuple(
                 layer.conditional_return.physical_pair_period
                 if layer.conditional_return
@@ -146,6 +178,16 @@ def test_seed_specific_periods_generated_by_born_inlets() -> None:
             assert record.f_steps == 144
             assert record.final_pairs[0].digits == (1, 8)
             assert record.independently_powered_pairs == 8
+            assert record.outermost_pair_return is not None
+            assert record.outermost_pair_return.outer_pair_return_steps == 4
+            assert record.outermost_pair_return.all_binary_carry_words_covered
+            for layer in record.layers:
+                witness = layer.diagonal_induction
+                if witness is not None:
+                    assert not witness.indefinitely_certified
+                    if witness.finite_all_physical_equal:
+                        assert witness.compared_rows == witness.equal_bank_rows
+                        assert witness.compared_rows == witness.agreeing_seam_rows
             assert not any(
                 layer.indefinite_source_authorized for layer in record.layers
             )
@@ -158,6 +200,47 @@ def test_seed_specific_periods_generated_by_born_inlets() -> None:
             with pytest.raises(ValueError, match="authority"):
                 record.validated_projection()
             object.__setattr__(record, "source_phase", original_phase)
+
+
+def test_seam_gate_is_the_exact_inlet_quotient_for_every_phase() -> None:
+    expected_classes = (2, 4, 2, 1)
+    for phase, count in enumerate(expected_classes):
+        state = BirthRingState((1, 6, 3), (8, 2, 9), phase)
+        gate_to_next: dict[SeamGate, BirthRingState] = {}
+        next_to_gate: dict[BirthRingState, SeamGate] = {}
+        for left in range(10):
+            for right in range(10):
+                inlet = BirthRingPorts(left, right)
+                gate = seam_gate(state, inlet)
+                next_state = state.advance(inlet)[0]
+                assert gate_to_next.setdefault(gate, next_state) == next_state
+                assert next_to_gate.setdefault(next_state, gate) == gate
+        assert len(gate_to_next) == count
+        assert len(next_to_gate) == count
+
+
+def test_closed_outer_border_return_is_only_the_first_pair_claim() -> None:
+    expected_pairs = ((1, 8), (1, 2), (4, 2), (4, 8))
+    for edge in CANDIDATE_COMPONENTS[0]:
+        theorem = certified_closed_outer_pair_return(edge)
+        assert theorem.outer_pair_return_steps == 4
+        assert theorem.all_binary_carry_words_covered
+        assert (edge[0], edge[3]) == expected_pairs[theorem.phase]
+
+    start = (1, 7, 4, 2)
+    first = next(
+        step.target for step in boundary_steps(start).steps if step.inward_carry == 0
+    )
+    at_t2 = next(
+        step.target for step in boundary_steps(first).steps if step.inward_carry == 0
+    )
+    at_t3 = boundary_steps(at_t2).steps[0].target
+    at_t4 = boundary_steps(at_t3).steps[0].target
+    at_t5 = next(
+        step.target for step in boundary_steps(at_t4).steps if step.inward_carry == 1
+    )
+    assert (first[0], first[3]) == (at_t5[0], at_t5[3])
+    assert first != at_t5
 
 
 def test_return_multiplier_is_not_assumed_to_be_two_or_three() -> None:
@@ -211,8 +294,11 @@ def test_conditional_orbit_budget_refusal_is_typed() -> None:
 def test_unrelated_model_value_error_is_not_misreported_as_budget_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def forced_lasso(_letters: tuple[BirthRingPorts, ...]) -> tuple[int, int]:
-        return 0, 1
+    def forced_lasso(
+        _letters: tuple[BirthRingPorts, ...], *, min_repeats: int = 3
+    ) -> tuple[tuple[int, int], int]:
+        assert min_repeats == 3
+        return (0, 1), 0
 
     def fail_model(*_args: object, **_kwargs: object) -> Never:
         raise ValueError("injected unrelated model validation error")
@@ -223,7 +309,7 @@ def test_unrelated_model_value_error_is_not_misreported_as_budget_refusal(
         )
         source = _source_suffix(source, min(12, source.f_steps))
         with monkeypatch.context() as poison:
-            poison.setattr(birth_ring_module, "_finite_lasso", forced_lasso)
+            poison.setattr(birth_ring_module, "finite_suffix_period", forced_lasso)
             poison.setattr(
                 birth_ring_module, "_enumerate_conditional_birth_model", fail_model
             )

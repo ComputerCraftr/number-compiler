@@ -266,12 +266,14 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
 
     monkeypatch.setattr(OriginalRadixArena, "shifted_point", forbidden)
     monkeypatch.setattr(OriginalRadixArena, "shifted_width", forbidden)
+    arena: OriginalRadixArena | None = None
     if radix == 2:
-        arena = OriginalRadixArena(term._ledger)
-        encoding = arena.encode(term._source_construction, radix)
+        binary_arena = OriginalRadixArena(term._ledger)
+        arena = binary_arena
+        encoding = binary_arena.encode(term._source_construction, radix)
 
         def read_digit(coordinate: int) -> int:
-            return arena.affine_shifted_point(encoding, 1, coordinate, 2)
+            return binary_arena.affine_shifted_point(encoding, 1, coordinate, 2)
 
     else:
 

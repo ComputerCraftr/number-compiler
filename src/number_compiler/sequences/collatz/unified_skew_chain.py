@@ -371,7 +371,9 @@ class UnifiedSkewChain:
     ) -> CrossFamilyPortAction | None:
         """Power this recorded word only when all of its seam guards repeat."""
         return self.source_closed_port_action(ledger=ledger).power(
-            repetitions, max_coefficient_bits=max_coefficient_bits
+            repetitions,
+            max_coefficient_bits=max_coefficient_bits,
+            ledger=ledger,
         )
 
     def guarded_temporal_power(

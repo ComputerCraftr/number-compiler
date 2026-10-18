@@ -113,6 +113,7 @@ class _Host(Protocol):
         kernel: PrimitiveKernel,
         left: LocalInterfaceID,
         right: LocalInterfaceID,
+        /,
     ) -> tuple[FactoredFunctionID, ...]: ...
     def child_context(
         self,

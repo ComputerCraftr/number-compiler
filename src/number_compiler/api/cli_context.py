@@ -102,6 +102,17 @@ class QueryContext:
     def information(self) -> dict[str, dict[str, JsonValue]]:
         """Evaluate demanded observers once and report metrics last."""
         requested_info = self.request.observations.info
+        # A source-certified seed-orbit observer may authorize a longer exact
+        # prefix than older 32-tick observations.  Issue that same-source
+        # certificate first so requested observers do not depend on --info
+        # command-line order.  Output still follows requested_info below.
+        if (
+            ObservationId.TEMPORAL_SEED_MORPHISM in requested_info
+            and ObservationId.TEMPORAL_SEED_MORPHISM not in self._info
+        ):
+            self._info[ObservationId.TEMPORAL_SEED_MORPHISM] = self._observe(
+                ObservationId.TEMPORAL_SEED_MORPHISM
+            )
         for name in requested_info:
             if name is ObservationId.METRICS or name in self._info:
                 continue
@@ -154,6 +165,10 @@ class QueryContext:
         return {name.value: self._info[name] for name in requested_info}
 
     def _observe(self, name: ObservationId) -> dict[str, JsonValue]:
+        if name is ObservationId.TEMPORAL_MATRIX:
+            from number_compiler.api.matrix_observation import observe_matrix
+
+            return observe_matrix(self)
         return self._observation_adapter().observe(self, name)
 
     def _temporal_summary(self) -> dict[str, JsonValue]:

@@ -21,6 +21,117 @@ proof -
       [OF partition_certified])
 qed
 
+lemma comma_semantic_b1_crt_occurrence_wellformed_from_template_geometry:
+  fixes columns :: "comma_crt_column list"
+    and templates :: "comma_crt_column list list"
+    and template_column_ids :: "nat list list"
+    and template_cid :: nat
+    and occurrence :: comma_semantic_b1_crt_occurrence
+  assumes binding:
+      "comma_semantic_b1_crt_occurrence_binding_check occurrence"
+    and template_geometry:
+      "comma_semantic_b1_crt_template_geometry_certified columns templates
+        template_column_ids template_cid"
+    and occurrence_columns:
+      "comma_semantic_b1_crt_occurrence_columns occurrence =
+        templates!template_cid"
+    and supported:
+      "list_all comma_crt_supported
+        (comma_semantic_b1_crt_occurrence_columns occurrence)"
+  shows "comma_semantic_b1_crt_occurrence_wellformed occurrence"
+proof -
+  have binding_facts:
+      "comma_semantic_b1_crt_occurrence_rebase occurrence < 924 \<and>
+       length (comma_semantic_b1_crt_occurrence_columns occurrence) =
+         length (comma_semantic_b1_crt_occurrence_beta occurrence) \<and>
+       comma_semantic_b1_crt_occurrence_columns occurrence \<noteq> []"
+    using binding
+    by (simp add: comma_semantic_b1_crt_occurrence_binding_check_def)
+  have admitted_template:
+      "list_all (comma_crt_admitted 0) (templates!template_cid)"
+    using template_geometry
+    by (auto simp: comma_semantic_b1_crt_template_geometry_certified_def
+        comma_semantic_b1_crt_columns_partition_certified_def)
+  have admitted_occurrence:
+      "list_all (comma_crt_admitted 0)
+        (comma_semantic_b1_crt_occurrence_columns occurrence)"
+    using admitted_template occurrence_columns by simp
+  have cells_partition:
+      "comma_semantic_b1_crt_cells_partition {..<924}
+        (map comma_crt_set
+          (comma_semantic_b1_crt_occurrence_columns occurrence))"
+    using comma_semantic_b1_crt_template_geometry_certified_partition
+      [OF template_geometry] occurrence_columns by simp
+  have covered:
+      "comma_semantic_b1_crt_occurrence_covered
+        (comma_semantic_b1_crt_occurrence_columns occurrence)"
+  proof -
+    let ?columns = "comma_semantic_b1_crt_occurrence_columns occurrence"
+    let ?cells = "map comma_crt_set ?columns"
+    have cover:
+        "\<forall>phase\<in>{..<924}. \<exists>index<length ?cells. phase\<in>?cells!index"
+      using cells_partition
+      by (auto simp: comma_semantic_b1_crt_cells_partition_def)
+    show ?thesis
+      unfolding comma_semantic_b1_crt_occurrence_covered_def
+        comma_semantic_b1_crt_occurrence_indexed_columns_def
+    proof (intro allI impI)
+      fix phase :: nat
+      assume phase: "phase < 924"
+      obtain index where index_bound: "index < length ?cells"
+        and phase_cell: "phase \<in> ?cells!index"
+        using cover phase by blast
+      have column_bound: "index < length ?columns"
+        using index_bound by simp
+      have entry:
+          "(index, ?columns!index) \<in> set (zip [0..<length ?columns] ?columns)"
+        using column_bound by (auto simp: in_set_conv_nth nth_zip)
+      have phase_column: "phase \<in> comma_crt_set (?columns!index)"
+        using phase_cell column_bound by (simp add: nth_map)
+      show "\<exists>entry\<in>set (zip [0..<length ?columns] ?columns).
+          phase \<in> comma_crt_set (snd entry)"
+      proof
+        show "(index, ?columns!index) \<in>
+            set (zip [0..<length ?columns] ?columns)"
+          by (rule entry)
+        show "phase \<in> comma_crt_set (snd (index, ?columns!index))"
+          using phase_column by simp
+      qed
+    qed
+  qed
+  have disjoint:
+      "comma_semantic_b1_crt_occurrence_disjoint
+        (comma_semantic_b1_crt_occurrence_columns occurrence)"
+  proof -
+    let ?columns = "comma_semantic_b1_crt_occurrence_columns occurrence"
+    show ?thesis
+      unfolding comma_semantic_b1_crt_occurrence_disjoint_def
+        comma_semantic_b1_crt_occurrence_indexed_columns_def
+    proof (intro ballI impI)+
+      fix left right
+      assume left: "left \<in> set (zip [0..<length ?columns] ?columns)"
+        and right: "right \<in> set (zip [0..<length ?columns] ?columns)"
+        and different: "fst left \<noteq> fst right"
+      have left_facts:
+          "fst left < length ?columns \<and> snd left = ?columns!fst left"
+        using left by (auto simp: in_set_conv_nth nth_zip)
+      have right_facts:
+          "fst right < length ?columns \<and> snd right = ?columns!fst right"
+        using right by (auto simp: in_set_conv_nth nth_zip)
+      have cells_disjoint:
+          "(map comma_crt_set ?columns)!fst left \<inter>
+            (map comma_crt_set ?columns)!fst right = {}"
+        using cells_partition left_facts right_facts different
+        by (auto simp: comma_semantic_b1_crt_cells_partition_def nth_map)
+      show "comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {}"
+        using cells_disjoint left_facts right_facts by simp
+    qed
+  qed
+  show ?thesis
+    using binding_facts admitted_occurrence supported covered disjoint
+    by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def)
+qed
+
 lemma comma_semantic_b1_crt_template_geometry_certified_from_facts:
   assumes template_bound: "template_cid<length templates"
     and ids_bound: "template_cid<length template_column_ids"
@@ -373,6 +484,7 @@ qed
 
 lemmas comma_semantic_b1_crt_occurrence_bounds_oracle_audit_bundle =
   comma_semantic_b1_crt_template_geometry_certified_partition
+  comma_semantic_b1_crt_occurrence_wellformed_from_template_geometry
   comma_semantic_b1_crt_template_geometry_certified_from_facts
   comma_semantic_b1_crt_constructed_occurrence_bound_index_guards
   comma_semantic_b1_crt_constructed_occurrence_bound_parent_present

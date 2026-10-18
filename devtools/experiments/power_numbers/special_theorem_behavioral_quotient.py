@@ -496,6 +496,3 @@ def theorem_behavioral_frontier() -> SpecialTheoremBehavioralFrontier:
             "multiplicative-depth model; do not reintroduce hidden factor support"
         ),
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

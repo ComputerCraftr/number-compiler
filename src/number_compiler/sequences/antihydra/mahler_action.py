@@ -59,12 +59,17 @@ def _action_packet(
     first_failure: int | None,
     *,
     include_radix_ports: bool = False,
+    include_source_cylinder: bool = False,
     window_memo: OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow] | None = None,
 ) -> dict[str, object]:
     if result.returns == 0 and semantic != SaturatingAffineAction.identity():
         raise ValueError(
             "zero-extent Mahler source must have the uncapped identity action"
         )
+    if type(include_source_cylinder) is not bool:
+        raise TypeError("two-sided source-cylinder demand must be Boolean")
+    if include_source_cylinder and not include_radix_ports:
+        raise ValueError("source cylinders require the detailed Mahler port demand")
     # The authenticated centered source is 7, whose first two bits are 11.
     # Their exact theta guards are [2/3,1) then empty. The root chart uses
     # r^2=theta=2t, while the existing margin action has offset -3*C.
@@ -218,6 +223,79 @@ def _action_packet(
                 )
             else:
                 odd_macro_packet = odd_seam_pointwise_packet(seam, places=4)
+    source_cylinder_packet: dict[str, object] | None = None
+    if include_source_cylinder:
+        centered_source = result.h - 1
+        if centered_source <= 0 or not centered_source & 1:
+            source_cylinder_packet = {
+                "status": "unavailable",
+                "reason": "current centered source is not positive and odd",
+            }
+        else:
+            from number_compiler.sequences.antihydra.mahler_two_sided_cylinder import (
+                MahlerGuardedSourceFiber,
+                MahlerTwoSidedCylinder,
+            )
+
+            cylinder = MahlerTwoSidedCylinder.from_pointed_source(
+                centered_source,
+                binary_bits=8,
+                five_places=1,
+                leading_bits=min(8, centered_source.bit_length()),
+                ledger=result.ledger,
+            )
+            initial_fiber = MahlerGuardedSourceFiber(
+                cylinder, HalfOpenInterval(), result.balance
+            )
+            powered, terminal_fiber, accepted_events, stop_reason = (
+                initial_fiber.forced_future(
+                    max_events=16,
+                    max_extent=128,
+                    ledger=result.ledger,
+                )
+            )
+            source_cylinder_packet = {
+                "initial": cylinder.summary(
+                    upper_bits=min(8, centered_source.bit_length()),
+                    low_bits=8,
+                    five_places=1,
+                    ledger=result.ledger,
+                ),
+                "accepted_odd_events": accepted_events,
+                "accepted_extent": powered.extent,
+                "stop_reason": stop_reason,
+                "terminal": {
+                    "integer_fiber": terminal_fiber.integers.summary(
+                        upper_bits=min(8, terminal_fiber.integers.first.bit_length()),
+                        low_bits=8,
+                        five_places=1,
+                        ledger=result.ledger,
+                    ),
+                    "fractional_guard": {
+                        "lower": rational_packet(terminal_fiber.fractional_guard.lower),
+                        "upper": rational_packet(terminal_fiber.fractional_guard.upper),
+                        "empty": terminal_fiber.fractional_guard.empty,
+                    },
+                    "ledger_balance": terminal_fiber.ledger_balance,
+                },
+                "composed_action": {
+                    "source_residue": powered.source_residue,
+                    "source_modulus": powered.source_modulus,
+                    "gain": powered.joint.gain,
+                    "innovation": powered.joint.innovation,
+                    "guard": {
+                        "lower": rational_packet(powered.joint.guard.lower),
+                        "upper": rational_packet(powered.joint.guard.upper),
+                        "empty": powered.joint.guard.empty,
+                    },
+                    "ledger_delta": powered.delta,
+                    "ledger_minimum": powered.minimum,
+                },
+                "scope": (
+                    "finite source/fraction/ledger product; no all-time or "
+                    "Antihydra future-safety claim"
+                ),
+            }
     with GrowthArithmeticEvaluator(result.ledger) as radial_evaluator:
         radial_packet = asdict(radial_clock.leading_binary(radial_evaluator))
         growth_packet = asdict(
@@ -293,6 +371,11 @@ def _action_packet(
         **(
             {"source_bound_odd_to_odd": odd_macro_packet}
             if odd_macro_packet is not None
+            else {}
+        ),
+        **(
+            {"source_cylinder": source_cylinder_packet}
+            if source_cylinder_packet is not None
             else {}
         ),
         **(
@@ -495,15 +578,25 @@ class MahlerWorkspace:
             memo.dispose()
 
     def packet(
-        self, result: ArithmeticResult, *, include_radix_ports: bool = False
+        self,
+        result: ArithmeticResult,
+        *,
+        include_radix_ports: bool = False,
+        include_source_cylinder: bool = False,
     ) -> dict[str, object]:
         result.require_source()
         return self._packet_authenticated(
-            result, include_radix_ports=include_radix_ports
+            result,
+            include_radix_ports=include_radix_ports,
+            include_source_cylinder=include_source_cylinder,
         )
 
     def _packet_authenticated(
-        self, result: ArithmeticResult, *, include_radix_ports: bool = False
+        self,
+        result: ArithmeticResult,
+        *,
+        include_radix_ports: bool = False,
+        include_source_cylinder: bool = False,
     ) -> dict[str, object]:
         # Call only after ``require_source`` (directly or through the public
         # source adapter), which validates the complete dyadic image once.
@@ -547,6 +640,7 @@ class MahlerWorkspace:
             projected,
             failure,
             include_radix_ports=include_radix_ports,
+            include_source_cylinder=include_source_cylinder,
             window_memo=(
                 self._demand_window_memo(result)
                 if include_radix_ports and result.returns > 0
@@ -556,10 +650,17 @@ class MahlerWorkspace:
 
 
 def associated_action(
-    result: Run | ArithmeticResult, *, include_radix_ports: bool = False
+    result: Run | ArithmeticResult,
+    *,
+    include_radix_ports: bool = False,
+    include_source_cylinder: bool = False,
 ) -> dict[str, object]:
     if type(include_radix_ports) is not bool:
         raise TypeError("radix-port demand must be Boolean")
+    if type(include_source_cylinder) is not bool:
+        raise TypeError("two-sided source-cylinder demand must be Boolean")
+    if include_source_cylinder and not include_radix_ports:
+        raise ValueError("source cylinders require the detailed Mahler port demand")
     arithmetic = authenticated_arithmetic_result(result)
     source_binding = result.source_binding
     workspace = arithmetic._term.mahler_workspace
@@ -569,7 +670,9 @@ def associated_action(
     memo_before = workspace._window_memo
     try:
         packet = workspace._packet_authenticated(
-            arithmetic, include_radix_ports=include_radix_ports
+            arithmetic,
+            include_radix_ports=include_radix_ports,
+            include_source_cylinder=include_source_cylinder,
         )
         if created_workspace:
             arithmetic._term.mahler_workspace = workspace

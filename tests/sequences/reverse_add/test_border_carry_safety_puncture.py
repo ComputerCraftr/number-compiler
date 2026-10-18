@@ -181,11 +181,15 @@ def test_196_79_to_88_is_a_finite_conditional_return_not_a_global_repeat() -> No
         x_test = x
         for i, bit in enumerate(proved.growth_word):
             y = x_test + _reverse(x_test)
-            assert _tile(x_test, 1).high == proved.outer_pairs[i][0]
-            assert _tile(x_test, 1).low == proved.outer_pairs[i][1]
+            pair = proved.outer_pairs[i]
+            assert pair is not None
+            assert _tile(x_test, 1).high == pair[0]
+            assert _tile(x_test, 1).low == pair[1]
             assert int(len(str(y)) > len(str(x_test))) == bit
             x_test = y
-        assert proved.outer_pairs[-1] == (int(str(x_test)[0]), int(str(x_test)[-1]))
+        final_pair = proved.outer_pairs[-1]
+        assert final_pair is not None
+        assert final_pair == (int(str(x_test)[0]), int(str(x_test)[-1]))
         # A certificate for one physical return does not authorize unlimited
         # repetition: the interior source root is different after nine steps.
         with pytest.raises(ValueError):

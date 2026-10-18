@@ -274,9 +274,18 @@ def require_same_source(first: _SourceAuthority, second: _SourceAuthority) -> No
         raise ValueError("temporal packets have different source roots or generations")
 
 
+def require_source_arena(authority: _SourceAuthority) -> SLPArena:
+    """Return the still-live arena of a previously validated authority."""
+    arena = authority.arena
+    if arena is None:
+        raise ValueError("temporal packet source arena is no longer available")
+    return arena
+
+
 __all__ = [
     "FrozenMap",
     "issue_source_record",
     "require_same_source",
+    "require_source_arena",
     "validate_source_record",
 ]

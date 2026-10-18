@@ -211,6 +211,7 @@ def test_prefix_to_cylinder_closed_form_is_explicit_not_fabricated() -> None:
         assert form.entry_value == 173488
         assert form.suffix_steps == 48
         assert form.suffix_phase_in == form.suffix_phase_out == 0
+        assert form.suffix_affine_gain is not None
         assert form.suffix_affine_gain == 160**12
         assert form.suffix_affine_shift is not None
         assert form.target == (
@@ -220,6 +221,7 @@ def test_prefix_to_cylinder_closed_form_is_explicit_not_fabricated() -> None:
     with DoubleReverseTerm(196, 64) as term:
         form = term.temporal_closed_form(modulus=97)
         assert form.prefix_steps == 16
+        assert form.suffix_affine_gain is not None
         assert form.suffix_affine_gain == pow(160, 12, 97)
         assert form.entry_value is not None
         assert form.suffix_affine_shift is not None

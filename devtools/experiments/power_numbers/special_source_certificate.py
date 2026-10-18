@@ -149,7 +149,7 @@ class _SynthExpr:
     @property
     def key(self) -> tuple[object, ...]:
         completed: dict[int, tuple[object, ...]] = {}
-        pending = [(self, False)]
+        pending: list[tuple[_SynthExpr, bool]] = [(self, False)]
         while pending:
             node, ready = pending.pop()
             if id(node) in completed:
@@ -170,7 +170,7 @@ class _SynthExpr:
 
     def render(self) -> str:
         completed: dict[int, str] = {}
-        pending = [(self, False)]
+        pending: list[tuple[_SynthExpr, bool]] = [(self, False)]
         while pending:
             node, ready = pending.pop()
             if id(node) in completed:
@@ -196,7 +196,7 @@ class _SynthExpr:
     def atoms(self) -> frozenset[str]:
         found: set[str] = set()
         seen: set[int] = set()
-        pending = [self]
+        pending: list[_SynthExpr] = [self]
         while pending:
             node = pending.pop()
             if id(node) in seen:
@@ -819,6 +819,3 @@ def source_certificate_research_report() -> SpecialSourceCertificateResearchRepo
         False,
         "source-certificate architecture closed; bounded CEGIS cannot promote without a symbolic folded-support identity",
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

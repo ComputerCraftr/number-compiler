@@ -83,6 +83,7 @@ def audit_execution_ownership(
         for name in (
             "_accounts",
             "_names",
+            "_reservations",
             "_factory_containers",
             "_execution_roots",
             "_payload_audit_contracts",
@@ -243,7 +244,7 @@ def audit_execution_ownership(
             )
             and not (name == "__annotations__" and isinstance(child, dict))
         )
-        value_type = type(value)
+        value_type: type[object] = type(value)
         layout = layouts.get(value_type)
         if layout is None:
             slot_names: list[str] = []

@@ -25,6 +25,12 @@ from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 
+def _physical_block_effect(effect: object) -> CollatzPhysicalBlockEffect | None:
+    if type(effect) is CollatzPhysicalBlockEffect:
+        return effect
+    return None
+
+
 def collatz_physical_leaf_output(
     bits: BitFunctionArena,
     kernel: PrimitiveKernel,
@@ -37,7 +43,8 @@ def collatz_physical_leaf_output(
     """Compile the exact physical output after its branch geometry is known."""
     if type(bits) is not BitFunctionArena:
         raise TypeError("physical Collatz output requires the shared bit arena")
-    if type(kernel.effect) is not CollatzPhysicalBlockEffect:
+    effect = _physical_block_effect(kernel.effect)
+    if effect is None:
         raise ValueError("physical Collatz output requires its primitive kernel")
     expected_left = PortVariable(0, 0, "tile-left", 0)
     expected_right = PortVariable(0, 1, "tile-right", 0)
@@ -56,7 +63,6 @@ def collatz_physical_leaf_output(
     ):
         raise ValueError("physical Collatz output requires its exact finite ports")
 
-    effect = kernel.effect
     left = bits.variable(ports, left_port)
     right = bits.variable(ports, right_port)
     consumers = tuple(effect.output_consumer(state, symbol) for state in range(6))

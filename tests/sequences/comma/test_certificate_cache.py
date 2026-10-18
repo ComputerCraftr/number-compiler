@@ -10,6 +10,10 @@ import pytest
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.process_cache import get_process_cache
 from number_compiler.sequences.comma import certificates
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_INDEX,
+    SOURCE20_FIRST_FORK_VALUE,
+)
 
 
 @pytest.mark.parametrize("shared_cache", [False, True])
@@ -93,8 +97,8 @@ def test_reset_during_admission_publication_removes_failed_local_entry(
             assert lease.put(
                 (
                     certificates.CERTIFIED_MAX_INDEX,
-                    certificates.FIRST_FORK_INDEX,
-                    certificates.FIRST_FORK_VALUE,
+                    SOURCE20_FIRST_FORK_INDEX,
+                    SOURCE20_FIRST_FORK_VALUE,
                 ),
                 (certificates.CERTIFICATE_SHA256, tag),
             )
@@ -132,7 +136,10 @@ def test_foreign_admission_is_rejected_before_asset_access(
 
 @pytest.mark.parametrize(
     ("field", "replacement"),
-    [("FIRST_FORK_VALUE", 19_999_999_917), ("FIRST_FORK_INDEX", 412_987_858)],
+    [
+        ("FIRST_FORK_VALUE", 19_999_999_917),
+        ("FIRST_FORK_INDEX", 412_987_858),
+    ],
 )
 def test_admission_marker_binds_first_fork_metadata(
     monkeypatch: pytest.MonkeyPatch, field: str, replacement: int
@@ -188,8 +195,8 @@ def test_malformed_shared_marker_is_rejected_before_asset_access(
             assert lease.put(
                 (
                     certificates.CERTIFIED_MAX_INDEX,
-                    certificates.FIRST_FORK_INDEX,
-                    certificates.FIRST_FORK_VALUE,
+                    SOURCE20_FIRST_FORK_INDEX,
+                    SOURCE20_FIRST_FORK_VALUE,
                 ),
                 (certificates.CERTIFICATE_SHA256, marker),
             )

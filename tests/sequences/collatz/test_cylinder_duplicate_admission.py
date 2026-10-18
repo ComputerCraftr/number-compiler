@@ -6,8 +6,8 @@ from typing import cast
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.source_cylinder_cache import (
-    CollatzDyadicMacros,
+from number_compiler.sequences.collatz.source_cylinder_cache import CollatzDyadicMacros
+from number_compiler.sequences.collatz.source_cylinder_types import (
     CollatzDyadicOccurrence,
 )
 

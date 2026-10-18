@@ -146,6 +146,12 @@ Return steps are not Antihydra physical Turing-machine ticks. Physical clocks
 continue to come from the independently demanded clock calculation. Reporting
 these counters never runs the selector or requests that physical observation.
 
+Collatz's `conditional_scheduler_work` reports consumed source-certified
+conditional actions, represented returns, physical ticks and optional cache
+publication bypasses. It is null before that owner records work. These counts
+are not cache hits or proof-completion flags; candidate discovery and failed
+attempts are charged separately by the owner.
+
 Collatz's `mixed_clock_work` reports consumed mixed-clock actions, their
 repetitions and physical ticks from the existing executor counters. A named
 border-action count can be zero when this earlier powered route handles the
@@ -383,7 +389,13 @@ validation; guard refusals do not count as publications or cache hits.
 
 Birth-centered 2rev10 demands have separate `double_reverse_birth_layer_*`
 counts for inward source-port reads, local strip steps, conditional model
-states, successful publications and refusals. These count executed work;
+states, finite-induction row comparisons, successful publications and refusals.
+`double_reverse_birth_layer_induction_rows` increases as retained source rows
+are compared; serializing the resulting witness does not repeat that work.
+`double_reverse_birth_layer_period_comparisons` counts actual symbol comparisons
+in the shared linear finite-period search. One comparison can inspect a
+structured symbol; it is not a count of machine instructions or integer bits.
+These count executed work;
 a reported physical return period is not a cache-hit count. The counters stay
 null until the birth-layer owner is demanded. Scratch space is reserved through
 the existing ledger and released on both successful and failed construction.
@@ -394,3 +406,14 @@ relation cells. Cell allocations are cumulative work, not retained bytes.
 `reverse_q19_directed_diagonal_inlet_visits` counts selected growth inputs;
 `reverse_q19_inward_symmetric_filter_value_visits` counts candidate checks.
 None of these observers runs merely because metrics were requested.
+
+Collatz two-sided continuation and demanded radix-six coverage report
+`collatz_two_sided_cylinder_constructions`,
+`collatz_two_sided_cylinder_operand_bits`,
+`collatz_radix6_coverage_evaluations`, and
+`collatz_radix6_coverage_operand_bits` under `execution_metrics.observations`.
+Construction counts are successful immutable cylinder publications; coverage
+evaluations include valid requests that cannot certify a common width.
+Operand-bit counters sum the integer operand lengths at instrumented sites,
+including unsuccessful work. They are neither elapsed time nor cache hits.
+Unobserved owners remain null, and reading metrics performs no cylinder work.

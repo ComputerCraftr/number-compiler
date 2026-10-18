@@ -598,6 +598,8 @@ class PairSLPTransducer:
             mode: str
             dependencies: tuple[tuple[int, int], ...] = ()
             repeat_count = 0
+            repeat_dependency: tuple[int, int] | None = None
+            concat_dependencies: tuple[tuple[int, int], tuple[int, int]] | None = None
             if item_left == item_right:
                 mode = "scale"
             elif left_node.kind == right_node.kind == "TERM":
@@ -610,17 +612,19 @@ class PairSLPTransducer:
             ):
                 mode = "repeat"
                 repeat_count = left_node.count
-                dependencies = (self._zip_key(left_node.child, right_node.child),)
+                repeat_dependency = self._zip_key(left_node.child, right_node.child)
+                dependencies = (repeat_dependency,)
             elif (
                 left_node.kind == right_node.kind == "CONCAT"
                 and self._arena.nodes[left_node.left].length
                 == self._arena.nodes[right_node.left].length
             ):
                 mode = "concat"
-                dependencies = (
+                concat_dependencies = (
                     self._zip_key(left_node.left, right_node.left),
                     self._zip_key(left_node.right, right_node.right),
                 )
+                dependencies = concat_dependencies
             else:
                 mode = "concat"
                 split = min(
@@ -631,7 +635,7 @@ class PairSLPTransducer:
                 if not 0 < split < length:
                     raise ValueError("synchronized SLP alignment did not refine")
                 self.ledger.bump("reverse_pair_slp_zip_splits")
-                dependencies = (
+                concat_dependencies = (
                     self._zip_key(
                         self.slice(item_left, 0, split),
                         self.slice(item_right, 0, split),
@@ -641,6 +645,7 @@ class PairSLPTransducer:
                         self.slice(item_right, split, length),
                     ),
                 )
+                dependencies = concat_dependencies
             missing = tuple(dep for dep in dependencies if dep not in self._zips)
             if missing and not expanded:
                 stack.append((item, True))
@@ -652,10 +657,15 @@ class PairSLPTransducer:
                 elif mode == "term":
                     result = self.terminal(left_node.symbol + right_node.symbol)
                 elif mode == "repeat":
-                    result = self.repeat(self._zips[dependencies[0]], repeat_count)
+                    if repeat_dependency is None:
+                        raise AssertionError("repeat zip lost its child dependency")
+                    result = self.repeat(self._zips[repeat_dependency], repeat_count)
                 else:
+                    if concat_dependencies is None:
+                        raise AssertionError("concat zip lost its child dependencies")
                     result = self.concat(
-                        self._zips[dependencies[0]], self._zips[dependencies[1]]
+                        self._zips[concat_dependencies[0]],
+                        self._zips[concat_dependencies[1]],
                     )
             self._remember(self._zips, item, result)
         return self._zips[key]

@@ -233,7 +233,34 @@ def reverse_open_ring_packet(
     domains = bank.validated_pair_domains()
     sources = tuple(source for source, _target in domains)
     targets = tuple(target for _source, target in domains)
-    return {
+    joint_cyclotomic_center = {
+        "mod99": bank.global_residues99,
+        "mod198": bank.global_residues198,
+        "center_domains": bank.center_domains,
+        "correlated_carry_phases": tuple(
+            tuple(
+                {
+                    "tick": phase.tick,
+                    "width": phase.width,
+                    "low_carry": phase.low_carry,
+                    "high_carries": phase.high_carries,
+                    "middle_transfers": tuple(
+                        transfer.value for transfer in phase.middle_transfers
+                    ),
+                    "first_reset_positions": phase.first_reset_positions,
+                    "first_reset_witnesses": tuple(
+                        {"position": position, "middle_transfer": transfer.value}
+                        for position, transfer in phase.first_reset_witnesses
+                    ),
+                    "conditional_f5": phase.conditional_f5,
+                }
+                for phase in frame
+            )
+            for frame in bank.carry_wire_phases
+        ),
+        "physical_repeat_certified": False,
+    }
+    packet: dict[str, object] = {
         "start": bank.start,
         "duration": bank.duration,
         "positions": bank.positions,
@@ -244,5 +271,55 @@ def reverse_open_ring_packet(
         "finite_moore_classes": bank.finite_moore_classes,
         "complete_integer_certified": bank.complete_integer_certified,
         "temporal_repeat_certified": bank.temporal_repeat_certified,
+        "joint_cyclotomic_center": joint_cyclotomic_center,
         "scope": "finite conditional inward carry domains; no complete-root jump",
+    }
+    return packet
+
+
+def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
+    # Read the scheduler's exact Q19 endpoint, the same occurrence demanded by
+    # value, width, point, and stream consumers. This observer does not replay
+    # the source-root Q19 temporal blocks or claim a fast dyadic Q19 kernel.
+    n = term.generation
+    if n < 2 or n > 4097:
+        return {
+            "status": "unavailable",
+            "reason": (
+                "seed-orbit Q19 source interval requires 2 <= nth <= 4097; "
+                "an unrestricted logarithmic Q19 operator is not certified"
+            ),
+            "logarithmic_q19_power_certified": False,
+        }
+    from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
+        certified_completed_reverse_add_seed_morphism,
+    )
+
+    action = certified_completed_reverse_add_seed_morphism(term)
+    first, last = action.first, action.last
+    return {
+        "physical_interval": list(action.physical_interval),
+        "duration": action.duration,
+        "width_in": first.width,
+        "width_out": last.width,
+        "growth": action.growth,
+        "center_in": list(first.center),
+        "center_out": list(last.center),
+        "mod99_in": first.residue99,
+        "mod99_out": last.residue99,
+        "mod198_in": first.residue198,
+        "mod198_out": last.residue198,
+        "exterior99_out": last.exterior99,
+        "exterior198_out": last.exterior198,
+        "carry_into_center": last.carry_into_center,
+        "carry_out_of_center": last.carry_out_of_center,
+        "middle_carry_map": list(last.middle_carry_map),
+        "first_non9_from_upper": last.first_non9_from_upper,
+        "q19_block_applications": action.q19_block_applications,
+        "terminal_occurrence_reused": action.terminal_occurrence_reused,
+        "temporal_square_operations": action.temporal_square_operations,
+        "whole_word_slp_certified": True,
+        "temporal_square_from_actual_root": False,
+        "source_independent_repeat_certified": False,
+        "logarithmic_q19_power_certified": False,
     }

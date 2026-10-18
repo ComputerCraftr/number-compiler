@@ -18,12 +18,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import gcd
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
 from number_compiler.sequences.prime.set import is_prime_u64, smallest_factor
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.fermat_causal_border_matrix import (
+        FermatCausalBorderMatrix,
+    )
     from number_compiler.sequences.power_numbers.fermat_pumped_radial_unit import (
         FermatPumpedRadialUnit,
     )
@@ -65,6 +68,16 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
         SourceWeightedTriplingAction,
+    )
+    from number_compiler.sequences.power_numbers.three_power_signed_phase import (
+        SourceRestrictedPhaseRelation,
+    )
+    from number_compiler.sequences.power_numbers.three_power_temporal_source_morphism import (
+        CertifiedFermatRootTemporalMorphism,
+        FermatSourceDemandOptions,
+    )
+    from number_compiler.sequences.power_numbers.three_power_two_sided_cylinder import (
+        FermatTwoSidedSourceCylinder,
     )
 
 
@@ -250,6 +263,79 @@ class FermatNumberSpec:
             low_decimal_places=low_decimal_places,
             high_binary_places=high_binary_places,
             high_decimal_places=high_decimal_places,
+        )
+
+    def demand_three_power_two_sided_source_cylinder(
+        self,
+        level: int,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        binary_windows: tuple[tuple[int, int], ...] = (),
+        decimal_windows: tuple[tuple[int, int], ...] = (),
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+    ) -> FermatTwoSidedSourceCylinder:
+        """Joint low CRT/high radial source cylinder; no candidate squarings."""
+        action = self.demand_three_power_signed_border_action(
+            level,
+            phase_binary_places=phase_binary_places,
+            phase_decimal_places=phase_decimal_places,
+            binary_windows=binary_windows,
+            decimal_windows=decimal_windows,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+        )
+        return action.demand_two_sided_source_cylinder()
+
+    def demand_three_power_source_restricted_phase(
+        self,
+        level: int,
+        *,
+        max_fibers: int = 64,
+        inward_boundaries: int = 8,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        binary_windows: tuple[tuple[int, int], ...] = (),
+        decimal_windows: tuple[tuple[int, int], ...] = (),
+        low_binary_places: int = 12,
+        low_decimal_places: int = 4,
+        high_binary_places: int = 8,
+        high_decimal_places: int = 4,
+    ) -> SourceRestrictedPhaseRelation:
+        """Source-wide CRT/Sturmian guards applied to signed phase counts."""
+        source = self.demand_three_power_signed_border_action(
+            level,
+            phase_binary_places=phase_binary_places,
+            phase_decimal_places=phase_decimal_places,
+            binary_windows=binary_windows,
+            decimal_windows=decimal_windows,
+            low_binary_places=low_binary_places,
+            low_decimal_places=low_decimal_places,
+            high_binary_places=high_binary_places,
+            high_decimal_places=high_decimal_places,
+        )
+        return source.demand_source_restricted_phase_relation(
+            max_fibers=max_fibers, inward_boundaries=inward_boundaries
+        )
+
+    def demand_three_power_temporal_source_morphism(
+        self,
+        level: int,
+        dyadic_steps: int = 1,
+        **source_options: Unpack[FermatSourceDemandOptions],
+    ) -> CertifiedFermatRootTemporalMorphism:
+        """Demand exact dyadic source-root endpoints with open interior carries."""
+        from number_compiler.sequences.power_numbers.three_power_temporal_source_morphism import (
+            demand_fermat_source_temporal_morphism,
+        )
+
+        return demand_fermat_source_temporal_morphism(
+            self, level, dyadic_steps, **source_options
         )
 
     def demand_joint_three_power_quotient(
@@ -461,6 +547,34 @@ class FermatNumberSpec:
         )
 
         return demand_three_power_multiradix_port(self.index, level, base, places)
+
+    def demand_three_power_causal_border_matrix(
+        self,
+        level: int,
+        physical_steps: int,
+        *,
+        base: int = 10,
+        position: int = 0,
+        max_work_units: int | None = None,
+    ) -> FermatCausalBorderMatrix:
+        """Select a finite carry row from the existing bilateral source owner.
+
+        The requested physical span and radix position remain separate. This
+        is an ordinary finite ``X -> 3X`` source transfer, not a claim that
+        its carry word repeats or that the Fermat signed fold is complete.
+        """
+        from number_compiler.sequences.power_numbers.fermat_causal_border_matrix import (
+            demand_fermat_causal_border_matrix,
+        )
+
+        return demand_fermat_causal_border_matrix(
+            self,
+            level,
+            physical_steps,
+            base=base,
+            position=position,
+            max_work_units=max_work_units,
+        )
 
     def demand_unwrapped_inner_radix_port(
         self, level: int, base: int

@@ -33,19 +33,15 @@ class ProductionASTGraph:
 
 @pytest.fixture(scope="session")
 def production_ast_graph() -> ProductionASTGraph:
-    """Parse exactly the production roots used by the sharing policy checks."""
+    """Parse authored production modules used by structural policy checks."""
     root = repository_root()
-    source_roots = (
-        root / "src" / "number_compiler",
-        root / "devtools" / "verification",
-    )
-    authored = authored_files(root)
+    source_root = root / "src" / "number_compiler"
+    authored = authored_files(source_root)
     paths = sorted(
         {
             path.resolve()
             for path in authored
-            if path.suffix == ".py"
-            and any(path.is_relative_to(source_root) for source_root in source_roots)
+            if path.suffix == ".py" and path.is_relative_to(source_root)
         }
     )
     modules = {

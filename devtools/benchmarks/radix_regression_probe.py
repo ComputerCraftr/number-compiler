@@ -217,6 +217,7 @@ def run_trials() -> dict[str, Any]:
             text=True,
             check=False,
         )
+        row: dict[str, Any]
         try:
             row = json.loads(completed.stdout)
         except (ValueError, TypeError):

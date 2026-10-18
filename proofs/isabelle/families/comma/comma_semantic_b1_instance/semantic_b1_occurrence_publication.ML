@@ -141,25 +141,17 @@ struct
 
   fun make_column_dag roots = make_column_dag_with_sources [("all", roots)]
 
-  fun construction_piece_key (Candidate.Terminal_Piece (_, _, _, key)) = key
-    | construction_piece_key (Candidate.Goto_Piece (_, _, _, _, _, _, key)) = key
-
   fun artifact_column_dag (artifact: Candidate.artifact) =
     let
       val template_roots = maps I (#template_keys artifact)
       val lift_roots = maps I (#lift_column_keys artifact)
-      val piece_roots = maps (maps (map construction_piece_key))
-        (#construction_piece_refs artifact)
       val _ = Comma_Proof_Profile.report
         ("B1 publication stage=column-dag-root-sources templates=" ^
           Int.toString (length template_roots) ^ " lifts=" ^
-          Int.toString (length lift_roots) ^ " pieces=" ^
-          Int.toString (length piece_roots) ^ " total=" ^
-          Int.toString (length template_roots + length lift_roots +
-            length piece_roots))
+          Int.toString (length lift_roots) ^ " total=" ^
+          Int.toString (length template_roots + length lift_roots))
     in make_column_dag_with_sources
-      [("templates", template_roots), ("lifts", lift_roots),
-       ("pieces", piece_roots)] end
+      [("templates", template_roots), ("lifts", lift_roots)] end
 
   fun serialize_column_ids (dag: column_dag) rows =
     HOLogic.mk_list (HOLogic.listT Candidate.natT)
@@ -202,31 +194,6 @@ struct
       else error "B1 global column DAG lost sharing or accepted swapped children"
     end
 
-  fun serialize_construction_piece (dag: column_dag) piece =
-    let
-      val natT = Candidate.natT
-      val refT = @{typ comma_semantic_b1_crt_piece_ref}
-      fun make name arity arguments =
-        let
-          val argument_types = replicate arity natT
-          val constructor = Const (name,
-            fold_rev (fn argumentT => fn resultT => argumentT --> resultT)
-              argument_types refT)
-        in fold (fn argument => fn term => term $ Candidate.nat argument)
-            arguments constructor end
-    in
-      (case piece of
-        Candidate.Terminal_Piece (period, slot, parent_column, key) =>
-          make @{const_name Comma_B1_Piece_Terminal} 4
-            [period, slot, #cid dag key, parent_column]
-      | Candidate.Goto_Piece
-          (period, slot, child_source, child_column, lift_cid,
-           parent_column, key) =>
-          make @{const_name Comma_B1_Piece_Goto} 7
-            [period, slot, child_source, child_column, lift_cid,
-             #cid dag key, parent_column])
-    end
-
   type global_definition =
     {name: string, T: typ, rhs: term Symtab.table -> term}
   type defined_global = {name: string, constant: term, theorem: thm}
@@ -235,72 +202,6 @@ struct
     (case Symtab.lookup constants name of
       SOME constant => constant
     | NONE => error ("B1 " ^ owner ^ " omitted declared constant " ^ name))
-
-  val construction_piece_source_block_size = 32
-  val construction_piece_source_block_prefix =
-    "comma_semantic_b1_crt_construction_piece_source_block_"
-  val construction_piece_source_blocks_name =
-    "comma_semantic_b1_crt_construction_piece_source_blocks"
-
-  fun construction_piece_source_block_name index =
-    construction_piece_source_block_prefix ^ Int.toString index
-
-  fun serialize_construction_piece_source (dag: column_dag) rows =
-    let
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
-      val rowT = HOLogic.listT pieceT
-    in
-      HOLogic.mk_list rowT
-        (map (fn pieces => HOLogic.mk_list pieceT
-          (map (serialize_construction_piece dag) pieces)) rows)
-    end
-
-  fun split_source_blocks values = chop_groups construction_piece_source_block_size values
-
-  fun serialize_construction_piece_source_blocks
-      (dag: column_dag) occurrences : global_definition list =
-    let
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
-      val sourceT = HOLogic.listT (HOLogic.listT pieceT)
-      val blockT = HOLogic.listT sourceT
-    in
-      map_index (fn (index, sources) =>
-          {name = construction_piece_source_block_name index, T = blockT,
-           rhs = (fn _ => HOLogic.mk_list sourceT
-             (map (serialize_construction_piece_source dag) sources))}:
-             global_definition) (split_source_blocks occurrences)
-    end
-
-  fun construction_piece_source_blocks_definition occurrences : global_definition =
-    let
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
-      val sourceT = HOLogic.listT (HOLogic.listT pieceT)
-      val blockT = HOLogic.listT sourceT
-      val directoryT = HOLogic.listT blockT
-      val names = map_index (fn (index, _) =>
-        construction_piece_source_block_name index) (split_source_blocks occurrences)
-    in
-      {name = construction_piece_source_blocks_name, T = directoryT,
-       rhs = (fn constants => HOLogic.mk_list blockT
-         (map (lookup_global_constant "piece-source block batch" constants) names))}:
-           global_definition
-    end
-
-  fun construction_piece_refs_definition occurrences : global_definition =
-    let
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
-      val sourceT = HOLogic.listT (HOLogic.listT pieceT)
-      val rootT = HOLogic.listT sourceT
-      val blockT = HOLogic.listT sourceT
-      val directoryT = HOLogic.listT blockT
-      val concatenate = Const (@{const_name concat}, directoryT --> rootT)
-    in
-      {name = "comma_semantic_b1_crt_construction_piece_refs", T = rootT,
-       rhs = (fn constants => concatenate $
-         lookup_global_constant "piece-source directory" constants
-           construction_piece_source_blocks_name)}:
-           global_definition
-    end
 
   val lift_column_id_block_size = 64
   val lift_column_id_block_prefix = "comma_semantic_b1_crt_lift_column_id_block_"
@@ -875,18 +776,6 @@ struct
         ("B1 publication stage=lift-column-id-block-batch rows=" ^
           Int.toString (length (#lift_column_keys artifact)) ^ " blocks=" ^
           Int.toString (length lift_column_id_block_definitions))
-      val piece_sources = #construction_piece_refs artifact
-      val piece_source_count = length piece_sources
-      val source_count = length (HOLogic.dest_list (#normalized_sources_term artifact))
-      val _ = if piece_source_count = source_count then ()
-        else error "B1 construction pieces lost source-index alignment"
-      val piece_source_definitions = serialize_construction_piece_source_blocks
-        column_dag piece_sources
-      val piece_source_directory_definition =
-        construction_piece_source_blocks_definition piece_sources
-      val _ = Comma_Proof_Profile.report
-        ("B1 publication stage=construction-piece-source-batch sources=" ^
-         Int.toString piece_source_count)
       val _ = if getenv "COMMA_PROFILE_LOG" = "" then ()
         else Comma_Proof_Profile.report
           ("B1 compact lift artifact " ^ #stats artifact ())
@@ -911,10 +800,7 @@ struct
       val artifact_definitions =
         [data template_ids_name (fastype_of template_column_ids_term)
            template_column_ids_term] @ lift_column_id_block_definitions @
-        [lift_column_id_blocks_root_definition, lift_column_ids_root_definition] @
-        piece_source_definitions @
-        [piece_source_directory_definition,
-         construction_piece_refs_definition piece_sources,
+        [lift_column_id_blocks_root_definition, lift_column_ids_root_definition,
          {name = "comma_semantic_b1_crt_templates", T = template_columns_type,
           rhs = (fn constants => template_projection dag_constant
             (lookup_global_constant "artifact batch" constants template_ids_name))},

@@ -188,6 +188,16 @@ class _WaitableProcess(Protocol):
     def wait(self, timeout: float | None = None) -> int: ...
 
 
+class ProgressWatchdog(Protocol):
+    """Incremental process-output observer with a monotonic deadline check."""
+
+    def observe_output(self, data: bytes, now: float) -> None: ...
+
+    def check(self, now: float) -> str | None: ...
+
+    def finish_output(self, now: float) -> None: ...
+
+
 def _process_snapshot() -> dict[int, _ProcessRecord]:
     """Return process ancestry and start identities from one system snapshot."""
     listing = subprocess.run(
@@ -510,7 +520,7 @@ class _OutputSink:
         self.observed = 0
         self.eof = False
 
-    def drain(self, descriptor: int) -> bool:
+    def drain(self, descriptor: int, observer: ProgressWatchdog | None = None) -> bool:
         for _ in range(16):
             try:
                 data = os.read(descriptor, min(65536, self.limit - self.observed + 1))
@@ -518,11 +528,15 @@ class _OutputSink:
                 return False
             if not data:
                 self.eof = True
+                if observer is not None:
+                    observer.finish_output(time.monotonic())
                 return False
             remaining = self.limit - self.observed
             self.stream.write(data[:remaining])
             self.stream.flush()
             self.observed += len(data)
+            if observer is not None:
+                observer.observe_output(data, time.monotonic())
             if self.observed > self.limit:
                 return True
         return False
@@ -557,6 +571,7 @@ def run_guarded(
     environment: Mapping[str, str] | None = None,
     active_test_path: Path | None = None,
     active_test_timeout: float | None = None,
+    progress_watchdog: ProgressWatchdog | None = None,
 ) -> GuardResult:
     """Supervise cooperative workers that do not detach from their group."""
     if not command or any(not math.isfinite(n) or n <= 0 for n in (timeout, interval)):
@@ -661,9 +676,23 @@ def run_guarded(
                 descriptor = child.stdout.fileno()
                 os.set_blocking(descriptor, False)
                 while True:
+                    if time.monotonic() - started >= timeout:
+                        outcome = "timeout"
+                        break
                     snapshot = _process_snapshot()
                     if root_identity is None:
                         root_identity = snapshot.get(child.pid)
+                    if sink.drain(descriptor, progress_watchdog):
+                        outcome = "output_limit"
+                        break
+                    if time.monotonic() - started >= timeout:
+                        outcome = "timeout"
+                        break
+                    if progress_watchdog is not None:
+                        watchdog_reason = progress_watchdog.check(time.monotonic())
+                        if watchdog_reason is not None:
+                            outcome, detail = "session_timeout", watchdog_reason
+                            break
                     members = _snapshot_members(
                         root_identity, tracked, group_anchors, snapshot
                     )
@@ -696,9 +725,6 @@ def run_guarded(
                                     f"{active_test_timeout:g} seconds"
                                 )
                                 break
-                    if sink.drain(descriptor):
-                        outcome = "output_limit"
-                        break
                     # Do not reap the direct child until its process identity
                     # has been observed.  A fast worker can otherwise exit
                     # between the first ps snapshot and poll(), leaving only

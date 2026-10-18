@@ -104,6 +104,3 @@ def small_hankel_rank_differential(M: int) -> int:
     seq = folded_x_sequence(M, 2 * M + 1)
     hankel = [[seq[i + j] for j in range(M)] for i in range(M)]
     return _matrix_rank_fraction(hankel)
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

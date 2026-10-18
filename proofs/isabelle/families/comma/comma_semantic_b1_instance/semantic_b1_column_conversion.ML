@@ -11,96 +11,7 @@ struct
     else let val started = Time.now () val result = work ()
       val _ = timer := Time.+ (!timer, Time.- (Time.now (), started))
     in result end
-  fun argument_at index conversion ct =
-    if index = 0 then Conv.arg_conv conversion ct
-    else Conv.fun_conv (argument_at (index - 1) conversion) ct
-
-  (* Shared certified selection of one closed Boolean conditional branch. *)
-  fun choose_closed_if ctxt numeral_context
-      (expected_if, guard_not_boolean, malformed_if) ct =
-    (case strip_comb (Thm.term_of ct) of
-      (Const (name, _), [condition, _, _]) =>
-        if name <> @{const_name If} then error expected_if
-        else
-          let
-            val condition_fact = Simplifier.rewrite numeral_context
-              (Thm.cterm_of ctxt condition)
-            val condition_value = Thm.term_of (Thm.rhs_of condition_fact)
-            val exposed = argument_at 2 (Conv.rewr_conv condition_fact) ct
-            val rule =
-              if condition_value aconv @{term True} then
-                @{thm if_True} RS @{thm eq_reflection}
-              else if condition_value aconv @{term False} then
-                @{thm if_False} RS @{thm eq_reflection}
-              else error guard_not_boolean
-          in Thm.transitive exposed (Conv.rewr_conv rule (Thm.rhs_of exposed)) end
-    | _ => error malformed_if)
-
-  fun normalize_lookup_rules ctxt rules =
-    map (Local_Defs.meta_rewrite_rule ctxt) rules
-
-  (* Reduce one selected lookup branch at a time; broad simp traverses the directory. *)
-  fun controlled_lookup ctxt numeral_context lookup_rules visits block_authority request_ct =
-    let
-      val dag_lookup_name =
-        @{const_name comma_semantic_b1_crt_column_dag_lookup}
-      val block_lookup_name =
-        @{const_name comma_semantic_b1_crt_column_block_lookup}
-      val choose_selected_if = choose_closed_if ctxt numeral_context
-        ("B1 controlled lookup expected an if node",
-         "B1 controlled lookup guard did not normalize to a Boolean",
-         "B1 controlled lookup encountered a malformed if node")
-
-      fun is_lookup term =
-        (case strip_comb term of
-          (Const (name, _), _) =>
-            name = dag_lookup_name orelse name = block_lookup_name
-        | _ => false)
-
-      fun is_if term =
-        (case strip_comb term of
-          (Const (name, _), _) => name = @{const_name If}
-        | _ => false)
-
-      fun choose_if ct = choose_selected_if ct
-
-      fun open_selected_block ct =
-        (case block_authority of
-          NONE => Thm.reflexive ct
-        | SOME (block_constant, block_definition) =>
-            (case strip_comb (Thm.term_of ct) of
-              (Const (name, _), [block_term, _]) =>
-                if name <> block_lookup_name then Thm.reflexive ct
-                else
-                  if block_term aconv block_constant then
-                    argument_at 1 (Conv.rewr_conv block_definition) ct
-                  else Thm.reflexive ct
-            | _ => Thm.reflexive ct))
-
-      fun walk ct =
-        let val term = Thm.term_of ct in
-          if is_if term then
-            let val selected = choose_if ct
-                val rest = Thm.rhs_of selected
-            in if is_lookup (Thm.term_of rest) orelse
-                  is_if (Thm.term_of rest) then
-                 Thm.transitive selected (walk rest)
-               else selected end
-          else if is_lookup term then
-            let
-              val opened = open_selected_block ct
-              val equation = Conv.rewrs_conv lookup_rules (Thm.rhs_of opened)
-              val step = Thm.transitive opened equation
-              val _ = visits := !visits + 1
-              val rest = Thm.rhs_of step
-            in
-              if is_lookup (Thm.term_of rest) orelse is_if (Thm.term_of rest)
-              then Thm.transitive step (walk rest)
-              else step
-            end
-          else Thm.reflexive ct
-        end
-    in walk request_ct end
+  val argument_at = Comma_Semantic_B1_Column_Lookup_Cache.argument_at
 
   fun make_template_projection ctxt selected_context definition =
     Comma_Semantic_B1_Template_Projection.make
@@ -378,6 +289,12 @@ struct
                         @{thm TrueI}
                     end
                 val theorem = check_child_admission_fact request theorem
+                (* Route every newly generated admission through the shared
+                   proof-serial oracle audit before the fact enters either
+                   admission cache.  This preserves transitive oracle
+                   rejection while reusing already checked proof dependencies. *)
+                val theorem = certify_derived_fact theorem
+                val theorem = check_child_admission_fact request theorem
                 val _ = if Termtab.size (!child_admission_facts) < 8192 then
                     child_admission_facts := Termtab.update
                       (request, theorem) (!child_admission_facts)
@@ -603,6 +520,7 @@ struct
         "semantic_b1_column_reify_facts" (Termtab.empty: thm Termtab.table)
       val reify_cache_hits = Synchronized.var "semantic_b1_column_reify_hits" 0
       val reify_cache_misses = Synchronized.var "semantic_b1_column_reify_misses" 0
+      val reify_body_hits = Synchronized.var "semantic_b1_column_reify_body_hits" 0
       val reify_cache_races = Synchronized.var "semantic_b1_column_reify_races" 0
       val reify_cache_refusals = Synchronized.var
         "semantic_b1_column_reify_refusals" 0
@@ -619,17 +537,20 @@ struct
         end
       fun remember_reify_fact request theorem =
         let
-          val (chosen, race, published) = Synchronized.change_result reify_facts (fn cache =>
-            (case Termtab.lookup cache request of
-              SOME existing => ((SOME existing, true, false), cache)
-            | NONE => if Termtab.size cache < 8192 then
-                ((SOME theorem, false, true), Termtab.update (request, theorem) cache)
-              else ((NONE, false, false), cache)))
-          val _ = if race then
+          (* Validate before publication; immutable hits inherit the invariant. *)
+          val checked = check_reify_fact request theorem
+          val (chosen, race) =
+            if not (closed (Thm.term_of (Thm.rhs_of checked))) then (NONE, false)
+            else Synchronized.change_result reify_facts (fn cache =>
+              (case Termtab.lookup cache request of
+                SOME existing => ((SOME existing, true), cache)
+              | NONE => if Termtab.size cache < 8192 then
+                  ((SOME checked, false), Termtab.update (request, checked) cache)
+                else ((NONE, false), cache)))
+          val _ = if is_none chosen then
+              Synchronized.change reify_cache_refusals (fn count => count + 1) else if race then
               Synchronized.change reify_cache_races (fn count => count + 1) else ()
-          val _ = if published orelse is_some chosen then () else
-              Synchronized.change reify_cache_refusals (fn count => count + 1)
-        in Option.map (check_reify_fact request) chosen end
+        in (case chosen of SOME admitted => admitted | NONE => checked) end
       val hits = Unsynchronized.ref 0
       val publications = Unsynchronized.ref 0
       val fact_capacity_refusals = Unsynchronized.ref 0
@@ -705,35 +626,76 @@ struct
             (opened := !opened + 1; Conv.rewr_conv (column_step cid) ct))
       fun reify ct =
         let
-          val _ = reify_visits := !reify_visits + 1
           val term = Thm.term_of ct
         in
-          (case if closed term then
-              Termtab.lookup (Synchronized.value reify_facts) term else NONE of
-            SOME theorem =>
-              (Synchronized.change reify_cache_hits (fn count => count + 1);
-               check_reify_fact term theorem)
-          | NONE =>
+          (* Exact references already are the canonical named form.  Returning
+             reflexivity here avoids a reify-cache lookup (and theorem checks)
+             for every owned child encountered while rebuilding a row. *)
+          if known_column term then Thm.reflexive ct
+          else
             let
-              val _ = Synchronized.change reify_cache_misses (fn count => count + 1)
-              val children =
-                if known_column term then Thm.reflexive ct
-                else (case term of
-                  _ $ _ => Conv.combination_conv reify reify ct
-                | _ => Thm.reflexive ct)
-              val result = Thm.rhs_of children
-              val theorem =
-                (case body_cid (Thm.term_of result) of
-                  NONE => children
-                | SOME cid => Thm.transitive children
-                    (Conv.rewr_conv (Thm.symmetric (column_step cid)) result))
-              val theorem = check_reify_fact term theorem
+              val _ = reify_visits := !reify_visits + 1
             in
-              (case if closed term then remember_reify_fact term theorem else NONE of
-                SOME cached => cached
-                | NONE => theorem)
-            end)
+              (case if closed term then
+                  Termtab.lookup (Synchronized.value reify_facts) term else NONE of
+                SOME theorem =>
+                  (Synchronized.change reify_cache_hits (fn count => count + 1); theorem)
+              | NONE =>
+                let
+                  val _ = Synchronized.change reify_cache_misses (fn count => count + 1)
+                  val direct =
+                    (case body_cid term of
+                      SOME cid =>
+                        let val body = shallow_body cid in
+                          if closed term andalso body aconv term
+                          then SOME (Conv.rewr_conv (Thm.symmetric (column_step cid)) ct)
+                          else NONE
+                        end
+                    | NONE => NONE)
+                  val theorem =
+                    (case direct of
+                      SOME theorem => (Synchronized.change reify_body_hits
+                        (fn count => count + 1); theorem)
+                    | NONE =>
+                        let
+                          val children =
+                            (case strip_comb term of
+                              (Const (name, _), [_, _]) =>
+                                if name = @{const_name Comma_CRT_Node}
+                                then argument_at 0 reify_child_list ct
+                                else Conv.combination_conv reify reify ct
+                            | _ => (case term of
+                                _ $ _ => Conv.combination_conv reify reify ct
+                              | _ => Thm.reflexive ct))
+                          val result = Thm.rhs_of children
+                          val theorem =
+                            (case body_cid (Thm.term_of result) of
+                              NONE => children
+                            | SOME cid => Thm.transitive children
+                                (Conv.rewr_conv (Thm.symmetric (column_step cid)) result))
+                        in theorem end)
+                in
+                  if closed term then remember_reify_fact term theorem
+                  else check_reify_fact term theorem
+                end)
+            end
         end
+      and reify_child ct =
+        let val term = Thm.term_of ct in
+          if term aconv @{term "Comma_CRT_Bool False"} then
+            Conv.rewr_conv (Thm.symmetric (column_step 0)) ct
+          else if term aconv @{term "Comma_CRT_Bool True"} then
+            Conv.rewr_conv (Thm.symmetric (column_step 1)) ct
+          else if known_column term then Thm.reflexive ct
+          else reify ct
+        end
+      and reify_child_list ct =
+        (case strip_comb (Thm.term_of ct) of
+          (Const (name, _), [_, _]) =>
+            if name = @{const_name Cons}
+            then Conv.combination_conv (Conv.arg_conv reify_child) reify_child_list ct
+            else Thm.reflexive ct
+        | _ => Thm.reflexive ct)
       fun operands ct =
         (case Thm.term_of ct of
           _ $ _ => Conv.combination_conv operands unfold_column ct
@@ -786,6 +748,21 @@ struct
          @{term "comma_crt_apply_shortcut operation left right"},
          @{term "comma_crt_shifted_apply_shortcut operation shift left right"},
          @{term "(left::comma_crt_column) = right"}]
+      val apply_heads =
+        [@{const_name comma_crt_apply}, @{const_name comma_crt_apply_from},
+         @{const_name comma_crt_apply_shifted},
+         @{const_name comma_crt_apply_shifted_from},
+         @{const_name comma_crt_apply_shortcut},
+         @{const_name comma_crt_shifted_apply_shortcut}]
+      fun is_apply_pattern pattern =
+        member (op =) apply_heads
+          (case Term.head_of pattern of Const (name, _) => name | _ => "")
+      val operation_patterns = filter_out is_apply_pattern patterns
+      fun make_column_procedure name kind selected_patterns =
+        Simplifier.make_simproc ctxt
+          {name = name, kind = kind,
+           lhss = map Comma_Selected_List_Conversion.schematize selected_patterns,
+           proc = fn _ => evaluate, identifier = []}
       val procedure = Simplifier.make_simproc ctxt
         {name = "comma_semantic_b1_named_columns",
          kind = Simplifier.Congproc false,
@@ -796,6 +773,15 @@ struct
          kind = Simplifier.Simproc,
          lhss = map Comma_Selected_List_Conversion.schematize patterns,
          proc = fn _ => evaluate, identifier = []}
+      (* The production occurrence context gives recursive apply terms to the
+         proof-producing DAG owner.  Keep the ordinary column procedures for
+         other consumers, and expose versions that cannot preempt that owner. *)
+      val operation_procedure = make_column_procedure
+        "comma_semantic_b1_named_operation_columns"
+        (Simplifier.Congproc false) operation_patterns
+      val operation_post_procedure = make_column_procedure
+        "comma_semantic_b1_named_operation_columns_after_operands"
+        Simplifier.Simproc operation_patterns
       fun prove_columns_admitted_conversion target_ct =
         let
           val target = Thm.term_of target_ct
@@ -929,8 +915,9 @@ struct
           !all_columns_admission_reuses = reuses_before_free_table then ()
         else error "B1 free-table rejection changed the canonical admission cache"
       fun counters () =
-        let val {calls, failed_calls, nodes, milliseconds} =
-          derived_certification_stats ()
+        let
+          val {calls, failed_calls, nodes, milliseconds} = derived_certification_stats ()
+          val cofactor_counts = cofactor_transition_counts ()
         in
         " column_derived_certifier_calls=" ^ Int.toString calls ^
         " column_derived_certifier_failed=" ^ Int.toString failed_calls ^
@@ -964,6 +951,8 @@ struct
           (Synchronized.value reify_cache_hits) ^
         " column_reify_cache_misses=" ^ Int.toString
           (Synchronized.value reify_cache_misses) ^
+        " column_reify_body_hits=" ^ Int.toString
+          (Synchronized.value reify_body_hits) ^
         " column_reify_cache_races=" ^ Int.toString
           (Synchronized.value reify_cache_races) ^
         " column_reify_cache_retained=" ^ Int.toString
@@ -976,18 +965,29 @@ struct
         " column_table_admission_captures=" ^
           Int.toString (!all_columns_admission_captures) ^
         " column_table_admission_reuses=" ^
-          Int.toString (!all_columns_admission_reuses)
+          Int.toString (!all_columns_admission_reuses) ^
+        " column_cofactor_transition_lookups=" ^
+          Int.toString (#lookups cofactor_counts) ^
+        " column_cofactor_transition_hits=" ^
+          Int.toString (#hits cofactor_counts) ^
+        " column_cofactor_transition_misses=" ^
+          Int.toString (#misses cofactor_counts) ^
+        " column_cofactor_transition_proofs=" ^
+          Int.toString (#proofs cofactor_counts)
         end
     in
-      {known_column = known_column, column_value = column_value,
+      {known_column = known_column, column_id = dest_column_cid,
+       column_value = column_value,
        node_count = count, step = column_step, procedure = procedure,
        post_procedure = post_procedure,
+       operation_procedure = operation_procedure,
+       operation_post_procedure = operation_post_procedure,
+       resolve_column = (fn term => Option.map column_step (dest_column_cid term)),
        reify = reify, reify_cache_hits = fn () => Synchronized.value reify_cache_hits,
        counters = counters, head_opens = fn () => !opened,
        cofactor_transition = cofactor_transition,
        cofactor_transition_counts = cofactor_transition_counts,
        cofactor_node_level = cofactor_node_level,
-       lookup_value = lookup_value,
        source_bindings = fn cids => Comma_Semantic_B1_Column_Catalog.source_bindings_for (#interval directory_lookup_cache) ordered_blocks count cids,
        mass_node_row = Comma_Semantic_B1_Column_Catalog.mass_node_row count node,
        step_misses = fn () => !step_misses,

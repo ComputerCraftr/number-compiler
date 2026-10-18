@@ -7,6 +7,19 @@ The native occurrence, arbitrary-infinite-path descent, and conditional all-inde
 path-agreement theorems pass their scoped kernel builds. Concrete B32/global
 cutover remains open. Production forest admission has not changed.
 
+The latest [border catalogue and matrix consumer integration](sprints/week-of-2026-10-11/nc17-source-rings.md#october-17-border-catalogue-and-matrix-consumer-consolidation)
+connects the unified source-transfer CLI, fixes exact 2rev10 endpoint seams,
+and passes 41 focused endpoint/CLI tests plus 39 installed-wheel checks.
+Shared carry and Mahler source-transport sessions pass scoped kernel builds.
+The latest full-unit run completed within the budget: **10,993 passed, one
+existing F4 concrete-output failure**, in 274.79 pytest seconds (276.98 guarded
+seconds). Timing evidence is complete. The earlier timeout is not a pass and
+the surviving assertion still blocks release.
+Reverse/add and Collatz P0 tests pass; nine non-halting/prime-bit P0 holds remain.
+Finite diagnostics, reusable component joins and generic composition proofs do
+not yet establish all concrete matrix-producer refinements or automatic
+production recurrence speedups. Those remain explicit integration gates.
+
 The [October 5 witness cutover](sprints/week-of-2026-10-04/comma.md) now
 publishes 2,444 shared lift descriptors and 3,455 compact slot references,
 replacing the expanded catalogue's 86,386 child-reference equivalent. The
@@ -16,18 +29,43 @@ column selected by its result; valid references alone cannot establish parent
 exactness. The generic candidate theorem passes the kernel, including the
 wrong-phase, absent-label and changed-rebase fixtures.
 
-The latest generic B1 session passed in 47 seconds. The concrete session now
-certifies all 31,073 dependency-closed mass rows, all 278 template geometry
-proofs and their exact catalogue fold. Reusing the checked named-root lookup
-facts reduced measured template proof time to 5.277 seconds. The bounded occurrence memo now replaces old completed facts and no longer
-stops publication at capacity; the catalogue fold reuses all 430 item proofs.
-The subsequent occurrence-checking stage still exceeds the 300-second
-session limit, most recently inside `comma_crt_apply_shifted`. B1, B32
-and the global concrete instances remain unaccepted; production forest
-admission remains unchanged. The
-[October 12 record](sprints/week-of-2026-10-11/comma.md) separates each kernel
-result from source-level audits and earlier timeouts. These dirty-tree results
-are development evidence.
+The suffix-clock transport theorem passed its generic kernel build in
+`20261017T092909Z-fb85db6ca4d44502971b09a6fd49ca19`. The unused-CRT-dimension rule also passed the generic kernel build in
+`20261017T095806Z-d2f0d11182fb4e45b8c64f109dc16e53` (95 seconds native).
+The right-column clock quotient passed the generic kernel build in
+`20261017T171412Z-72ef3f3152ea45cfbfdeac2d06edd56e` (39 seconds native).
+Concrete B1 run `20261017T183247Z-6b9756c0f3144cc09a2fe3576832e695`
+passed the exact-admission, clock, shared-cofactor and interval-eviction fixtures,
+but timed out under the unchanged 300-second limit (309.39 seconds guarded,
+3,164,570,504 sampled bytes, cleanup confirmed). Its last indexed checkpoint
+completed 974 cold lifts. At the comparable 910-lift checkpoint, admission took
+158.96 seconds versus 165.02 seconds in the preceding run. The bounded interval
+cache continued retaining checked results through 7,834 evictions instead of
+permanently refusing new entries at capacity. Recursive Apply certification
+remains expensive; no completed B1 acceptance is established. Whole-tree quality
+passed in `20261017T183826Z-1c67634a030044ac8da9ccd62cc9c676`.
+The downstream C1-to-B1 source-slot bridge is
+wired into the Entry record contract but awaits kernel validation.
+C1's source-bound Entry bridge passed the kernel in
+`20261017T102922Z-497109cee2b140b5a961fbdcb293f60a`: 34 seconds native,
+41.521 seconds guarded, 1,853,825,040 sampled bytes, cleanup confirmed.
+The new theory, including its oracle audit, checked in 1.164 seconds. It proves the exact physical
+duration, powered endpoint/carry count and guarded literal path to the selected
+Near chart. Its physical step clock does not replace B1's exponent clock;
+the producer consumer wiring still awaits the blocked downstream build.
+The focused carry, occurrence, producer-source and cache selection passed
+64 tests in `20261017T103047Z-fe1daa01ff5b4d59a104bec672569742`, including
+an Entry segment followed by a separately admitted decade crossing.
+Whole-tree typing, lint, formatting, source policy, documentation, proof
+inventory and installed-wheel checks pass in
+`20261017T103113Z-e0aa6a6f88f24ea9ad588b8bcd777ccc`.
+B1, B32 and the global concrete instances remain unaccepted. The proposed
+scalar-chart-to-publisher bridge and explicit grouped-chart termination
+contract also await kernel validation. Production
+forest admission remains unchanged and the runtime artifact registry is empty.
+The [current sprint record](sprints/week-of-2026-10-11/comma.md) separates each
+kernel result from source-level audits and earlier timeouts. These dirty-tree
+results are development evidence.
 
 The validation infrastructure is being migrated to Git-native evidence and the
 [shared execution policy](development.md#reproducible-release-commands): Python

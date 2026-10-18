@@ -532,9 +532,12 @@ def test_poisoned_shared_occurrence_gain_is_rejected(coordinate: str) -> None:
     with get_process_cache().acquire(
         "collatz-dyadic-occurrence", CollatzDyadicMacros.VERSION, (128, residue)
     ) as lease:
-        payload = lease.get(("effect",))
+        payload = lease.get_issued(
+            ("effect",), source_cylinder_cache._OCCURRENCE_PUBLISHER
+        )
         assert type(payload) is tuple and len(payload) == 4
-        poisoned = list(payload)
+        assert all(type(value) is int for value in payload)
+        poisoned = list(cast(tuple[int, int, int, int], payload))
         if coordinate == "gain":
             poisoned[2] = int(poisoned[2]) + 1
         else:
@@ -643,7 +646,7 @@ def test_warm_occurrence_does_not_rebuild_its_canonical_gain(
 def test_public_occurrence_has_no_gain_evidence_bypass() -> None:
     from inspect import signature
 
-    from number_compiler.sequences.collatz.source_cylinder_cache import (
+    from number_compiler.sequences.collatz.source_cylinder_types import (
         CollatzDyadicOccurrence,
     )
 
@@ -664,6 +667,13 @@ def test_local_gain_and_occurrence_memos_reject_malformed_records() -> None:
         macros.gains[0] = _CanonicalGain(0)
         assert macros._gain(0).multiplier == 1
 
+        gain = macros.gains[0]
+        object.__setattr__(gain, "multiplier", 2)
+        with pytest.raises(ValueError, match="local canonical gain"):
+            macros._gain(0)
+        object.__setattr__(gain, "multiplier", 1)
+        assert macros._gain(0).multiplier == 1
+
         macros.occurrences[8, 27] = ("not-an-occurrence", 0)  # type: ignore[assignment]
         with pytest.raises(ValueError, match="local occurrence"):
             macros.lookup(27, 8)
@@ -672,6 +682,39 @@ def test_local_gain_and_occurrence_memos_reject_malformed_records() -> None:
             macros.ledger.counters["collatz_hashlife_occurrence_admission_rejections"]
             == 1
         )
+
+
+@pytest.mark.parametrize("node_budget", (0, 1))
+def test_local_gain_seal_obeys_node_budget_and_cleanup(node_budget: int) -> None:
+    ledger = ResourceLedger(max_nodes=node_budget)
+    with CollatzDyadicMacros(ledger) as macros:
+        assert macros._gain(7).multiplier == 2187
+        assert len(macros.gains) == node_budget
+        assert ledger.nodes == node_budget
+        assert ledger.counters["collatz_hashlife_gain_bypasses"] == 1 - node_budget
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_local_occurrence_cache_rejects_mutated_action_or_publisher_fiber() -> None:
+    source, width, ones, endpoint = 27, 8, 7, 242
+    with CollatzDyadicMacros(ResourceLedger()) as macros:
+        assert macros.remember(source, width, ones, endpoint)
+        key = (width, source)
+        occurrence, publisher_fiber, snapshot = macros.occurrences[key]
+
+        # The exact Collatz occurrence is frozen, but object.__setattr__ can
+        # still change its centered offset while keeping a structurally valid
+        # affine map. A cache hit must compare the original publication seal.
+        object.__setattr__(occurrence, "target_origin", occurrence.target_origin + 1)
+        with pytest.raises(ValueError, match="binding was changed"):
+            macros.lookup(source, width)
+
+        # Restore the action and independently exercise mutation of the cached
+        # publisher fiber, which classifies exact versus transported reuse.
+        object.__setattr__(occurrence, "target_origin", snapshot[3])
+        macros.occurrences[key] = (occurrence, publisher_fiber + 1, snapshot)
+        with pytest.raises(ValueError, match="binding was changed"):
+            macros.lookup(source, width)
 
 
 def test_gain_process_payload_is_bound_to_its_exponent() -> None:
@@ -784,7 +827,7 @@ def test_dyadic_macro_close_attempts_every_store_and_retries_failed_owner(
 
 
 def test_large_width_residue_checks_do_not_build_width_sized_masks() -> None:
-    from number_compiler.sequences.collatz.source_cylinder_cache import (
+    from number_compiler.sequences.collatz.source_cylinder_types import (
         CollatzDyadicOccurrence,
     )
 

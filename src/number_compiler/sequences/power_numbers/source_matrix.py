@@ -151,11 +151,15 @@ def _mersenne_source_residue(level: int, modulus: int) -> tuple[int, int, int, i
     exponent = exponent_power.value
     matrix: Matrix2 = (4 % modulus, (-1) % modulus, 1 % modulus, 0)
     identity: Matrix2 = (1 % modulus, 0, 0, 1 % modulus)
+
+    def compose(left: Matrix2, right: Matrix2) -> Matrix2:
+        return _matrix_multiply(left, right, modulus)
+
     matrix_power = binary_power(
         matrix,
         exponent,
         identity=identity,
-        compose=lambda left, right: _matrix_multiply(left, right, modulus),
+        compose=compose,
     )
     result = (matrix_power.value[0] + matrix_power.value[3]) % modulus
     return result, factor_trials, exponent_power.compositions, matrix_power.compositions

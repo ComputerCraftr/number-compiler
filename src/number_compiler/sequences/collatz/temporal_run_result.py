@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.sequences.collatz.border_identity import (
     BoundaryActionIdentity,
+    BoundaryOccurrenceProducerStamp,
     CycleEntryPhase,
     GuardedBorderPath,
 )
@@ -63,6 +64,7 @@ class CollatzTemporalRunQuotient:
     first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None = None
     innovation_observation: InnovationTapeObservation | None = None
     unified_skew_chain: UnifiedSkewChain | None = None
+    first_boundary_stamp: BoundaryOccurrenceProducerStamp | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -173,6 +175,7 @@ class CollatzTemporalRunQuotient:
                 or self.first_boundary[3] != macro.identity
             ):
                 raise ValueError("Collatz first boundary action is detached")
+        self.validate_boundary_producer_stamp()
         if self.unified_skew_chain is not None:
             from number_compiler.sequences.collatz.unified_skew_chain import (
                 UnifiedSkewChain,
@@ -213,6 +216,23 @@ class CollatzTemporalRunQuotient:
                 or observation.one_symbols != self.one_run_symbols
             ):
                 raise ValueError("Collatz innovation tape is detached from its run")
+
+    def validate_boundary_producer_stamp(self) -> None:
+        """Reject copied or rebound boundary coordinates at publication time."""
+        stamp = self.first_boundary_stamp
+        if self.first_boundary is None:
+            if stamp is not None:
+                raise ValueError("Collatz boundary stamp has no selected occurrence")
+            return
+        macro = self.first_boundary_macro
+        if (
+            type(stamp) is not BoundaryOccurrenceProducerStamp
+            or macro is None
+            or not stamp.certifies(
+                self.source, self.physical_ticks, self.first_boundary, macro
+            )
+        ):
+            raise ValueError("Collatz boundary occurrence lost producer authority")
 
     @property
     def semantic_key(self) -> tuple[object, ...]:

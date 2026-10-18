@@ -21,6 +21,17 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 
 
+def _primitive_adapter(adapter: object) -> PrimitiveTileKernelAdapter | None:
+    """Return the concrete adapter only when the runtime type is exact."""
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
+
+    if type(adapter) is PrimitiveTileKernelAdapter:
+        return adapter
+    return None
+
+
 def causal_point(
     scheduler: TileScheduler,
     key: PoweredResultKey,
@@ -36,12 +47,9 @@ def causal_point(
     if type(coordinate) is not int:
         raise TypeError("causal coordinate requires an exact integer")
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
 
-    adapter = scheduler.adapter
-    if type(adapter) is not PrimitiveTileKernelAdapter:
+    adapter = _primitive_adapter(scheduler.adapter)
+    if adapter is None:
         return None
     children = adapter.action_children(key.action)
     if children is None or all(
@@ -96,15 +104,11 @@ def causal_complete(
 ) -> ResultLease | None:
     """Complete an explicitly requested output through causal macro tasks."""
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
 
-    adapter = scheduler.adapter
-    if (
-        type(adapter) is not PrimitiveTileKernelAdapter
-        or adapter.action_children(key.action) is None
-    ):
+    adapter = _primitive_adapter(scheduler.adapter)
+    if adapter is None:
+        return None
+    if adapter.action_children(key.action) is None:
         return None
     scheduler.results._validate_key(key)
     if key.fusion is None and key.ports != adapter.initial_ports(key.action):
@@ -145,12 +149,9 @@ def causal_width_query(
     if type(limit) is not int:
         raise TypeError("causal width limit requires an exact integer")
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
 
-    adapter = scheduler.adapter
-    if type(adapter) is not PrimitiveTileKernelAdapter:
+    adapter = _primitive_adapter(scheduler.adapter)
+    if adapter is None:
         return None
     from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
         reverse_sector_width_from_interface,

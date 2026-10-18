@@ -4,10 +4,12 @@ from dataclasses import fields
 
 import pytest
 
+from number_compiler.sequences.comma import arithmetic as comma_arithmetic
 from number_compiler.sequences.comma import carry_generator as generator
 from number_compiler.sequences.comma.arithmetic import comma_children
 from number_compiler.sequences.comma.boundary_chart import (
     BoundaryChart,
+    chart_step,
     near_chart_target,
 )
 from number_compiler.sequences.comma.carry_generator import (
@@ -167,6 +169,42 @@ def test_large_durations_match_independent_periodic_oracle(
         assert result.target == phase.advance(steps % 50)
 
 
+def test_powered_return_builds_its_cycle_transfer_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phase = C1Phase.from_suffix(5, 45)
+    steps = 10**60 + 2**80 + 3
+    expected = _periodic_oracle(phase.sector, phase.suffix, steps)
+    cycle_calls = 0
+    displacement_calls = 0
+    cycle_owner = comma_arithmetic.cycle_transfer
+    displacement_owner = comma_arithmetic._cycle_displacement
+
+    def counted_cycle_transfer(
+        leading: int, entering_digit: int
+    ) -> comma_arithmetic.CycleTransfer:
+        nonlocal cycle_calls
+        cycle_calls += 1
+        return cycle_owner(leading, entering_digit)
+
+    def counted_cycle_displacement(
+        leading: int, entering_digit: int, divisor: int, period: int
+    ) -> int:
+        nonlocal displacement_calls
+        displacement_calls += 1
+        return displacement_owner(leading, entering_digit, divisor, period)
+
+    monkeypatch.setattr(generator, "cycle_transfer", counted_cycle_transfer)
+    monkeypatch.setattr(
+        comma_arithmetic, "_cycle_displacement", counted_cycle_displacement
+    )
+    result = C1Return(phase, steps)
+
+    assert (result.target.suffix, result.count) == expected
+    assert cycle_calls == 1
+    assert displacement_calls == 1
+
+
 @pytest.mark.parametrize("suffix", (54, 45))
 def test_sector_five_puncture_and_chronological_composition(suffix: int) -> None:
     phase = C1Phase.from_suffix(5, suffix)
@@ -193,7 +231,7 @@ def test_composed_returns_do_not_rebuild_cycle_displacement(
     def forbidden(*_args: object, **_kwargs: object) -> int:
         pytest.fail("return composition re-entered the displacement owner")
 
-    monkeypatch.setattr(generator, "phase_prefix_displacement", forbidden)
+    monkeypatch.setattr(generator, "_fixed_sector_displacement", forbidden)
     joined = first.then(second)
     assert (joined.start, joined.target, joined.steps, joined.count) == (
         direct.start,
@@ -255,6 +293,37 @@ def test_source_bound_return_rejects_mismatches_and_sector_crossing() -> None:
     with pytest.raises(ValueError, match="crosses"):
         source_bound_return(118, C1Phase.from_suffix(1, 18), 1)
     assert comma_children(118) == (199, 200)
+
+
+def test_powered_entry_stops_before_the_decade_clock_crossing() -> None:
+    source = 900_000
+    phase = C1Phase.from_suffix(9, 0)
+    entry = chart_step(5, BoundaryChart("entry", 9, 0, 0))
+    assert entry.next_chart == BoundaryChart("near", 9, 0, 100)
+    weight = entry.weight
+    numerator = weight.scale * 10 ** (5 + weight.exponent_delta) + weight.offset
+    steps, remainder = divmod(numerator, weight.denominator)
+    assert (steps, remainder) == (1_850, 0)
+
+    powered = source_bound_return(source, phase, steps)
+    assert powered.target == phase
+    assert powered.count == 999
+    assert source + powered.action.displacement() == 999_900
+
+    # The 50-step physical clock has returned, while the exponent remains 5.
+    # Two separate literal Near edges reach the next decade; the crossing
+    # cannot be appended to the fixed-sector C1 action.
+    assert steps % 50 == 0
+    assert entry.next_chart is not None
+    middle = chart_step(5, entry.next_chart)
+    assert middle.next_chart is not None
+    assert middle.next_chart == BoundaryChart("near", 9, 0, 91)
+    assert comma_children(999_900) == (999_909,)
+    crossed = chart_step(5, middle.next_chart)
+    assert crossed.next_chart == BoundaryChart("entry", 1, 1, 0)
+    assert comma_children(999_909) == (1_000_000,)
+    with pytest.raises(ValueError, match="crosses"):
+        source_bound_return(source, phase, steps + 2)
 
 
 def test_completed_return_checks_target_without_recounting() -> None:

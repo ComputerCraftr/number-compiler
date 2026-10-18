@@ -34,9 +34,13 @@ from number_compiler.sequences.comma.arithmetic import (
     decimal_sector,
     safe_complete_cycles_from_sector,
 )
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_INDEX as FIRST_FORK_INDEX,
+)
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_VALUE as FIRST_FORK_VALUE,
+)
 from number_compiler.sequences.comma.image_adapter import (
-    FIRST_FORK_INDEX,
-    FIRST_FORK_VALUE,
     SEMANTIC_VERSION,
     SOURCE,
     BoundaryPrefixCursor,
@@ -485,6 +489,24 @@ class CommaTerm:
                     source.state,
                     charge_work=self.arena.charge,
                 )
+                from number_compiler.sequences.comma.future_provider import (
+                    UnrankedChildSelection,
+                )
+                from number_compiler.sequences.comma.semantic_branch import (
+                    _validate_selection_class_bindings,
+                )
+
+                if type(selection) is not UnrankedChildSelection:
+                    raise ValueError(
+                        "comma provider returned a malformed child selection"
+                    )
+                _validate_selection_class_bindings(
+                    source.state,
+                    template.ordered_children,
+                    selection,
+                    provider,
+                    charge_work=self.arena.charge,
+                )
                 if (
                     selection.source != source.state
                     or selection.selected_slot not in (0, 1)
@@ -606,7 +628,7 @@ class CommaTerm:
                 entry = bind_source20_first_child_entry(
                     parent_index=self._current_index,
                     parent_value=value,
-                    ordered_children=children,
+                    ordered_children=(children[0], children[1]),
                     child_index=SOURCE20_SELECTED_CHILD_INDEX,
                     provider=provider,
                     charge_work=self.arena.charge,

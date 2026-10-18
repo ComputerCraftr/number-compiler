@@ -21,13 +21,28 @@ from number_compiler.resources.metric_keys import (
 from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
         BoundaryExpressionArena,
         BoundaryExprNode,
         ExprID,
         ExprSubstitutionKey,
         FormalPort,
+        StateSort,
         _Rewrite,
+    )
+    from number_compiler.hashlife.interfaces.diamond_kernel import (
+        DiamondKernelArena,
+        FiniteExpression,
+    )
+
+
+def _constant_function_value(expression: FiniteExpression) -> int | None:
+    """Recover the exact output when every finite-function bit is constant."""
+    if not all(bit.local_id < 2 for bit in expression.bits):
+        return None
+    return sum(
+        bit.local_id << bit_number for bit_number, bit in enumerate(expression.bits)
     )
 
 
@@ -48,6 +63,22 @@ class _Transaction:
     def _peak(self, name: str, size: int) -> None:
         ledger = self.arena.ledger
         ledger.bump(name, max(0, size - ledger.counters.get(name, 0)))
+
+    def _finite_function_expression(
+        self, node: BoundaryExprNode
+    ) -> tuple[DiamondKernelArena, TransferSummaryID, FiniteExpression, StateSort]:
+        from number_compiler.hashlife.interfaces.diamond_boundary_expr import StateSort
+
+        if node.function is None or type(node.sort) is not StateSort:
+            raise ValueError("finite-function node has an invalid owner handle or sort")
+        kernels = self.arena.boundaries.kernels
+        function_handle = node.function
+        return (
+            kernels,
+            function_handle,
+            kernels.expression(function_handle),
+            node.sort,
+        )
 
     def intern(self, node: BoundaryExprNode) -> int:
         from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
@@ -202,18 +233,15 @@ class _Transaction:
                         _interfaces_keys.BOUNDARY_EXPRESSION_PROJECTION_CALL_EARLY_HITS
                     )
                     return _Rewrite("normal", projected)
-        if node.kind in ("finite_map", "finite_apply"):
-            assert node.function is not None and type(node.sort) is StateSort
-            kernels = self.arena.boundaries.kernels
-            expression = kernels.expression(node.function)
         if node.kind == "finite_map":
-            assert node.function is not None and type(node.sort) is StateSort
-            if all(bit.local_id < 2 for bit in expression.bits):
-                value = sum(
-                    bit.local_id << bit_number
-                    for bit_number, bit in enumerate(expression.bits)
+            kernels, function_handle, expression, function_sort = (
+                self._finite_function_expression(node)
+            )
+            constant = _constant_function_value(expression)
+            if constant is not None:
+                return self.intern(
+                    BoundaryExprNode("literal", node.sort, value=constant)
                 )
-                return self.intern(BoundaryExprNode("literal", node.sort, value=value))
             argument = self.node(node.children[0])
             assert type(argument.sort) is StateSort
             primitive = self.arena.primitive(argument.sort.action)
@@ -222,7 +250,7 @@ class _Transaction:
             port = LEFT_A if argument.sort.side == 0 else RIGHT_A
             if argument.kind == "literal":
                 value = kernels.evaluate(
-                    node.function, observation_inputs(domain, port, argument.value)
+                    function_handle, observation_inputs(domain, port, argument.value)
                 )
                 self.arena.ledger.bump(
                     _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_FUNCTION_OBSERVATIONS
@@ -231,7 +259,7 @@ class _Transaction:
             if argument.kind in ("finite_apply", "finite_map"):
                 assert argument.function is not None
                 combined = kernels.substitute(
-                    node.function,
+                    function_handle,
                     substitution_bindings(kernels, domain, port, argument.function),
                 )
                 from number_compiler.hashlife.interfaces.diamond_finite_map import (
@@ -241,7 +269,7 @@ class _Transaction:
                 original_sort = self.node(argument.children[0]).sort
                 assert type(original_sort) is StateSort
                 combined, constant, identity = admit_map(
-                    self.arena, original_sort, node.sort, combined
+                    self.arena, original_sort, function_sort, combined
                 )
                 if identity:
                     return argument.children[0]
@@ -257,21 +285,22 @@ class _Transaction:
                 )
                 return _Rewrite("normal", temporary)
         if node.kind == "finite_apply":
-            assert node.function is not None and type(node.sort) is StateSort
-            if all(bit.local_id < 2 for bit in expression.bits):
-                value = sum(
-                    bit.local_id << bit_number
-                    for bit_number, bit in enumerate(expression.bits)
-                )
+            kernels, function_handle, expression, function_sort = (
+                self._finite_function_expression(node)
+            )
+            constant = _constant_function_value(expression)
+            if constant is not None:
                 self.arena.ledger.bump(
                     _interfaces_keys.BOUNDARY_EXPRESSION_CONSTANT_FUNCTION_EARLY_HITS
                 )
-                return self.intern(BoundaryExprNode("literal", node.sort, value=value))
+                return self.intern(
+                    BoundaryExprNode("literal", node.sort, value=constant)
+                )
             argument = self.node(node.children[0])
-            port = LEFT_A if node.sort.side == 0 else RIGHT_A
+            port = LEFT_A if function_sort.side == 0 else RIGHT_A
             if argument.kind == "literal":
                 value = kernels.evaluate(
-                    node.function,
+                    function_handle,
                     observation_inputs(expression.domain, port, argument.value),
                 )
                 self.arena.ledger.bump(
@@ -281,13 +310,13 @@ class _Transaction:
             if argument.kind == "finite_apply" and argument.sort == node.sort:
                 assert argument.function is not None
                 primitive_handle = kernels._kernel_ids[
-                    _effect_key(self.arena.actions.primitive(node.sort.action))
+                    _effect_key(self.arena.actions.primitive(function_sort.action))
                 ]
                 combined = self.arena.unary.compose(
                     primitive_handle,
-                    node.sort.side,
+                    function_sort.side,
                     argument.function,
-                    node.function,
+                    function_handle,
                     port,
                 )
                 # Schedule a normal reduction of this new composition, so a

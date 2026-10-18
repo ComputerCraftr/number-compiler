@@ -44,8 +44,10 @@ def _value(chart: BoundaryChart, exponent: int) -> int:
 @pytest.mark.parametrize("a", range(2, 10))
 def test_nine_tail_includes_first_literal_edge(a: int) -> None:
     chart = initial_chart("N", a)
+    assert chart is not None
     assert chart == BoundaryChart("near", a - 1, 0, 1)
     move = chart_step(10, chart)
+    assert move.next_chart is not None
     assert move.next_chart == BoundaryChart("entry", a, 0, a + 89)
     assert move.cycle is None
     assert move.weight == boundary_chart.UNIT_WEIGHT
@@ -498,6 +500,7 @@ def test_near_one_crossing_targets_the_canonical_entry_boundary(leading: int) ->
         if leading < 9
         else BoundaryChart("entry", 1, 1, 90)
     )
+    assert move.next_chart is not None
     assert _literal_children(_value(source, 10)) == (_value(move.next_chart, 10),)
 
 

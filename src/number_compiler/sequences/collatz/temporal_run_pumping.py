@@ -1,10 +1,11 @@
-"""Exact normalized 1↔2 cycle pumping for physical Collatz runs."""
+"""Exact homogeneous-run and normalized-cycle pumping for physical Collatz."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_temporal_action import (
@@ -16,6 +17,8 @@ from number_compiler.sequences.collatz.tape_width import (
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
     _CYCLE_F5,
+    CollatzF5AffineAction,
+    _run_one_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
@@ -25,6 +28,46 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.innovation_input_tape import (
         ParityProgramBuilder,
     )
+
+
+def pump_normalized_ones(
+    source: int,
+    length: int,
+    *,
+    scratch: RunArithmeticWorkspace,
+    control_bits: int,
+    width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder | None,
+    parity_builder: ParityProgramBuilder | None,
+    normalized_f5: CollatzF5AffineAction | None,
+    physical_f5: CollatzF5AffineAction | None,
+) -> tuple[int, CollatzF5AffineAction | None, CollatzF5AffineAction | None]:
+    """Apply an admitted one-run and publish its demanded projections once."""
+    scratch.require_bits(8 * (source.bit_length() + 2 * length + 4 * control_bits + 16))
+    before_bits = source.bit_length()
+    if joint_builder is not None:
+        joint_builder.append_run(source, length, odd=True)
+    if parity_builder is not None:
+        endpoint, power3 = parity_builder.append_one_run(source, length)
+    else:
+        power3 = 3**length
+        endpoint = power3 * ((source + 1) >> length) - 1
+    if width_spine.complete:
+        displacement = endpoint.bit_length() - before_bits
+        # Each odd raw cell is at most one bit above its normalized bound.
+        width_spine.record(BlankLedger(displacement, 0, displacement + 1))
+    if normalized_f5 is not None and physical_f5 is not None:
+        f5 = _run_one_f5(length)
+        normalized_f5 = normalized_f5.then(f5)
+        physical_f5 = physical_f5.then(f5)
+    ledger = scratch.ledger
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ONE_RUN_PUMPS)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ONE_RUN_SYMBOLS, length)
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
+        before_bits + power3.bit_length() + endpoint.bit_length() + length.bit_length(),
+    )
+    return endpoint, normalized_f5, physical_f5
 
 
 def pump_normalized_one_cycle(

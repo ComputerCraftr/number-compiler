@@ -2,8 +2,15 @@
 
 from collections.abc import Mapping
 
+from devtools.checks.isabelle_source_analysis import extract_isabelle_declarations
 from devtools.checks.isabelle_syntax import Session
 from devtools.paths import isabelle_root
+from number_compiler.sequences.comma.future_authority import (
+    GLOBAL_RELEASE_CLAIMS,
+    GLOBAL_RELEASE_CONTRACT_ID,
+    GLOBAL_RELEASE_SESSION_ID,
+    GLOBAL_RELEASE_THEOREM_ID,
+)
 
 ISABELLE = isabelle_root()
 
@@ -13,6 +20,16 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
 ) -> None:
     future = repository_sessions["Comma_Semantic_Future_Instance"]
     assert "Comma_Semantic_Release" in future.theories
+    assert GLOBAL_RELEASE_SESSION_ID == future.name
+    assert GLOBAL_RELEASE_THEOREM_ID == (
+        "Comma_Semantic_Release.comma_semantic_producer_global_release_contract"
+    )
+    assert GLOBAL_RELEASE_CONTRACT_ID == "comma-semantic-producer-global-release-v2"
+    assert "producer-writer-point-and-prefix-refinement" in GLOBAL_RELEASE_CLAIMS
+    assert "boundary-grouped-chart-termination" in GLOBAL_RELEASE_CLAIMS
+    assert (
+        "boundary-scalar-chart-to-published-macro-refinement" in GLOBAL_RELEASE_CLAIMS
+    )
 
     release = (
         ISABELLE
@@ -47,20 +64,48 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
         ]
     )
     assert "theorem comma_semantic_producer_global_release_contract:" in release
+    release_declarations = {
+        item.name
+        for item in extract_isabelle_declarations(
+            release,
+            ISABELLE
+            / "families/comma/comma_semantic_future_instance/Comma_Semantic_Release.thy",
+        )
+    }
+    assert GLOBAL_RELEASE_THEOREM_ID.partition(".")[2] in release_declarations
     aggregate_start = release.index(
         "theorem comma_semantic_producer_global_release_contract:"
     )
     aggregate_end = release.index("ML \\<open>", aggregate_start)
     aggregate_contract = release[aggregate_start:aggregate_end]
     for release_field in (
+        "comma_semantic_b32_boundary_chart_publisher_contract",
+        "comma_python_grouped_chart_walk",
+        "comma_semantic_b32_grouped_chart_terminates",
         "comma_semantic_decade_writer_release_result",
         "comma_semantic_decade_partial_selection_result",
-        "comma_decade_admitted",
         "comma_semantic_global_release_safety",
+        "comma_decade_admitted",
         "path 412987859=19999999999",
         "comma_child",
     ):
         assert release_field in aggregate_contract
+
+    boundary_start = release.index(
+        "theorem comma_semantic_b32_boundary_chart_publisher_closed"
+    )
+    boundary_end = release.index(
+        "theorem comma_semantic_b32_grouped_chart_terminates", boundary_start
+    )
+    boundary_bridge = release[boundary_start:boundary_end]
+    for bridge_field in (
+        "comma_python_scalar_chart_walk_to_first_terminal_walk",
+        "comma_python_boundary_indexed_macro_fields",
+        "comma_semantic_decade_summary_provider_exact",
+        "comma_python_first_terminal_walk_result_unique",
+        "comma_python_make_indexed_macro_output",
+    ):
+        assert bridge_field in boundary_bridge
 
     selection_start = release.index(
         "definition comma_semantic_decade_partial_selection_result"
@@ -192,7 +237,7 @@ def test_b32_bridge_covers_the_concrete_ungrouped_boundary_chart_loop() -> None:
 def test_producer_near_increment_uses_one_isabelle_exists_symbol() -> None:
     producer = (
         ISABELLE
-        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Producer_Refinement.thy"
+        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Producer_Record_Refinement.thy"
     ).read_text()
     marker = "definition comma_python_fragment_record_matches"
     start = producer.index(marker)

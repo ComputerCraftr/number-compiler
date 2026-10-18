@@ -7,6 +7,11 @@ private immutable registry must bind the exact canonical artifact digest to
 the accepted kernel theorem before a provider is returned.  That registry is
 deliberately empty today.
 
+The required kernel contract is the producer-level release theorem: it joins
+the decade writer and prefix-selection model with the semantic global-safety
+result. This model theorem is not an executable proof of Python source; an
+artifact remains unregistered until its producer/runtime bridge is reviewed.
+
 The table contains classifier observations only.  It does not contain an
 occurrence weight, width, phase advance, endpoint, or C1 seam.  A selected
 slot can be applied to the caller's exact ordered literal children, preserving
@@ -41,8 +46,13 @@ from number_compiler.resources.immutable_signature import (
     ScalarSignature,
     matches_scalar_signature,
 )
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+)
 from number_compiler.resources.metric_keys import comma as _comma_keys
+from number_compiler.sequences.comma import future_authority as _future_authority
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 from number_compiler.sequences.comma.future_authority import (
@@ -53,9 +63,6 @@ from number_compiler.sequences.comma.future_authority import (
     _KernelInstanceAdmission,
     _registered_admission_matches,
     _valid_artifact_digest,
-)
-from number_compiler.sequences.comma.future_authority import (
-    registered_global_release_artifact_sha256 as _registered_global_release_artifact_sha256,
 )
 from number_compiler.sequences.comma.future_provider_memory import (
     candidate_workspace_cost,
@@ -81,10 +88,6 @@ _RECORD_FIELDS = frozenset(
         "controls",
         "ordered_children",
         "class_rank_candidate",
-        "refinement_rounds",
-        "refinement_collision_witnesses",
-        "seam_is_projected_from_cid",
-        "seam_projection_collision",
     }
 )
 # Deliberately empty until the FutureCID instance has passed the Isabelle
@@ -95,7 +98,8 @@ _ADMITTED_KERNEL_INSTANCES: Mapping[str, _KernelInstanceAdmission] = MappingProx
 
 
 registered_global_release_artifact_sha256 = partial(
-    _registered_global_release_artifact_sha256, _ADMITTED_KERNEL_INSTANCES
+    _future_authority.registered_global_release_artifact_sha256,
+    _ADMITTED_KERNEL_INSTANCES,
 )
 
 
@@ -310,6 +314,7 @@ class SemanticFutureProvider:
         admission = _ADMITTED_KERNEL_INSTANCES.get(self._digest)
         return (
             self._tables_bound()
+            and type(admission) is _KernelInstanceAdmission
             and admission is self._admission
             and _registered_admission_matches(admission, self._digest)
         )
@@ -453,14 +458,25 @@ class SemanticFutureProviderStore:
         if self._closed:
             raise RuntimeError("future provider store has been closed")
 
-    def _retain(self, provider: SemanticFutureProvider) -> SemanticFutureProviderLease:
+    def _retain(
+        self,
+        provider: SemanticFutureProvider,
+        reservation: LedgerReservation,
+    ) -> SemanticFutureProviderLease:
         self._check_open()
         provider.require_runtime_admission()
         digest = provider.artifact_sha256
         retained = self._providers.get(digest)
         if retained is None:
-            self._providers[digest] = provider
-            self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_PUBLICATIONS)
+            # The retained key becomes one live cache entry. Reserve that
+            # exact entry only after the absent-digest branch is known.
+            reservation.reserve(entries=1)
+            self._providers.adopt_reserved(digest, provider, reservation)
+            try:
+                self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_PUBLICATIONS)
+            except BaseException:
+                del self._providers[digest]
+                raise
         else:
             retained.require_runtime_admission()
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_SEMANTIC_REUSES)
@@ -477,31 +493,16 @@ class SemanticFutureProviderStore:
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_VALIDATION_REQUESTS)
             try:
                 with ExitStack() as reservations:
-                    reserved_snapshot_nodes = 0
-
-                    def release_snapshot_nodes() -> None:
-                        if reserved_snapshot_nodes:
-                            self.ledger.release(
-                                self._workspace_owner,
-                                nodes=reserved_snapshot_nodes,
-                            )
-
-                    # One ExitStack release owns all incremental snapshot chunks.
-                    reservations.callback(release_snapshot_nodes)
+                    workspace = LedgerReservation(self.ledger, self._workspace_owner)
+                    reservations.callback(workspace.close)
 
                     def reserve_snapshot_nodes(amount: int) -> None:
-                        nonlocal reserved_snapshot_nodes
-                        self.ledger.reserve(self._workspace_owner, nodes=amount)
-                        reserved_snapshot_nodes += amount
+                        workspace.reserve(nodes=amount)
 
                     def reserve_decoded_shape(record: Mapping[str, object]) -> None:
                         nodes = candidate_workspace_cost(record, SOURCE_COUNT)
                         if nodes:
-                            reservations.enter_context(
-                                self.ledger.reservation(
-                                    self._workspace_owner, nodes=nodes
-                                )
-                            )
+                            workspace.reserve(nodes=nodes)
 
                     def charge_once(amount: int) -> None:
                         _charge_work(charge_work, amount)
@@ -514,7 +515,7 @@ class SemanticFutureProviderStore:
                         reserve_snapshot_nodes,
                         reserve_decoded_shape,
                     )
-                    return self._retain(provider)
+                    return self._retain(provider, workspace)
             except Exception:
                 self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOAD_FAILURES)
                 raise
@@ -579,11 +580,19 @@ class SemanticFutureProviderStore:
             charge_work,
         )
 
-    def _resolve(self, digest: str, token: ArenaToken) -> SemanticFutureProvider:
+    def _resolve(
+        self,
+        digest: str,
+        token: ArenaToken,
+        *,
+        record_metrics: bool = True,
+    ) -> SemanticFutureProvider:
         if type(self) is not SemanticFutureProviderStore:
             raise TypeError("future provider lease needs its exact provider store")
+        if type(record_metrics) is not bool:
+            raise TypeError("future provider resolution mode must be Boolean")
         lock = getattr(self, "_lock", None)
-        if type(lock) is not _STORE_LOCK_TYPE:
+        if lock is None or type(lock) is not _STORE_LOCK_TYPE:
             raise RuntimeError("malformed future provider store")
         with lock:
             ledger = getattr(self, "ledger", None)
@@ -602,7 +611,8 @@ class SemanticFutureProviderStore:
                 or type(token) is not ArenaToken
                 or token is not current_token
             ):
-                ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_STALE_LEASE_REFUSALS)
+                if record_metrics:
+                    ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_STALE_LEASE_REFUSALS)
                 raise RuntimeError("future provider lease is stale")
             memo = getattr(self, "_providers", None)
             owner = getattr(self, "owner", None)
@@ -614,12 +624,14 @@ class SemanticFutureProviderStore:
                 raise RuntimeError("future provider store has a foreign retained table")
             provider = memo.get(digest)
             if provider is None:
-                ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_MISSES)
+                if record_metrics:
+                    ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_MISSES)
                 raise RuntimeError("future provider is no longer retained")
             if type(provider) is not SemanticFutureProvider:
                 raise RuntimeError("future provider store retained a foreign provider")
             provider.require_runtime_admission()
-            ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_RESOLUTIONS)
+            if record_metrics:
+                ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_RESOLUTIONS)
             return provider
 
     def reset(self) -> None:
@@ -665,7 +677,7 @@ class SemanticFutureProviderLease:
         if type(self._token) is not ArenaToken:
             raise TypeError("future provider lease needs an exact store token")
 
-    def _provider(self) -> SemanticFutureProvider:
+    def _provider(self, *, record_metrics: bool = True) -> SemanticFutureProvider:
         store = getattr(self, "_store", None)
         digest = getattr(self, "_digest", None)
         token = getattr(self, "_token", None)
@@ -680,6 +692,7 @@ class SemanticFutureProviderLease:
             store,
             digest,
             token,
+            record_metrics=record_metrics,
         )
 
     @property
@@ -687,9 +700,9 @@ class SemanticFutureProviderLease:
         return self._provider().artifact_sha256
 
     def _status_provider(self) -> SemanticFutureProvider | None:
-        """Resolve status through the same ownership checks as real access."""
+        """Validate an already retained provider without changing work counters."""
         try:
-            return self._provider()
+            return self._provider(record_metrics=False)
         except (PermissionError, RuntimeError, TypeError):
             return None
 
@@ -879,20 +892,6 @@ def _validate_record(
     if set(class_ids) != set(range(class_count)):
         raise ValueError("future source map has missing or unused class identifiers")
 
-    rounds = record.get("refinement_rounds")
-    witnesses = record.get("refinement_collision_witnesses")
-    seam_projected = record.get("seam_is_projected_from_cid")
-    seam_collision = record.get("seam_projection_collision")
-    if type(rounds) is not int or rounds <= 0:
-        raise ValueError("future refinement round count must be a positive integer")
-    if not isinstance(witnesses, list) or len(witnesses) > SOURCE_COUNT * 8:
-        raise ValueError("future refinement witnesses exceed their bounded shape")
-    if type(seam_projected) is not bool:
-        raise ValueError("future seam projection marker must be boolean")
-    if seam_collision is not None and not isinstance(seam_collision, dict):
-        raise ValueError("future seam collision witness is malformed")
-    if seam_projected != (seam_collision is None):
-        raise ValueError("future seam projection marker contradicts its witness")
     return class_ids, classes
 
 

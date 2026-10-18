@@ -198,7 +198,10 @@ def main() -> None:
     collatz_data = _run_worker("collatz")
     reverse_rows = list(reverse_data["rows"])
     collatz_rows = list(collatz_data["rows"])
-    collatz_raw_rows = list(collatz_data["raw_rows"])
+    raw_rows = collatz_data.get("raw_rows")
+    if raw_rows is None:
+        raise ValueError("Collatz worker omitted raw field measurements")
+    collatz_raw_rows = list(raw_rows)
     reverse_cache_entries = int(reverse_data["cache_entries"])
     collatz_cache_entries = int(collatz_data["cache_entries"])
     seeds = (1, 89, 195, 196, 197, 4994)

@@ -398,6 +398,23 @@ class ConstantTail6305Ring:
         )
 
 
+def zero_tail_word_coefficients(tails: tuple[int, ...]) -> tuple[int, int, int]:
+    """Compose an exact finite sequence of 6305 zero-tail returns."""
+    if (
+        type(tails) is not tuple
+        or not tails
+        or any(type(j) is not int or j < 0 or j > 4096 for j in tails)
+        or sum(j + 2 for j in tails) > 8191
+    ):
+        raise ValueError("6305 tail word exceeds the certified coefficient budget")
+    gain, offset, steps = 1, 0, 0
+    for j in tails:
+        offset = 9 * offset + (1 << steps) * (3 + (1 << (j + 1)))
+        gain *= 9
+        steps += j + 2
+    return gain, offset, steps
+
+
 def _periodic_tail_coefficients(motif: tuple[int, ...]) -> tuple[int, int, int]:
     """Compose a recorded *mixed* 6305 return word without any source digits."""
     if (
@@ -407,14 +424,7 @@ def _periodic_tail_coefficients(motif: tuple[int, ...]) -> tuple[int, int, int]:
         or len(set(motif)) == 1
     ):
         raise ValueError("periodic ring requires 2..4 changing zero-tail letters")
-    if any(j > 4096 for j in motif) or sum(j + 2 for j in motif) > 8191:
-        raise ValueError("periodic motif exceeds the certified coefficient budget")
-    gain, offset, steps = 1, 0, 0
-    for j in motif:
-        offset = 9 * offset + (1 << steps) * (3 + (1 << (j + 1)))
-        gain *= 9
-        steps += j + 2
-    return gain, offset, steps
+    return zero_tail_word_coefficients(motif)
 
 
 def _periodic_return_capacity(defect: int, steps: int) -> int | None:
@@ -773,4 +783,9 @@ class PeriodicTail6305Ring:
         )
 
 
-__all__ = ["ConstantTail6305Ring", "PeriodicTail6305Ring", "ZeroTailFreeBorderRing"]
+__all__ = [
+    "ConstantTail6305Ring",
+    "PeriodicTail6305Ring",
+    "ZeroTailFreeBorderRing",
+    "zero_tail_word_coefficients",
+]

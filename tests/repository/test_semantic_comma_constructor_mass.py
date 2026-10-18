@@ -185,7 +185,9 @@ def test_live_publication_requests_mass_for_literal_distinct_cids() -> None:
     assert "val row_arithmetic = ordered_fact mass_values" in template_mass
     assert "template_mass_requests" in template_mass
     assert "column_mass_mass_proofs" in COLUMN_MASS.read_text(encoding="utf-8")
-    assert "template_mass_handler := SOME (#prove template_mass_check)" in cache
+    assert "val prove = #prove template_mass_check" in cache
+    assert "template_mass_handler := SOME prove" in cache
+    assert "ensure_template_mass_handler () proposition" in cache
     assert "#mass_row invariant_mass" in cache
     assert "ids_values" in template_mass
     assert "Thm.transitive row_map mass_equation" in template_mass
@@ -220,6 +222,9 @@ def test_used_template_publication_preserves_source_transport() -> None:
     used = (INSTANCE / "semantic_b1_used_templates.ML").read_text(encoding="utf-8")
     assert "remdups (map fst comma_semantic_b1_crt_descriptors)" in publication
     assert "comma_semantic_b1_crt_used_template_masses_cover_sources" in publication
+    assert (
+        "comma_semantic_b1_crt_compact_occurrences_wellformed_from_mass" in publication
+    )
     assert "descriptor_extent" in constructor
     assert "column_ids_resolve" in constructor
     assert "range aconv expected_range" in used
@@ -306,7 +311,7 @@ def test_sparse_mass_invariant_checks_source_shape_and_child_closure() -> None:
 def test_mass_consumer_uses_checked_invariant_without_column_steps() -> None:
     cache = OCCURRENCE_CACHE.read_text(encoding="utf-8")
     construction = cache.split("val invariant_mass =", 1)[1].split(
-        "val _ = #check_fixtures", 1
+        "val template_mass_check =", 1
     )[0]
     assert "make_from_nodes ctxt" in construction
     assert "source_bindings = #source_bindings columns" in construction
@@ -417,7 +422,7 @@ def test_mass_specialization_reuses_certified_tree_and_selected_path() -> None:
     assert "Goal.prove" not in specialize
     assert "Thm.prop_of lookup_fact aconv expected_lookup_fact" in specialize
     helper = (INSTANCE / "semantic_b1_mass_rows.ML").read_text(encoding="utf-8")
-    assert "Column_Conversion.choose_closed_if" in helper
+    assert "Column_Lookup_Cache.choose_closed_if" in helper
     assert "Thm.apply (Thm.apply lookup_ct tree_ct) cid_ct" in helper
     assert "fun choose_if" not in helper
 
@@ -581,35 +586,4 @@ def test_map_resolution_retains_bounds_and_exact_catalogue() -> None:
     assert (
         "Thm.equal_elim (Thm.symmetric selected_id_bounds) literal_id_bounds"
         in transport
-    )
-
-
-def test_piece_publication_uses_checked_blocks_and_bounded_source_projection() -> None:
-    publisher = (INSTANCE / "semantic_b1_occurrence_publication.ML").read_text(
-        encoding="utf-8"
-    )
-    projection = (INSTANCE / "semantic_b1_construction_piece_projection.ML").read_text(
-        encoding="utf-8"
-    )
-    assert "construction_piece_source_block_size = 32" in publisher
-    assert "serialize_construction_piece_source_definitions" not in publisher
-    assert "serialize_construction_piece_source_blocks" in publisher
-    assert "Construction_Piece_Projection.make ctxt" in OCCURRENCE_CACHE.read_text(
-        encoding="utf-8"
-    )
-    for guard in (
-        "blocks are foreign, missing, or reordered",
-        "catalogue contains a noncanonical definition",
-        "source index exceeds its extent",
-        "row index exceeds its source extent",
-        "actual_source_extents = child_row_extents",
-    ):
-        assert guard in projection
-    assert "source_cache_capacity = 8192" in projection
-    assert "Synchronized.change_result source_cache" in projection
-    assert "source_operation_procedures" in projection
-    assert "piece_block_locator_steps" in projection
-    assert "block_visits = block_visits + block + 1" not in projection
-    assert 'ML_file "semantic_b1_construction_piece_projection.ML"' in (
-        PUBLICATION.read_text(encoding="utf-8")
     )

@@ -32,6 +32,8 @@ def test_abort_preserves_unrelated_owners_created_before_scope_entry() -> None:
     unrelated_root = _ExecutionRoot()
     ledger.register_execution_root(unrelated_root)
 
+    owned_owner = -1
+    owned_store: LedgerDict[str, str] | None = None
     with pytest.raises(RuntimeError, match="abort construction"), construction:
         owned_owner, owned_store = _owned_value(ledger, "owned")
         owned_root = _ExecutionRoot()
@@ -42,6 +44,7 @@ def test_abort_preserves_unrelated_owners_created_before_scope_entry() -> None:
     assert inventory[unrelated_owner].entries == 1
     assert inventory[unrelated_owner].nodes == 1
     assert unrelated_store["value"] == "unrelated"
+    assert owned_store is not None
     assert inventory[owned_owner].disposed
     assert not owned_store
     assert tuple(ledger.iter_execution_roots()) == (unrelated_root,)
@@ -55,6 +58,9 @@ def test_abort_attempts_other_owners_and_roots_after_release_failure(
     scope = RuntimeConstruction(ledger)
     original = ledger.release
     broken_owner = -1
+    first_owner = -1
+    first_store: LedgerDict[str, str] | None = None
+    broken_store: LedgerDict[str, str] | None = None
 
     def release(owner: int, entries: int = 0, nodes: int = 0) -> None:
         if owner == broken_owner:
@@ -70,6 +76,7 @@ def test_abort_attempts_other_owners_and_roots_after_release_failure(
             ledger.register_execution_root(root)
             raise ValueError("construction failed")
     assert isinstance(caught.value.__cause__, ValueError)
+    assert first_store is not None and broken_store is not None
     assert ledger.inventory()[first_owner].disposed
     assert not ledger.inventory()[broken_owner].disposed
     assert not first_store and not broken_store
@@ -107,6 +114,10 @@ def test_abort_preserves_owner_registered_in_independent_context() -> None:
 
 def test_nested_abort_is_scoped_and_outer_abort_includes_successful_child() -> None:
     ledger = ResourceLedger()
+    outer_owner = inner_owner = child_owner = -1
+    outer_store: LedgerDict[str, str] | None = None
+    inner_store: LedgerDict[str, str] | None = None
+    child_store: LedgerDict[str, str] | None = None
     with pytest.raises(RuntimeError, match="abort outer"), RuntimeConstruction(ledger):
         outer_owner, outer_store = _owned_value(ledger, "outer")
         with (
@@ -116,6 +127,7 @@ def test_nested_abort_is_scoped_and_outer_abort_includes_successful_child() -> N
             inner_owner, inner_store = _owned_value(ledger, "inner")
             raise RuntimeError("abort inner")
         assert ledger.inventory()[inner_owner].disposed
+        assert inner_store is not None
         assert not inner_store
 
         with RuntimeConstruction(ledger):
@@ -125,6 +137,7 @@ def test_nested_abort_is_scoped_and_outer_abort_includes_successful_child() -> N
         raise RuntimeError("abort outer")
 
     inventory = {row.owner: row for row in ledger.inventory()}
+    assert outer_store is not None and child_store is not None
     assert inventory[outer_owner].disposed and not outer_store
     assert inventory[child_owner].disposed and not child_store
     assert inventory[inner_owner].disposed

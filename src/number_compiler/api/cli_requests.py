@@ -22,6 +22,7 @@ from number_compiler.api.family_registry import (
 from number_compiler.api.observation_types import (
     FamilyId,
     IndexEncoding,
+    ObservationId,
     SelectorId,
     family_id,
 )
@@ -101,6 +102,8 @@ class UniqueValue(argparse.Action):
         values: Any,
         option_string: str | None = None,
     ) -> None:
+        if self.nargs == 0:
+            values = self.const
         specified: dict[str, object] = getattr(namespace, "_specified", {})
         if self.dest in specified and specified[self.dest] != values:
             parser.error(f"conflicting values for {option_string}")
@@ -189,7 +192,9 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
                 command.add_argument(
                     option.flag,
                     dest=option.name,
-                    action="store_true",
+                    action=UniqueValue,
+                    nargs=0,
+                    const=True,
                     default=option.default,
                     help=option.help,
                 )
@@ -234,7 +239,9 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
             command.add_argument(
                 option.flag,
                 dest=option.name,
-                action="store_true",
+                action=UniqueValue,
+                nargs=0,
+                const=True,
                 default=option.default,
                 help=option.help,
             )
@@ -336,7 +343,15 @@ def _request_from_args(
         no_value=args.no_value,
     )
     try:
-        request = QueryRequest(execution, presentation, observations, max_index_bits)
+        matrix = (
+            spec.matrix.build(vars(args))
+            if ObservationId.TEMPORAL_MATRIX in observations.info
+            and spec.matrix is not None
+            else None
+        )
+        request = QueryRequest(
+            execution, presentation, observations, max_index_bits, matrix
+        )
     except QueryOptionError as exc:
         flag = spec.option_flag(
             exc.field, selector, frozenset(getattr(args, "_specified", {}))

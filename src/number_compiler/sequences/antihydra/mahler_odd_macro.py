@@ -350,6 +350,44 @@ class MahlerOddToOddAction:
         return cls._issue(MahlerJointFutureAction(), 0, 0, 0, issuer=_ODD_ACTION_ISSUER)
 
     @classmethod
+    def from_bits(
+        cls, bits: tuple[int, ...], *, max_extent: int = 4096
+    ) -> MahlerOddToOddAction:
+        """Issue one exact odd-to-odd action from a supplied parity word.
+
+        The source cylinder chooses the final high bit that makes the target
+        odd. Prefix ledger effects are accumulated from the same word; no
+        source-dependent event is guessed or extended by this constructor.
+        """
+        if (
+            type(bits) is not tuple
+            or not bits
+            or any(type(bit) is not int or bit not in (0, 1) for bit in bits)
+        ):
+            raise ValueError("odd-to-odd source word must be a nonempty bit tuple")
+        if bits[0] != 1:
+            raise ValueError("odd-to-odd source word must start at an odd state")
+        if type(max_extent) is not int or max_extent < 1 or len(bits) > max_extent:
+            raise BlockContextBudgetExceeded("odd word exceeds temporal bit budget")
+        joint = MahlerJointFutureAction()
+        balance = minimum = odd_events = 0
+        for bit in bits:
+            joint = joint.then(MahlerJointFutureAction.bit(bit))
+            if bit:
+                odd_events += 1
+                balance += 2
+            else:
+                balance -= 1
+            minimum = min(minimum, balance)
+        return cls._issue(
+            joint,
+            odd_events,
+            balance,
+            minimum,
+            issuer=_ODD_ACTION_ISSUER,
+        )
+
+    @classmethod
     def run(cls, exponent: int, *, max_extent: int = 4096) -> MahlerOddToOddAction:
         """Source-guarded 1,0**(a-1) with its final *odd* seam bit."""
         if type(exponent) is not int or exponent < 1:

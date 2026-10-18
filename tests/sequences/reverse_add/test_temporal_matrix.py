@@ -148,6 +148,7 @@ def test_bank_carry_borrow_xor_partition_and_walsh() -> None:
                 rp = reverse10(prev)
                 a, b = max(r, rp), min(r, rp)
                 assert entry.innovation_borrow == int(a % m < b % m)
+                assert entry.innovation_borrow is not None
                 assert entry.xor == entry.carry ^ entry.innovation_borrow
 
 

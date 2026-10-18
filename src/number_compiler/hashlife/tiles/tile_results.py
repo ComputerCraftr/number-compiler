@@ -247,11 +247,16 @@ class CompletedResultArena:
     def validate_physical_support(self, support: object) -> None:
         from number_compiler.hashlife.tiles.ordered_boolean_support import (
             OrderedBooleanSupport,
+            OrderedBooleanSupportArena,
         )
 
         arena = self._physical_supports
-        if arena is None or not isinstance(support, OrderedBooleanSupport):
+        if arena is None:
             raise ValueError("completed result has no bound physical support arena")
+        if not isinstance(arena, OrderedBooleanSupportArena):
+            raise TypeError("completed result has an invalid physical support arena")
+        if not isinstance(support, OrderedBooleanSupport):
+            raise TypeError("completed result requires an ordered Boolean support")
         if support.owner is not arena:
             raise ValueError("completed result support belongs to another scheduler")
         arena.validate(support)
@@ -661,6 +666,8 @@ class CompletedResultArena:
         found = self._memo.get(key)
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PUBLICATION_REQUESTS)
         if found is not None:
+            if type(found) is not CompletedResult:
+                raise ValueError("powered result memo contains another result sort")
             if found != result:
                 raise ValueError("powered result already has another complete value")
             lease = self._lease(key, found)

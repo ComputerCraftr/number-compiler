@@ -9,7 +9,10 @@ from number_compiler.arithmetic.contracts.block_definition import (
     ComposedBlockDefinition,
     immutable_definition,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+    _effect_key,
+)
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.kernel_admission import (
     admit_effect,
@@ -55,11 +58,10 @@ def test_kernel_admission_preserves_complete_immutable_identity(
     hooks = collatz_tile_hooks()
     admitted = immutable_atom(effect, family_hooks=hooks)
     assert type(admitted) is type(effect)
-    assert admitted.canonical_key == effect.canonical_key
+    assert _effect_key(admitted) == _effect_key(effect)
     assert admit_effect(effect, family_hooks=hooks) == 1
-    assert (
-        immutable_definition(effect, family_hooks=hooks).canonical_key
-        == effect.canonical_key
+    assert _effect_key(immutable_definition(effect, family_hooks=hooks)) == _effect_key(
+        effect
     )
 
 

@@ -106,7 +106,8 @@ def test_occurrence_certificate_waits_for_proof_and_preserves_memo_authority() -
     assert "Comma_Entry_Arithmetic.natural_context ctxt" in checker
     assert "local_cover_context_ref" not in checker
     assert "comma_semantic_b1_crt_occurrence_entry_checked" not in checker
-    assert "Comma_Selected_List_Conversion.prove_indexed_list_all" in checker
+    assert "Construction_Check.prove_indexed_list_all" in checker
+    assert "Comma_Selected_List_Conversion.prove_indexed_list_all" in construction
     assert "Thm.prop_of head_proof aconv expected_head" in selector
     assert "Thm.nprems_of head_proof = 0" in selector
     assert "null (Thm.hyps_of head_proof)" in selector
@@ -135,385 +136,186 @@ def test_occurrence_certificate_waits_for_proof_and_preserves_memo_authority() -
     assert "recursive := !recursive + 1; NONE" in memo_proc
 
 
-def test_constructed_occurrence_gate_binds_induction_and_piece_authority() -> None:
-    """Map the replacement gate to its generic construction and refinement laws.
-
-    The publisher checks global CID admission and each constructed occurrence;
-    the generic all-index theorem supplies the decreasing-child induction.
-    Local-cover checks still bind branch refs, while group and piece laws bind
-    shared CRT nodes, parent result rows, and each piece's destination. Semantic
-    wellformed rejection fixtures remain asserted by
-    ``test_semantic_comma_future.py``.
-    """
+def test_compact_occurrence_gate_binds_source_lifts_and_induction() -> None:
+    """Check the live compact occurrence contract and its exact proof bridge."""
     root = isabelle_root(repository_root())
-    # The retired fused-fold implementation had no publication consumer.
-    # It must not silently return to the critical release session.
-    assert "Comma_CRT_Composition_Fold" not in (root / "families/comma/ROOT").read_text(
-        encoding="utf-8"
-    )
-    assert not (
-        root / "families/comma/comma_semantic_b1/Comma_CRT_Composition_Fold.thy"
-    ).exists()
     instance = root / "families/comma/comma_semantic_b1_instance"
+    family = root / "families/comma/comma_semantic_b1"
     publication_path = instance / "Comma_Semantic_B1_Occurrence_Publication.thy"
     publication_source = publication_path.read_text(encoding="utf-8")
-    publication_declarations = extract_isabelle_declarations(
-        publication_source, publication_path
-    )
-    publication = {item.name: item for item in publication_declarations}
-    constructed_path = (
-        root
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Constructed_Occurrence.thy"
-    )
-    constructed_source = constructed_path.read_text(encoding="utf-8")
-    constructed = {
+    publication = {
         item.name: item
-        for item in extract_isabelle_declarations(constructed_source, constructed_path)
+        for item in extract_isabelle_declarations(publication_source, publication_path)
     }
-    bounds_path = constructed_path.with_name(
-        "Comma_Semantic_B1_CRT_Occurrence_Bounds.thy"
-    )
-    bounds = {
+    compact_path = family / "Comma_Semantic_B1_CRT_Compact_Refinement.thy"
+    compact_source = compact_path.read_text(encoding="utf-8")
+    compact = {
         item.name: item
-        for item in extract_isabelle_declarations(bounds_path.read_text(), bounds_path)
+        for item in extract_isabelle_declarations(compact_source, compact_path)
     }
-    slot_path = constructed_path.with_name(
-        "Comma_Semantic_B1_CRT_Slot_Certificates.thy"
-    )
-    slot_certificates = {
+    local_path = family / "Comma_Semantic_B1_CRT_Local_Cover.thy"
+    local_source = local_path.read_text(encoding="utf-8")
+    local = {
         item.name: item
-        for item in extract_isabelle_declarations(slot_path.read_text(), slot_path)
-    }
-    binding_path = (
-        root
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Construction_Binding.thy"
-    )
-    binding_source = binding_path.read_text(encoding="utf-8")
-    binding = {
-        item.name: item
-        for item in extract_isabelle_declarations(binding_source, binding_path)
+        for item in extract_isabelle_declarations(local_source, local_path)
     }
 
-    certificate = next(
-        item.body
-        for item in publication_declarations
-        if item.name == "comma_semantic_b1_crt_occurrence_data_checked"
-        and item.command == "definition"
-    )
-    for malformed_case in ("out_of_range_index", "missing_occurrence"):
-        assert (
-            "comma_semantic_b1_crt_constructed_bound_rejects_" + malformed_case
-            in publication
-        )
-    construction_check = publication["comma_semantic_b1_crt_construction_check"].body
-    assert "Comma_Semantic_B1_CRT_Constructed_Occurrence" in publication_source
-    assert (
-        "list_all (comma_crt_admitted 0) comma_semantic_b1_crt_columns" in certificate
-    )
-    column_dag_path = (
-        root
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Column_DAG.thy"
-    )
-    column_dag = column_dag_path.read_text(encoding="utf-8")
-    assert "comma_semantic_b1_crt_columns_for dag extent" in column_dag
-    assert "map (comma_semantic_b1_crt_column_at dag) [0..<extent]" in column_dag
-    assert "comma_semantic_b1_crt_columns_for_length" in column_dag
-    assert "list_all comma_semantic_b1_crt_construction_check" in certificate
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound" in construction_check
-    for published_input in (
-        "comma_semantic_b1_crt_columns",
+    construction = publication["comma_semantic_b1_crt_construction_check"].body
+    for required in (
         "comma_semantic_b1_crt_templates",
-        "comma_semantic_b1_crt_template_column_ids",
-        "comma_semantic_b1_crt_lift_column_ids",
         "comma_semantic_b1_crt_sources",
         "comma_semantic_b1_crt_occurrence_at_index",
         "comma_semantic_b1_crt_descriptors",
         "comma_semantic_b1_crt_lift_refs",
         "comma_semantic_b1_crt_lift_descriptors",
-        "comma_semantic_b1_crt_construction_piece_refs",
     ):
-        assert published_input in construction_check
-    assert "comma_semantic_b1_crt_grouped_union_start_ids" not in publication_source
-    assert "comma_semantic_b1_crt_grouped_union_steps" not in publication_source
-    assert "comma_semantic_b1_crt_template_geometry_at" not in publication_source
-    constructed_bound = bounds[
-        "comma_semantic_b1_crt_constructed_occurrence_bound"
-    ].body
-    all_index = constructed[
-        "comma_semantic_b1_crt_constructed_occurrences_wellformed"
-    ].body
-    assert "comma_semantic_b1_crt_constructed_goto_slot_certificate" in (
-        constructed_bound
+        assert required in construction
+    assert "comma_semantic_b1_crt_compact_occurrence_check" in construction
+    checked = next(
+        item.body
+        for item in extract_isabelle_declarations(publication_source, publication_path)
+        if item.name == "comma_semantic_b1_crt_occurrence_data_checked"
+        and item.command == "definition"
     )
-    assert (
-        "child_index<index"
-        in slot_certificates[
-            "comma_semantic_b1_crt_constructed_goto_slot_certificate"
-        ].body
-    )
-    assert "child_index<index" in all_index
-    assert "comma_semantic_b1_crt_source_order_induction[OF step]" in all_index
-    piece_bridge_statement = slot_certificates[
-        "comma_semantic_b1_crt_constructed_piece_matches_from_certificates"
-    ].body.split("proof", 1)[0]
-    # Each premise must certify the piece's slot. An unrelated implicit slot
-    # can certify a Terminal ref while the piece uses a different Goto ref.
-    piece_slot = "(fst (comma_semantic_b1_crt_constructed_piece_origin piece))"
-    assert piece_bridge_statement.count(piece_slot) == 2
-    child_bounds = slot_certificates[
-        "comma_semantic_b1_crt_goto_slot_certificate_child_bounds"
-    ].body
-    assert "refs!slot=Comma_B1_Lift_Goto_Ref slot child_index lift_cid" in child_bounds
-    assert "child_index<length occurrence_descriptors" in child_bounds
-    assert "goto_at" not in constructed_source
-    publication_wf = publication[
-        "comma_semantic_b1_crt_published_occurrences_wellformed"
-    ].body
-    assert "comma_semantic_b1_crt_checked_bounds_and_geometry" in publication_wf
+    assert "length comma_semantic_b1_crt_lift_refs =" in checked
+    assert "list_all comma_semantic_b1_crt_construction_check" in checked
+    assert "list_all (comma_semantic_b1_crt_template_mass_certified" in checked
+    assert "comma_semantic_b1_crt_used_lift_bindings_checked" in checked
     geometry_bridge = publication[
         "comma_semantic_b1_crt_checked_bounds_and_geometry"
     ].body
-    assert "all_occurrences_wellformed" in geometry_bridge
     assert (
-        "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_from_mass"
+        "comma_semantic_b1_crt_compact_occurrences_wellformed_from_mass"
+        in geometry_bridge
+    )
+    assert (
+        "comma_semantic_b1_crt_template_geometry_from_resolved_wellformed_occurrence"
         in geometry_bridge
     )
 
-    # Constructed occurrence bounds and the child resolver now provide the
-    # concrete all-index candidate bridge; lower-level local-cover lemmas stay
-    # separately covered as semantic regression material.
-    assert "comma_semantic_b1_crt_occurrence_entry_checked" not in publication
-    assert "comma_semantic_b1_crt_published_local_cover_witness" not in publication
-    occurrence_index = publication[
-        "comma_semantic_b1_crt_published_occurrence_index"
+    compact_check = compact["comma_semantic_b1_crt_compact_occurrence_check"].body
+    for authority in (
+        "comma_source_continuation_base source",
+        "comma_round_admitted source",
+        "comma_semantic_b1_crt_occurrence_rebase parent",
+        "comma_semantic_b1_crt_occurrence_beta parent",
+        "comma_semantic_b1_crt_occurrence_columns parent",
+        "comma_semantic_b1_crt_lift_local_cover_witness",
+        "child_index < index",
+    ):
+        assert authority in compact_check
+
+    local_witness = local["comma_semantic_b1_crt_lift_local_cover_witness"].body
+    local_slot = local["comma_semantic_b1_crt_lift_local_slot_valid"].body
+    assert "map comma_semantic_b1_crt_lift_ref_slot refs = [0..<length refs]" in (
+        local_witness
+    )
+    assert "list_all" in local_witness
+    assert "zip lifted_columns child_beta" in local_slot
+    assert "comma_semantic_b1_crt_local_piece_covered parent" in local_slot
+    assert "comma_semantic_b1_crt_find_result_index_sound" in local
+    assert "comma_semantic_b1_crt_lift_local_cover_rejects_truncated_refs" in local
+
+    generic_bridge = compact[
+        "comma_semantic_b1_crt_compact_occurrences_candidate_matches"
     ].body
-    assert "List.find" in occurrence_index
-    assert "comma_semantic_b1_crt_sources!index=source" in occurrence_index
-    candidate_bridge = publication[
+    assert "comma_semantic_b1_crt_lift_local_cover_candidate_matches" in generic_bridge
+    assert "referenced_children_wellformed" in generic_bridge
+    assert "children_resolve" in generic_bridge
+    concrete_bridge = publication[
         "comma_semantic_b1_crt_published_constructed_candidate_matches"
     ].body
+    assert "comma_semantic_b1_crt_compact_occurrences_candidate_matches" in (
+        concrete_bridge
+    )
+    assert "comma_semantic_b1_crt_published_children_resolve_index" in concrete_bridge
+    assert "comma_semantic_b1_crt_checked_bounds_and_geometry" in concrete_bridge
     assert (
-        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches"
-        in candidate_bridge
+        "comma_semantic_b1_crt_root_occurrence_exact"
+        in (publication_source.split("Thm_Deps.all_oracles", 1)[1])
     )
-    assert "comma_semantic_b1_crt_published_children_resolve_index" in candidate_bridge
-    assert "comma_semantic_b1_crt_lift_local_cover_witness" not in candidate_bridge
-    assert "comma_semantic_b1_crt_checked_bounds_and_geometry" in candidate_bridge
-    assert (
-        "[OF table_admitted bounds parent_template_geometries used_lift_geometries"
-        in candidate_bridge
-    )
-    checked_geometry = publication[
-        "comma_semantic_b1_crt_checked_bounds_and_geometry"
-    ].body
-    assert (
-        "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_from_mass"
-        in checked_geometry
-    )
-    assert (
-        "[OF table_admitted bounds_fact parent_masses used_lift_bindings]"
-        in checked_geometry
-    )
-    assert (
-        "simp add: comma_semantic_b1_crt_occurrence_data_checked_def\n"
-        "      comma_semantic_b1_crt_construction_check_def" not in candidate_bridge
-    )
-    indexed_total = publication["comma_semantic_b1_crt_occurrence_at_index_total"].body
-    assert (
-        "comma_semantic_b1_crt_constructed_occurrence_bound_parent_present"
-        in indexed_total
-    )
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound_def" not in indexed_total
-    parent_present = bounds[
-        "comma_semantic_b1_crt_constructed_occurrence_bound_parent_present"
-    ].body
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound_index_guards" in (
-        parent_present
-    )
-    index_guards = bounds[
-        "comma_semantic_b1_crt_constructed_occurrence_bound_index_guards"
-    ].body
-    for guarded_table in (
-        "sources",
-        "occurrence_descriptors",
-        "lift_refs",
-        "piece_refs",
-    ):
-        assert f"index<length {guarded_table}" in index_guards
+
     root_binding = publication[
         "comma_semantic_b1_crt_root_occurrence_distinct_binding"
     ].body
-    assert "comma_semantic_b1_crt_construction_check_at" in root_binding
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound" in root_binding
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound_beta_distinct" in (
-        root_binding
-    )
-    assert "comma_semantic_b1_crt_occurrence_wellformed" not in root_binding
-    local_path = (
-        root
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Local_Cover.thy"
-    )
-    local_source = local_path.read_text(encoding="utf-8")
-    local_cover = {
-        item.name: item
-        for item in extract_isabelle_declarations(local_source, local_path)
-    }
-    slot_valid = local_cover["comma_semantic_b1_crt_lift_local_slot_valid"].body
-    witness = local_cover["comma_semantic_b1_crt_lift_local_cover_witness"].body
-    assert "length lifted_columns = length child_beta" in slot_valid
-    assert "list_all" in slot_valid and "zip lifted_columns child_beta" in slot_valid
-    assert "map comma_semantic_b1_crt_lift_ref_slot refs = [0..<length refs]" in witness
-    assert "comma_semantic_b1_crt_find_result_index_sound" in local_cover
-
-    # Local result-directed inclusion replaces parent OR reconstruction only
-    # with an independently certified template partition. Neither refs alone
-    # nor a different published parent may satisfy this gate.
-    group_bound = binding["comma_semantic_b1_crt_group_construction_bound"].body
-    assert "comma_crt_supported" in group_bound
-    assert "comma_semantic_b1_crt_piece_parent_column piece=parent_index" in group_bound
-    assert "pieces\\<noteq>[]" in group_bound
-    assert "comma_semantic_b1_crt_group_piece_fold" not in group_bound
-    assert "comma_crt_negate" in group_bound and "comma_crt_apply" in group_bound
-    assert "comma_crt_shift rebase" in " ".join(group_bound.split())
-    geometry = slot_certificates[
-        "comma_semantic_b1_crt_template_geometry_certified"
-    ].body
-    assert "comma_semantic_b1_crt_columns_partition_certified" in geometry
-    assert "comma_semantic_b1_crt_template_geometry_certified_partition" in (
-        constructed_source
-    )
-    assert (
-        "comma_crt_set (columns!parent_cid)"
-        in binding["comma_semantic_b1_crt_group_construction_bound_sound"].body
-    )
-    assert "comma_semantic_b1_crt_or_chain_valid" not in group_bound
-    assert "comma_semantic_b1_crt_or_chain_final" not in group_bound
-    assert "comma_semantic_b1_crt_group_construction_bound_sound" in (
-        constructed_source
-    )
-    assert "comma_semantic_b1_crt_constructed_bound_source_partition" in (
-        constructed_source
-    )
-    assert "comma_semantic_b1_crt_constructed_bound_source_partition" in (
-        slot_certificates
-    )
-    assert "comma_semantic_b1_crt_constructed_bound_source_partition" not in (
-        constructed
-    )
-    piece_matches = slot_certificates[
-        "comma_semantic_b1_crt_constructed_piece_matches"
-    ].body
-    assert (
-        "sort (map comma_semantic_b1_crt_constructed_piece_origin" in constructed_bound
-    )
-    assert "distinct origins" not in constructed_bound
-    source_origins_distinct = constructed[
-        "comma_semantic_b1_crt_constructed_source_origins_distinct"
-    ].body
-    assert "comma_semantic_b1_crt_distinct_concat_tagged_rows" in (
-        source_origins_distinct
-    )
-    legacy_wellformed = constructed[
-        "comma_semantic_b1_crt_constructed_occurrence_wellformed"
-    ].body
-    assert "comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass" in (
-        legacy_wellformed
-    )
-    # Both callers use one source-partition and result-coverage proof. The mass
-    # alternative must still establish a parent partition; it is not refs-only.
-    occurrence_wellformed = constructed[
-        "comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass"
-    ].body
-    assert "parent_partition_or_mass" in occurrence_wellformed
-    assert "comma_semantic_b1_crt_parent_columns_partition_from_grouped_cover" in (
-        occurrence_wellformed
-    )
-    assert "comma_semantic_b1_crt_constructed_source_origins_distinct" in (
-        occurrence_wellformed
-    )
-    assert "= origins" in constructed_bound
-    assert "list_all (comma_semantic_b1_crt_constructed_piece_binding_matches" in (
-        constructed_bound
-    )
-    assert "comma_semantic_b1_crt_constructed_piece_matches_list_from_certificates" in (
-        occurrence_wellformed
-    )
-    binding_check = slot_certificates[
-        "comma_semantic_b1_crt_constructed_piece_binding_matches"
-    ].body
-    assert "comma_semantic_b1_crt_constructed_piece_matches" not in binding_check
-    assert "comma_semantic_b1_source_slot_action" not in binding_check
-    terminal_binding = binding_check.split("| Comma_B1_Piece_Goto", 1)[0]
-    assert "Comma_B1_Lift_Terminal_Ref slot destination" in terminal_binding
-    assert "columns!cid=comma_crt_source_scope_column (period,slot)" in terminal_binding
-    goto_binding = binding_check.split("| Comma_B1_Piece_Goto", 1)[1]
-    assert "comma_semantic_b1_source_slot_action" not in goto_binding
-    assert "comma_semantic_b1_crt_lift_columns_option" not in goto_binding
-    assert "beta!destination=" in goto_binding
-    assert "parent_column=destination" in piece_matches
-    assert "beta!destination=result" in piece_matches
-    assert "sources!child_index=comma_source_continuation_base child" in piece_matches
-    assert "comma_semantic_b1_crt_occurrence_beta child_occurrence" in piece_matches
-    mismatched_lift_shape = publication[
-        "comma_semantic_b1_crt_piece_matches_rejects_mismatched_lift_shape"
-    ].body
-    assert "mismatched_shape" in mismatched_lift_shape
-    assert "length (lift_column_ids!lift_cid)" in mismatched_lift_shape
-    assert "comma_semantic_b1_crt_occurrence_beta child_occurrence" in (
-        mismatched_lift_shape
-    )
+    assert "comma_semantic_b1_crt_root_entry_resolves_checked" in root_binding
+    root_bridge = publication["comma_semantic_b1_crt_root_entry_resolves_checked"].body
+    assert 'checked: "comma_semantic_b1_crt_occurrence_data_checked"' in root_bridge
+    assert "comma_semantic_b1_crt_construction_check_at" in root_bridge
+    assert "comma_semantic_b1_crt_compact_occurrence_check_exposes" in root_binding
+    assert "distinct (comma_semantic_b1_crt_occurrence_beta value)" in root_binding
 
 
 def test_constructed_occurrence_regressions_are_kernel_audited() -> None:
-    """Keep concrete negative witnesses for row-fold and piece bindings.
-
-    These small HOL fixtures reject a wrong parent column, rebase, destination,
-    foreign CID, malformed column, missing/duplicated origin, wrong terminal
-    result, and wrong Goto source. The companion generic theory proves the
-    positive construction laws; these witnesses make the exact guards
-    reviewable without asking an evaluation oracle to certify them.
-    """
-    theory_path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Construction_Regression.thy"
+    """Retain exact DAG fixtures and the generic compact coverage negatives."""
+    root = isabelle_root(repository_root())
+    instance = root / "families/comma/comma_semantic_b1_instance"
+    publication = (instance / "Comma_Semantic_B1_Occurrence_Publication.thy").read_text(
+        encoding="utf-8"
     )
-    source = theory_path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, theory_path)
+    dag = (instance / "semantic_b1_crt_apply_dag.ML").read_text(encoding="utf-8")
+    local_path = (
+        root / "families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Local_Cover.thy"
+    )
+    candidate_path = local_path.with_name(
+        "Comma_Semantic_B1_CRT_Local_Cover_Candidate.thy"
+    )
+    local = {
+        item.name: item
+        for source_path in (local_path, candidate_path)
+        for item in extract_isabelle_declarations(
+            source_path.read_text(encoding="utf-8"), source_path
+        )
     }
-    assert "imports Comma_Semantic_B1_CRT_Constructed_Occurrence" in source
-    fixtures = (
-        "comma_semantic_b1_crt_fixture_swapped_parent_wellformed",
-        "comma_semantic_b1_crt_fixture_swapped_parent_partition",
-        "comma_semantic_b1_crt_fixture_swapped_parent_beta_distinct",
-        "comma_semantic_b1_crt_fixture_swapped_parent_phase_one_lookup",
-        "comma_semantic_b1_crt_fixture_rejects_swapped_parent_label",
-        "comma_semantic_b1_crt_group_fold_fixture_valid",
-        "comma_semantic_b1_crt_group_fold_rejects_wrong_parent",
-        "comma_semantic_b1_crt_group_fold_rejects_wrong_rebase",
-        "comma_semantic_b1_crt_group_fold_rejects_wrong_piece_destination",
-        "comma_semantic_b1_crt_group_fold_rejects_foreign_cid",
-        "comma_semantic_b1_crt_malformed_column_rejected_by_admission",
-        "comma_semantic_b1_crt_constructed_occurrence_bound_rejects_piece_omission",
-        "comma_semantic_b1_crt_constructed_occurrence_bound_rejects_piece_multiplicity",
-        "comma_semantic_b1_crt_piece_matches_rejects_wrong_terminal_result",
-        "comma_semantic_b1_crt_piece_matches_rejects_wrong_goto_source",
+
+    assert (
+        "#check_fixtures (Comma_Semantic_B1_CRT_Apply_DAG.make @{context} "
+        "fixture_authority) ()" in " ".join(publication.split())
     )
-    assert all(name in declarations for name in fixtures)
-    for name in fixtures:
-        assert declarations[name].command == "lemma"
-    for name in fixtures[-4:-2]:
-        assert "assumes" not in declarations[name].body
-        assert "Comma_Near 9 0 19" in declarations[name].body
-    assert "by eval" not in source
-    assert "Thm_Deps.all_oracles @{thms" in source
-    for name in fixtures:
-        assert name in source.split("Thm_Deps.all_oracles @{thms", 1)[1]
+    assert "known_column = K false" in publication
+    fixture_dispatch = dag.split("fun check_fixtures () =", 1)[1].split(
+        "in\n      {convert = convert", 1
+    )[0]
+    production_fixture = (
+        instance / "semantic_b1_crt_apply_dag_production_fixture.ML"
+    ).read_text(encoding="utf-8")
+    assert (
+        "Comma_Semantic_B1_CRT_Apply_DAG_Production_Fixture.check_owner_fixtures"
+        in fixture_dispatch
+    )
+    fixture_body = production_fixture.split("fun check_owner_fixtures", 1)[1]
+    for negative_or_authority_case in (
+        "valid_theorem exact forged",
+        "not (Option.isSome malformed)",
+        "wrong_result_binding",
+        "changed_shift",
+        "changed_column",
+        "wrong_parent_rebase",
+        "wrong_child_net_shift",
+    ):
+        assert negative_or_authority_case in fixture_body
+    assert "null (Thm_Deps.all_oracles [theorem])" in fixture_body
+    assert "Comma_Semantic_B1_CRT_Apply_DAG_Production_Fixture.check" in dag
+    for checked_case in (
+        "warm_no_recursion = after_warm_recursive = after_recursive",
+        "warm_hit = after_warm_hits > before_hits",
+        "first_no_fallback = after_fallbacks = before_fallbacks",
+        "first_no_rejection = after_rejections = before_rejections",
+        "null (Thm_Deps.all_oracles [first])",
+        "if all_checks",
+    ):
+        assert checked_case in production_fixture
+    for name in (
+        "comma_semantic_b1_crt_lift_local_cover_rejects_truncated_refs",
+        "comma_semantic_b1_crt_lift_local_cover_candidate_matches",
+    ):
+        assert name in local
+        assert (
+            name
+            in candidate_path.read_text(encoding="utf-8").split(
+                "Thm_Deps.all_oracles @{thms", 1
+            )[1]
+        )
 
 
 def test_static_code_preparation_excludes_generated_catalogue_constants() -> None:
@@ -527,7 +329,6 @@ def test_static_code_preparation_excludes_generated_catalogue_constants() -> Non
     primitive_roots = construction.split("val occurrence_cache_generic_constants =", 1)[
         1
     ].split("val ", 1)[0]
-    assert "comma_semantic_b1_crt_constructed_piece_matches" not in checker
     assert (
         "consts = filter_out (member (op =) operation_roots) "
         "Comma_Semantic_B1_Construction_Check.occurrence_cache_generic_constants"
@@ -545,7 +346,9 @@ def test_static_code_preparation_excludes_generated_catalogue_constants() -> Non
         assert generated not in primitive_roots
 
 
-def test_certificate_source_reset_clears_unconsumed_contexts() -> None:
+def test_certificate_source_reset_clears_source_bindings_and_retains_lift_proofs() -> (
+    None
+):
     path = (
         isabelle_root(repository_root())
         / "families/comma/comma_semantic_b1_instance"
@@ -559,9 +362,10 @@ def test_certificate_source_reset_clears_unconsumed_contexts() -> None:
         "slots",
         "slot_validity",
         "bindings",
-        "pending_template_context",
     ):
         assert f"{table} := Termtab.empty" in reset
+    for table in ("templates", "lifts", "lift_bindings"):
+        assert f"{table} := Inttab.empty" not in reset
 
 
 def test_b1_certificate_store_scopes_cid_proofs_and_consumes_action_rows() -> None:
@@ -597,8 +401,19 @@ def test_b1_certificate_store_scopes_cid_proofs_and_consumes_action_rows() -> No
     assert "val selected_equation_capacity = 8192" in store
     assert "selected_equations_reused=" in store
     assert "fun rewrite_lift_geometry ctxt context request cterm =" in store
-    assert "Simplifier.rewrite (context addsimps [theorem]) cterm" in store
-    assert "fun lift_context" not in store
+    assert "make_lift_geometry_from_binding ctxt request" in store
+    assert "fun selected_catalogue_equation context rules request =" in store
+    assert "Simplifier.rewrite (context addsimps rules)" in store
+    assert (
+        "comma_semantic_b1_crt_lift_geometry_from_binding_and_template_geometry"
+        in store
+    )
+    assert (
+        "#rewrite_lift_binding certificate_store ctxt\n"
+        "                          (require_operation_context ()) request cterm"
+        in checker
+    )
+    assert "(memo_proc (require_operation_context ()))" in checker
     assert "List.all Comma_Selected_List_Conversion.closed catalog_terms" in store
     assert (
         "val templates = Unsynchronized.ref (Inttab.empty: thm Inttab.table)" in store
@@ -635,11 +450,10 @@ def test_b1_certificate_store_scopes_cid_proofs_and_consumes_action_rows() -> No
     ):
         assert f"root_args {parameter} request" in store
         assert f"{parameter} = @{{const_name {head}}}" in store
-    assert "pending_template_context" in store
-    assert (
-        "template_context_lookups=" in store
-        and "template_context_requests_completed=" in store
-    )
+    assert "lift_binding_proofs_reused=" in store
+    assert "lift_binding_cold_evaluations=" in store
+    assert "binding_counts_before_warm = (1, 0)" in fixtures
+    assert "binding_counts_after_warm = (1, 1)" in fixtures
     assert "forged_columns" in fixtures and "forged_root_rejected" in fixtures
     assert "foreign_theorem_has_descendant_provenance" in fixtures
     assert "foreign_theorem_is_exact_kernel_equation" in fixtures
@@ -713,19 +527,19 @@ def test_occurrence_certificate_assembles_indexed_facts_without_catalogue_rewrit
     checker = (root / "semantic_b1_occurrence_check_cache.ML").read_text(
         encoding="utf-8"
     )
-    indexed = checker.split(
-        "fun prove_list_all prove_selected context predicate range =", 1
-    )[1].split("fun prove_expression", 1)[0]
+    construction = (root / "semantic_b1_construction_check.ML").read_text()
+    indexed = construction.split("fun prove_indexed_list_all", 1)[1].split(
+        "fun check_helper_fixtures", 1
+    )[0]
+    assert "Construction_Check.prove_indexed_list_all" in checker
+    assert "successor_equation = #equation indexed_successors" in checker
     assert (
-        "Comma_Semantic_B1_Construction_Check.prove_beta_item ctxt prove_selected "
+        "prove_beta_item ctxt prove_selected "
         "(predicate $ Comma_Semantic_B1_CRT_Operation_Conversion.natural_numeral index)"
         in " ".join(indexed.split())
     )
     assert "Comma_Selected_List_Conversion.prove_indexed_list_all" in indexed
-    assert "Construction_Check.indexed_extent_contract predicate upper" in " ".join(
-        indexed.split()
-    )
-    construction = (root / "semantic_b1_construction_check.ML").read_text()
+    assert "indexed_extent_contract predicate upper" in " ".join(indexed.split())
     assert "val _ = check_indexed_extent_regressions ()" in construction
     assert "not (indexed_extent_admitted 1025 unrelated_extent)" in construction
     assert "not (indexed_extent_admitted 1025 forged_extent)" in construction
@@ -807,7 +621,7 @@ def test_occurrence_certificate_assembles_indexed_facts_without_catalogue_rewrit
     assert "comma_semantic_b1_crt_published" not in checker
     dispatch = checker.split("fun prove_expression small_upt context expression =", 1)[
         1
-    ].split("val definition", 1)[0]
+    ].split("val _ = construction_handler :=", 1)[0]
     assert "HOLogic.dest_bin" in dispatch
     assert "HOLogic.dest_conj" not in dispatch
     assert 'predicate aconv @{term "comma_crt_admitted (0::nat)"}' in dispatch
@@ -815,7 +629,8 @@ def test_occurrence_certificate_assembles_indexed_facts_without_catalogue_rewrit
     assert "val prove_table_admission = #prove_all_columns_admitted columns" in checker
     assert "then prove_table_admission ()" in dispatch
     assert "head_name range = SOME @{const_name upt}" in dispatch
-    assert "prove_list_all (prove_expression small_upt context)" in dispatch
+    assert "Construction_Check.prove_indexed_list_all" in dispatch
+    assert "prove_selected = prove_expression small_upt context" in dispatch
     assert "else prove_true_using small_upt context expression" in dispatch
     selector = (
         isabelle_root(repository_root())
@@ -955,7 +770,7 @@ def test_b1_terminal_projection_consumes_the_selected_endpoint_once() -> None:
     assert "else comma_source_continuation_action_of_packet" in equation
 
 
-def test_origin_sort_and_beta_item_fixtures_are_in_the_kernel_path() -> None:
+def test_beta_item_fixture_is_in_the_kernel_path() -> None:
     root = (
         isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
     )
@@ -968,22 +783,5 @@ def test_origin_sort_and_beta_item_fixtures_are_in_the_kernel_path() -> None:
     assert "Thm.equal_elim (Thm.symmetric proposition_eq) body_proof" in helper
     assert "standalone body_proof" in helper
     assert "B1 beta item prover accepted a theorem for another item" in helper
-    assert "B1 origin quicksort fixture lost order or multiplicity" in helper
-    assert "B1 origin literal-spine admission failed" in helper
-    assert "B1 origin quicksort eagerly accepted a symbolic list" in helper
-    literal_guard = helper.split("fun literal_origins", 1)[1].split(
-        "fun identity_key", 1
-    )[0]
-    assert "remaining > 0" in literal_guard
-    assert "spine (remaining - 1) tail" in literal_guard
-    assert "HOLogic.dest_list" not in literal_guard
-    conversion = helper.split("fun make_origin_sort_proc", 1)[1].split(
-        "fun check_helper_fixtures", 1
-    )[0]
-    assert "not (literal_origins values)" in conversion
-    assert "Conv.rewr_conv quicksort_rule cterm" in conversion
-    assert "validate_equation" in conversion
-    assert "list.case_cong_weak" in conversion
-    assert "old.prod.case_cong_weak" in conversion
-    assert "delsimps @{thms case_prod_beta}" in conversion
-    assert "Code_Simp.static_conv" not in conversion
+    assert "val wrong_callback = Exn.capture" in helper
+    assert "prove_beta_item_with_body" in helper

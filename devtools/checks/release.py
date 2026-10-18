@@ -17,6 +17,16 @@ from pathlib import Path
 from types import FrameType
 from uuid import uuid4
 
+from devtools.checks.isabelle_session_watchdog import (
+    SESSION_DURATION as _SESSION_DURATION,
+)
+from devtools.checks.isabelle_session_watchdog import SESSION_NAME as _SESSION_NAME
+from devtools.checks.isabelle_session_watchdog import (
+    SESSION_STATUS as _SESSION_STATUS,
+)
+from devtools.checks.isabelle_session_watchdog import (
+    IsabelleSessionWatchdog,
+)
 from devtools.checks.process_guard import (
     DEADLINE_ENV,
     MEMORY_BUDGET_ENV,
@@ -75,13 +85,7 @@ P0 = (
     "tests/validation/research/collatz/test_harmonic_ports.py",
 )
 ACCEPTANCE_ROOT_ENV = "NUMBER_COMPILER_ACCEPTANCE_ROOT"
-_SESSION_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
-_SESSION_STATUS = re.compile(
-    r"^\s*(Running|Building|Finished|Failed|FAILED|Unfinished)\s+"
-    r"([A-Za-z0-9_][A-Za-z0-9_.+-]*)(?:\s|\(|$)"
-)
 _UNFINISHED_LIST = re.compile(r"^\s*Unfinished session\(s\):\s*(.+)$")
-_SESSION_DURATION = re.compile(r"\((\d+:\d{2}:\d{2}(?:\.\d+)?) elapsed time")
 
 
 def _git_revision_stable(
@@ -233,6 +237,29 @@ def _isabelle_environment_command(
     return (executable, "env", *assignments, executable, *arguments)
 
 
+def _profile_log_path(run: EvidenceRun) -> tuple[str | None, bool]:
+    """Resolve COMMA_PROFILE_LOG, reserving a fresh run-local file for ``1``.
+
+    Explicit nonempty values remain caller-owned paths.  The sentinel ``1``
+    requests an exclusive file under this evidence run so timeout diagnostics
+    can be inspected even if the guarded process is terminated.
+    """
+    setting = os.environ.get("COMMA_PROFILE_LOG", "")
+    if not setting:
+        return None, False
+    if setting != "1":
+        return setting, True
+    for _attempt in range(32):
+        path = run.path / f"isabelle-profile-{uuid4().hex}.log"
+        try:
+            with path.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            continue
+        return str(path), True
+    raise FileExistsError("could not reserve a fresh Isabelle profile log")
+
+
 def _session_build_summary(
     text: str, inventory: tuple[str, ...], *, succeeded: bool
 ) -> dict[str, object]:
@@ -307,6 +334,7 @@ def execute(
     acceptance: bool = False,
     pytest_run: bool = False,
     record_fields: Mapping[str, object] | None = None,
+    progress_watchdog: IsabelleSessionWatchdog | None = None,
 ) -> bool:
     before = git_source(run.root).as_dict()
     generation = uuid4().hex
@@ -340,6 +368,7 @@ def execute(
         environment=environment,
         active_test_path=active_path if pytest_run else None,
         active_test_timeout=PYTHON_TEST_SECONDS if pytest_run else None,
+        progress_watchdog=progress_watchdog,
     )
     after = git_source(run.root).as_dict()
     git_revision_stable = _git_revision_stable(before, after)
@@ -360,6 +389,8 @@ def execute(
         "proof_generation": generation,
         **(record_fields or {}),
     }
+    if progress_watchdog is not None:
+        record["session_watchdog"] = progress_watchdog.report()
     if active_path.is_file():
         try:
             record["active_test_at_termination"] = json.loads(
@@ -509,6 +540,7 @@ def pytest_suite(
     ):
         return False
     xml = run.path / f"{suite}.xml"
+    evidence_detail: object = "JUnit manifest and outcomes match"
     try:
         if suite == "all":
             report = validate_serial_release(
@@ -520,6 +552,7 @@ def pytest_suite(
             )
             if not report["serial_time_gate_passed"]:
                 raise ValueError("full suite exceeds the 300-second limit")
+            evidence_detail = report
         else:
             validate_evidence(
                 xml,
@@ -532,9 +565,7 @@ def pytest_suite(
             {
                 "name": f"{suite}-evidence",
                 "outcome": "validated",
-                "detail": report
-                if suite == "all"
-                else "JUnit manifest and outcomes match",
+                "detail": evidence_detail,
             }
         )
     except (ValueError, OSError) as error:
@@ -642,13 +673,26 @@ def proofs(
         return False
     # Preserve the active theory in the log even if the external guard must
     # terminate Poly/ML before Isabelle can write its session database.
+    profile_path, profiling = _profile_log_path(run)
+    run.manifest["profile_path"] = profile_path
+    run.record(
+        {
+            "name": "proof-profile-configuration",
+            "outcome": "enabled" if profiling else "disabled",
+            "profile_path": profile_path,
+        }
+    )
     build = [executable, "build", "-v", "-b", "-j", str(ISABELLE_JOBS)]
     for option in ISABELLE_OPTIONS:
         build.extend(("-o", option))
     build.extend(selection)
+    build_environment: tuple[str, ...] = tool_environment[1:]
+    if profile_path is not None:
+        build_environment = (*build_environment, f"COMMA_PROFILE_LOG={profile_path}")
     command = _isabelle_environment_command(
-        executable, tool_environment[1:], tuple(build[1:])
+        executable, build_environment, tuple(build[1:])
     )
+    session_watchdog = IsabelleSessionWatchdog(inventory, ISABELLE_SESSION_SECONDS)
     completed = execute(
         run,
         "proofs",
@@ -659,8 +703,25 @@ def proofs(
             "session_inventory_count": len(inventory),
             "session_inventory": list(inventory),
             "project_dependency_session_count": len(closure),
+            "profile_path": profile_path,
+            "profile_enabled": profiling,
         },
+        progress_watchdog=session_watchdog,
     )
+    watchdog_report = session_watchdog.report()
+    timed_out_session = watchdog_report["timed_out_session"]
+    if isinstance(timed_out_session, str):
+        run.record(
+            {
+                "name": "proof-session-duration-gate",
+                "outcome": "failed",
+                "session": timed_out_session,
+                "elapsed_seconds": watchdog_report["timed_out_elapsed_seconds"],
+                "limit_seconds": ISABELLE_SESSION_SECONDS,
+                "detail": "A live Isabelle session exceeded its wall-clock limit",
+            }
+        )
+        return False
     build_log = run.path / "proofs.log"
     try:
         summary = _session_build_summary(

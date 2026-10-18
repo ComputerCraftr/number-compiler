@@ -62,6 +62,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
         ReverseAddTemporalRingBank,
     )
+    from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
+        CertifiedReverseAddSeedMorphism,
+    )
 
 
 def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
@@ -307,6 +310,30 @@ class ReverseAddPoweredTerm:
         if (self.seed, self.generation, self.base) != self._binding:
             raise ValueError("reverse/add term source/action binding changed")
         return self._source_workspace().certified_temporal_ring_bank(start, count)
+
+    def temporal_seed_orbit_morphism(
+        self, steps: int, *, start: int = 1
+    ) -> CertifiedReverseAddSeedMorphism:
+        """Exact pointed Q19 temporal source-root action with joined ring ports.
+
+        This uses bounded real Q19 T2/T4 transitions, not an unproved
+        fast dyadic Q19 cone, or a hypothetical repeated inlet word.
+        """
+        from .temporal_seed_morphism import certified_reverse_add_seed_morphism
+
+        return certified_reverse_add_seed_morphism(self, steps, start=start)
+
+    def temporal_seed_orbit_morphism_power_of_two(
+        self, exponent: int, *, start: int = 1
+    ) -> CertifiedReverseAddSeedMorphism:
+        """Repeatedly square an actual source-root action, not an input word."""
+        exponent = require_integer(exponent, "temporal exponent", 0)
+        if exponent > 24:
+            raise ValueError("no unrestricted fast dyadic Q19 operator is certified")
+        result = self.temporal_seed_orbit_morphism(1, start=start)
+        for _ in range(exponent):
+            result = result.square()
+        return result
 
     def temporal_residue99(self) -> ReverseAddResidue99:
         """Predict mod-99 without initializing the Q19 source workspace."""

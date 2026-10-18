@@ -105,7 +105,7 @@ def uniform_control(length: int) -> Sequence[Runs]:
     if type(length) is not int or length <= 0:
         raise ValueError(length)
     runs: Runs = ((2, length),)
-    rows = [runs]
+    rows: list[Runs] = [runs]
     for _ in range(4):
         runs, _growth = run_successor(runs)
         rows.append(runs)

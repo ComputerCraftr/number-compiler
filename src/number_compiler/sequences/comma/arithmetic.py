@@ -483,6 +483,26 @@ def entry_headroom(
     return transfer, headroom
 
 
+def _phase_prefix_displacement_from_transfer(
+    transfer: CycleTransfer, steps: int
+) -> int:
+    """Apply an internally constructed transfer to a bounded digit tail.
+
+    The public scalar wrapper below and the source-bound C1 constructor pass
+    only values they have already validated. Keep checks at those boundaries
+    so this shared arithmetic primitive does not rebuild cycle metadata.
+    """
+    leading = transfer.leading
+    entering_digit = transfer.entering_digit
+    period = transfer.period
+    complete, tail = divmod(steps, period)
+    displacement = complete * transfer.displacement if complete else 0
+    return displacement + sum(
+        10 * ((entering_digit + index * leading) % 10) + leading
+        for index in range(tail)
+    )
+
+
 def phase_prefix_displacement(leading: int, entering_digit: int, steps: int) -> int:
     """Exact displacement along an admitted fixed-sector phase orbit.
 
@@ -492,27 +512,10 @@ def phase_prefix_displacement(leading: int, entering_digit: int, steps: int) -> 
     only the incomplete tail of small residue terms is evaluated, independently
     of the decimal scale and requested run length.
     """
-    if (
-        type(leading) is not int
-        or not 1 <= leading <= 9
-        or type(entering_digit) is not int
-        or not 0 <= entering_digit <= 9
-        or type(steps) is not int
-        or steps < 0
-    ):
+    if type(steps) is not int or steps < 0:
         raise ValueError("invalid comma phase prefix")
-    divisor = gcd(leading, 10)
-    period = 10 // divisor
-    complete, tail = divmod(steps, period)
-    displacement = (
-        complete * _cycle_displacement(leading, entering_digit, divisor, period)
-        if complete
-        else 0
-    )
-    return displacement + sum(
-        10 * ((entering_digit + index * leading) % 10) + leading
-        for index in range(tail)
-    )
+    transfer = cycle_transfer(leading, entering_digit)
+    return _phase_prefix_displacement_from_transfer(transfer, steps)
 
 
 def punctured_digit_port(

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
@@ -171,13 +172,16 @@ class ReversePublisherProjection:
         certificate.validate(effect)
         if certificate.family != "reverse-add":
             raise ValueError("reverse publisher requires a reverse-add certificate")
-        if certificate.output_encoding not in ("digits", "pair"):
+        if certificate.output_encoding == "digits":
+            output_encoding: Literal["digits", "pair"] = certificate.output_encoding
+        elif certificate.output_encoding == "pair":
+            output_encoding = certificate.output_encoding
+        else:
             raise ValueError(
                 "reverse publisher certificate has another output encoding"
             )
         base = certificate.base
         pair_steps = certificate.steps
-        output_encoding = certificate.output_encoding
         if type(source_geometry) is not SourceGeometry:
             raise TypeError("reverse publisher requires exact source geometry")
         if source_geometry.ledger is not ledger:

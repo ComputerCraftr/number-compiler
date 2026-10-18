@@ -186,12 +186,19 @@ def audit_ledger_slp_payloads(
             else 0
         )
         try:
-            nodes = arena.nodes
-            memos = (arena._term, arena._cat, arena._rep)
+            nodes = arena._nodes_store
+            memos = (arena._term_store, arena._cat_store, arena._rep_store)
             if type(nodes) is not LedgerList or any(
                 type(memo) is not OwnedMemo for memo in memos
             ):
                 raise AttributeError("SLP arena has a foreign retained store")
+            if (
+                arena.nodes is not nodes
+                or arena._term is not arena._term_store
+                or arena._cat is not arena._cat_store
+                or arena._rep is not arena._rep_store
+            ):
+                raise AttributeError("SLP arena has a rebound public store")
             owners = (nodes.owner, *(memo.owner for memo in memos))
             stores: tuple[object, ...] = (
                 nodes,

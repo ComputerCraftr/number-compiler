@@ -61,12 +61,17 @@ class FormulaRoot:
         return (self.width + 1) // 2
 
 
-def canonical_root_key(root: FormulaRoot) -> tuple[int, tuple[int, ...]]:
+def canonical_root_key(
+    root: FormulaRoot, arena: FormulaArena | None = None
+) -> tuple[int, tuple[int, ...]]:
     """Arena-local canonical key for one exact positional formula root.
 
     Every compiler/view cache should key semantic arguments through this helper
     instead of inventing structural aliases or materialized fingerprints.
     """
+    if arena is not None:
+        for plane in root.planes:
+            arena.require_owned(plane)
     return root.width, tuple(p.id for p in root.planes)
 
 

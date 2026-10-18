@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.arithmetic.functions.finite_function_types import FinitePort
+from number_compiler.arithmetic.functions.finite_function_types import (
+    FinitePort,
+    SemanticFunctionID,
+)
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprID,
@@ -110,6 +113,8 @@ class SemanticAdmissionPayloadRegistry:
                 continue
             for key, value in finite_store._data.items():
                 accepted = False
+                function: object = None
+                port: object = None
                 try:
                     if (
                         type(key) is not _FiniteLiftKey
@@ -131,7 +136,8 @@ class SemanticAdmissionPayloadRegistry:
                     )
                     expected = compiler._atom_sort(key.target)
                     accepted = (
-                        semantic.handle(function)
+                        type(function) is SemanticFunctionID
+                        and semantic.handle(function)
                         and type(port) is FinitePort
                         and port == expected_port
                         and compiler.functions.signature(function).inputs == (port,)

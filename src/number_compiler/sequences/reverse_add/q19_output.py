@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
         ReverseAddTemporalRingBank,
     )
+    from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
+        Q19WordFiber,
+    )
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import (
@@ -167,6 +170,14 @@ class ReversePairQ19OutputOwner:
             self._issued = OwnedMemo[tuple[int, int], ReversePairOutputOccurrence](
                 ledger, self._issued_owner, nodes_per_entry=1
             )
+            self._word_fibers_owner = ledger.register(
+                prefix + "-word-fibers", "observation_memo"
+            )
+            self._word_fibers: OwnedMemo[
+                tuple[int, int, int], tuple[Q19WordFiber, tuple[object, ...]]
+            ] = OwnedMemo(
+                ledger, self._word_fibers_owner, nodes_per_entry=32, evictable=True
+            )
             self._issuance_registry = Q19IssuanceRegistry(self, ledger, prefix)
             self._border_certificates_owner = (
                 self._issuance_registry.border_certificates.owner
@@ -209,6 +220,7 @@ class ReversePairQ19OutputOwner:
                 self._spatial_bank_windows,
                 self._temporal_ring_banks,
                 self._diagonal_comparisons,
+                self._word_fibers,
             )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
@@ -218,11 +230,12 @@ class ReversePairQ19OutputOwner:
 
     def _register_payload_audit_contract(self) -> None:
         self._audit_nodes = self.arena.nodes
-        self._audit_terms = self.arena._term._data
-        self._audit_concats = self.arena._cat._data
-        self._audit_repeats = self.arena._rep._data
+        self._audit_terms = self.arena._term_store._data
+        self._audit_concats = self.arena._cat_store._data
+        self._audit_repeats = self.arena._rep_store._data
         self._audit_summaries = self._summaries._data
         self._audit_issued = self._issued._data
+        self._audit_word_fibers = self._word_fibers._data
         self._audit_border_certificates = self._border_certificates._data
         self._audit_controlled_gt_banks = self._controlled_gt_banks._data
         self._audit_spatial_bank_windows = self._spatial_bank_windows._data
@@ -275,6 +288,11 @@ class ReversePairQ19OutputOwner:
                     self._issued_owner,
                     "_audit_issued",
                     "reverse_pair_output_occurrence",
+                ),
+                PayloadAuditStoreBinding(
+                    self._word_fibers_owner,
+                    "_audit_word_fibers",
+                    "observation_memo",
                 ),
                 PayloadAuditStoreBinding(
                     self._border_certificates_owner,
@@ -342,6 +360,7 @@ class ReversePairQ19OutputOwner:
             self._spatial_bank_windows,
             self._temporal_ring_banks,
             self._diagonal_comparisons,
+            self._word_fibers,
         )
         if len(self._binding) != len(current) or any(
             original is not bound
@@ -942,6 +961,7 @@ class ReversePairQ19OutputOwner:
         if not self._dispose_resources_complete:
             cleanup: list[Callable[[], object]] = [
                 self._unregister_payload_audit_contract,
+                self._word_fibers.dispose,
                 self._issued.dispose,
                 self._diagonal_comparisons.dispose,
                 self._temporal_ring_banks.dispose,

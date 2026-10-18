@@ -135,6 +135,10 @@ separate signal alarms or reset the test deadline.
 Isabelle uses four prover threads, `parallel_proofs=1`, `timeout_scale=1`, and one
 building session (`-j 1`). Java has a 1-GiB maximum; Poly/ML has a 4-GiB maximum.
 One dependency-aware build applies the native 300-second timeout to each session.
+The process guard also times each inventory-admitted session from its build-start
+event, so delayed native cancellation cannot use the orchestration allowance.
+Repeated start events do not reset that clock. Timeout evidence names the session
+and records descendant cleanup; interrupted or incomplete builds are failures.
 The outer orchestration fail-safe is `300 × (dependency-session count + 1)`,
 using Isabelle’s native graph including installed session dependencies; it never extends a session deadline. Select sessions with repeated
 `--session SESSION`, or omit them for the aggregate build. Reused heaps are reported

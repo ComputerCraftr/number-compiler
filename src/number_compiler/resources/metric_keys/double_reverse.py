@@ -206,6 +206,12 @@ DOUBLE_REVERSE_BIRTH_LAYER_STRIP_STEPS: Final = "double_reverse_birth_layer_stri
 DOUBLE_REVERSE_BIRTH_LAYER_MODEL_STATES: Final = (
     "double_reverse_birth_layer_model_states"
 )
+DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS: Final = (
+    "double_reverse_birth_layer_induction_rows"
+)
+DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS: Final = (
+    "double_reverse_birth_layer_period_comparisons"
+)
 DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS: Final = (
     "double_reverse_birth_layer_publications"
 )

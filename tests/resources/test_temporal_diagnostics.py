@@ -113,6 +113,26 @@ def test_macro_snapshot_preserves_actual_counts_and_unavailable_state(
     assert report.application.exact_hits is None
 
 
+def test_conditional_scheduler_work_is_snapshot_only_and_family_scoped() -> None:
+    counters = {"collatz_physical_action_publications": 1}
+    assert _collect(counters).family_work[0].conditional_scheduler_work is None
+    counters.update(
+        collatz_conditional_scheduler_certified_actions=1,
+        collatz_conditional_scheduler_powered_returns=128,
+        collatz_conditional_scheduler_physical_ticks=576,
+    )
+    before = dict(counters)
+    assert dict(_collect(counters).family_work[0].conditional_scheduler_work or ()) == {
+        "certified_actions": 1,
+        "powered_returns": 128,
+        "physical_ticks": 576,
+    }
+    assert counters == before
+    del counters["collatz_physical_action_publications"]
+    counters["antihydra_arithmetic_action_publications"] = 1
+    assert _collect(counters).family_work[0].conditional_scheduler_work is None
+
+
 def test_guarded_templates_do_not_count_as_applied_occurrences() -> None:
     record = _collect(
         {

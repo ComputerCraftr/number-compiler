@@ -341,43 +341,43 @@ def admit_boundary_macro_plan(
     family = state.candidate_family
     identity: BoundaryActionIdentity
     if family == ENTRY_421 and source > 4:
-        identity, valuation, period = ENTRY_421, state.demand_v2_affine(1, -4), 3
+        identity = ENTRY_421
     elif family == ENTRY_4721:
-        identity, valuation, period = ENTRY_4721, state.demand_v2_affine(1, 2), 4
+        identity = ENTRY_4721
     elif family == ENTRY_0563:
-        identity, valuation, period = ENTRY_0563, state.demand_v2_affine(1, 2), 4
+        identity = ENTRY_0563
     elif family in ENTRY_26847_PHASES:
-        phase = ENTRY_26847_PHASES.index(family)
-        identity, valuation, period = (
-            family,
-            state.demand_v2_affine(13, -(1 << (4 - phase))),
-            5,
-        )
+        identity = family
     elif family == PATH_630:
-        identity, period = PATH_630, 1
-        maximum = v2_positive(3 * ((source - 6) // 20) + 1)
+        identity = PATH_630
     elif family == PATH_305:
-        identity, period = PATH_305, 1
-        maximum = v2_positive(3 * ((source - 3) // 10) + 1)
+        identity = PATH_305
     elif family == ENTRY_89_AT_NINE:
-        identity, period = ENTRY_89_AT_NINE, 2
-        maximum = int(state.demand_v2_affine(1, 1))
+        identity = ENTRY_89_AT_NINE
     else:
         return None
-    if identity in (ENTRY_421, ENTRY_4721, ENTRY_0563):
-        maximum = (valuation - 1) // 2
-        repetitions = min(maximum, (available_physical_ticks - 1) // period)
+
+    if identity == ENTRY_421:
+        maximum = (state.demand_v2_affine(1, -4) - 1) // 2
+        repetitions = min(maximum, (available_physical_ticks - 1) // 3)
+    elif identity in (ENTRY_4721, ENTRY_0563):
+        maximum = (state.demand_v2_affine(1, 2) - 1) // 2
+        repetitions = min(maximum, (available_physical_ticks - 1) // 4)
     elif (boundary_phase := boundary_macro_26847_phase(identity)) is not None:
+        valuation = state.demand_v2_affine(13, -(1 << (4 - boundary_phase)))
         maximum = (boundary_phase + valuation - 1) // 4
-        repetitions = min(
-            maximum, (available_physical_ticks + boundary_phase - 1) // period
-        )
+        repetitions = min(maximum, (available_physical_ticks + boundary_phase - 1) // 5)
     elif identity == PATH_630:
+        maximum = v2_positive(3 * ((source - 6) // 20) + 1)
         repetitions = min(maximum, available_physical_ticks - 3)
     elif identity == PATH_305:
+        maximum = v2_positive(3 * ((source - 3) // 10) + 1)
         repetitions = min(maximum, available_physical_ticks - 2)
-    else:
+    elif identity == ENTRY_89_AT_NINE:
+        maximum = int(state.demand_v2_affine(1, 1))
         repetitions = min(maximum, available_physical_ticks // 2)
+    else:
+        return None
     if repetitions < minimum_repetitions:
         return None
     return AdmittedBoundaryMacroPlan._issue(

@@ -28,6 +28,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.contracts.semantic_identity import (
     SemanticIdentity,
     SemanticIdentityDomain,
+    SemanticIdentityValidator,
 )
 from number_compiler.arithmetic.functions.finite_port_action import (
     FinitePortActionArena,
@@ -41,10 +42,10 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
     LocalSymmetryWitness,
     PrimitiveBehaviorQuotient,
     PrimitiveBehaviorWork,
-    capture_primitive_behavior,
+    _capture_primitive_behavior,
+    _minimize_primitive_behavior,
     certify_local_symmetry,
     identity_symmetry,
-    minimize_primitive_behavior,
     primitive_behavior_table_slots,
 )
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
@@ -481,6 +482,7 @@ class DiamondKernelArena:
             reservations.append((self._behavior_owner, 1, 1))
             reservations.append((self._symmetry_owner, 1, 1))
         self.ledger.reserve_many(tuple(reservations))
+        identity_validator: SemanticIdentityValidator | None = None
         try:
             # Primitive domains are immutable values and may be shared by the
             # effect implementation or by CPython's tuple constants.  The
@@ -496,15 +498,23 @@ class DiamondKernelArena:
             behavior: PrimitiveBehaviorQuotient | None = None
             symmetry: CertifiedLocalSymmetry | None = None
             if has_runtime_behavior:
-                source = SemanticIdentity(
+                identity_validator = SemanticIdentityValidator()
+                source = SemanticIdentity._from_validator(
                     SemanticIdentityDomain.PRIMITIVE_BEHAVIOR,
-                    ("primitive-behavior", _effect_key(effect)),
+                    ("primitive-behavior", key),
+                    identity_validator,
                 )
                 work = PrimitiveBehaviorWork()
                 try:
-                    behavior = minimize_primitive_behavior(
-                        capture_primitive_behavior(raw_kernel, source),
+                    table = _capture_primitive_behavior(
+                        raw_kernel,
+                        source,
+                        validator=identity_validator,
+                    )
+                    behavior = _minimize_primitive_behavior(
+                        table,
                         work=work,
+                        validator=identity_validator,
                     )
                 finally:
                     self.ledger.bump(
@@ -520,6 +530,8 @@ class DiamondKernelArena:
                     if symmetry_witnesses is None
                     else certify_local_symmetry(behavior, symmetry_witnesses)
                 )
+            if identity_validator is not None:
+                identity_validator.finish()
             kernel = PrimitiveKernel(
                 effect,
                 raw_kernel.left,
@@ -529,6 +541,8 @@ class DiamondKernelArena:
                 self.family_hooks,
             )
         except BaseException:
+            if identity_validator is not None:
+                identity_validator._discard()
             for owner, entries, nodes in reversed(reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_QUOTIENT_FAILURES)

@@ -236,7 +236,7 @@ def digit_value_masks(
 ) -> tuple[Expr, ...]:
     if root.plane_count != spec.plane_count:
         raise ValueError((root.plane_count, spec.plane_count))
-    key = ("digit-value-masks", spec.base, canonical_root_key(root))
+    key = ("digit-value-masks", spec.base, canonical_root_key(root, arena))
     cached = arena.metadata_get(key)
     if isinstance(cached, tuple) and len(cached) == spec.base:
         return cached
@@ -343,7 +343,7 @@ def compile_digit_transducer(
     monoid = expected_monoid
     cache_key = (
         "digit-transduction",
-        canonical_root_key(root),
+        canonical_root_key(root, arena),
         spec.base,
         canonical_transducer_key(transducer),
     )

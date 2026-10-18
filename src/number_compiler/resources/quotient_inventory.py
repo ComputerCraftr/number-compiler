@@ -46,6 +46,7 @@ def audit_quotient_arena(
     for index, signature_record in enumerate(root._signatures):
         valid = type(signature_record) is MacroInterface
         retained: object = None
+        signature_handle: PortSignatureID | None = None
         try:
             root._validate_interface(signature_record)
             signature_handle = PortSignatureID(
@@ -56,13 +57,14 @@ def audit_quotient_arena(
             retained = root._signature_keys.get(signature_record)
         except (TypeError, ValueError, IndexError, AttributeError):
             valid = False
-        if valid:
+        if valid and signature_handle is not None:
             approved.update((id(signature_record), id(signature_handle), id(retained)))
         else:
             invalid.add((root._signature_owner, id(signature_record)))
             all_valid = False
     for index, quotient_record in root._nodes.items():
         valid = type(quotient_record) is QuotientRecord
+        quotient_handle: LocalInterfaceID | None = None
         try:
             valid &= type(quotient_record.components) is MacroComponents
             root._validate_components(
@@ -73,7 +75,7 @@ def audit_quotient_arena(
             valid &= root._keys.get(quotient_record) == quotient_handle
         except (TypeError, ValueError, IndexError, KeyError, AttributeError):
             valid = False
-        if valid:
+        if valid and quotient_handle is not None:
             approved.update(
                 (
                     id(quotient_record),

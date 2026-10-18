@@ -184,7 +184,7 @@ class _IdentityAdapter:
 
     def temporal_before_context(
         self,
-        composite: object,
+        action: object,
         before: object,
         original_ports: object,
         wiring: object,
@@ -193,7 +193,7 @@ class _IdentityAdapter:
 
     def temporal_after_context(
         self,
-        composite: object,
+        action: object,
         after: object,
         before_result: object,
         original_ports: object,
@@ -203,9 +203,9 @@ class _IdentityAdapter:
 
     def temporal_semantics(
         self,
-        composite: object,
-        before_result: object,
-        after_result: object,
+        action: object,
+        before: object,
+        after: object,
         original_ports: object,
         wiring: object,
     ) -> Never:

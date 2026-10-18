@@ -1,6 +1,7 @@
 theory Antihydra_Arithmetic_Cylinder_Lift
   imports Antihydra_Family_Iteration
     Shared_S_Arithmetic.Dyadic_Source_Lift
+    Shared_S_Arithmetic.Integer_Cylinder_Transport
 begin
 
 text \<open>The total Antihydra arithmetic recurrence is affine on every
@@ -88,6 +89,73 @@ corollary antihydra_family_minimum_cylinder_transport:
     antihydra_family_minimum r initial n"
   using antihydra_family_bits_cylinder_transport[of r n q]
   by (simp add: antihydra_family_minimum_def)
+
+theorem antihydra_family_integer_progression_transport:
+  "(\<lambda>q. int (antihydra_family_orbit (r + 2^n*q) n)) ` {..<count} =
+    integer_progression
+      (int (antihydra_family_orbit r n)) (int (3^n)) count"
+proof -
+  let ?denom = "(2::int)^n"
+  let ?gain = "(3::int)^n"
+  let ?offset =
+    "?denom * int (antihydra_family_orbit r n) - ?gain * int r"
+  have denominator: "0 < ?denom" by simp
+  have first:
+    "?gain * int r + ?offset =
+      ?denom * int (antihydra_family_orbit r n)"
+    by (simp add: algebra_simps)
+  have stride: "?gain * ?denom = ?denom * ?gain"
+    by (simp add: mult.commute)
+  have affine_image:
+    "(\<lambda>x. (?gain*x+?offset) div ?denom) `
+        integer_progression (int r) ?denom count =
+      integer_progression
+        (int (antihydra_family_orbit r n)) ?gain count"
+    by (rule integer_progression_affine_image[OF denominator first stride])
+  have source_progression:
+    "integer_progression (int r) ?denom count =
+      (\<lambda>q. int (r + 2^n*q)) ` {..<count}"
+    unfolding integer_progression_def
+    by (simp add: algebra_simps)
+  have pointwise:
+    "\<And>q. (?gain * int (r + 2^n*q) + ?offset) div ?denom =
+      int (antihydra_family_orbit (r + 2^n*q) n)"
+  proof -
+    fix q
+    have orbit:
+      "antihydra_family_orbit (r + 2^n*q) n =
+        antihydra_family_orbit r n + 3^n*q"
+      by (rule antihydra_family_orbit_cylinder_transport)
+    show "(?gain * int (r + 2^n*q) + ?offset) div ?denom =
+        int (antihydra_family_orbit (r + 2^n*q) n)"
+      using orbit by (simp add: algebra_simps)
+  qed
+  have actual_image:
+    "(\<lambda>q. int (antihydra_family_orbit (r + 2^n*q) n)) ` {..<count} =
+      (\<lambda>q. (?gain * int (r + 2^n*q) + ?offset) div ?denom) `
+        {..<count}"
+    by (rule image_cong) (use pointwise in auto)
+  have affine_parameterized:
+    "(\<lambda>q. (?gain * int (r + 2^n*q) + ?offset) div ?denom) `
+        {..<count} =
+      integer_progression
+        (int (antihydra_family_orbit r n)) ?gain count"
+    using affine_image source_progression
+    by (simp only: source_progression image_image)
+  show ?thesis
+    using actual_image affine_parameterized by simp
+qed
+
+corollary antihydra_family_safe_cylinder_transport:
+  assumes safe: "antihydra_block_safe r initial n"
+  shows "antihydra_block_safe (r + 2^n*q) initial n"
+    and "antihydra_family_balance (r + 2^n*q) initial n =
+      antihydra_family_balance r initial n"
+    and "antihydra_family_minimum (r + 2^n*q) initial n =
+      antihydra_family_minimum r initial n"
+  using safe antihydra_family_balance_cylinder_transport[of r n q]
+    antihydra_family_minimum_cylinder_transport[of r n q]
+  by (simp_all add: antihydra_block_safe_def)
 
 lemma ledger_word_delta_append:
   "ledger_word_delta (xs @ ys) =

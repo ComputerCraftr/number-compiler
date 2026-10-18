@@ -614,14 +614,14 @@ class PrimitiveTileKernelAdapter:
     def _parent_components(
         self,
         kernel: PrimitiveKernel,
-        left_interface: LocalInterfaceID,
-        right_interface: LocalInterfaceID,
+        left: LocalInterfaceID,
+        right: LocalInterfaceID,
     ) -> tuple[FactoredFunctionID, ...]:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
             _parent_components,
         )
 
-        return _parent_components(self, kernel, left_interface, right_interface)
+        return _parent_components(self, kernel, left, right)
 
     def _require_results(self) -> CompletedResultArena:
         if self.results is None:

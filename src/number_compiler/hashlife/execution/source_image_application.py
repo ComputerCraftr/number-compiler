@@ -240,6 +240,7 @@ def apply_source_image(
                         "source image children do not compose to their parent"
                     )
                 if isinstance(adapter, SourceBoundCompositeAdapter):
+                    composite_result: SourceImageID | None = None
                     with candidate_transaction():
                         composite_candidate = adapter.apply_composite(
                             frame.action, source_view, demand
@@ -256,6 +257,7 @@ def apply_source_image(
                                 split is not None,
                             )
                     if composite_candidate is not None:
+                        assert composite_result is not None
                         push_value(composite_result)
                         self.ledger.bump(
                             "source_image_composite_applications"

@@ -11,6 +11,7 @@ from typing import Self
 import pytest
 
 from number_compiler.api.comma_term import CommaTermPayload
+from number_compiler.resources.ledger import LedgerReservation
 from number_compiler.sequences.comma import certificates, future_provider, power
 from number_compiler.sequences.comma.future_authority import (
     registered_global_release_artifact_sha256,
@@ -292,11 +293,12 @@ def test_store_lifecycle_waits_for_an_inflight_load_and_revokes_its_lease(
 
         def hold_publication(
             provider: future_provider.SemanticFutureProvider,
+            reservation: LedgerReservation,
         ) -> future_provider.SemanticFutureProviderLease:
             entered_retain.set()
             if not release_retain.wait(timeout=5):
                 raise TimeoutError("test did not release the provider publication")
-            return retain(provider)
+            return retain(provider, reservation)
 
         def invalidate() -> None:
             lifecycle_started.set()

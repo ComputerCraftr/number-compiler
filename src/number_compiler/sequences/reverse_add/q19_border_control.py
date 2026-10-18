@@ -538,22 +538,80 @@ class CertifiedBorderGrowth:
                     continue
                 system.constrain_prefix(i, str(tile.high).zfill(tile.k))
                 system.constrain_suffix(i, str(tile.low).zfill(tile.k))
+                # If the issued tiles cover everything except the central
+                # 1/2 digits, their ORDERED exterior residue is exact. The
+                # Q19 pair-sum fold alone could not supply this orientation.
+                if widths[i] - 2 * tile.k in (1, 2):
+                    external = (
+                        tile.high * pow(10, widths[i] - tile.k, 99) + tile.low
+                    ) % 99
+                    system.constrain_exterior_residue99(i, external)
         if self.outer_pairs:
             for i, outer_pair in enumerate(self.outer_pairs[skip:]):
                 if outer_pair is None or i >= len(widths):
                     continue
                 system.constrain_digit(i, 0, outer_pair[0])
                 system.constrain_digit(i, widths[i] - 1, outer_pair[1])
-        # The mod-99 law is source-universal for actual reverse/add widths.
-        # Its restriction mod 9 and 11 is a *joint* CRT port, not an
-        # independent guessed harmonic. A too-large source stays unresolved.
+        # Join an AUTHENTICATED global Q19 SLP cochain to the same finite
+        # digits/carry/center solver. Do not read a large source's interior:
+        # the pair SLP gives its next reverse/add residue directly even when
+        # its even-width *current* residue cannot be recovered from pair sums.
+        # A later Q19 occurrence already represents that next integer.
+        residue: int | None = None
+        next_residue: int | None = None
         if digits is not None:
             residue = sum(d * pow(10, i, 99) for i, d in enumerate(digits)) % 99
-            for i, current_width in enumerate(widths):
-                for modulus in (9, 11, 99):
-                    system.constrain_residue(i, modulus, residue % modulus)
-                if i + 1 < len(widths):
-                    residue = residue * (2 if current_width & 1 else 11) % 99
+        elif max_modular_digits:
+            pair_sum99 = self.owner.radix19_cochain(self.source, z=10, modulus=99).pairs
+            if later:
+                residue = pair_sum99
+            elif w & 1:
+                residue = 50 * pair_sum99 % 99
+            # Even original-width pair sums lose the ordered mod-11 sign.
+            # They DO give X_1 exactly, without a source-digit scan.
+            else:
+                next_residue = pair_sum99
+        if max_modular_digits or digits is not None:
+            for t, width in enumerate(widths):
+                if residue is not None:
+                    for modulus in (9, 11, 99):
+                        system.constrain_residue(t, modulus, residue % modulus)
+                    # The modulo-198 lift needs one certified parity bit.
+                    # It is not another cyclotomic multiplication action.
+                    parity: int | None = None
+                    if t == 0:
+                        if digits is not None:
+                            parity = digits[0] % 2
+                        elif later:
+                            parity = self.owner.digit(self.source, 0) % 2
+                    else:
+                        phase = skip + t - 1
+                        if self.outer_pairs and phase < len(self.outer_pairs):
+                            outer_pair = self.outer_pairs[phase]
+                            if outer_pair is not None:
+                                hi, lo = outer_pair
+                                parity = (hi + lo) % 2
+                    if parity is not None:
+                        system.constrain_residue(
+                            t, 198, residue + 99 * ((parity - residue) % 2)
+                        )
+                if t + 1 < len(widths):
+                    if residue is not None:
+                        residue = residue * (2 if width & 1 else 11) % 99
+                    elif t == 0 and not later and w % 2 == 0:
+                        if next_residue is None:
+                            raise AssertionError("missing ordered next residue")
+                        residue = next_residue
+        # Correlate the issued K=1 and K>1 borders BEFORE the fixed point.
+        # This restores NC16's low carry <-> symmetric middle reset <-> high
+        # carry factor for every caller, not just the ring diagnostics.
+        coarse = self.bilateral_carry_ports()
+        windows = self.bilateral_window_ports()
+        for physical in range(skip, len(self.growth_word)):
+            t = physical - skip
+            for port in (coarse[physical], windows[physical]):
+                if port is not None and widths[t] >= 2 * port.source.k + 1:
+                    system.constrain_bilateral_port(t, port)
         return system
 
     def macro_conditioned_harmonics(

@@ -43,6 +43,11 @@ def _value(coordinates: tuple[int, int, int]) -> int:
     return alpha + 5 * beta + 10 * nu
 
 
+def _decimal_pair(value: int) -> tuple[int, int]:
+    quotient, remainder = divmod(value, 5)
+    return remainder, quotient
+
+
 @pytest.mark.algebra
 def test_decimal_factorization_is_bijective_but_carry_projection_is_not() -> None:
     states = {_coordinates(symbol) for symbol in range(19)}
@@ -71,9 +76,9 @@ def test_decimal_factorization_is_bijective_but_carry_projection_is_not() -> Non
 @pytest.mark.algebra
 def test_decimal_full_adder_and_exceptional_phase_are_exhaustive() -> None:
     for left, right in product(range(10), repeat=2):
-        coordinates = _combine(divmod(left, 5)[::-1], divmod(right, 5)[::-1])
+        coordinates = _combine(_decimal_pair(left), _decimal_pair(right))
         assert (
-            decimal_add_normalized(divmod(left, 5)[::-1], divmod(right, 5)[::-1])
+            decimal_add_normalized(_decimal_pair(left), _decimal_pair(right))
             == coordinates
         )
         assert coordinates != (4, 1, 1)

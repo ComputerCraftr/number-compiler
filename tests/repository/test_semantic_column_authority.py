@@ -136,14 +136,16 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert "fun lookup_tree cid ct" not in source
     assert "fun lookup_value cid" in source
     assert "Comma_Entry_Arithmetic.natural_context ctxt" in source
-    assert "fun controlled_lookup ctxt numeral_context lookup_rules visits" in source
-    controlled_lookup = source.split("fun controlled_lookup", 1)[1].split(
-        "fun make_template_projection", 1
+    assert (
+        "fun controlled_lookup ctxt numeral_context lookup_rules visits" in lookup_cache
+    )
+    controlled_lookup = lookup_cache.split("fun controlled_lookup", 1)[1].split(
+        "fun make_directory", 1
     )[0]
     assert "Conv.rewrs_conv lookup_rules" in controlled_lookup
-    assert "fun choose_if ct" in source
-    assert "fun open_selected_block ct" in source
-    assert "Conv.rewrs_conv lookup_rules (Thm.rhs_of opened)" in source
+    assert "val choose_selected_if = choose_closed_if" in controlled_lookup
+    assert "fun open_selected_block ct" in controlled_lookup
+    assert "Conv.rewrs_conv lookup_rules (Thm.rhs_of opened)" in controlled_lookup
     assert "fun make_directory ctxt numeral_context capacity" in lookup_cache
     assert "#lookup directory_lookup_cache" in source
     assert "val lookup_step = #lookup interval_lookup_cache lookup_visits" in source
@@ -185,11 +187,23 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     )[0]
     assert 'if side = "left" then lower else key + 1' in child_derivation
     assert 'if side = "left" then key else upper' in child_derivation
-    assert "interval_key child_lower child_upper" in child_derivation
-    assert child_derivation.index("Termtab.lookup") < child_derivation.index(
+    assert "cached_interval state child_lower child_upper" in child_derivation
+    assert child_derivation.index("cached_interval") < child_derivation.index(
         "val theorem = rule OF"
     )
-    assert "clean theorem" in child_derivation
+    assert "publish_interval state child_lower child_upper" in child_derivation
+    interval_publication = lookup_cache.split("fun publish_interval", 1)[1].split(
+        "fun interval_fact", 1
+    )[0]
+    assert interval_publication.index("checked_interval") < interval_publication.index(
+        "insert_completed"
+    )
+    interval_key = lookup_cache.split("fun interval_key (state: block_state)", 1)[
+        1
+    ].split("fun interval_proposition", 1)[0]
+    assert "#constant state" in interval_key
+    assert "nat lower" in interval_key and "nat upper" in interval_key
+    assert "#body" not in interval_key and "subtree" not in interval_key
     walk = interval_lookup.split("fun walk lower upper", 1)[1].split(
         "val result = walk base upper", 1
     )[0]
@@ -236,7 +250,7 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert "Comma_Semantic_B1_Column_Catalog.Directory_Branch" in lookup_regression
     assert "Comma_Semantic_B1_Column_Catalog.Directory_Block" in lookup_regression
     assert "fun check_generic_fixtures ctxt" in regression
-    assert "Conversion.normalize_lookup_rules ctxt" in lookup_regression
+    assert "Lookup.normalize_lookup_rules ctxt" in lookup_regression
     assert (
         '@{term "comma_semantic_b1_crt_template_column_ids ! index"}' not in regression
     )
@@ -306,10 +320,10 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert (
         "comma_semantic_b1_crt_columns_partition_certified_def" in partition_conversion
     )
-    assert "nth_row $ selected_source $ nat 0" in regression
-    assert "Construction_Piece_Projection.make_with_catalogue" in regression
-    assert "production_request" in regression
-    assert "outside_row_request" in regression
+    compact_publication = _column_source("Comma_Semantic_B1_Occurrence_Publication.thy")
+    assert "comma_semantic_b1_crt_compact_occurrence_check" in compact_publication
+    assert "comma_semantic_b1_crt_lift_refs" in compact_publication
+    assert "comma_semantic_b1_crt_lift_descriptors" in compact_publication
     assert "B1 Suc-level admission did not use the checked header" in regression
 
 
@@ -434,10 +448,8 @@ def test_publication_defines_bounded_blocks_and_canonical_cid_applications() -> 
         in artifact_batch
     )
     assert "lift_column_id_block_definitions @" in artifact_batch
-    assert (
-        "[lift_column_id_blocks_root_definition, lift_column_ids_root_definition] @"
-        in artifact_batch
-    )
+    assert "lift_column_id_blocks_root_definition" in artifact_batch
+    assert "lift_column_ids_root_definition" in artifact_batch
     lift_root = source.split("val lift_column_ids_definition", 1)[1].split(
         "fun define_global_definitions", 1
     )[0]
@@ -455,21 +467,23 @@ def test_publication_defines_bounded_blocks_and_canonical_cid_applications() -> 
     assert "HOLogic.mk_number natT row_count" in projection
     assert "B1 lift-column index exceeds its authenticated extent" in projection
     assert "Named selected-list child has an inconsistent row extent" in projection
-    assert "piece_source_definitions @" in artifact_batch
-    assert "construction_piece_refs_definition piece_sources" in artifact_batch
-    piece_root = source.split("fun construction_piece_refs_definition", 1)[1].split(
-        "val column_block_size", 1
-    )[0]
-    assert '"comma_semantic_b1_crt_construction_piece_refs"' in piece_root
-    assert "concatenate $" in piece_root
-    assert 'lookup_global_constant "piece-source directory" constants' in piece_root
-    assert "construction_piece_source_blocks_name" in piece_root
-    assert "construction_piece_source_block_size = 32" in source
-    piece_projection = _column_source("semantic_b1_construction_piece_projection.ML")
-    assert "blocks are foreign, missing, or reordered" in piece_projection
-    assert "actual_source_extents = child_row_extents" in piece_projection
-    assert "catalogue contains a noncanonical definition" in piece_projection
-    assert "construction_piece_refs_term" not in source
+    for artifact in (
+        'data "comma_semantic_b1_crt_descriptors"',
+        'data "comma_semantic_b1_crt_sources"',
+        'data "comma_semantic_b1_crt_lift_descriptors"',
+        'data "comma_semantic_b1_crt_lift_refs"',
+    ):
+        assert artifact in artifact_batch
+    assert '"comma_semantic_b1_crt_templates"' in artifact_batch
+    assert "Comma_Semantic_B1_Template_Constructor.make lthy" in source
+    occurrence_theory = _column_source("Comma_Semantic_B1_Occurrence_Publication.thy")
+    compact_check = occurrence_theory.split(
+        "definition comma_semantic_b1_crt_construction_check", 1
+    )[1].split("abbreviation comma_semantic_b1_crt_source_occurrence_bound", 1)[0]
+    assert "comma_semantic_b1_crt_compact_occurrence_check" in compact_check
+    assert "comma_semantic_b1_crt_lift_refs" in compact_check
+    assert "comma_semantic_b1_crt_lift_descriptors" in compact_check
+    assert "comma_semantic_b1_crt_occurrence_data_checked" in occurrence_theory
     assert '"comma_semantic_b1_crt_grouped_union_steps"' not in artifact_batch
     assert '"comma_semantic_b1_crt_grouped_union_start_ids"' not in artifact_batch
     assert "serialize_grouped_union_steps" not in source
@@ -622,51 +636,32 @@ def test_dag_stale_foreign_and_swapped_child_fixtures_are_mapped() -> None:
     assert "node_body aconv expected_node_body" in regression
 
 
-def test_b1_construction_checker_keeps_action_row_component_in_bound_order() -> None:
+def test_b1_construction_checker_proves_compact_occurrence_contract() -> None:
     root = isabelle_root(repository_root()) / "families/comma"
     checker = executable_text(
         (
             root / "comma_semantic_b1_instance/semantic_b1_construction_check.ML"
         ).read_text(encoding="utf-8")
     )
-    bounds_path = root / "comma_semantic_b1/Comma_Semantic_B1_CRT_Occurrence_Bounds.thy"
-    bounds = bounds_path.read_text(encoding="utf-8")
-    bound = bounds.split(
-        "definition comma_semantic_b1_crt_constructed_occurrence_bound", 1
-    )[1].split(
-        "lemma comma_semantic_b1_crt_constructed_occurrence_bound_index_guards", 1
-    )[0]
-    labels_source = checker.split("val labels =", 1)[1].split("val components =", 1)[0]
-    labels = re.findall(r'"([^"\\]*)"', labels_source)
+    publication = _column_source("Comma_Semantic_B1_Occurrence_Publication.thy")
+    compact_path = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Compact_Refinement.thy"
+    )
+    compact = compact_path.read_text(encoding="utf-8")
 
-    assert labels == [
-        "source-normalization",
-        "source-admission",
-        "lift-reference-width",
-        "lift-slot-order",
-        "descriptor-width",
-        "piece-row-width",
-        "parent-descriptor-and-column-resolution",
-        "parent-binding",
-        "beta-nonempty",
-        "beta-distinct",
-        "source-action-row",
-        "lift-slots",
-        "goto-source-order",
-        "origin-multiplicity",
-        "group-geometry-and-piece-binding",
-    ]
-    action_row = (
-        "comma_semantic_b1_crt_source_slot_action_row_certified source period actions"
+    assert "@{thm comma_semantic_b1_crt_compact_occurrence_check_def}" in checker
+    assert 'val compact_step = time "compact-definition"' in checker
+    assert "fun prove_components []" in checker
+    assert "comma_semantic_b1_crt_compact_occurrence_check_exposes" in compact
+    assert "comma_semantic_b1_crt_lift_local_cover_witness" in compact
+    assert "comma_semantic_b1_crt_lift_local_cover_candidate_matches" in compact
+    assert "comma_semantic_b1_crt_compact_occurrences_candidate_matches" in (
+        publication
     )
-    action_slots = "list_all (comma_semantic_b1_crt_lift_slot_valid_from_actions"
-    piece_bindings = (
-        "comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions"
+    assert "comma_semantic_b1_crt_published_constructed_candidate_matches" in (
+        publication
     )
-    assert bound.count(action_row) == 1
-    assert bound.index("distinct beta") < bound.index(action_row)
-    assert bound.index(action_row) < bound.index(action_slots)
-    assert bound.index(action_slots) < bound.index(piece_bindings)
 
 
 def test_construction_counter_deltas_are_source_scoped() -> None:
@@ -726,9 +721,9 @@ def test_construction_counter_deltas_are_source_scoped() -> None:
     assert "source_action_proofs_reused=" in store
     assert "source_action_rows_captured=" in store
     assert "source_action_rows_reused=" in store
-    assert "template_context_lookups=" in store
-    assert "template_context_requests_completed=" in store
-    assert "template_context_consumed=" not in store
+    assert "lift_binding_proofs_captured=" in store
+    assert "lift_binding_proofs_reused=" in store
+    assert "lift_geometry_from_binding=" in store
     assert "Comma_Semantic_B1_Labelled_Zip.make ctxt" in checker
     assert "make_template_partition_profile ()" in checker
     assert "make_template_partition_checker_with_state" in partition

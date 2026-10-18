@@ -35,7 +35,7 @@ class _InterfaceEngine:
         self.child_calls = 0
 
     def interface(
-        self, _action: object, tile: TileID, _left: object, _right: object
+        self, action: object, tile: TileID, left: object, right: object
     ) -> CausalInterfacePayload:
         self.interface_calls += 1
         node = self.tiles.resolve(tile)
@@ -48,7 +48,7 @@ class _InterfaceEngine:
         )
 
     def child_states(
-        self, _action: object, _parent: object, left: object, right: object
+        self, action: object, parent: object, left: object, right: object
     ) -> tuple[tuple[object, object], tuple[object, object]]:
         self.child_calls += 1
         return ((left, right), (left, right))

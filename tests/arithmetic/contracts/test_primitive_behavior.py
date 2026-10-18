@@ -19,13 +19,18 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityDomain,
+    SemanticIdentityValidator,
+)
 from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
     PrimitiveKernel,
 )
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     LocalSymmetryWitness,
+    PrimitiveBehaviorKernel,
     PrimitiveBehaviorQuotient,
     PrimitiveBehaviorTable,
     PrimitiveBehaviorWork,
@@ -34,7 +39,7 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
     identity_symmetry,
     minimize_primitive_behavior,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
@@ -359,6 +364,136 @@ def test_behavioral_certificate_is_deeply_immutable_and_budgeted_before_capture(
     after = exhausted.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
     assert after.counters.get("primitive_output_evaluations", 0) == output_work
+
+
+def test_capture_rejects_forged_identity_without_repairing_its_digest() -> None:
+    identity = _identity("forged-before-capture")
+    object.__setattr__(identity, "digest", "forged")
+    with pytest.raises(ValueError, match="digest"):
+        capture_primitive_behavior(_TinyKernel(1, 1, 1), identity)
+    assert identity.digest == "forged"
+
+
+def test_capture_rejects_valid_identity_replacement_during_kernel_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity("stable-source")
+    replacement = SemanticIdentity("replacement", ("new-source-behavior",))
+    original_advance = _TinyKernel.advance
+    changed = False
+
+    def replace_identity(
+        kernel: _TinyKernel,
+        side: BoundarySide,
+        state: int,
+        symbol: int,
+    ) -> int:
+        nonlocal changed
+        if not changed:
+            object.__setattr__(identity, "behavior", replacement.behavior)
+            object.__setattr__(identity, "digest", replacement.digest)
+            changed = True
+        return original_advance(kernel, side, state, symbol)
+
+    monkeypatch.setattr(_TinyKernel, "advance", replace_identity)
+    with pytest.raises(ValueError, match="changed during audit"):
+        capture_primitive_behavior(_TinyKernel(1, 1, 1), identity)
+    assert changed
+    assert identity.behavior == replacement.behavior
+    assert identity.digest == replacement.digest
+
+
+def _assert_failed_admission(arena: DiamondKernelArena, before: LedgerSnapshot) -> int:
+    after_rejection = arena.ledger.inventory()
+    assert len(after_rejection) == len(before.inventory) + 2
+    assert all(item.entries == item.nodes == 0 for item in after_rejection[-2:])
+    assert arena._kernels == []
+    assert arena._kernel_ids == {}
+    assert (arena.ledger.entries, arena.ledger.nodes) == (before.entries, before.nodes)
+    return len(after_rejection)
+
+
+def _assert_admission_retry(
+    arena: DiamondKernelArena, effect: BaseBlockEffect, owner_count: int
+) -> None:
+    handle = arena.intern(effect)
+    assert arena.kernel(handle).effect == effect
+    assert len(arena.ledger.inventory()) == owner_count
+
+
+@pytest.mark.parametrize("field", ("digest", "behavior"))
+def test_intern_rejects_identity_mutation_during_capture_and_allows_retry(
+    field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.hashlife.interfaces.diamond_kernel as kernel_module
+
+    arena = DiamondKernelArena(ResourceLedger())
+    effect = BaseBlockEffect(2)
+    capture_helper_name = "_capture_primitive_behavior"
+    original_capture = cast(
+        Callable[..., PrimitiveBehaviorTable],
+        getattr(kernel_module, capture_helper_name),
+    )
+    captured: list[tuple[SemanticIdentity, str, tuple[object, ...]]] = []
+
+    def mutate_after_capture(
+        kernel: PrimitiveBehaviorKernel,
+        identity: SemanticIdentity,
+        *,
+        validator: SemanticIdentityValidator,
+    ) -> PrimitiveBehaviorTable:
+        table = original_capture(kernel, identity, validator=validator)
+        captured.append((identity, identity.digest, identity.behavior))
+        if field == "digest":
+            object.__setattr__(identity, "digest", "forged-during-capture")
+        else:
+            object.__setattr__(identity, "behavior", ("changed-during-capture",))
+        return table
+
+    before = arena.ledger.snapshot()
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            kernel_module, "_capture_primitive_behavior", mutate_after_capture
+        )
+        with pytest.raises(ValueError, match="changed during audit"):
+            arena.intern(effect)
+
+    owner_count = _assert_failed_admission(arena, before)
+    assert len(captured) == 1
+    identity, digest, behavior = captured[0]
+    object.__setattr__(identity, "digest", digest)
+    object.__setattr__(identity, "behavior", behavior)
+    _assert_admission_retry(arena, effect, owner_count)
+
+
+def test_poisoned_scoped_identity_constructor_rolls_back_and_allows_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arena = DiamondKernelArena(ResourceLedger())
+    effect = BaseBlockEffect(2)
+    before = arena.ledger.snapshot()
+
+    def poisoned_constructor(
+        cls: type[SemanticIdentity],
+        digest: str | SemanticIdentityDomain,
+        behavior: tuple[object, ...],
+        validator: SemanticIdentityValidator,
+    ) -> SemanticIdentity:
+        del cls, digest, behavior, validator
+        raise RuntimeError("poisoned scoped identity constructor")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            SemanticIdentity,
+            "_from_validator",
+            classmethod(poisoned_constructor),
+        )
+        with pytest.raises(RuntimeError, match="poisoned scoped identity"):
+            arena.intern(effect)
+
+    owner_count = _assert_failed_admission(arena, before)
+    _assert_admission_retry(arena, effect, owner_count)
 
 
 def test_powered_proof_machine_domain_cannot_enter_runtime_quotient() -> None:

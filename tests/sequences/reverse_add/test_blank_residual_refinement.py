@@ -17,7 +17,11 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReverseRightTransfer,
 )
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.block_kernel import (
+    BaseBlockEffect,
+    _BaseLeftState,
+    _BaseRightState,
+)
 from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceCellID,
@@ -48,14 +52,18 @@ def test_decimal_blank_pair_residual_is_left_idempotent_and_right_identity() -> 
     assert left_transfer.then(left_transfer) == left_transfer
 
     for state in left_states:
-        once = kernel.advance(BoundarySide.LEFT, state, blank)
-        twice = kernel.advance(BoundarySide.LEFT, once, blank)
+        once = cast(_BaseLeftState, kernel.advance(BoundarySide.LEFT, state, blank))
+        twice = cast(_BaseLeftState, kernel.advance(BoundarySide.LEFT, once, blank))
         assert left_transfer.apply(state) == once
         assert left_transfer.apply(once) == twice == once
         assert codec.decode_left(codec.encode_left(once)) == once
 
     for right_state in right_states:
-        assert kernel.advance(BoundarySide.RIGHT, right_state, blank) == right_state
+        advanced = cast(
+            _BaseRightState,
+            kernel.advance(BoundarySide.RIGHT, right_state, blank),
+        )
+        assert advanced == right_state
         assert right_transfer.apply(right_state) == right_state
 
 

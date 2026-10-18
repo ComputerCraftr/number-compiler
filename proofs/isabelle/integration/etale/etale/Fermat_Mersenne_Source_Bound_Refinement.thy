@@ -1,5 +1,5 @@
 theory Fermat_Mersenne_Source_Bound_Refinement
-  imports Main
+  imports Main Primary_Carry_Jet "Shared_S_Arithmetic.Integer_Cylinder_Transport"
 begin
 
 text \<open>
@@ -47,6 +47,111 @@ proof -
   show ?thesis
     unfolding fermat_inner_source_def
     by (simp only: exponent power_add power2_eq_square)
+qed
+
+text \<open>The temporal source action is the repeated application of the
+source-root square, not a square modulo a Fermat candidate.  This induction
+is the proof counterpart of reissuing each temporal endpoint from its exact
+source root.\<close>
+
+theorem fermat_inner_temporal_power:
+  "fermat_inner_source (t + k) = fermat_inner_source t ^ (2^k)"
+proof (induction k)
+  case 0
+  then show ?case by simp
+next
+  case (Suc k)
+  have step:
+    "fermat_inner_source (t + Suc k) = fermat_inner_source (t + k)^2"
+    using fermat_inner_square_step[of "t + k"] by simp
+  have exponent: "(2::nat) ^ Suc k = ((2::nat) ^ k) * 2"
+    by (simp add: mult.commute)
+  show ?case
+    by (simp only: step Suc.IH exponent power_mult)
+qed
+
+text \<open>The shared carry-normalization induction is the exact bridge from
+an integer square coefficient field to its emitted binary word.  The raw
+coefficient polynomial must be the actual full convolution; the theorem does
+not infer missing coefficients from a finite border.  With zero exterior
+carries, normalization preserves the source-root square, whose chronological
+successor is the next dyadic Fermat source root.\<close>
+
+theorem fermat_normalized_source_root_square:
+  fixes t L :: nat
+    and raw emitted carry :: "nat \<Rightarrow> int"
+  assumes raw_square:
+      "polynomial_prefix raw L 2 = int (fermat_inner_source t)^2"
+    and normalize:
+      "\<And>i. i < L \<Longrightarrow> raw i + carry i = emitted i + 2*carry (Suc i)"
+    and zero_initial_carry: "carry 0 = 0"
+    and zero_terminal_carry: "carry L = 0"
+  shows "polynomial_prefix emitted L 2 = int (fermat_inner_source (Suc t))"
+proof -
+  have carry_identity:
+    "polynomial_prefix raw L 2 - polynomial_prefix emitted L 2 =
+       (2-2) * polynomial_prefix (\<lambda>i. carry (Suc i)) L 2 -
+         carry 0 + carry L * 2^L"
+    by (rule carry_normalization_identity
+      [where a=raw and c=carry and r=emitted and L=L and z="(2::int)",
+        OF normalize])
+  have normalized_value:
+    "polynomial_prefix raw L 2 = polynomial_prefix emitted L 2"
+    using carry_identity zero_initial_carry zero_terminal_carry by simp
+  show ?thesis
+    using raw_square normalized_value fermat_inner_square_step[of t]
+    by (simp add: fermat_inner_source_def)
+qed
+
+text \<open>The producer's bounded integer cylinder is an exact progression.
+This family instance delegates affine transport to the shared geometry
+theorem, so its count and full stride are preserved together.\<close>
+
+lemma fermat_source_tripling_progression:
+  fixes first stride :: int and count :: nat
+  assumes positive_stride: "0 < stride"
+  shows "(\<lambda>x::int. 3*x) ` integer_progression first stride count =
+      integer_progression (3*first) (3*stride) count"
+    and "card ((\<lambda>x::int. 3*x) ` integer_progression first stride count) = count"
+proof -
+  have image:
+    "(\<lambda>x::int. (3*x + 0) div 1) ` integer_progression first stride count =
+      integer_progression (3*first) (3*stride) count"
+    by (rule integer_progression_affine_image
+      [where gain=3 and offset=0 and denominator=1
+        and target="3*first" and target_stride="3*stride"])
+      simp_all
+  show "(\<lambda>x::int. 3*x) ` integer_progression first stride count =
+      integer_progression (3*first) (3*stride) count"
+    using image by simp
+  have cardinal:
+    "card ((\<lambda>x::int. (3*x + 0) div 1) ` integer_progression first stride count) = count"
+    by (rule integer_progression_transport_preserves_count
+      [where gain=3 and offset=0 and denominator=1
+        and target="3*first" and target_stride="3*stride"])
+      (use positive_stride in auto)
+  show "card ((\<lambda>x::int. 3*x) ` integer_progression first stride count) = count"
+    using cardinal by simp
+qed
+
+lemma fermat_outer_source_clock_advance:
+  fixes t offset steps :: nat
+  shows "(3::nat)^(2^t + (offset + steps)) mod 9900 =
+    (3^(2^t + offset) * 3^steps) mod 9900"
+proof -
+  have exponent: "2^t + (offset + steps) = (2^t + offset) + steps"
+    by simp
+  show ?thesis by (simp only: exponent power_add)
+qed
+
+lemma fermat_outer_source_clock_dyadic_successor:
+  fixes t offset :: nat
+  shows "(3::nat)^(2^(Suc t) + offset) mod 9900 =
+    3^(2^t + (offset + 2^t)) mod 9900"
+proof -
+  have exponent: "(2::nat)^(Suc t) + offset = 2^t + (offset + 2^t)"
+    by (simp only: power_Suc; arith)
+  show ?thesis by (simp only: exponent)
 qed
 
 lemma four_power_is_dyadic_bound:
@@ -288,7 +393,11 @@ value "candidate_successor_residue Mersenne_Source 11 1"
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms fermat_inner_square_step four_power_is_dyadic_bound
+    @{thms fermat_inner_square_step fermat_inner_temporal_power
+      fermat_normalized_source_root_square
+      fermat_source_tripling_progression fermat_outer_source_clock_advance
+      fermat_outer_source_clock_dyadic_successor
+      four_power_is_dyadic_bound
       fermat_inner_source_bound mersenne_inner_trace_lower dyadic_bound_square
       mersenne_inner_trace_bound mersenne_inner_successor_gap
       low_radix_tripling_carry_split

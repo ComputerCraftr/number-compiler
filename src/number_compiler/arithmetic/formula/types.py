@@ -63,5 +63,13 @@ class FormulaStorage:
     _derived: dict[tuple[object, ...], Expr]
     _metadata: dict[tuple[object, ...], Any]
 
+    def require_owned(self, node: Expr) -> None:
+        """Authenticate an arena-local ID before it can address a memo slot."""
+        if type(node) is not Expr:
+            raise TypeError("formula operations require an owned expression")
+        key = (node.kind, node.width, tuple(arg.id for arg in node.args), node.param)
+        if self._nodes.get(key) is not node:
+            raise ValueError("formula expression belongs to another arena")
+
 
 __all__ = ["Expr", "RadixSpec"]

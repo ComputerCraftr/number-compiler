@@ -131,6 +131,7 @@ class FactoredTemporalPower(Generic[Cell]):
         memo = self._memo if complete else self._endpoint_memo
         while pending:
             cell, count, stage = pending.pop()
+            result: FactoredPowerBlock[Cell] | Cell | None = None
             key = cell, count
             found = memo.get(key)
             if found is not None:
@@ -197,6 +198,8 @@ class FactoredTemporalPower(Generic[Cell]):
                     else:
                         result, _ = self.carrier.successor(cell)
                     prefix = 1
+                if result is None:
+                    raise AssertionError("temporal base block produced no result")
                 for _ in range(prefix, count):
                     if complete:
                         output, _, action, emission = (
@@ -213,6 +216,8 @@ class FactoredTemporalPower(Generic[Cell]):
                 pending.append((cell, count, 1))
                 pending.append((cell, 1 << ((count - 1).bit_length() - 1), 0))
                 continue
+            if result is None:
+                raise AssertionError("temporal composition produced no result")
             if len(self._memo) + len(self._endpoint_memo) >= self.max_entries:
                 raise BlockContextBudgetExceeded(
                     "factored temporal execution cache exhausted"

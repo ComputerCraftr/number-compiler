@@ -53,6 +53,8 @@ from .temporal_residue_quotient import (
     decimal_residues_from_slp,
 )
 
+_PeriodicState = tuple[tuple[int, ...], tuple[int, ...], int, int, int]
+
 
 def _frame_at(
     state: tuple[tuple[int, ...], tuple[int, ...], int, int, int],
@@ -467,7 +469,7 @@ def certified_spatial_bank_morphism(
         )
 
     with ExitStack() as retained:
-        state = (left_pattern, right_pattern, 0, 0, phase)
+        state: _PeriodicState = (left_pattern, right_pattern, 0, 0, phase)
 
         def retain_state() -> None:
             if ledger is None:
@@ -479,12 +481,12 @@ def certified_spatial_bank_morphism(
             )
 
         retain_state()
-        states = [state]
+        states: list[_PeriodicState] = [state]
         if ledger is not None:
             ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES
             )
-        indices = {state: 0}
+        indices: dict[_PeriodicState, int] = {state: 0}
         cycle_begin: int | None = None
         cycle_size: int | None = None
         while len(states) <= depth:

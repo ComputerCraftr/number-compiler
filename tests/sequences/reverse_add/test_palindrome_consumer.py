@@ -12,6 +12,7 @@ from number_compiler.sequences.reverse_add.palindrome import (
     next_result_is_palindrome,
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.reverse_add_source_data import iterate_reverse_add
 from tests.support.reverse_cutover import assert_mirror_scratch_released
 
 
@@ -65,9 +66,7 @@ def test_powered_palindrome_streams_without_integer_or_point_reconstruction(
 def test_powered_palindrome_uses_one_charged_output_stream(
     seed: int, steps: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    expected = seed
-    for _ in range(steps):
-        expected += int(str(expected)[::-1])
+    expected = iterate_reverse_add(seed, steps)
     digits = str(expected)
     term = ReverseAddPoweredTerm(seed, steps)
 

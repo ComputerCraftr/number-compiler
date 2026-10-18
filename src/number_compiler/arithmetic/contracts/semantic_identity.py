@@ -53,6 +53,39 @@ class SemanticIdentity:
         object.__setattr__(self, "behavior", behavior)
         self.__post_init__()
 
+    @classmethod
+    def _from_validator(
+        cls,
+        digest: str | SemanticIdentityDomain,
+        behavior: tuple[object, ...],
+        validator: SemanticIdentityValidator,
+    ) -> SemanticIdentity:
+        """Construct an identity inside one caller-owned synchronous audit.
+
+        This private path shares the audit's union-DAG work while still
+        verifying and recording the newly constructed root. Public callers use
+        the regular constructor, which always starts an independent audit.
+        """
+        if cls is not SemanticIdentity:
+            raise TypeError("semantic identities cannot use a subclass constructor")
+        if type(digest) is SemanticIdentityDomain:
+            normalized_digest = digest.value
+        elif type(digest) is str:
+            normalized_digest = digest
+        else:
+            raise TypeError("semantic identity domain must be a named enum or string")
+        if type(behavior) is not tuple:
+            raise TypeError("semantic identity behavior must be an immutable tuple")
+        if type(validator) is not SemanticIdentityValidator:
+            raise TypeError("semantic identity construction requires an audit scope")
+        identity = object.__new__(cls)
+        object.__setattr__(identity, "digest", normalized_digest)
+        object.__setattr__(identity, "behavior", behavior)
+        canonical = validator._walk(identity, verify_root=False)
+        object.__setattr__(identity, "digest", canonical)
+        validator.validate(identity)
+        return identity
+
     def __post_init__(self) -> None:
         """Derive the digest and validate the immutable behavior structure."""
         object.__setattr__(self, "digest", self._canonical_digest())
@@ -151,6 +184,13 @@ class SemanticIdentityValidator:
             ):
                 self._failed = True
                 raise ValueError("semantic identity changed during audit")
+
+    def _discard(self) -> None:
+        """Drop all candidate snapshots when their enclosing construction fails."""
+        self._tuples.clear()
+        self._digests.clear()
+        self._identities.clear()
+        self._failed = True
 
     def _walk(
         self,

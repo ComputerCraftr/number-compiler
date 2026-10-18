@@ -19,14 +19,16 @@ from devtools.verification.comma_semantic_future_artifact import (
     CANDIDATE_TABLE_NAMES,
     assert_candidate_data_theory_matches,
     candidate_table_definitions,
+    canonical_candidate_bytes,
+    encode_unsigned_varints,
     runtime_candidate_bytes,
+    runtime_candidate_record_from_isabelle_data,
     runtime_candidate_sha256,
 )
 from devtools.verification.comma_semantic_future_candidate import (
     Control,
     _class_rank_candidate,
     _decode_unsigned_varints,
-    _encode_unsigned_varints,
     _reencode_candidate,
     _refine_with_witnesses,
     _render_candidate_data_theory,
@@ -83,11 +85,11 @@ def test_candidate_table_comparison_ignores_masked_ml_audit_suffix() -> None:
 
 def test_candidate_varint_map_round_trips_and_rejects_forged_values() -> None:
     ids = (0, 127, 128, 4715)
-    packed = _encode_unsigned_varints(ids, max_value=14783)
+    packed = encode_unsigned_varints(ids, max_value=14783)
     assert _decode_unsigned_varints(packed, max_values=4, max_value=14783) == ids
 
     with pytest.raises(ValueError):
-        _encode_unsigned_varints((True,), max_value=14783)
+        encode_unsigned_varints((True,), max_value=14783)
     with pytest.raises(ValueError):
         _decode_unsigned_varints(b"\x80\x80\x00", max_values=1, max_value=14783)
 
@@ -168,6 +170,15 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
     }
     payload = runtime_candidate_bytes(record)
     decoded = json.loads(payload)
+    assert set(decoded) == {
+        "format",
+        "authority",
+        "state_universe",
+        "class_of_state_varint_base64",
+        "controls",
+        "ordered_children",
+        "class_rank_candidate",
+    }
     assert decoded["format"] == future_provider.FUTURE_CANDIDATE_FORMAT
     assert decoded["authority"] == "untrusted-source-derived-candidate"
     assert runtime_candidate_sha256(record) == sha256(payload).hexdigest()
@@ -198,10 +209,6 @@ def test_runtime_candidate_hol_binding_checks_complete_source_map(
         "controls": [["landmine", None]],
         "ordered_children": [[None, None]],
         "class_rank_candidate": [0],
-        "refinement_rounds": 1,
-        "refinement_collision_witnesses": [],
-        "seam_is_projected_from_cid": True,
-        "seam_projection_collision": None,
     }
     checked_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
     checked_path.write_text(
@@ -298,13 +305,22 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
         == v1["class_of_state_varint_base64"]
     )
     assert base64.b64decode(runtime_record["class_of_state_varint_base64"]) == (
-        _encode_unsigned_varints(
+        encode_unsigned_varints(
             candidate.class_ids, max_value=len(candidate.states) - 1
         )
     )
     assert runtime_record["controls"] == v1["controls"]
     assert runtime_record["ordered_children"] == v1["ordered_children"]
     assert runtime_record["class_rank_candidate"] == v1["class_rank_candidate"]
+    assert (
+        not {
+            "refinement_rounds",
+            "refinement_collision_witnesses",
+            "seam_is_projected_from_cid",
+            "seam_projection_collision",
+        }
+        & runtime_record.keys()
+    )
     assert "theorem_id" not in runtime_record and "instance_id" not in runtime_record
 
     checked_hol = (
@@ -422,6 +438,71 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
         )
 
 
+def test_runtime_candidate_exports_authored_hol_tables_without_rebuilding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Data.thy"
+    )
+    source_text = source.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        "devtools.verification.comma_semantic_future_candidate.build_semantic_future_candidate",
+        _reject_candidate_rebuild,
+    )
+    record = runtime_candidate_record_from_isabelle_data(source_text, source)
+    assert future_provider.parse_future_candidate(
+        record, charge_work=lambda _amount: None
+    ).source_classes
+
+    output = tmp_path / "candidate-v2.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "comma-semantic-future-candidate",
+            "--output",
+            str(output),
+            "--from-isabelle-data",
+            str(source),
+        ],
+    )
+    candidate_main()
+    assert output.read_bytes() == canonical_candidate_bytes(record)
+    assert json.loads(output.read_text(encoding="ascii")) == record
+
+
+def test_runtime_candidate_hol_literal_parser_rejects_computed_or_changed_tables() -> (
+    None
+):
+    source = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Data.thy"
+    )
+    text = source.read_text(encoding="utf-8")
+    changed_type = text.replace(
+        'comma_semantic_future_candidate_ranks :: "nat option list"',
+        'comma_semantic_future_candidate_ranks :: "nat list"',
+        1,
+    )
+    with pytest.raises(ValueError, match="canonical literal list"):
+        runtime_candidate_record_from_isabelle_data(changed_type, source)
+
+    computed_map = text.replace(
+        "      1432, 1062, 1061,",
+        "      1432 + 0, 1062, 1061,",
+        1,
+    )
+    with pytest.raises(ValueError, match="nonliteral natural"):
+        runtime_candidate_record_from_isabelle_data(computed_map, source)
+
+
+def _reject_candidate_rebuild() -> object:
+    raise AssertionError("source export rebuilt arithmetic")
+
+
 def test_template_publication_uses_global_named_column_ids() -> None:
     root = (
         isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
@@ -460,7 +541,6 @@ def test_template_publication_uses_global_named_column_ids() -> None:
     assert "make_template_projection ctxt" in cache
     assert 'select "templates"' not in cache
     assert '"comma_semantic_b1_crt_lift_column_ids"' in publication
-    assert '"comma_semantic_b1_crt_construction_piece_refs"' in publication
     assert '"comma_semantic_b1_crt_grouped_union_steps"' not in publication
     assert '"comma_semantic_b1_crt_grouped_union_start_ids"' not in publication
     assert "union_trace" not in publication
@@ -623,28 +703,21 @@ def test_local_cover_checker_reuses_exact_requests_without_repainting_parents() 
     publication = (root / "Comma_Semantic_B1_Occurrence_Publication.thy").read_text()
     assert "28 * length comma_semantic_b1_crt_sources" in publication
     assert "lift_descriptor_table_valid" not in publication
-    # The duplicate concrete local-cover sweep moved into construction
-    # induction. Retain its source/result obligation through the theorem used
-    # by publication, rather than requiring the retired evaluator requests.
-    refinement = (
+    # Publication must retain source/result coverage through the compact
+    # theorem, independently of the physical certificate serialization.
+    compact_refinement = (
         proof_root
         / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Constructed_Refinement.thy"
+        / "Comma_Semantic_B1_CRT_Compact_Refinement.thy"
     ).read_text(encoding="utf-8")
-    assert "comma_semantic_b1_crt_group_piece_local_covered" in refinement
-    assert "comma_semantic_b1_crt_constructed_bound_lift_local_cover" in refinement
     assert (
-        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches" in refinement
+        "comma_semantic_b1_crt_compact_occurrences_candidate_matches"
+        in compact_refinement
     )
-    assert (
-        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches" in publication
-    )
-    assert "comma_semantic_b1_crt_group_construction_bound" in checker
-    assert (
-        "comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions"
-        in checker
-    )
-    assert "comma_semantic_b1_crt_constructed_piece_matches" in refinement
+    assert "comma_semantic_b1_crt_compact_occurrences_candidate_matches" in publication
+    assert "comma_semantic_b1_crt_compact_occurrence_check" in checker
+    assert "comma_semantic_b1_crt_lift_local_cover_witness" in compact_refinement
+    assert "comma_semantic_b1_crt_used_lift_bindings_checked" in publication
     assert "comma_semantic_b1_crt_local_cover_fixtures" in publication
     # B32 still consumes checked split actions; eliminating B1 reconstruction
     # must not remove this separate demanded conversion.

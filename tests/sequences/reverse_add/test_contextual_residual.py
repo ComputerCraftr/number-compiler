@@ -1,5 +1,6 @@
 """Contextual successor congruence, with physical carry derivation."""
 
+from collections.abc import Sequence
 from itertools import product
 
 import pytest
@@ -189,13 +190,21 @@ def test_complete_two_event_growth_alignment_chain_advances_without_source(
         arena.certify(closed[0], profile3, ports[0])
     extended = arena.compile_chain((*profiles, profile3), ports[0])
     assert len({arena.residual(extended[0], ports[0], i) for i in states}) == 5
+
+    def advance_row(row: tuple[int, ...]) -> tuple[int, ...]:
+        return pair_step(row, 10)[0]
+
+    def middle_symbol(row: Sequence[int]) -> int:
+        return row[1]
+
     for i in states:
         row: tuple[int, ...] = (i,)
         for _ in range(3):
-            row, _growth = pair_step(row, 10)
+            row = advance_row(row)
+        assert len(row) > 1
         binding = {ports[0].variable: i, ports[1].variable: 0}
         assert arena.bits.evaluate(third_edge, binding) == row[0]
-        assert arena.bits.evaluate(third_middle, binding) == row[1]
+        assert arena.bits.evaluate(third_middle, binding) == middle_symbol(row)
         assert arena.bits.evaluate(width3, binding) == len(row)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:

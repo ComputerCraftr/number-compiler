@@ -687,8 +687,17 @@ class MahlerOccurrenceConsumer:
                 type(found) is not tuple
                 or len(found) != 12
                 or any(type(part) is not int for part in found[:8])
+                or found[8] is not None
+                and type(found[8]) is not int
+                or any(type(part) is not int for part in found[9:])
             ):
                 raise TypeError("Mahler occurrence cache contains another record sort")
+            record_payload = cast(
+                tuple[
+                    int, int, int, int, int, int, int, int, int | None, int, int, int
+                ],
+                found,
+            )
             (
                 w,
                 r,
@@ -702,7 +711,7 @@ class MahlerOccurrenceConsumer:
                 b_hat,
                 c_hat,
                 publisher,
-            ) = found
+            ) = record_payload
             if type(publisher) is not int or publisher < 0:
                 raise TypeError("Mahler cached publisher must be a natural integer")
             self.count(

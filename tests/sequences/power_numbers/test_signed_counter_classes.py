@@ -161,7 +161,7 @@ def test_terminal_demand_consumes_absolute_signed_classes_without_promotion() ->
                 window.signed_fermat_correction
             )
             assert not window.covers_complete_unit_transition
-        assert demand.missing_proofs
+        assert all(demand.missing_proofs)
 
 
 def test_terminal_partial_classes_have_nonzero_missing_high_contribution() -> None:

@@ -1,5 +1,6 @@
 theory Comma_Semantic_Producer_Refinement
   imports Comma_Semantic_Fragment_Refinement
+    Comma_Semantic_Producer_Record_Refinement
 begin
 
 text \<open>This theory specifies the indexed producer's record writer over
@@ -118,66 +119,6 @@ definition comma_python_flush_near ::
     comma_python_sector_fragment list" where
   "comma_python_flush_near pending =
     (case pending of None \<Rightarrow> [] | Some fragment \<Rightarrow> [fragment])"
-
-definition comma_python_fragment_record_matches ::
-  "nat \<Rightarrow> comma_finite_position \<Rightarrow>
-    comma_finite_position \<Rightarrow> comma_chart_weight \<Rightarrow>
-    comma_python_sector_fragment \<Rightarrow> bool" where
-  "comma_python_fragment_record_matches p source successor weight fragment \<longleftrightarrow>
-    comma_weighted_step (p mod 924) source =
-      Comma_WNext successor weight \<and>
-    (case source of
-      Comma_Entry f delta offset \<Rightarrow>
-        fragment = comma_python_entry_sector_fragment f delta offset
-          (comma_finite_headroom f (p mod 924) delta offset)
-    | Comma_Near f delta headroom \<Rightarrow>
-        (\<exists>increment. comma_chart_value p successor =
-            comma_chart_value p source + increment \<and>
-          fragment = comma_python_literal_fragment f
-            (comma_chart_value p source mod 10) 1 increment)) \<and>
-    comma_python_fragment_weight_at_scale fragment (10 ^ p) =
-      int (comma_chart_weight_value p weight) \<and>
-    comma_python_fragment_displacement_at_scale fragment (10 ^ p) =
-      int (comma_chart_value p successor) - int (comma_chart_value p source)"
-
-text \<open>The relation above makes the local record payload explicit: a
-Near increment is a natural number witnessed by the endpoint equation, so
-the producer refinement does not cast a possibly negative displacement to
-`nat`.\<close>
-
-lemma comma_python_entry_record_matches:
-  fixes f p delta offset h :: nat
-  assumes f: "1 \<le> f" "f \<le> 9"
-    and exponent: "5 \<le> p"
-    and offset: "offset \<le> 98"
-  defines "h \<equiv> comma_finite_headroom f (p mod 924) delta offset"
-    and "P \<equiv> comma_finite_period f (offset mod 10)"
-    and "L \<equiv> comma_cycle_length f"
-    and "c \<equiv> (10 ^ (p + delta) - offset - h) div P"
-    and "source \<equiv> Comma_Entry f delta offset"
-    and "successor \<equiv> Comma_Near f delta h"
-    and "weight \<equiv> Comma_Chart_Weight L delta
-      (- int (L * (offset + h))) P"
-    and "fragment \<equiv> comma_python_entry_sector_fragment f delta offset h"
-  shows "comma_python_fragment_record_matches p source successor weight fragment"
-proof -
-  note fields = comma_python_entry_fragment_refines_chart_move
-    [OF f exponent offset, of delta]
-  have endpoint:
-    "comma_chart_value p successor =
-      comma_chart_value p source + c * P"
-    using comma_entry_chart_exact_literal_path(3)[OF f exponent offset,
-      of delta]
-    by (simp add: h_def P_def L_def c_def source_def successor_def)
-  have row_displacement:
-    "comma_python_fragment_displacement_at_scale fragment (10 ^ p) =
-      int (comma_chart_value p successor) - int (comma_chart_value p source)"
-    using fields(6) endpoint by (simp add: fragment_def P_def)
-  show ?thesis
-    using fields(1,5) row_displacement
-    by (simp add: comma_python_fragment_record_matches_def source_def
-        successor_def weight_def fragment_def h_def P_def L_def)
-qed
 
 lemma comma_python_near_record_matches:
   fixes f p delta headroom :: nat
@@ -427,6 +368,11 @@ inductive comma_python_writer_edge ::
   entry: "comma_python_fragment_record_matches p
       (Comma_Entry f delta offset) (Comma_Near f delta headroom) weight
       (comma_python_entry_sector_fragment f delta offset headroom) \<Longrightarrow>
+    comma_literal_path
+      (((10 ^ (p + delta) - offset - headroom) div
+          comma_finite_period f (offset mod 10)) * comma_cycle_length f)
+      (comma_chart_value p (Comma_Entry f delta offset))
+      (comma_chart_value p (Comma_Near f delta headroom)) \<Longrightarrow>
     comma_python_writer_edge p (Comma_Entry f delta offset)
       (Comma_Near f delta headroom) weight pending
       (comma_python_flush_near pending @
@@ -592,10 +538,17 @@ proof (cases source)
       (Comma_Chart_Weight ?L delta (- int (?L * (offset + ?h))) ?P)
       (comma_python_entry_sector_fragment f delta offset ?h)"
     by (rule comma_python_entry_record_matches[OF f exponent offset])
+  have c1_path:
+    "comma_literal_path
+      (((10 ^ (p + delta) - offset - ?h) div ?P) * ?L)
+      (comma_chart_value p (Comma_Entry f delta offset))
+      (comma_chart_value p (Comma_Near f delta ?h))"
+    by (rule comma_c1_powered_entry_chart_bridge(4)[OF f exponent offset,
+      where delta=delta])
   have edge: "comma_python_writer_edge p source successor weight old_pending
       (comma_python_flush_near old_pending @
         [comma_python_entry_sector_fragment f delta offset ?h]) None"
-    using record target weight Comma_Entry
+    using record c1_path target weight Comma_Entry
     by (intro comma_python_writer_edge.entry; simp)
   show thesis using edge Comma_Entry
     by (rule that[where emitted=

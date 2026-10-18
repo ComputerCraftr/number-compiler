@@ -133,6 +133,27 @@ theorem digit_terminal_symmetric_first_reset_carry:
   shows "carry_out c ss = digit_terminal_first_reset_carry c ss"
   using digit_terminal_first_reset_reverse_carry[of c ss] symmetric by simp
 
+lemma digit_terminal_first_reset_after_nines:
+  assumes "d \<noteq> 9"
+  shows "digit_terminal_first_reset_carry c (replicate k 9 @ d # tail) =
+    (10 \<le> d)"
+  using assms by (induct k) simp_all
+
+theorem digit_terminal_symmetric_reset_witness:
+  assumes symmetric: "rev ss = ss"
+      and witness: "ss = replicate k 9 @ d # tail"
+      and reset: "d \<noteq> 9"
+  shows "carry_out c ss = (10 \<le> d)"
+proof -
+  have first:
+    "digit_terminal_first_reset_carry c (replicate k 9 @ d # tail) =
+      (10 \<le> d)"
+    by (rule digit_terminal_first_reset_after_nines[OF reset])
+  show ?thesis
+    using digit_terminal_symmetric_first_reset_carry[OF symmetric]
+      first witness by simp
+qed
+
 corollary digit_terminal_valid_pair_first_reset_carry:
   assumes "valid_pair ss"
   shows "carry_out c ss = digit_terminal_first_reset_carry c ss"
@@ -301,6 +322,8 @@ ML \<open>
       digit_terminal_blank_emit_after_first
       digit_terminal_first_reset_reverse_carry
       digit_terminal_symmetric_first_reset_carry
+      digit_terminal_first_reset_after_nines
+      digit_terminal_symmetric_reset_witness
       digit_terminal_valid_pair_first_reset_carry
       digit_terminal_first_reset_all_nines})
     then () else error "Digit terminal refinement depends on an oracle";

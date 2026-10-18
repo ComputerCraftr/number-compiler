@@ -368,7 +368,7 @@ def _aggregate(
     timing: dict[str, dict[str, float | None]] = {
         name: dict(empty_timing) for name in _TIMING_FIELDS
     }
-    process_timing = dict(empty_timing)
+    process_timing: dict[str, float | None] = dict(empty_timing)
     if complete:
         without_time = [
             replace(

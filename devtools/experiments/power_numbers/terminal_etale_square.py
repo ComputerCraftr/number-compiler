@@ -539,6 +539,3 @@ def special_etale_tile_applicability_audit(
         False,
         "RESEARCH_ONLY" if not available else "AWAITING_TILE_FAMILY_CERTIFICATE",
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

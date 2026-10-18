@@ -116,6 +116,8 @@ def compile_formula_prefix_monoid(
     vector formulas; it never creates one Python node per spatial coordinate.
     """
     stage = tuple(local_masks)
+    for mask in stage:
+        arena.require_owned(mask)
     if len(stage) != monoid.size or not stage:
         raise ValueError((len(stage), monoid.size))
     width = stage[0].width
@@ -196,6 +198,7 @@ def compile_formula_prefix_predicate(
     predicate: Expr,
 ) -> FormulaPrefixPredicateProjection:
     """Compile a closed local predicate into an exact first-failure index."""
+    arena.require_owned(predicate)
     key = ("formula-prefix-predicate", predicate.id, predicate.width)
     cached = arena.metadata_get(key)
     if isinstance(cached, FormulaPrefixPredicateProjection):

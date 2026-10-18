@@ -457,24 +457,26 @@ def test_online_publication_checks_shape_and_all_goto_children() -> None:
     assert "comma_semantic_b1_crt_source_index" not in shape
     assert "List.find" not in shape
     construction = declarations["comma_semantic_b1_crt_construction_check"].body
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound" in construction
+    assert "comma_semantic_b1_crt_compact_occurrence_check" in construction
     construction_at = declarations["comma_semantic_b1_crt_construction_check_at"].body
     assert "list_all comma_semantic_b1_crt_construction_check" in construction_at
     assert 'shows "comma_semantic_b1_crt_construction_check index"' in construction_at
     indexed_total = declarations["comma_semantic_b1_crt_occurrence_at_index_total"].body
     assert "comma_semantic_b1_crt_construction_check_at" in indexed_total
-    assert (
-        "comma_semantic_b1_crt_constructed_occurrence_bound_parent_present"
-        in indexed_total
-    )
+    assert "comma_semantic_b1_crt_compact_occurrence_check_total" in indexed_total
     assert "comma_semantic_b1_crt_constructed_occurrence_bound_def" not in indexed_total
     entry = declarations["comma_semantic_b1_crt_root_entry_checked"].body
     assert "distinct" not in entry
     binding = declarations[
         "comma_semantic_b1_crt_root_occurrence_distinct_binding"
     ].body
-    assert "comma_semantic_b1_crt_construction_check_at" in binding
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound" in binding
+    assert "comma_semantic_b1_crt_root_entry_resolves_checked" in binding
+    root_bridge = declarations["comma_semantic_b1_crt_root_entry_resolves_checked"].body
+    assert 'checked: "comma_semantic_b1_crt_occurrence_data_checked"' in root_bridge
+    assert "comma_semantic_b1_crt_construction_check_at" in root_bridge
+    assert "comma_semantic_b1_crt_construction_check" not in entry
+    assert "comma_semantic_b1_crt_compact_occurrence_check_exposes" in binding
+    assert "comma_semantic_b1_crt_lift_local_cover_witness_def" in binding
     assert (
         'shows "distinct (comma_semantic_b1_crt_occurrence_beta occurrence)"' in binding
     )
@@ -482,7 +484,7 @@ def test_online_publication_checks_shape_and_all_goto_children() -> None:
         "comma_semantic_b1_crt_published_constructed_candidate_matches"
     ].body
     assert (
-        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches"
+        "comma_semantic_b1_crt_compact_occurrences_candidate_matches"
         in candidate_bridge
     )
     exact = declarations["comma_semantic_b1_crt_published_exact"].body
@@ -566,11 +568,14 @@ def test_candidate_occurrence_examples_are_executed_without_graph_discovery() ->
         path.parent / "Comma_Semantic_B1_Occurrence_Publication.thy"
     ).read_text(encoding="utf-8")
     bodies = ml_cartouches(publication)
-    assert any("Publication.check_candidate_examples ()" in body for body in bodies)
+    fixture_path = path.parent / "semantic_b1_publication_fixtures.ML"
+    fixture = executable_text(fixture_path.read_text(encoding="utf-8"))
+    assert "Publication.check_candidate_examples ()" in fixture
+    fixture_call = "Comma_Semantic_B1_Publication_Fixtures.check_candidate"
+    assert any(fixture_call in body for body in bodies)
     assert all("Template_Constructor.make" not in body for body in bodies)
-    assert publication.index(
-        "Publication.check_candidate_examples ()"
-    ) < publication.index("local_setup")
+    assert "Template_Constructor.make" not in fixture
+    assert publication.index(fixture_call) < publication.index("local_setup")
 
 
 def test_occurrence_fold_does_not_assume_a_child_physical_return_table() -> None:
@@ -661,7 +666,17 @@ def test_occurrence_checker_keeps_clock_quantifiers_out_of_execution() -> None:
         assert "occurrence_wellformed" not in body
         assert "candidate_matches" not in body
         assert "[0..<924]" not in body
-    assert "comma_semantic_b1_crt_lift_local_cover_candidate_matches" in declarations
+    candidate_path = path.with_name("Comma_Semantic_B1_CRT_Local_Cover_Candidate.thy")
+    candidate_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(
+            candidate_path.read_text(encoding="utf-8"), candidate_path
+        )
+    }
+    assert (
+        "comma_semantic_b1_crt_lift_local_cover_candidate_matches"
+        in candidate_declarations
+    )
     cover = declarations["comma_semantic_b1_crt_local_piece_covered"].body
     assert "comma_crt_supported" in cover
     assert "comma_crt_negate parent_column" in cover

@@ -148,7 +148,7 @@ def test_terminal_f4_f5_are_constrained_but_not_classified() -> None:
             assert b.allowed_middle_actions
             assert b.unknown_middle_length > 1000
             assert b.high_h5_options
-            assert b.low_h5
+            assert b.low_h5 == _carry_h5(b.low_carry_vector, 0)
         if n == 4 and t == 14:
             assert packet.decimal.forced_middle_action == (2, 2, 2)
         if n == 4 and t == 15:

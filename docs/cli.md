@@ -73,6 +73,21 @@ rendering an endpoint. Reverse/add predicts modulo 99; the certified 2rev10
 width clock predicts modulo 99 and 198. These scalar projections do not select
 future carry banks or authorize a full digit word.
 
+`reverse-add --info temporal.seed-orbit` reads the completed scheduler endpoint
+and its correlated center/carry ports for indices 2 through 4097. Width and
+digit consumers share that occurrence; this observation does not replay the
+trajectory. Its measured Q19 block count does not imply logarithmic temporal
+construction. `2rev10 --info temporal.seed-morphism` publishes the exact source
+entry and powered endpoint. Optional `--temporal-period-samples` requests a
+bounded center-window scan, controlled by `--temporal-period-stride`,
+`--temporal-period-depth` and `--temporal-period-max-lag`. The default sample
+count is zero. Finite matching windows never certify an infinite period.
+
+```sh
+number-compiler reverse-add --seed 196 --nth 64 --no-value --info temporal.seed-orbit --format json
+number-compiler 2rev10 --seed 196 --nth 128 --no-value --info temporal.seed-morphism --format json
+```
+
 `--info spatial.bank-morphism` emits a compressed output for an authenticated
 protected source region. Use `--spatial-pair-bank-position`,
 `--spatial-bank-morphism-count` and `--temporal-grammar-period`. For reverse/add,
@@ -144,6 +159,32 @@ finite source admission from unbounded repetition; an unclosed inlet cannot
 supply a future periodicity claim. Metrics and ordinary digit output do not
 automatically demand this observation.
 
+`--info temporal.matrix --temporal-matrix-steps N` requests a finite
+source-guarded transfer beginning at the selected term. `N` counts physical
+recurrence ticks, independently of the family's main query index unit. Pair
+transfers use `--temporal-matrix-pair-depth`. Packets explicitly identify pair
+coordinate order: reverse/add uses lower/LSD then upper/MSD; `2rev10` uses
+upper/MSD then lower/LSD. Reverse/add admits depths 1–12; `2rev10` admits
+1–16 and chooses bounded windows that fit its 18-pair causal halo. `2rev10`
+requires an even horizon because one internal paired action spans two physical
+ticks. Fermat carry transfers use `--temporal-matrix-digit-position`; their
+horizon counts ordinary tripling ticks on the selected terminal source, not
+successive Fermat indices. The Mahler center is selected from its source width. Coordinate kinds and admitted limits are declared by the family
+registry; two equally sized matrices need not have the same state space.
+
+The matrix is published directly under `info["temporal.matrix"]`, separately
+from `temporal.macro` and `arithmetic.mahler`. Its finite source and conditional
+relation are distinguished, and the packet itself conveys no execution or
+infinite-repetition authority. Ordinary output, temporal summaries and metrics
+never request these detailed matrix observations.
+
+`fermat --info number-theory.primality --ordered-carry-windows` adds fixed,
+ordered carry samples from the terminal physical-tripling source for Fermat
+indices 0–16. It uses bounded radix residues and source periods, without
+materializing the power of three or enumerating its period. This is an optional
+arithmetic projection: it does not certify the full square-carry cochain or
+change an unresolved primality result. Ordinary primality queries omit it.
+
 `2rev10 --info temporal.birth-layers` follows the canonical moving boundary
 through a finite source-issued suffix. `--spatial-bank-morphism-count` selects
 1–16 retained pairs and `--temporal-open-ring-lookback` selects at most 160
@@ -154,13 +195,13 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.stencil`, `spatial.bank-morphism` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.closed-form`, `temporal.residue99`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
-| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
+| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
-| `fermat` | `fermat_index` | — | `metrics`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
+| `fermat` | `fermat_index` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
 | `mersenne` | `mersenne_exponent` | — | `metrics`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
 <!-- cli-capabilities:end -->
 
@@ -199,7 +240,7 @@ a subquadratic cold-construction bound or cross-request reverse cache savings.
 Nondecimal fallback limits are unchanged. Guarded homogeneous/alternating
 interior formulas alone do not authorize a whole-integer endpoint.
 
-`--info temporal.matrix` reports endpoint-consistent innovation moments from
+`--info temporal.matrix --temporal-matrix-kind innovation` reports endpoint-consistent innovation moments from
 the completed decimal occurrence. With `--temporal-matrix-modulus M`, it folds the output
 grammar modulo M without constructing the exact endpoint integer.
 `--info temporal.stencil` explicitly requests the bounded five-band carry and
@@ -208,7 +249,7 @@ These observations do not authorize repeating a conditional source action.
 Neither runs for an ordinary value or metrics-only request.
 
 ```sh
-number-compiler reverse-add --seed 196 --nth 20 --no-value --info temporal.matrix --temporal-matrix-modulus 1009 --format json
+number-compiler reverse-add --seed 196 --nth 20 --no-value --info temporal.matrix --temporal-matrix-kind innovation --temporal-matrix-modulus 1009 --format json
 ```
 
 ## Antihydra arithmetic and physical observations

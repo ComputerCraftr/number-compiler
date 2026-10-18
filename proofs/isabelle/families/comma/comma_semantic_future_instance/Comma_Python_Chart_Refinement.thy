@@ -559,6 +559,40 @@ next
   qed
 qed
 
+theorem comma_python_scalar_chart_walk_to_first_terminal_walk:
+  assumes walk:
+    "comma_python_scalar_chart_walk p source moves outcome terminal"
+  shows "\<exists>events. comma_python_first_terminal_walk p source events
+    outcome terminal"
+  using walk
+proof (induction rule: comma_python_scalar_chart_walk.induct)
+  case (fork p source a delta move)
+  have result:
+    "comma_python_first_terminal_walk p source []
+      (Comma_Fork_At a delta) source"
+    by (rule comma_python_first_terminal_walk.fork[OF fork.hyps(1)])
+  show ?case using result by blast
+next
+  case (landmine p source delta move)
+  have result:
+    "comma_python_first_terminal_walk p source []
+      (Comma_Landmine_At delta) source"
+    by (rule comma_python_first_terminal_walk.landmine[OF landmine.hyps(1)])
+  show ?case using result by blast
+next
+  case (advance p source successor weight move moves outcome terminal)
+  obtain events where tail:
+      "comma_python_first_terminal_walk p successor events outcome terminal"
+    using advance.IH by blast
+  have result:
+    "comma_python_first_terminal_walk p source
+      (Comma_Python_Advance source successor weight # events)
+      outcome terminal"
+    by (rule comma_python_first_terminal_walk.advance
+      [OF advance.hyps(1) tail])
+  show ?case using result by blast
+qed
+
 theorem comma_python_decade_summary_scalar_chart_walk:
   fixes p :: nat
   assumes summary: "comma_decade_exact_summary s h terminal"
@@ -608,6 +642,7 @@ lemmas comma_python_chart_refinement_oracle_audit_bundle =
   comma_python_chart_cycle_guard_exact
   comma_python_scalar_chart_step_refines_entry
   comma_python_scalar_chart_step_refines_near
+  comma_python_scalar_chart_walk_to_first_terminal_walk
   comma_python_scalar_chart_step_refines
   comma_python_scalar_chart_step_preserves_admission
   comma_python_first_terminal_walk_to_scalar_chart_walk

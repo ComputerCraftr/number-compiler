@@ -126,3 +126,7 @@ TAPE_PROJECTION_CELLS: Final = "tape_projection_cells"
 MAHLER_SOURCE_BOUND_COMPOSITIONS: Final = "mahler_source_bound_compositions"
 MAHLER_SOURCE_BOUND_POWERS: Final = "mahler_source_bound_powers"
 MAHLER_RADIX_PORT_DEMANDS: Final = "mahler_radix_port_demands"
+
+MAHLER_CENTER_MATRIX_DEMANDS: Final = "mahler_center_matrix_demands"
+
+MAHLER_CENTER_MATRIX_PHYSICAL_STEPS: Final = "mahler_center_matrix_physical_steps"

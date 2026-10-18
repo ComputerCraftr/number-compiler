@@ -193,6 +193,10 @@ class CausalTileAPI:
         self._application = application
         try:
             if self._children(action) is None:
+                if type(left) is not int or type(right) is not int:
+                    raise TypeError(
+                        "primitive causal states require exact integer ports"
+                    )
                 key, completed = probe_causal_result(
                     self.scheduler.results,
                     action,

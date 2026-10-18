@@ -572,8 +572,12 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         self._check_open()
         if type(require_even_remainder) is not bool:
             raise TypeError("prefix parity selector must be Boolean")
-        limit = min(require_integer(max_prefix, "prefix limit", 0), 32, self.generation)
         engine = self._adapter.temporal_hashlife
+        limit = min(
+            require_integer(max_prefix, "prefix limit", 0),
+            engine.prefix_limit,
+            self.generation,
+        )
         cursor = engine.source_prefix()
         explored = 0
         if cursor is None:

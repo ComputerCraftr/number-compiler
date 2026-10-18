@@ -46,6 +46,12 @@ from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from tests.support.tile_kernel import join_four, powered_application
 
 
+def _primitive_adapter(adapter: object) -> PrimitiveTileKernelAdapter:
+    if type(adapter) is not PrimitiveTileKernelAdapter:
+        raise AssertionError("projection did not install the primitive tile adapter")
+    return adapter
+
+
 def _multiply(
     left: tuple[int, ...],
     right: tuple[int, ...],
@@ -435,8 +441,7 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
     ledger = ResourceLedger()
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
         application = projection._application
-        adapter = application.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
+        adapter = _primitive_adapter(application.scheduler.adapter)
         alphabet = adapter.alphabet(application.action)
         left_tile = adapter.tiles.leaf(alphabet, 7)
         right_tile = adapter.tiles.leaf(alphabet, 18)

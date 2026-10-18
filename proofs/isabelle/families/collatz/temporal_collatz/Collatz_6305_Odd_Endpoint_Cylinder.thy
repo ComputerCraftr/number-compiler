@@ -738,6 +738,58 @@ proof -
       [OF target_residue target_odd])
 qed
 
+text \<open>The zero-tail carry matrix uses the shifted source modulo 25,
+not merely the decimal border modulo 5. This is a conditional clock law for
+an admitted return; it does not authorize a future word from its residue.\<close>
+
+lemma collatz_6305_zero_tail_shifted_endpoint:
+  assumes admitted: "collatz_guarded_normalized_word_admitted
+    (collatz_6305_return_word 0) x"
+  shows "4 * (collatz_guarded_normalized_word_endpoint
+    (collatz_6305_return_word 0) x + 1) = 9 * (x + 1)"
+proof -
+  note affine = collatz_guarded_word_affine_endpoint[OF admitted]
+  note fields = collatz_6305_return_action_exact[of 0]
+  have "9*x + 5 = 4 * collatz_guarded_normalized_word_endpoint
+      (collatz_6305_return_word 0) x"
+    using affine fields by simp
+  then show ?thesis by arith
+qed
+
+lemma collatz_6305_zero_tail_mod25:
+  assumes admitted: "collatz_guarded_normalized_word_admitted
+    (collatz_6305_return_word 0) x"
+  shows "(collatz_guarded_normalized_word_endpoint
+    (collatz_6305_return_word 0) x + 1) mod 25 = (21*(x+1)) mod 25"
+proof -
+  let ?y = "collatz_guarded_normalized_word_endpoint
+    (collatz_6305_return_word 0) x"
+  have equation: "4*(?y+1) = 9*(x+1)"
+    by (rule collatz_6305_zero_tail_shifted_endpoint[OF admitted])
+  have scaled: "76*(?y+1) = 171*(x+1)"
+    using arg_cong[OF equation, where f="\<lambda>z. 19*z"]
+    by (simp only: algebra_simps)
+  have residue: "(76*(?y+1)) mod 25 = (171*(x+1)) mod 25"
+    by (rule arg_cong[OF scaled])
+  have left: "(76*(?y+1)) mod 25 = ((76 mod 25)*(?y+1)) mod 25"
+    by (rule mod_mult_left_eq[symmetric])
+  have right: "(171*(x+1)) mod 25 = ((171 mod 25)*(x+1)) mod 25"
+    by (rule mod_mult_left_eq[symmetric])
+  show ?thesis using residue left right by simp
+qed
+
+lemma collatz_6305_shifted_mod25_clock:
+  "((21::nat)^(k+5)*z) mod 25 = (21^k*z) mod 25"
+proof -
+  have period: "(21::nat)^5 mod 25 = 1" by simp
+  have "(21^(k+5)*z) mod 25 = (21^5*(21^k*z)) mod 25"
+    by (simp add: power_add mult.commute mult.left_commute mult.assoc)
+  also have "... = ((21^5 mod 25)*(21^k*z)) mod 25"
+    by (rule mod_mult_left_eq[symmetric])
+  finally have "(21^(k+5)*z) mod 25 = ((21^5 mod 25)*(21^k*z)) mod 25" .
+  then show ?thesis using period by simp
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_6305_repeat_weight_geometric_identity
@@ -751,7 +803,10 @@ ML \<open>
       collatz_6305_source_selects_admitted_return
       collatz_6305_repeated_return_preserves_mod_five
       collatz_nat_residue_three_from_mod_five_and_odd
-      collatz_6305_repeated_return_preserves_3_border}) then ()
+      collatz_6305_repeated_return_preserves_3_border
+      collatz_6305_zero_tail_shifted_endpoint
+      collatz_6305_zero_tail_mod25
+      collatz_6305_shifted_mod25_clock}) then ()
     else error "The powered 6305 endpoint cylinder depends on an oracle";
 \<close>
 

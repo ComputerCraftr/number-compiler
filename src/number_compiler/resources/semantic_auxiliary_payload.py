@@ -58,6 +58,7 @@ from number_compiler.projection.radix_original_source import (
     _OriginalAffineWorkspaceInventory,
 )
 from number_compiler.projection.source_audit import (
+    RadixProjectionAuditSource,
     RadixProjectionSourceAuditor,
     checked_projection_audit_source,
 )
@@ -312,12 +313,14 @@ class SemanticAuxiliaryPayloadRegistry:
                     )
         from number_compiler.projection.lazy_radix import RadixProjection
 
-        sources = tuple(
-            source
-            for root in roots
-            if isinstance(root, RadixProjectionSourceAuditor)
-            and (source := checked_projection_audit_source(root, ledger)) is not None
-        )
+        source_records: list[RadixProjectionAuditSource] = []
+        for root in roots:
+            if not isinstance(root, RadixProjectionSourceAuditor):
+                continue
+            source = checked_projection_audit_source(root, ledger)
+            if source is not None:
+                source_records.append(source)
+        sources = tuple(source_records)
 
         self.projection_maps: set[int] = set()
         for term in sources:
@@ -862,7 +865,7 @@ def _scalar_agreement(
     Each state is a tuple of existing node IDs, not an input tuple. Shared
     cofactors are visited once; no domain table or new semantic node is made.
     """
-    pending = [
+    pending: list[tuple[int, ...]] = [
         (source.local_id, *(bit.local_id for bit in target.bits), target.valid.local_id)
     ]
     seen: set[tuple[int, ...]] = set()

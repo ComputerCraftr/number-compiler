@@ -878,6 +878,3 @@ def existing_squaring_morphism_reuse_audit(
             "terminal hit/primality; raw apply_trace still costs one squaring per horizon."
         ),
     )
-
-
-__all__ = [name for name in globals() if not name.startswith("_")]

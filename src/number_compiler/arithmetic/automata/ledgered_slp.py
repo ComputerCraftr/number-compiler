@@ -23,9 +23,13 @@ class LedgerSLPArena(SLPArena):
 
     __slots__ = (
         "__weakref__",
+        "_cat_store",
         "_cleanup_complete",
         "_closed",
         "_nodes_released",
+        "_nodes_store",
+        "_rep_store",
+        "_term_store",
         "ledger",
         "owners",
     )
@@ -47,12 +51,20 @@ class LedgerSLPArena(SLPArena):
             ledger.register(prefix + "-slp-concats", owner_kind + "_interner"),
             ledger.register(prefix + "-slp-repeats", owner_kind + "_interner"),
         )
-        self.nodes: LedgerList[SLPNode] = ledger.make_list(
+        self._nodes_store: LedgerList[SLPNode] = ledger.make_list(
             self.owners[0], nodes_per_entry=1
         )
-        self._term: OwnedMemo[int, int] = OwnedMemo(ledger, self.owners[1])
-        self._cat: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[2])
-        self._rep: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[3])
+        self.nodes = self._nodes_store
+        self._term_store: OwnedMemo[int, int] = OwnedMemo(ledger, self.owners[1])
+        self._cat_store: OwnedMemo[tuple[int, int], int] = OwnedMemo(
+            ledger, self.owners[2]
+        )
+        self._rep_store: OwnedMemo[tuple[int, int], int] = OwnedMemo(
+            ledger, self.owners[3]
+        )
+        self._term = self._term_store
+        self._cat = self._cat_store
+        self._rep = self._rep_store
         try:
             self.empty_id = self._add("EMPTY", 0)
             ledger.register_execution_root(self)
@@ -112,7 +124,7 @@ class LedgerSLPArena(SLPArena):
             self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
         except BaseException:
             if len(self.nodes) > node_id:
-                self.nodes._rollback_unpublished(node_id)
+                self._nodes_store._rollback_unpublished(node_id)
             self.ledger.release(owner, entries=1, nodes=1)
             raise
         record_slp_metrics(nodes=1)
@@ -135,7 +147,7 @@ class LedgerSLPArena(SLPArena):
             table[key] = node_id
         except BaseException:
             if len(self.nodes) > node_id:
-                self.nodes._rollback_unpublished(node_id)
+                self._nodes_store._rollback_unpublished(node_id)
             self.ledger.release(owner, entries=1, nodes=1)
             raise
         record_slp_metrics(nodes=1)
@@ -148,7 +160,7 @@ class LedgerSLPArena(SLPArena):
         count = len(self.nodes)
 
         def release_nodes() -> None:
-            self.nodes._rollback_unpublished(0)
+            self._nodes_store._rollback_unpublished(0)
             if not len(self.nodes) and not self._nodes_released:
                 self.ledger.release(self.owners[0], entries=count, nodes=count)
                 self._nodes_released = True
@@ -157,9 +169,9 @@ class LedgerSLPArena(SLPArena):
 
         cleanup_all(
             (
-                self._rep.dispose,
-                self._cat.dispose,
-                self._term.dispose,
+                self._rep_store.dispose,
+                self._cat_store.dispose,
+                self._term_store.dispose,
                 release_nodes,
             )
         )

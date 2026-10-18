@@ -66,10 +66,15 @@ def test_finite_quotient_lift_rejects_nonclosed_adapter() -> None:
         FiniteQuotientLiftEngine,
     )
 
+    states: tuple[int, int] = (0, 1)
+
+    def step(state: int) -> tuple[int, None]:
+        return state + 1, None
+
     with pytest.raises(ValueError, match="successor outside finite quotient"):
         FiniteQuotientLiftEngine(
-            states=(0, 1),
-            step=lambda state: (state + 1, None),
+            states=states,
+            step=step,
             key=int,
             identity_weight=None,
             combine_weight=lambda _a, _b: None,

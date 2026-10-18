@@ -6,7 +6,6 @@ import argparse
 import json
 from collections import defaultdict
 from itertools import pairwise, product
-from typing import TypeVar
 
 from devtools.verification import exact_oracle
 from devtools.verification.carry_harmonic_ports import (
@@ -30,11 +29,6 @@ from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 DOMAINS = tuple(CarryFn)
 SYMBOLS = (0, 9, 10)
 LEAVES = tuple(Action.leaf(domain) for domain in DOMAINS)
-_T = TypeVar("_T")
-
-
-def _empty_index(lengths: tuple[int, ...]) -> dict[int, set[_T]]:
-    return {length: set() for length in lengths}
 
 
 def direct_rows(word: tuple[int, ...], *, border: bool = False) -> PortRows:
@@ -80,8 +74,8 @@ def finite() -> dict[str, object]:
             }
         )
     initial = (0, Action.empty().rows)
-    seen = {initial}
-    pending = [initial]
+    seen: set[tuple[int, PortRows]] = {initial}
+    pending: list[tuple[int, PortRows]] = [initial]
     for parity, state in pending:
         for leaf in LEAVES:
             target = (1 - parity, compose_rows(state, leaf.rows, parity))
@@ -163,10 +157,10 @@ def parameterization() -> dict[str, object]:
 
 def trajectory() -> dict[str, object]:
     lengths = (8, 16, 32, 64, 128)
-    words: dict[int, set[tuple[CarryFn, ...]]] = _empty_index(lengths)
-    occupancy: dict[int, set[PortRows]] = _empty_index(lengths)
-    border: dict[int, set[PortRows]] = _empty_index(lengths)
-    punctured: dict[int, set[PuncturedCarryHarmonic]] = _empty_index(lengths)
+    words: dict[int, set[tuple[CarryFn, ...]]] = defaultdict(set)
+    occupancy: dict[int, set[PortRows]] = defaultdict(set)
+    border: dict[int, set[PortRows]] = defaultdict(set)
+    punctured: dict[int, set[PuncturedCarryHarmonic]] = defaultdict(set)
     successors: dict[tuple[int, PortRows], set[tuple[int, PortRows]]] = defaultdict(set)
     source = reverse_pair_sums(196, 10)
     previous: tuple[int, PortRows] | None = None

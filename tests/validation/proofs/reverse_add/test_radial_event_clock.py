@@ -135,6 +135,7 @@ def test_clock_tail_compensation_remains_required_after_extraction() -> None:
     witness = extract_radial_clock(
         expression_packets(arena, events, limits=ClockLimits()), work=ClockWork()
     )
+    assert witness is not None
     assert witness == ClockWitness(1, 2)
     tail = clock_event_tail(
         arena, events, extent=3, prefix=witness.prefix, leading=witness.leading

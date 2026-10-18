@@ -5,7 +5,11 @@ from typing import TypedDict
 import pytest
 
 from number_compiler.arithmetic.carry.carry_normalization import (
+    RadixCarryBlock,
+    end_around_normalization_defect,
     linear_normalization_defect,
+    normalize_cyclic_block,
+    normalize_negacyclic_block,
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
@@ -164,6 +168,24 @@ def test_base_minus_z_unit_recovers_carry_component_without_retaining_carry_stat
         component = normalization_component(defect, order=order, modulus=32)
         assert component.normalization_factor_is_unit
         assert component.carry_recovered_exactly
+
+
+@pytest.mark.parametrize("sign", [0, 1, -1])
+def test_carry_defect_accepts_one_pass_coefficient_stream(sign: int) -> None:
+    raw = (7, 12, 8, 15, 3, 0)
+    if sign == 0:
+        actual = linear_normalization_defect(iter(raw), base=10)
+        expected = linear_normalization_defect(raw, base=10)
+    else:
+        block = RadixCarryBlock.from_coefficients(raw, base=10)
+        normalize = normalize_cyclic_block if sign == 1 else normalize_negacyclic_block
+        normalization = normalize(block)
+        actual = end_around_normalization_defect(iter(raw), normalization)
+        expected = end_around_normalization_defect(raw, normalization)
+        assert actual.boundary_vanishes_mod_end_around(sign)
+    assert actual == expected
+    assert actual.length == len(raw)
+    assert actual.identity_holds
 
 
 def test_reverse_add_linear_binomial_transport_powers_inside_component() -> None:

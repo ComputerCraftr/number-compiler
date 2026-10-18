@@ -204,7 +204,8 @@ def source_residue_quotient(
                 "no certified 2rev10 residue width clock is available at generation zero"
             )
         entry = find_prefix(
-            max_prefix=min(32, generation), require_even_remainder=False
+            max_prefix=min(engine.prefix_limit, generation),
+            require_even_remainder=False,
         )
         phase = entry.certified_phase
         if phase is None or entry.physical_steps > generation:

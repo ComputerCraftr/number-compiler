@@ -70,7 +70,7 @@ struct
 
   (* A direct, selected-path evaluator for the annotation lookup.  It is
      deliberately separate from the source lookup evaluator: source lookup is
-     delegated to Column_Conversion.controlled_lookup, while this evaluator
+     delegated to Column_Lookup_Cache.controlled_lookup, while this evaluator
      only sees a closed balanced mass tree and follows one branch. *)
   fun lookup_equation ctxt arithmetic_context tree tree_ct lookup_ct cid =
     let
@@ -83,7 +83,7 @@ struct
       val lookup_empty = @{thm comma_semantic_b1_crt_mass_tree_lookup.simps(1)}
         RS @{thm eq_reflection}
       val choose_if =
-        Comma_Semantic_B1_Column_Conversion.choose_closed_if ctxt arithmetic_context
+        Comma_Semantic_B1_Column_Lookup_Cache.choose_closed_if ctxt arithmetic_context
           ("B1 mass row lookup expected an if node",
            "B1 mass row lookup guard did not normalize",
            "B1 mass row lookup encountered malformed if")

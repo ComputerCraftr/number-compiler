@@ -203,10 +203,11 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
     )
 
     assert not audit_field_image_payloads(ledger).invalid
+    expected_action = action
 
     class CompletedAdapter:
-        def validate_action(self, selected: FieldCellActionID) -> None:
-            images.validate_action(selected)
+        def validate_action(self, action: FieldCellActionID) -> None:
+            images.validate_action(action)
 
         def compose_actions(
             self, before: FieldCellActionID, after: FieldCellActionID
@@ -215,16 +216,31 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
             return action
 
         def signature(
-            self, selected: FieldCellActionID, selected_geometry: FieldGeometryID
+            self, action: FieldCellActionID, geometry: FieldGeometryID
         ) -> PortSignatureID:
-            assert selected == action
-            assert selected_geometry.owner is images.geometries.owner
+            assert action == expected_action
+            assert geometry.owner is images.geometries.owner
             return signature
 
-        def compile_leaf(self, *_args: object) -> Never:
+        def compile_leaf(
+            self,
+            complete: FieldCellActionID,
+            consumer: FieldCellActionID,
+            provider: ProviderImageInput,
+            geometry: FieldGeometryID,
+            signature: PortSignatureID,
+        ) -> FieldImageCandidate:
             raise AssertionError("warm completed parent compiled a leaf")
 
-        def join(self, *_args: object) -> Never:
+        def join(
+            self,
+            complete: FieldCellActionID,
+            provider: ProviderImageInput,
+            left: FieldImageID,
+            right: FieldImageID,
+            geometry: FieldGeometryID,
+            signature: PortSignatureID,
+        ) -> FieldImageCandidate:
             raise AssertionError("warm completed parent descended to children")
 
     completed = ProviderFieldImageExecutor(
@@ -502,10 +518,12 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
         )
 
     monkeypatch.setattr(images.geometries, "child", child_geometry)
+    expected_action = action
+    expected_signature = signature
 
     class Adapter:
-        def validate_action(self, value: FieldCellActionID) -> None:
-            images.validate_action(value)
+        def validate_action(self, action: FieldCellActionID) -> None:
+            images.validate_action(action)
 
         def compose_actions(
             self, before: FieldCellActionID, after: FieldCellActionID
@@ -514,11 +532,11 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
             return action
 
         def signature(
-            self, value: FieldCellActionID, geometry: FieldGeometryID
+            self, action: FieldCellActionID, geometry: FieldGeometryID
         ) -> PortSignatureID:
-            assert value == action
+            assert action == expected_action
             images.geometries.resolve(geometry)
-            return signature
+            return expected_signature
 
         def compile_leaf(
             self,
@@ -526,10 +544,10 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
             consumer: FieldCellActionID,
             provider: ProviderImageInput,
             geometry: FieldGeometryID,
-            selected_signature: PortSignatureID,
+            signature: PortSignatureID,
         ) -> FieldImageCandidate:
             assert complete == consumer == action
-            assert selected_signature == signature
+            assert signature == expected_signature
             calls.append("leaf")
             prior = images.resolve(provider.image)
             return FieldImageCandidate(
@@ -540,16 +558,16 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
             self,
             complete: FieldCellActionID,
             provider: ProviderImageInput,
-            left_image: FieldImageID,
-            right_image: FieldImageID,
+            left: FieldImageID,
+            right: FieldImageID,
             geometry: FieldGeometryID,
-            selected_signature: PortSignatureID,
+            signature: PortSignatureID,
         ) -> FieldImageCandidate:
-            assert complete == action and selected_signature == signature
+            assert complete == action and signature == expected_signature
             calls.append("join")
-            assert images.resolve(left_image).geometry == child_geometry(geometry, 0)
-            assert images.resolve(right_image).geometry == child_geometry(geometry, 1)
-            assert left_image != right_image
+            assert images.resolve(left).geometry == child_geometry(geometry, 0)
+            assert images.resolve(right).geometry == child_geometry(geometry, 1)
+            assert left != right
             prior = images.resolve(provider.image)
             return FieldImageCandidate(
                 prior.interface, prior.output, FieldImageSummary(True, 0, 1, 2)
@@ -636,10 +654,21 @@ def test_fused_foreign_handle_rejects_before_wrapper_cache_probe() -> None:
         def __init__(self) -> None:
             self.ledger = ledger
 
-        def point(self, *_args: object) -> int:
+        def point(
+            self,
+            binding: ProviderBindingKey,
+            left: ProviderBoundary,
+            right: ProviderBoundary,
+            coordinate: int,
+        ) -> int:
             return 0
 
-        def width(self, *_args: object) -> int:
+        def width(
+            self,
+            binding: ProviderBindingKey,
+            left: ProviderBoundary,
+            right: ProviderBoundary,
+        ) -> int:
             return 2
 
     class PoisonedBindings(dict[FusedProviderBinding, None]):

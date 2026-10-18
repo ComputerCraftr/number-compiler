@@ -1,6 +1,7 @@
 """Exact guarded boundary actions stay source-bound and demand-aware."""
 
-from dataclasses import fields
+from copy import copy
+from dataclasses import fields, replace
 
 import pytest
 
@@ -8,14 +9,18 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageCandidate,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz import boundary_macros
 from number_compiler.sequences.collatz.border_identity import (
     CYCLE_89,
+    ENTRY_0563,
     ENTRY_89_AT_NINE,
     ENTRY_421,
     ENTRY_4721,
+    ENTRY_26847_PHASES,
     PATH_305,
     PATH_630,
+    BoundaryOccurrenceProducerStamp,
     BoundaryPathKind,
     ClosedBorderCycle,
     CycleEntryPhase,
@@ -154,6 +159,75 @@ def test_partial_boundary_ranges_still_match_literal_physical_steps(
         )
 
 
+@pytest.mark.parametrize(
+    ("source", "ticks", "identity", "repetitions"),
+    (
+        (164, 7, ENTRY_421, 2),
+        (2174, 13, ENTRY_4721, 3),
+        (30, 9, ENTRY_0563, 2),
+        (112, 6, ENTRY_26847_PHASES[0], 1),
+        (296, 10, ENTRY_26847_PHASES[1], 2),
+        (148, 9, ENTRY_26847_PHASES[2], 2),
+        (74, 8, ENTRY_26847_PHASES[3], 2),
+        (37, 7, ENTRY_26847_PHASES[4], 2),
+        (26, 5, PATH_630, 2),
+        (13, 4, PATH_305, 2),
+        (19, 4, ENTRY_89_AT_NINE, 2),
+    ),
+)
+def test_admitted_plan_binds_a_repetition_limit_for_each_identity(
+    source: int, ticks: int, identity: object, repetitions: int
+) -> None:
+    plan = admit_boundary_macro_plan(source, ticks, minimum_repetitions=1)
+
+    assert plan is not None
+    assert plan.identity == identity
+    assert plan.repetitions == repetitions
+    assert plan.maximum_repetitions >= plan.repetitions
+    assert plan.physical_ticks == ticks
+
+
+def test_midrun_boundary_occurrence_cannot_be_rebound() -> None:
+    result = compile_collatz_temporal_run_quotient(
+        109,
+        9,
+        ledger=ResourceLedger(),
+        include_f5=True,
+        include_width_spine=True,
+        include_joint_cocycle=True,
+        include_innovation_tape=True,
+    )
+    assert result.first_boundary is not None
+    assert result.first_boundary[0] == 2
+    assert result.first_boundary_macro is not None
+    assert result.first_boundary[1] == 164
+    assert result.first_boundary_stamp is not None
+    with pytest.raises(ValueError, match="lost producer authority"):
+        replace(result, first_boundary_stamp=copy(result.first_boundary_stamp))
+    with pytest.raises(ValueError, match="lost producer authority"):
+        replace(
+            result,
+            first_boundary=(
+                0,
+                result.first_boundary[1],
+                result.first_boundary[2],
+                result.first_boundary[3],
+            ),
+        )
+    assert not result.first_boundary_stamp.certifies(
+        True,
+        result.physical_ticks,
+        result.first_boundary,
+        result.first_boundary_macro,
+    )
+    replacement_macro = select_boundary_macro(164, 7)
+    assert replacement_macro is not None
+    assert replacement_macro is not result.first_boundary_macro
+    object.__setattr__(result.first_boundary_stamp, "macro", replacement_macro)
+    with pytest.raises(ValueError, match="lost producer authority"):
+        result.validate_boundary_producer_stamp()
+
+
 def test_long_quiet_boundary_is_one_pumped_action_without_d8_discovery() -> None:
     source = 4 + 40 * (1 << 256)
     ticks = 388
@@ -241,8 +315,9 @@ def test_foreign_macro_cannot_publish_at_another_root_origin() -> None:
     )
     candidate = SourceImageCandidate(workspace.root_payload, workspace.steps)
     occurrence = (0, 164, source_macro.physical_ticks, source_macro.identity)
-    with pytest.raises(ValueError, match="differs from its run witness"):
-        workspace._attach_boundary_macro(candidate, occurrence, source_macro)
+    stamp = BoundaryOccurrenceProducerStamp._issue(165, 7, occurrence, source_macro)
+    with pytest.raises(ValueError, match="outside its demanded root"):
+        workspace._attach_boundary_macro(candidate, occurrence, stamp, source_macro)
 
 
 def test_macro_occurrence_retention_is_ledger_owned_and_disposed() -> None:
@@ -289,6 +364,50 @@ def test_run_constructor_publishes_only_a_demanded_executed_macro() -> None:
     assert observed.first_boundary[0] == 0
     assert observed.first_boundary_macro is not None
     assert observed.first_boundary_macro.source == 2174
+
+
+def test_reentered_chain_keeps_the_first_boundary_source_authoritative() -> None:
+    # The root reaches a later reentry point before applying a joined action.
+    # The final result need not retain that non-root chain, so assert its actual
+    # application through the production counter and its published boundary.
+    ledger = ResourceLedger()
+    result = compile_collatz_temporal_run_quotient(
+        4348,
+        300,
+        ledger=ledger,
+        include_f5=True,
+        include_width_spine=True,
+        include_joint_cocycle=True,
+        include_innovation_tape=True,
+        innovation_modulus=49,
+    )
+
+    assert (
+        ledger.counters[_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_APPLIED_ACTIONS] > 0
+    )
+    assert result.first_boundary is not None
+    assert result.first_boundary[0] > 0
+    assert result.first_boundary[1] != result.source
+    assert result.first_boundary_macro is not None
+    assert result.first_boundary[1] == result.first_boundary_macro.source
+    assert result.first_boundary_stamp is not None
+    assert result.first_boundary_stamp.certifies(
+        result.source,
+        result.physical_ticks,
+        result.first_boundary,
+        result.first_boundary_macro,
+    )
+
+
+def test_selected_macro_stamp_uses_witness_source_after_outer_rebase() -> None:
+    macro = select_boundary_macro(164, 7)
+    assert macro is not None
+    stamp = BoundaryOccurrenceProducerStamp._issue_selected_macro(
+        4348, 128, 111, macro, boundary_offset=17
+    )
+
+    assert stamp.occurrence == (17, 164, 7, ENTRY_421)
+    assert stamp.certifies(4348, 128, stamp.occurrence, macro)
 
 
 def test_ordinary_odd_run_does_not_build_observer_specific_989_macro() -> None:

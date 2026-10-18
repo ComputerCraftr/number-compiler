@@ -260,7 +260,7 @@ class RadixProjection:
                 try:
                     if self._fused is None:
                         self._fused = FusedRadixArena(self.ledger)
-                    physical = term.steps == 1 and bool(term.seed_digits[0])
+                    physical = term.steps == 1 and term.seed % 2 == 1
                     shift = int(term.steps == 1 and not physical)
                     action = self._fused.compile(
                         term.seed_digits,

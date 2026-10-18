@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from number_compiler.arithmetic.fields.radix import digit_threshold_mask
+
 _FULL = (1 << 10) - 1
 _NONZERO = _FULL ^ 1
 _BANDS = {
@@ -150,7 +152,9 @@ class InwardCarryConstraints:
         """Apply a proved doubling carry (a digit-threshold guard)."""
         if type(bit) is not int or bit not in (0, 1):
             raise ValueError("carry input must be Boolean")
-        self.constrain(time, index, tuple(range(5) if bit == 0 else range(5, 10)))
+        mask = digit_threshold_mask(base=10, threshold=5, bit=bit)
+        digits = tuple(digit for digit in range(10) if mask & (1 << digit))
+        self.constrain(time, index, digits)
 
     def constrain_pair_band(
         self, time: int, index: int, bands: str | tuple[str, ...]

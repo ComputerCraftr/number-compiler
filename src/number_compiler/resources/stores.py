@@ -264,18 +264,6 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         self._check(len(self))
         self._data.clear()
 
-    @overload
-    def setdefault(self, key: K, default: V, /) -> V: ...
-    @overload
-    def setdefault(
-        self: LedgerDict[K, V | None], key: K, default: None = None, /
-    ) -> V | None: ...
-    def setdefault(self, key: K, default: V | None = None, /) -> V | None:
-        if key in self:
-            return self[key]
-        self._check(len(self) + 1)
-        return self._data.setdefault(key, cast(V, default))
-
     def update(self, *args: object, **kwargs: V) -> None:
         values: dict[K, V] = _update_values(args, kwargs)
         if self.write_once and any(key in self._data for key in values):

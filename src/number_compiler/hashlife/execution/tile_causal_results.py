@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     )
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
     BoundaryTileOperands,
@@ -297,10 +298,13 @@ def primitive_causal_semantics(
     if not callable(compiler) or not callable(observer) or not callable(cocycle_hook):
         raise TypeError("primitive causal semantics require executable interface laws")
     interface = compiler(action, input_tile, wiring)
-    outgoing = (
-        observer(interface, "boundary_left", key.ports),
-        observer(interface, "boundary_right", key.ports),
-    )
+    if type(interface) is not LocalInterfaceID:
+        raise TypeError("primitive causal compiler returned another interface sort")
+    outgoing_left = observer(interface, "boundary_left", key.ports)
+    outgoing_right = observer(interface, "boundary_right", key.ports)
+    if type(outgoing_left) is not int or type(outgoing_right) is not int:
+        raise TypeError("primitive causal observer returned a non-integer port")
+    outgoing = outgoing_left, outgoing_right
     action_weight = cocycle_hook(action)
     if type(action_weight) is not TemporalCocycle:
         raise TypeError("primitive action returned another cocycle sort")

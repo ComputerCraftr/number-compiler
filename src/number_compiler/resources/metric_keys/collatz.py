@@ -505,6 +505,14 @@ COLLATZ_TERMINAL_POWER2_ROUTE_TAIL_BYPASSES: Final = (
 )
 COLLATZ_WIDTH_BOUND_CONSTRUCTIONS: Final = "collatz_width_bound_constructions"
 COLLATZ_WIDTH_BOUND_OPERAND_BITS: Final = "collatz_width_bound_operand_bits"
+COLLATZ_TWO_SIDED_CYLINDER_CONSTRUCTIONS: Final = (
+    "collatz_two_sided_cylinder_constructions"
+)
+COLLATZ_TWO_SIDED_CYLINDER_OPERAND_BITS: Final = (
+    "collatz_two_sided_cylinder_operand_bits"
+)
+COLLATZ_RADIX6_COVERAGE_EVALUATIONS: Final = "collatz_radix6_coverage_evaluations"
+COLLATZ_RADIX6_COVERAGE_OPERAND_BITS: Final = "collatz_radix6_coverage_operand_bits"
 DIRECT_POWERED_POINT_QUERIES: Final = "direct_powered_point_queries"
 PHYSICAL_CYCLE_ACTION_VISITS: Final = "physical_cycle_action_visits"
 PHYSICAL_CYCLE_SOURCE_CERTIFICATIONS: Final = "physical_cycle_source_certifications"
@@ -521,3 +529,60 @@ COLLATZ_CROSS_FAMILY_GUARD_COMPILATIONS: Final = (
 COLLATZ_CROSS_FAMILY_TEMPORAL_POWERS: Final = "collatz_cross_family_temporal_powers"
 COLLATZ_CROSS_FAMILY_POWER_REFUSALS: Final = "collatz_cross_family_power_refusals"
 COLLATZ_CROSS_FAMILY_PORT_DEMANDS: Final = "collatz_cross_family_port_demands"
+COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_ATTEMPTS: Final = (
+    "collatz_cross_family_action_composition_attempts"
+)
+COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_OPERAND_BITS: Final = (
+    "collatz_cross_family_action_composition_operand_bits"
+)
+COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_REFUSALS: Final = (
+    "collatz_cross_family_action_composition_refusals"
+)
+COLLATZ_CROSS_FAMILY_ACTION_POWER_REFUSALS: Final = (
+    "collatz_cross_family_action_power_refusals"
+)
+
+# Source-certified conditional Moore scheduler handoff (NC17).
+COLLATZ_CONDITIONAL_SCHEDULER_CERTIFIED_ACTIONS: Final = (
+    "collatz_conditional_scheduler_certified_actions"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_POWERED_RETURNS: Final = (
+    "collatz_conditional_scheduler_powered_returns"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_PHYSICAL_TICKS: Final = (
+    "collatz_conditional_scheduler_physical_ticks"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_DISCOVERY_ATTEMPTS: Final = (
+    "collatz_conditional_scheduler_discovery_attempts"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_DISCOVERY_MISSES: Final = (
+    "collatz_conditional_scheduler_discovery_misses"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_DISCOVERY_BUDGET_REFUSALS: Final = (
+    "collatz_conditional_scheduler_discovery_budget_refusals"
+)
+COLLATZ_CONDITIONAL_SCHEDULER_CACHE_BYPASSES: Final = (
+    "collatz_conditional_scheduler_cache_bypasses"
+)
+
+COLLATZ_CONDITIONAL_SCHEDULER_FAST_REFUSALS: Final = (
+    "collatz_conditional_scheduler_fast_refusals"
+)
+
+COLLATZ_CONDITIONAL_SCHEDULER_GUARDED_CACHE_HITS: Final = (
+    "collatz_conditional_scheduler_guarded_cache_hits"
+)
+
+COLLATZ_CONDITIONAL_SCHEDULER_NEGATIVE_CACHE_HITS: Final = (
+    "collatz_conditional_scheduler_negative_cache_hits"
+)
+
+COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS: Final = "collatz_low_border_pair_matrix_checks"
+
+COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS: Final = (
+    "collatz_low_border_numerator_phase_checks"
+)
+
+COLLATZ_CONDITIONAL_POWER_PAIR_MATRIX_CHECKS: Final = (
+    "collatz_conditional_power_pair_matrix_checks"
+)

@@ -278,9 +278,6 @@ def terminal_frobenius_chunk_candidate_audit(
     return special_frobenius_chunk_probe(spec)
 
 
-__all__ = [name for name in globals() if not name.startswith("_")]
-
-
 @dataclass(frozen=True, slots=True)
 class SpecialFrobeniusDefectCRTAudit:
     """Factor-backed audit of the final candidate-ring defect/gcd classification.

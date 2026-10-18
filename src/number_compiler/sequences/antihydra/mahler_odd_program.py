@@ -38,6 +38,10 @@ class MahlerOddProgramFragment:
     ledger_prefix_minimum: int
     fractional_guard_empty: bool
     carry_harmonics: dict[str, object] | None
+    # Keep source-authenticated coefficients with their fragment so later
+    # queries do not recompose the same motif and powered action.
+    motif_action: MahlerOddToOddAction | None = None
+    powered_action: MahlerOddToOddAction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,123 @@ class MahlerOddSourceProgram:
     @property
     def avoided_scalar_event_issues(self) -> int:
         return self.emitted_events - len(self.fragments)
+
+    @staticmethod
+    def _fragment_motif_action(
+        fragment: MahlerOddProgramFragment,
+    ) -> MahlerOddToOddAction:
+        motif = fragment.motif_action
+        if motif is None:
+            motif = MahlerOddToOddAction.identity()
+            for exponent in fragment.motif:
+                motif = motif.then(MahlerOddToOddAction.run(exponent))
+        if (
+            type(motif) is not MahlerOddToOddAction
+            or motif.odd_events != len(fragment.motif)
+            or motif.extent != sum(fragment.motif)
+        ):
+            raise ValueError("stored odd motif action does not match its source word")
+        return motif
+
+    @classmethod
+    def _source_after_events(
+        cls, fragment: MahlerOddProgramFragment, event_count: int
+    ) -> int:
+        copies, partial = divmod(event_count, len(fragment.motif))
+        if not 0 <= copies <= fragment.repetitions:
+            raise ValueError("event request exceeds the issued Mahler fragment")
+        motif = cls._fragment_motif_action(fragment)
+        current = motif.power(copies).advance(fragment.source, 0)[0]
+        if partial:
+            prefix = MahlerOddToOddAction.identity()
+            for exponent in fragment.motif[:partial]:
+                prefix = prefix.then(MahlerOddToOddAction.run(exponent))
+            current = prefix.advance(current, 0)[0]
+        if event_count == len(fragment.motif) * fragment.repetitions:
+            powered = fragment.powered_action
+            if powered is not None and (
+                type(powered) is not MahlerOddToOddAction
+                or not powered.integer_admits(fragment.source)
+                or powered.advance(fragment.source, fragment.balance_before)
+                != (fragment.destination, fragment.balance_after)
+            ):
+                raise ValueError(
+                    "stored powered Mahler action is detached from its source"
+                )
+            if current != fragment.destination:
+                raise ArithmeticError(
+                    "powered motif endpoint changed its issued source"
+                )
+        return current
+
+    @staticmethod
+    def _source_during_odd_event(source: int, exponent: int, elapsed: int) -> int:
+        if not 1 <= elapsed <= exponent:
+            raise ValueError("intra-event tick must lie within its odd run")
+        numerator: int = 3**elapsed * source + 3 ** (elapsed - 1)
+        endpoint: int
+        remainder: int
+        endpoint, remainder = divmod(numerator, 1 << elapsed)
+        if remainder:
+            raise ArithmeticError("issued odd-run source is not divisible at this tick")
+        return endpoint
+
+    def source_at_tick(self, tick: int) -> int:
+        """Return an exact source only within this compiled finite program."""
+        if type(tick) is not int or not self.clock <= tick <= self.ending_clock:
+            raise ValueError("tick exceeds the authenticated Mahler source program")
+        if tick == self.clock:
+            return self.source
+        for fragment in self.fragments:
+            if not fragment.clock_before < tick <= fragment.clock_after:
+                continue
+            if (
+                fragment.clock_after - fragment.clock_before
+                != sum(fragment.motif) * fragment.repetitions
+            ):
+                raise ValueError("Mahler fragment clock does not match its issued word")
+            elapsed = tick - fragment.clock_before
+            motif_extent = sum(fragment.motif)
+            copies, within_motif = divmod(elapsed, motif_extent)
+            if copies > fragment.repetitions:
+                raise ValueError("tick exceeds the fragment's certified motif copies")
+            current = self._source_after_events(fragment, copies * len(fragment.motif))
+            if within_motif == 0:
+                return current
+            for exponent in fragment.motif:
+                if within_motif <= exponent:
+                    return self._source_during_odd_event(
+                        current, exponent, within_motif
+                    )
+                current = MahlerOddToOddAction.run(exponent).advance(current, 0)[0]
+                within_motif -= exponent
+            raise ArithmeticError("Mahler fragment has a missing physical tick")
+        if tick == self.ending_clock:
+            return self.endpoint
+        raise ArithmeticError("Mahler source program has a missing temporal fragment")
+
+    def center_transfer_at_tick(
+        self,
+        tick: int,
+        *,
+        steps: int = 4,
+        initial_ledger: int | None = None,
+        include_rows: bool = False,
+    ) -> dict[str, object]:
+        """Demand a finite center transfer within this program's recorded horizon."""
+        if type(include_rows) is not bool:
+            raise TypeError("center matrix row demand must be Boolean")
+        from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
+            MahlerCertifiedCenterDepthTransfer,
+        )
+
+        certificate = MahlerCertifiedCenterDepthTransfer.from_program(
+            self, tick, steps, initial_ledger=initial_ledger
+        )
+        return {
+            **certificate.packet(include_rows=include_rows),
+            "origin_tick": tick,
+        }
 
 
 def compile_mahler_odd_program(
@@ -163,7 +284,6 @@ def compile_mahler_odd_program(
                 copies = 1
             else:
                 copies = safe_copies
-                action = ring.power(copies)
         motif: tuple[int, ...]
         if ring is None:
             try:
@@ -185,6 +305,7 @@ def compile_mahler_odd_program(
                 break
             radix_packet = None
         else:
+            action = ring.power(copies)
             motif = ring.exponents
             next_source, next_balance = action.advance(source, balance)
             if next_source != ring.endpoint(copies):
@@ -232,6 +353,8 @@ def compile_mahler_odd_program(
                 action.minimum,
                 action.joint.guard.empty,
                 radix_packet,
+                ring.action if ring is not None else action,
+                action,
             )
         )
     return MahlerOddSourceProgram(

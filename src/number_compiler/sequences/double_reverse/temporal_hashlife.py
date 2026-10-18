@@ -111,6 +111,7 @@ class DoubleReverseTemporalHashlife:
         "issuer",
         "ledger",
         "max_steps",
+        "prefix_limit",
         "scratch_owner",
         "source_root",
     )
@@ -133,6 +134,7 @@ class DoubleReverseTemporalHashlife:
         self.issuer = issuer
         self.scratch_owner = scratch_owner
         self.max_steps = max_steps
+        self.prefix_limit = min(32, max_steps)
         self.source_root = source_root
         self._cone = cone_memo
         self._slices = slice_memo
@@ -173,6 +175,17 @@ class DoubleReverseTemporalHashlife:
             ),
             _audit_temporal_hashlife_payloads,
         )
+
+    def admit_extended_prefix(self, limit: int) -> None:
+        """Allow a bounded exact one-T admission scan, only on explicit demand.
+
+        This does not broaden any border-cylinder theorem: every extra step
+        is the existing owner-issued chronological source transition.  The
+        original 32-tick horizon remains the default for other observers.
+        """
+        if type(limit) is not int or not 0 <= limit <= min(512, self.max_steps):
+            raise ValueError("extended exact 2rev10 prefix exceeds its budget")
+        self.prefix_limit = max(self.prefix_limit, limit)
 
     def dispose_audit_contract(self) -> None:
         """Retire issuer validation before the associated action memo closes."""
@@ -221,6 +234,24 @@ class DoubleReverseTemporalHashlife:
             raise ValueError("2rev10 source transition owner is already bound")
         self._source_advancer = advance
 
+    def advance_source_root(self, root: int) -> int:
+        """Apply the already-bound exact physical T map to one arena root.
+
+        This is used only to inspect the physical midpoint of an owner-issued
+        T-squared action. The returned root carries no temporal-action
+        authority; endpoint actions remain the checked records from this
+        engine's Hashlife issuer.
+        """
+        if type(root) is not int or not 0 <= root < len(self.arena.nodes):
+            raise ValueError("2rev10 physical source root is outside its arena")
+        advance = self._source_advancer
+        if advance is None:
+            raise ValueError("2rev10 source transition owner is unavailable")
+        target_root = advance(root)
+        if type(target_root) is not int or not 0 <= target_root < len(self.arena.nodes):
+            raise ValueError("2rev10 source transition returned an invalid root")
+        return target_root
+
     def _advance_source_prefix(self) -> DoubleReverseSourcePrefix:
         """Issue the initial cursor or advance it through the bound exact T map."""
         current = self.source_prefix()
@@ -229,7 +260,7 @@ class DoubleReverseTemporalHashlife:
             physical_steps = 0
         else:
             physical_steps = current.physical_steps + 1
-            if physical_steps > min(32, self.max_steps):
+            if physical_steps > self.prefix_limit:
                 raise ValueError("2rev10 source-prefix cursor exceeds its horizon")
             if self._source_advancer is None:
                 raise ValueError("2rev10 source transition owner is unavailable")
@@ -263,7 +294,7 @@ class DoubleReverseTemporalHashlife:
             type(entry) is not DoubleReverseSourcePrefix
             or self._root(entry.source) != self.source_root
             or type(entry.physical_steps) is not int
-            or not 0 <= entry.physical_steps <= min(32, self.max_steps)
+            or not 0 <= entry.physical_steps <= self.prefix_limit
             or entry.certified_phase is not None
             and (
                 type(entry.certified_phase) is not int
@@ -814,9 +845,12 @@ class DoubleReverseTemporalHashlife:
         output_width = width - 2 * steps
         span = 2 * steps
         count = (output_width + span - 1) // span
-        if count > 2:
-            raise ValueError("pointed stencil requires largest-power-first chunks")
-        with self.ledger.reservation(self.scratch_owner, entries=8, nodes=8):
+        if count > 32:
+            raise ValueError("pointed temporal interval exceeds 32 causal tiles")
+        reservations = 8 + 4 * max(0, count - 2)
+        with self.ledger.reservation(
+            self.scratch_owner, entries=reservations, nodes=reservations
+        ):
             zero_pad = self.arena.repeat(self.arena.terminal(0), 2 * steps)
             padded = self.arena.concat(window, zero_pad)
             tile_roots: list[int] = []
@@ -834,6 +868,66 @@ class DoubleReverseTemporalHashlife:
             raise AssertionError("pointed stencil lost requested coordinates")
         return result
 
+    def _pointed_causal_window(
+        self, root: int, steps: int, phase: int, msd_start: int, count: int
+    ) -> tuple[int, ...]:
+        """Share one complete source cone across a bounded output interval."""
+        left, right = growth_ports(phase, steps)
+        width = self.arena.nodes[root].length + left + right
+        if msd_start < 0 or msd_start + count > width:
+            raise IndexError("pointed temporal row outside the normalized output")
+        if steps == 0:
+            values = tuple(
+                symbol_at(self.arena, root, msd_start + i) for i in range(count)
+            )
+        else:
+            # The centered input cone for an even row contains one surplus
+            # cell on its left. Crop that cell after the causal evolution.
+            left_padding = int(count % 2 == 0)
+            center = msd_start - left + (count - 1) // 2
+            radius = steps + count // 2
+            window = self._pointed_source_window(root, center, radius)
+            for bit in range(steps.bit_length() - 1, -1, -1):
+                chunk = 1 << bit
+                if steps & chunk:
+                    window = self._advance_pointed_window(window, chunk)
+                    self.ledger.bump(
+                        _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
+                        chunk,
+                    )
+                    self.ledger.bump(
+                        _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS
+                    )
+            if self.arena.nodes[window].length != count + left_padding:
+                raise AssertionError("pointed causal cone lost its complete row")
+            values = tuple(
+                symbol_at(self.arena, window, left_padding + i) for i in range(count)
+            )
+        self.ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS,
+            count,
+        )
+        return values
+
+    def pointed_window(
+        self, root: int, steps: int, phase: int, msd_start: int, count: int
+    ) -> tuple[int, ...]:
+        """Read a short exact row through one shared source-root causal cone."""
+        if (
+            type(root) is not int
+            or not 0 <= root < len(self.arena.nodes)
+            or type(steps) is not int
+            or not 0 <= steps <= self.max_steps // 2
+            or type(phase) is not int
+            or phase not in (0, 1, 2, 3)
+            or type(msd_start) is not int
+            or type(count) is not int
+            or not 1 <= count <= 18
+            or self.certify(root) != phase
+        ):
+            raise ValueError("pointed temporal row needs a certified bounded source")
+        return self._pointed_causal_window(root, steps, phase, msd_start, count)
+
     def pointed_stencil(
         self, root: int, steps: int, phase: int, msd_index: int
     ) -> PointedDigitStencil:
@@ -849,29 +943,8 @@ class DoubleReverseTemporalHashlife:
             or self.certify(root) != phase
         ):
             raise ValueError("pointed stencil requires a certified source cylinder")
-        left, right = growth_ports(phase, steps)
-        width = self.arena.nodes[root].length + left + right
-        if not 0 <= msd_index < width:
-            raise IndexError(msd_index)
-        center = msd_index - left
-        window = self._pointed_source_window(root, center, steps)
-        for bit in range(steps.bit_length() - 1, -1, -1):
-            power = 1 << bit
-            if steps & power:
-                window = self._advance_pointed_window(window, power)
-                self.ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
-                    power,
-                )
-                self.ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS
-                )
-        if self.arena.nodes[window].length != 1:
-            raise AssertionError("pointed Hashlife did not isolate one digit")
-        digit = symbol_at(self.arena, window, 0)
-        self.ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS
-        )
+        digit = self._pointed_causal_window(root, steps, phase, msd_index, 1)[0]
+        width = self.arena.nodes[root].length + sum(growth_ports(phase, steps))
         return PointedDigitStencil(
             self._handle(root),
             steps,

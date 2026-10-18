@@ -43,6 +43,8 @@ struct
       val bool_true = @{term "Comma_CRT_Bool True"}
       val scope_true = @{term "comma_crt_apply_shifted Comma_CRT_And 0 (comma_crt_source_scope_column (3,0)) (Comma_CRT_Bool True)"}
       val columns = HOLogic.mk_list @{typ comma_crt_column} [bool_true, scope_true]
+      val forged_columns = HOLogic.mk_list @{typ comma_crt_column}
+        [bool_true, scope_true, bool_true]
       val templates = @{term "[[Comma_CRT_Bool True]] :: comma_crt_column list list"} and template_ids = @{term "[[0::nat]]"} and lift_ids = @{term "[[1::nat]]"}
       val sources = @{term "[Comma_Near 9 0 19, Comma_Near 9 0 19] :: comma_finite_position list"}
       val occurrence = @{term "\<lparr>comma_semantic_b1_crt_occurrence_columns = [Comma_CRT_Bool True], comma_semantic_b1_crt_occurrence_rebase = 0, comma_semantic_b1_crt_occurrence_beta = [Comma_Semantic_B1_Stop 8]\<rparr>"}
@@ -65,6 +67,9 @@ struct
       fun request name arguments = list_comb (Const (name, Sign.the_const_type thy name), arguments)
       val template_request = request template_head [columns, templates, template_ids, @{term "0::nat"}]
       val lift_request = request lift_head [columns, templates, template_ids, lift_ids, lift_descriptors, @{term "0::nat"}]
+      val lift_binding_request = request
+        @{const_name comma_semantic_b1_crt_lift_binding_certified}
+        [columns, templates, lift_ids, lift_descriptors, @{term "0::nat"}]
       val slot_request = request slot_head [columns, templates, template_ids, lift_ids, occurrence_descriptors, lift_descriptors, @{term "1::nat"}, refs, @{term "0::nat"}]
       val source = @{term "Comma_Near 9 0 19 :: comma_finite_position"}
       fun binding_request selected_source = request binding_head
@@ -197,6 +202,42 @@ struct
       val lift_eq = capture_equation "lift geometry" true base lift_request
         (#rewrite_lift_geometry store ctxt base lift_request
           (Thm.cterm_of ctxt lift_request))
+      val lift_geometry_counts_after_cold = #lift_geometry_counters store ()
+      val lift_geometry_warm = #rewrite_lift_geometry store ctxt base lift_request
+        (Thm.cterm_of ctxt lift_request)
+      val lift_geometry_counts_after_warm = #lift_geometry_counters store ()
+      val lift_geometry_bridge_exact =
+        lift_geometry_counts_after_cold = (1, 0) andalso
+        Thm.eq_thm_prop (lift_eq, lift_geometry_warm) andalso
+        Thm.term_of (Thm.lhs_of lift_geometry_warm) aconv lift_request andalso
+        Thm.term_of (Thm.rhs_of lift_geometry_warm) aconv @{term True} andalso
+        Comma_Semantic_B1_Construction_Check.standalone lift_geometry_warm andalso
+        null (Thm_Deps.all_oracles [lift_geometry_warm]) andalso
+        lift_geometry_counts_after_warm = (1, 1)
+      val _ = if lift_geometry_bridge_exact then ()
+        else error "B1 lift geometry did not use the exact cold bridge and warm theorem"
+      val binding_counts_before_warm = #lift_binding_counters store ()
+      val binding_warm = #rewrite_lift_binding store ctxt base lift_binding_request
+        (Thm.cterm_of ctxt lift_binding_request)
+      val binding_counts_after_warm = #lift_binding_counters store ()
+      val binding_warm_exact =
+        Thm.term_of (Thm.lhs_of binding_warm) aconv lift_binding_request andalso
+        Thm.term_of (Thm.rhs_of binding_warm) aconv @{term True} andalso
+        binding_counts_before_warm = (1, 0) andalso
+        binding_counts_after_warm = (1, 1)
+      val _ = if binding_warm_exact then ()
+        else error "B1 warm LiftProofID repeated cold binding construction"
+      val foreign_binding_request = request
+        @{const_name comma_semantic_b1_crt_lift_binding_certified}
+        [forged_columns, templates, lift_ids, lift_descriptors, @{term "0::nat"}]
+      val _ = Comma_Semantic_B1_Column_Regression.expect_error
+        "B1 LiftProofID request refused: foreign LiftProofID catalogue"
+        "foreign LiftProofID catalogue"
+        (fn () => #rewrite_lift_binding store ctxt base foreign_binding_request
+          (Thm.cterm_of ctxt foreign_binding_request))
+      val foreign_binding_rejected = true
+      val binding_counts_after_foreign = #lift_binding_counters store ()
+      val foreign_binding_no_fallback = binding_counts_after_foreign = (1, 1)
       val slot_eq = capture "constructed goto slot" true base slot_request
       val _ = Comma_Semantic_B1_Column_Regression.expect_error
         "B1 certificate callback received an open, mismatched, or oracle theorem"
@@ -209,7 +250,6 @@ struct
         (fn () => #remember_equation store base slot_request template_eq)
       val mismatched_slot_rejected = true
       val _ = #remember_equation store base binding binding_eq
-      val _ = #note_context_request_completed store lift_request
       fun warm proposition theorem = (case #lookup_equation store proposition of SOME found => Thm.eq_thm_prop (theorem, found) | NONE => false)
       fun absent proposition = (case #lookup_equation store proposition of NONE => true | SOME _ => false)
       val false_template = request template_head
@@ -248,8 +288,6 @@ struct
         "B1 piece binding changed the active source" "changed source binding"
         (fn () => #remember_equation store base changed_binding changed_binding_eq)
       val changed_binding_rejected = true
-      val forged_columns = HOLogic.mk_list @{typ comma_crt_column}
-        [bool_true, scope_true, bool_true]
       (* Keep CID 0 fixed while changing the catalog.  A CID hit must not
          authorize geometry certified in this foreign catalog. *)
       val forged_root = request template_head
@@ -292,7 +330,9 @@ struct
           in Synchronized.change off_thread_lookup (K rejected) end)
       val _ = Isabelle_Thread.join off_thread
       val off_thread_rejected = Synchronized.value off_thread_lookup
-      val warm_geometry = warm template_request template_eq andalso warm lift_request lift_eq andalso warm slot_request slot_eq
+      val warm_geometry = warm template_request template_eq andalso
+        warm lift_request lift_eq andalso warm slot_request slot_eq andalso
+        lift_geometry_bridge_exact
       val _ = #reset_current_source store 0
       val _ = #remember_equation store base source_action_request source_action_eq
       val slot_valid_base = base
@@ -333,6 +373,9 @@ struct
          ("changed_slot_rejected", changed_slot_rejected),
          ("changed_binding_rejected", changed_binding_rejected),
          ("changed_descriptors_rejected", changed_descriptors_rejected),
+         ("binding_warm_exact", binding_warm_exact),
+         ("foreign_binding_rejected", foreign_binding_rejected),
+         ("foreign_binding_no_fallback", foreign_binding_no_fallback),
          ("forged_root_rejected", forged_root_rejected),
          ("foreign_theorem_has_descendant_provenance", foreign_theorem_has_descendant_provenance),
          ("foreign_theorem_is_exact_kernel_equation", foreign_theorem_is_exact_kernel_equation),
@@ -340,6 +383,7 @@ struct
          ("off_thread_rejected", off_thread_rejected),
          ("ignored_generic_skips_oracle_scan", ignored_generic_skips_oracle_scan),
          ("action_head_fixtures_pass", action_head_fixtures_pass),
+         ("lift_geometry_bridge_exact", lift_geometry_bridge_exact),
          ("warm_geometry", warm_geometry),
          ("warm_slot_valid", warm_slot_valid),
          ("legacy_negative_absence", legacy_negative_absence),

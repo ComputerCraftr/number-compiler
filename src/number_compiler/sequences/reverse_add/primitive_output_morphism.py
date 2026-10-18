@@ -179,7 +179,9 @@ class ReversePrimitiveOutputMorphism:
                     bits.select(condition, f, other)
                     for f, other in zip(branches, roots, strict=True)
                 )
-        forward, backward, output = roots
+        if len(roots) != 3:
+            raise AssertionError("symbolic reverse channels did not close")
+        forward, backward, output = roots[0], roots[1], roots[2]
         active = bits.map_atoms(output, BOOL, tuple(int(i != 19) for i in range(20)))
         inactive = bits.map_atoms(active, BOOL, (1, 0))
         zero = bits.constant(FunctionSignature(inputs, BOOL), 0)

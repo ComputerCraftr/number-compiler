@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         print("number-compiler: argv must be a list of strings", file=sys.stderr)
         return 2
+    request: QueryRequest | None = None
     try:
         request = parse_request(list(sys.argv[1:]) if argv is None else argv)
         if request is None:

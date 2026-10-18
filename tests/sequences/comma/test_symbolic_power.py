@@ -181,12 +181,14 @@ def test_failed_symbolic_power_close_is_fail_closed_and_retryable(
 
 def test_symbolic_power_context_disposes_its_workspace_on_failure() -> None:
     view = production_semantic_owner()
+    owner: int | None = None
     with (
         pytest.raises(ValueError, match="synthetic consumer failure"),
         SymbolicDecadePowers(view) as powers,
     ):
         owner = powers._composition_workspace_owner
         raise ValueError("synthetic consumer failure")
+    assert owner is not None
     with pytest.raises(RuntimeError, match="disposed"):
         view.ledger.registered_container(owner)
     powers.close()

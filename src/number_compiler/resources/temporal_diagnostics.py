@@ -20,6 +20,7 @@ from number_compiler.resources.metric_keys import api as _api_keys
 from number_compiler.resources.metric_keys import (
     arithmetic_fields as _fields_keys,
 )
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
 from number_compiler.resources.metric_keys import (
@@ -439,6 +440,11 @@ def collect_temporal_diagnostics(
                 mixed_clock_work=_named_work(
                     counters, f"{prefix}_temporal_mixed_clock_macro_"
                 ),
+                conditional_scheduler_work=(
+                    _named_work(counters, "collatz_conditional_scheduler_")
+                    if prefix == "collatz_physical"
+                    else None
+                ),
             )
         )
 
@@ -582,6 +588,18 @@ def collect_temporal_diagnostics(
             ),
         ),
         observations=TemporalObservations(
+            collatz_two_sided_cylinder_constructions=_count(
+                counters, _collatz_keys.COLLATZ_TWO_SIDED_CYLINDER_CONSTRUCTIONS
+            ),
+            collatz_two_sided_cylinder_operand_bits=_count(
+                counters, _collatz_keys.COLLATZ_TWO_SIDED_CYLINDER_OPERAND_BITS
+            ),
+            collatz_radix6_coverage_evaluations=_count(
+                counters, _collatz_keys.COLLATZ_RADIX6_COVERAGE_EVALUATIONS
+            ),
+            collatz_radix6_coverage_operand_bits=_count(
+                counters, _collatz_keys.COLLATZ_RADIX6_COVERAGE_OPERAND_BITS
+            ),
             arithmetic_returns=_count(counters, "arithmetic_returns"),
             arithmetic_result_validation_blocks=_count(
                 counters, "arithmetic_result_validation_blocks"
@@ -603,6 +621,12 @@ def collect_temporal_diagnostics(
             ),
             mahler_root_shell_operand_bits=_count(
                 counters, _antihydra_keys.MAHLER_ROOT_SHELL_OPERAND_BITS
+            ),
+            mahler_center_matrix_demands=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_DEMANDS
+            ),
+            mahler_center_matrix_physical_steps=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_PHYSICAL_STEPS
             ),
             physical_roof_evaluations=_count(counters, "physical_roof_evaluations"),
             query_observer_reuses=_count(counters, "query_observer_reuses"),
@@ -678,6 +702,13 @@ def collect_temporal_diagnostics(
             ),
             double_reverse_birth_layer_model_states=_count(
                 counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_MODEL_STATES
+            ),
+            double_reverse_birth_layer_induction_rows=_count(
+                counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS
+            ),
+            double_reverse_birth_layer_period_comparisons=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS,
             ),
             double_reverse_birth_layer_publications=_count(
                 counters, _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS

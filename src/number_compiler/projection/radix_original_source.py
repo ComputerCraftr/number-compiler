@@ -792,7 +792,7 @@ class OriginalRadixArena:
                 active = True
                 if index is None:
                     return position + 1
-            if position == index:
+            if index is not None and position == index:
                 if not active and index > 0:
                     raise IndexError(index)
                 return quotient

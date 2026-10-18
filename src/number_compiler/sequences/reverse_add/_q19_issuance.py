@@ -210,6 +210,31 @@ class Q19IssuanceRegistry:
             "reflected_death",
             "selected_bands",
         )
+        carry_wire_nodes = 1 + len(record.carry_wire_phases)
+        for frame in record.carry_wire_phases:
+            carry_wire_nodes += 1 + len(frame)
+            for phase in frame:
+                wire = phase.middle_wire
+                port = phase.port
+                carry_wire_nodes += (
+                    1  # phase object
+                    + 1  # middle-wire object
+                    + 1  # bilateral-cycle-port object
+                    + 8  # source and target border tiles with scalar fields
+                    + 1
+                    + len(port.admitted_middle)
+                    + 1
+                    + sum(1 + len(row) for row in wire.pair_domains)
+                    + 1
+                    + len(wire.transfers)
+                    + 1
+                    + 3 * len(wire.reset_witnesses)
+                    + 1
+                    + len(wire.possible_first_resets)
+                )
+        # The registered binding contains a separate immutable value snapshot
+        # for these nested phases, in addition to the live phase objects.
+        carry_snapshot_nodes = carry_wire_nodes - (1 + len(record.carry_wire_phases))
         return (
             len(record.positions)
             + len(record.widths)
@@ -225,6 +250,8 @@ class Q19IssuanceRegistry:
             )
             + sum(len(word.lanes) + 1 for word in record.bank_words)
             + len(record.finite_moore_classes)
+            + carry_wire_nodes
+            + carry_snapshot_nodes
             + len(binding)
             + 1
         )
@@ -493,7 +520,7 @@ class Q19IssuanceRegistry:
             or bank._registry_key != key
         ):
             raise ValueError("invalid temporal ring bank registration")
-        self.temporal_ring_banks[key] = (bank, bank._snapshot())
+        self.temporal_ring_banks[key] = (bank, bank._binding)
         self.temporal_ring_bank_next += 1
 
     def validate_temporal_ring_bank(self, bank: ReverseAddTemporalRingBank) -> None:

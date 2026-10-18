@@ -127,9 +127,13 @@ class FiniteBoundaryWindow:
         self.digits = require_integer(digits, "window digits", 1)
         if self.digits > 64:
             raise ValueError("boundary windows are limited to 64 digits")
-        if operation not in ("reverse-add", "double-reverse"):
+        if operation == "reverse-add":
+            canonical_operation: BoundaryOperation = operation
+        elif operation == "double-reverse":
+            canonical_operation = operation
+        else:
             raise ValueError("unsupported boundary operation")
-        self.operation = operation
+        self.operation: BoundaryOperation = canonical_operation
         if type(relation_store) is not BoundaryRelationStore:
             raise TypeError("boundary relations require a bounded owned store")
         self.relation_store = relation_store
@@ -422,7 +426,7 @@ class FiniteBoundaryWindow:
             return result.freeze()
 
     def _power(self, prefix: int, suffix: int, level: int) -> frozenset[WindowTile]:
-        root = (self.digits, self.operation, prefix, suffix, level)
+        root: _RelationKey = (self.digits, self.operation, prefix, suffix, level)
         found = self._cache_get(root)
         if found is not None:
             return found
@@ -432,7 +436,11 @@ class FiniteBoundaryWindow:
                 key, expanded = work.pop()
                 if self._cache_get(key) is not None:
                     continue
-                key_digits, key_operation, key_prefix, key_suffix, key_level = key
+                key_digits = key[0]
+                key_operation: BoundaryOperation = key[1]
+                key_prefix = key[2]
+                key_suffix = key[3]
+                key_level = key[4]
                 if key_level == 0:
                     self._cache_store(
                         key,
@@ -457,20 +465,20 @@ class FiniteBoundaryWindow:
                     work.push((key, True))
                     work.push((first_key, False))
                     continue
-                child_keys = tuple(
-                    dict.fromkeys(
-                        (
-                            key_digits,
-                            key_operation,
-                            tile.prefix,
-                            tile.suffix,
-                            key_level - 1,
-                        )
-                        for tile in first
+                unique_child_keys: dict[_RelationKey, None] = {}
+                for tile in first:
+                    child_key: _RelationKey = (
+                        key_digits,
+                        key_operation,
+                        tile.prefix,
+                        tile.suffix,
+                        key_level - 1,
                     )
-                )
+                    unique_child_keys.setdefault(child_key, None)
                 missing = tuple(
-                    child for child in child_keys if self._cache_get(child) is None
+                    child
+                    for child in unique_child_keys
+                    if self._cache_get(child) is None
                 )
                 if missing:
                     work.push((key, True))

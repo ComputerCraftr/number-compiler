@@ -231,11 +231,11 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         seal = self._record_seal(record)
         nodes = self._record_nodes(record)
         seal_nodes = self._seal_nodes(seal)
+        local_id = len(self._records)
         self.ledger.reserve_many(
             ((self._owner, 1, nodes), (self._seal_owner, 1, seal_nodes))
         )
         try:
-            local_id = len(self._records)
             self._records.append(record)
             self._seals.append(seal)
         except BaseException:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import weakref
 from collections.abc import Callable
 
@@ -279,7 +278,8 @@ def test_powered_convenience_drops_callback_closure_after_request() -> None:
     assert application is not None
     assert application._source_for_live_root is None
     del resolver
-    gc.collect()
+    # This payload has no reference cycle: request cleanup must release the
+    # callback immediately, without relying on a whole-process GC sweep.
     assert payload_ref() is None
     view.close()
 
@@ -309,10 +309,8 @@ def test_manual_powered_application_releases_resolver_when_closed() -> None:
     application = view.powered_application(source_for_live_root=resolver)
     assert application._source_for_live_root is resolver
     del resolver
-    gc.collect()
     assert payload_ref() is not None
     application.close()
-    gc.collect()
     assert application._source_for_live_root is None
     assert payload_ref() is None
 

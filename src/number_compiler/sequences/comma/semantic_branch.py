@@ -85,6 +85,70 @@ def _exact_source_class(
     return class_id
 
 
+def _validate_selection_class_bindings(
+    source: BoundaryState,
+    ordered_children: tuple[BoundaryState, ...],
+    selection: UnrankedChildSelection,
+    provider: FutureProvider,
+    *,
+    charge_work: WorkCharger,
+) -> None:
+    """Bind published source/child CIDs to this exact ordered occurrence."""
+    if (
+        type(provider) not in (SemanticFutureProvider, SemanticFutureProviderLease)
+        or type(selection) is not UnrankedChildSelection
+        or type(selection.source) is not BoundaryState
+        or type(selection.source_class) is not int
+        or selection.source_class < 0
+        or type(selection.fork_coefficient) is not int
+        or not 2 <= selection.fork_coefficient <= 9
+        or type(selection.ordered_child_classes) is not tuple
+        or len(selection.ordered_child_classes) != 2
+        or any(
+            type(cid) is not int or cid < 0 for cid in selection.ordered_child_classes
+        )
+        or type(selection.selected_slot) is not int
+        or selection.selected_slot not in (0, 1)
+    ):
+        raise ValueError("semantic provider returned malformed FutureCID fields")
+    if (
+        type(source) is not BoundaryState
+        or type(ordered_children) is not tuple
+        or len(ordered_children) != 2
+        or any(type(child) is not BoundaryState for child in ordered_children)
+    ):
+        raise ValueError("semantic branch has malformed ordered boundary states")
+    if _source_index(selection.source) != _source_index(source):
+        raise ValueError("semantic provider selected a different source state")
+
+    class_count = provider.class_count
+    if type(class_count) is not int or class_count <= 0:
+        raise ValueError("semantic provider returned a malformed class count")
+    source_class = _exact_source_class(
+        provider,
+        source,
+        charge_work=charge_work,
+        class_count=class_count,
+    )
+    if selection.source_class != source_class:
+        raise ValueError("semantic provider selection has another source CID")
+    child_classes = tuple(
+        _exact_source_class(
+            provider,
+            child,
+            charge_work=charge_work,
+            class_count=class_count,
+        )
+        for child in ordered_children
+    )
+    if selection.ordered_child_classes != child_classes:
+        raise ValueError(
+            "semantic provider child slots differ from the literal N/Z order"
+        )
+    if selection.selected_class != child_classes[selection.selected_slot]:
+        raise ValueError("semantic provider selected class differs from its slot")
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class SemanticMacroChild:
     """A source-bound surviving child with its exact literal and weighted edge."""
@@ -514,63 +578,17 @@ def select_semantic_macro_child(
     )
     if type(selection) is not UnrankedChildSelection:
         raise TypeError("semantic provider returned a malformed child selection")
-    if (
-        type(selection.source) is not BoundaryState
-        or type(selection.source_class) is not int
-        or selection.source_class < 0
-        or type(selection.fork_coefficient) is not int
-        or not 2 <= selection.fork_coefficient <= 9
-        or type(selection.ordered_child_classes) is not tuple
-        or len(selection.ordered_child_classes) != 2
-        or any(
-            type(cid) is not int or cid < 0 for cid in selection.ordered_child_classes
-        )
-        or type(selection.selected_slot) is not int
-        or selection.selected_slot not in (0, 1)
-    ):
-        raise ValueError("semantic provider returned malformed FutureCID fields")
-    if _source_index(selection.source) != _source_index(source.state):
-        raise ValueError("semantic provider selected a different source state")
+    _validate_selection_class_bindings(
+        source.state,
+        (boundary_children[0].state, boundary_children[1].state),
+        selection,
+        provider,
+        charge_work=charge_work,
+    )
     if selection.fork_coefficient != destination_a:
         raise ValueError(
             "semantic provider Fork coefficient differs from the literal macro"
         )
-
-    class_count = provider.class_count
-    if type(class_count) is not int or class_count <= 0:
-        raise ValueError("semantic provider returned a malformed class count")
-    source_class = _exact_source_class(
-        provider,
-        source.state,
-        charge_work=charge_work,
-        class_count=class_count,
-    )
-    if selection.source_class != source_class:
-        raise ValueError("semantic provider selection has another source CID")
-    ordered_child_classes = tuple(
-        _exact_source_class(
-            provider,
-            child.state,
-            charge_work=charge_work,
-            class_count=class_count,
-        )
-        for child in boundary_children
-    )
-    if selection.ordered_child_classes != ordered_child_classes:
-        raise ValueError(
-            "semantic provider child slots differ from the literal N/Z order"
-        )
-    if type(selection.selected_slot) is not int or selection.selected_slot not in (
-        0,
-        1,
-    ):
-        raise ValueError("semantic provider returned an invalid ordered child slot")
-    selected_class = ordered_child_classes[selection.selected_slot]
-    if selection.selected_class != selected_class:
-        raise ValueError(
-            "semantic provider selected class differs from its ordered slot"
-        )
-
     occurrence = ordered_children.bind_slot(selection.selected_slot)
     if occurrence.target is not boundary_children[selection.selected_slot]:
         raise ValueError("semantic provider slot maps to another boundary occurrence")

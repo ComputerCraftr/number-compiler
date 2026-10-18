@@ -21,15 +21,21 @@ from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSeque
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.process_cache import MISSING, get_process_cache
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_CHILDREN as FIRST_FORK_CHILDREN,
+)
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_INDEX as FIRST_FORK_INDEX,
+)
+from number_compiler.sequences.comma.future_authority import (
+    SOURCE20_FIRST_FORK_VALUE as FIRST_FORK_VALUE,
+)
 
 CERTIFICATE_ID: Final[str] = "a367620-closed-regions-v1"
 CERTIFICATE_ASSET = "comma_prefix_v1.jsonl.gz"
 # Filled only from the independently generated, reviewed immutable certificate.
 CERTIFICATE_SHA256 = "f6e864b26ca9c8164ed91594d995aca15b19e027166d469844be37268896e4eb"
 CERTIFIED_MAX_INDEX = 412_987_860
-FIRST_FORK_INDEX = 412_987_859
-FIRST_FORK_VALUE = 19_999_999_918
-FIRST_FORK_CHILDREN = (19_999_999_999, 20_000_000_000)
 CertificateMemo = OwnedMemo[tuple[str, str], str]
 _CACHE_AUTHORITY = token_bytes(32)
 
@@ -81,6 +87,15 @@ def unresolved_boundary(index: int) -> UnresolvedCommaTerm:
         CERTIFICATE_ID,
         "the requested index exceeds the checked comma prefix",
     )
+
+
+def _registered_global_release_digest() -> str | None:
+    """Read compiled release metadata without loading its provider artifact."""
+    from number_compiler.sequences.comma.future_provider import (
+        registered_global_release_artifact_sha256,
+    )
+
+    return registered_global_release_artifact_sha256()
 
 
 def _checked_asset(path: Path, ledger: ResourceLedger, max_work: int) -> None:
@@ -216,6 +231,7 @@ def certificate_status(
     *,
     shared_cache: bool = True,
     memo: CertificateMemo | None = None,
+    global_provider: object | None = None,
 ) -> dict[str, object]:
     """Report existing query evidence without initiating admission or asset I/O.
 
@@ -228,6 +244,62 @@ def certificate_status(
         raise TypeError("shared_cache must be a bool")
     if memo is not None and memo.ledger is not ledger:
         raise ValueError("foreign comma certificate admission owner")
+
+    global_digest = _registered_global_release_digest()
+    runtime_verified = False
+    if global_provider is not None:
+        from number_compiler.sequences.comma.future_provider import (
+            SemanticFutureProviderLease,
+            SemanticFutureProviderStore,
+        )
+
+        if type(global_provider) is not SemanticFutureProviderLease:
+            raise TypeError("comma status needs its exact global provider lease")
+        store = getattr(global_provider, "_store", None)
+        if type(store) is not SemanticFutureProviderStore:
+            raise TypeError("malformed comma status provider store")
+        if getattr(store, "ledger", None) is not ledger:
+            raise ValueError("foreign comma status provider owner")
+        provider = global_provider._status_provider()
+        if provider is None:
+            raise PermissionError("comma status provider lease is stale")
+        provider.require_global_release_admission()
+        provider_digest = provider.artifact_sha256
+        if global_digest is None or provider_digest != global_digest:
+            raise PermissionError("comma status provider differs from release registry")
+        runtime_verified = True
+
+    if global_digest is not None:
+        from number_compiler.sequences.comma.future_authority import (
+            GLOBAL_RELEASE_CONTRACT_ID,
+            GLOBAL_RELEASE_SESSION_ID,
+            GLOBAL_RELEASE_THEOREM_ID,
+        )
+
+        return {
+            "family": "a367620",
+            "status": "available",
+            "certificate_id": GLOBAL_RELEASE_CONTRACT_ID,
+            "certificate_sha256": global_digest,
+            "certified_max_index": None,
+            "requested_index": index,
+            "runtime_verified": runtime_verified,
+            "isabelle_instance_checked": True,
+            "proof_scope": "global_decimal_root_future_safety",
+            "proof_session_id": GLOBAL_RELEASE_SESSION_ID,
+            "proof_theorem_id": GLOBAL_RELEASE_THEOREM_ID,
+            "coverage": "all_positive_indices",
+            "global_release_registered": True,
+            "reason": (
+                "the registered global release provider is admitted for this query"
+                if runtime_verified
+                else (
+                    "the global release theorem is registered; "
+                    "runtime provider is not loaded"
+                )
+            ),
+        }
+
     admitted = index <= CERTIFIED_MAX_INDEX
     verified = False
     if admitted and memo is not None and len(memo):
@@ -248,6 +320,8 @@ def certificate_status(
         "runtime_verified": verified,
         "isabelle_instance_checked": False,
         "proof_scope": "finite_root_and_first_fork_branch_closure",
+        "coverage": f"indices_1_through_{CERTIFIED_MAX_INDEX}",
+        "global_release_registered": False,
         "reason": (
             "query has checked finite regions; complete Isabelle instance remains open"
             if verified

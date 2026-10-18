@@ -26,7 +26,8 @@ from number_compiler.api.family_registry import option_argv
 from number_compiler.api.number_api import NumberCompiler
 
 Consumer = Literal["antihydra", "mahler"]
-Mode = Literal["enabled", "odd_macro_disabled"]
+Mode = Literal["enabled", "odd_macro_disabled", "prefilter_disabled"]
+MODES: tuple[Mode, ...] = ("enabled", "odd_macro_disabled", "prefilter_disabled")
 DEFAULT_HORIZONS = (65, 128, 1024)
 DEFAULT_CONSUMERS: tuple[Consumer, ...] = ("antihydra", "mahler")
 
@@ -92,7 +93,16 @@ def _sample(
 ) -> Sample:
     NumberCompiler.clear_shared_cache()
     arguments = _arguments(consumer, horizon)
-    route = _odd_macro_disabled() if mode == "odd_macro_disabled" else nullcontext()
+    route = (
+        _odd_macro_disabled()
+        if mode == "odd_macro_disabled"
+        else patch(
+            "number_compiler.sequences.antihydra.arithmetic_images.might_have_odd_macro_low_suffix",
+            return_value=True,
+        )
+        if mode == "prefilter_disabled"
+        else nullcontext()
+    )
     try:
         with route:
             elapsed, packet = cli_sample(arguments, fresh=False)
@@ -144,16 +154,12 @@ def compare(
     stable_packets: dict[tuple[Consumer, int], tuple[str | None, object]] = {}
     for consumer in consumers:
         for horizon in horizons:
-            for mode in ("enabled", "odd_macro_disabled"):
+            for mode in MODES:
                 _sample(consumer, horizon, -1, mode)
     for consumer in consumers:
         for horizon in horizons:
             for trial in range(trials):
-                modes: tuple[Mode, Mode] = (
-                    ("enabled", "odd_macro_disabled")
-                    if trial % 2 == 0
-                    else ("odd_macro_disabled", "enabled")
-                )
+                modes = MODES if trial % 2 == 0 else tuple(reversed(MODES))
                 for mode in modes:
                     sample = _sample(consumer, horizon, trial, mode)
                     samples.append(sample)
@@ -208,6 +214,13 @@ def compare(
                 and row["horizon"] == horizon
                 and row["mode"] == "odd_macro_disabled"
             ]
+            prefilter_disabled = [
+                row
+                for row in samples
+                if row["consumer"] == consumer
+                and row["horizon"] == horizon
+                and row["mode"] == "prefilter_disabled"
+            ]
             enabled_times = [row["seconds"] for row in enabled]
             disabled_times = [row["seconds"] for row in disabled]
             enabled_work = [row["odd_macro_work"] for row in enabled]
@@ -233,6 +246,12 @@ def compare(
                         if statistics.median(enabled_times)
                         else None
                     ),
+                    "prefilter_disabled_median_seconds": statistics.median(
+                        row["seconds"] for row in prefilter_disabled
+                    ),
+                    "prefilter_disabled_odd_macro_work": [
+                        row["odd_macro_work"] for row in prefilter_disabled
+                    ],
                     "enabled_macro_hit": any(
                         count is not None and count > 0 for count in evaluations
                     ),
@@ -248,7 +267,7 @@ def compare(
     return {
         "scope": (
             "same fixed source and same CLI request per consumer/horizon; "
-            "enabled route compared with only _try_odd_macro_candidate disabled; "
+            "enabled route compared with disabled macro admission and disabled negative prefilter; "
             "one unrecorded warm-up request per route; query caches cleared before "
             "every request; timed samples include requested output"
         ),

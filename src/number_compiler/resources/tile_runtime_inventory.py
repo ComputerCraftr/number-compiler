@@ -44,6 +44,7 @@ from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
     TileScheduler,
 )
+from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
@@ -404,31 +405,34 @@ def audit_tile_runtime(
         for interface, blank in adapter._leaf_records.items():
             if type(interface) is LeafProductKey:
                 valid = type(blank) is LocalInterfaceID
+                leaf_kernel: PrimitiveKernel | None = None
                 try:
-                    kernel = adapter.kernels.kernel(interface.kernel)
+                    leaf_kernel = adapter.kernels.kernel(interface.kernel)
                     declaration = adapter.quotients.interface(interface.signature)
                     valid &= (
                         type(interface.symbol) is int
-                        and 0 <= interface.symbol <= kernel.blank
+                        and 0 <= interface.symbol <= leaf_kernel.blank
                         and declaration.kernel.behavior
-                        == (TILE_KERNEL_CONTRACT, _effect_key(kernel.effect))
-                        and kernel.blank in signatures.get(interface.signature, set())
-                        and declaration.inputs == adapter._ports(kernel)
-                        and declaration.outputs == adapter._output_sorts(kernel)
+                        == (TILE_KERNEL_CONTRACT, _effect_key(leaf_kernel.effect))
+                        and leaf_kernel.blank
+                        in signatures.get(interface.signature, set())
+                        and declaration.inputs == adapter._ports(leaf_kernel)
+                        and declaration.outputs == adapter._output_sorts(leaf_kernel)
                         and declaration.phase_count == 1
                         and declaration.orientations == (0,)
                         and type(blank) is LocalInterfaceID
                         and adapter.quotients.resolve(blank).signature
                         == interface.signature
                         and type(adapter._leaf_records.get(blank)) is int
-                        and adapter._leaf_records.get(blank) == kernel.blank
+                        and adapter._leaf_records.get(blank) == leaf_kernel.blank
                     )
                 except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                     valid = False
                 if valid:
                     approved.add(id(interface))
                     assert type(blank) is LocalInterfaceID
-                    expected_leaf_reverse[blank] = kernel.blank
+                    assert leaf_kernel is not None
+                    expected_leaf_reverse[blank] = leaf_kernel.blank
                 else:
                     invalid.add((adapter._leaf_owner, id(interface)))
                 continue

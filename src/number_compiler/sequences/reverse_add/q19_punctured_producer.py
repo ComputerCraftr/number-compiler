@@ -143,7 +143,12 @@ class PuncturedPairProducer:
         if failed:
             ledger.bump(_reverse_add_keys.REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS)
         else:
-            ledger.bump(f"reverse_q19_punctured_t{steps}_applications")
+            application_key = (
+                _reverse_add_keys.REVERSE_Q19_PUNCTURED_T2_APPLICATIONS
+                if steps == 2
+                else _reverse_add_keys.REVERSE_Q19_PUNCTURED_T4_APPLICATIONS
+            )
+            ledger.bump(application_key)
 
     def _coefficient_runs(self, root: int) -> tuple[tuple[int, int], ...]:
         owner = self._owner
@@ -255,7 +260,7 @@ class PuncturedPairProducer:
                 raise AssertionError("cannot roll back the Q19 empty node")
             # _add_interned can append a node before a mapping assignment fails.
             # Only erase an interner entry when it still names this exact node.
-            owner.arena.nodes._rollback_unpublished(node_id)
+            owner.arena._nodes_store._rollback_unpublished(node_id)
             owner.ledger.release(owner.arena.owners[0], entries=1, nodes=1)
 
 

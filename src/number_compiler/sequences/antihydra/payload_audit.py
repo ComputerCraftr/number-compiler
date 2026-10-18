@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sized
 from dataclasses import fields
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
@@ -379,46 +379,47 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
         )
     driver = engine.projection_fragment_driver
     if driver is not None:
-        adapter = getattr(driver, "adapter", None)
-        core = getattr(driver, "core", None)
-        scheduler = getattr(driver, "scheduler", None)
-        cursor = getattr(driver, "cursor", None)
-        structural &= (
-            type(driver) is AntihydraProjectionDriver
-            and type(adapter) is _AntihydraFragmentAdapter
-            and type(core) is SourceBoundSchedulerCore
-            and type(scheduler) is TileScheduler
-            and scheduler._source_only
-            and scheduler.ledger is ledger
-            and scheduler._source_images is core
-            and cursor is driver.cursor
-            and cursor.ledger is ledger
-            and not cursor._active
-            and not cursor._states
-            and not cursor._state_seals
-            and not cursor._occurrences
-            and not cursor._occurrence_seals
-            and adapter.ledger is ledger
-            and adapter.projection is None
-            and adapter.key is None
-            and adapter.block is None
-            and adapter._cursor is None
-            and adapter._occurrence is None
-            and adapter._source_h == adapter._source_balance == 0
-            and adapter._section_capacity == 0
-            and adapter._source_token is None
-            and not adapter._records
-            and not adapter._seals
-            and not adapter._source_seals
-            and len(core._adapters) == 1
-            and core._adapters.get((adapter.family, adapter.semantic_version))
-            is adapter
-            and not core._nodes
-            and not core._origins
-            and not core._applications
-            and not core._relative
-            and not core._projections
-        )
+        if type(driver) is not AntihydraProjectionDriver:
+            structural = False
+        else:
+            adapter = driver.adapter
+            core = driver.core
+            scheduler = driver.scheduler
+            cursor = driver.cursor
+            structural &= (
+                type(adapter) is _AntihydraFragmentAdapter
+                and type(core) is SourceBoundSchedulerCore
+                and type(scheduler) is TileScheduler
+                and scheduler._source_only
+                and scheduler.ledger is ledger
+                and scheduler._source_images is core
+                and cursor.ledger is ledger
+                and not cursor._active
+                and not cursor._states
+                and not cursor._state_seals
+                and not cursor._occurrences
+                and not cursor._occurrence_seals
+                and adapter.ledger is ledger
+                and adapter.projection is None
+                and adapter.key is None
+                and adapter.block is None
+                and adapter._cursor is None
+                and adapter._occurrence is None
+                and adapter._source_h == adapter._source_balance == 0
+                and adapter._section_capacity == 0
+                and adapter._source_token is None
+                and not adapter._records
+                and not adapter._seals
+                and not adapter._source_seals
+                and len(core._adapters) == 1
+                and core._adapters.get((adapter.family, adapter.semantic_version))
+                is adapter
+                and not core._nodes
+                and not core._origins
+                and not core._applications
+                and not core._relative
+                and not core._projections
+            )
 
     for physical_key, physical_value in engine.memo.items():
         valid = (
@@ -508,14 +509,23 @@ def audit_antihydra_image_workspace(
                 and key[0] == image.root_source
                 and key[1] == image.root_action
                 and wire is image._mahler_wire
-                and type(wire) is tuple
+            )
+            if (
+                type(wire) is tuple
                 and len(wire) == 3
                 and all(type(part) is int for part in wire)
-                and wire[0] == image.steps
-                and wire[1] == -12 * (transfer.upper + transfer.offset - transfer.lower)
-                and wire[2] == (6 if image.steps == 1 else 6 * transfer.upper + wire[1])
-                and wire[2] < 0
-            )
+            ):
+                typed_wire = cast(tuple[int, int, int], wire)
+                valid &= (
+                    typed_wire[0] == image.steps
+                    and typed_wire[1]
+                    == -12 * (transfer.upper + transfer.offset - transfer.lower)
+                    and typed_wire[2]
+                    == (6 if image.steps == 1 else 6 * transfer.upper + typed_wire[1])
+                    and typed_wire[2] < 0
+                )
+            else:
+                valid = False
             if valid:
                 _approve(approved, owner, key)
                 _approve(approved, owner, wire)

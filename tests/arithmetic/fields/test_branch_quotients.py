@@ -45,6 +45,7 @@ def test_compact_phase_signatures_keep_reference_class_ids() -> None:
                 for q in range(1, prime)
             }
             labels = tuple(int(u != 0) for u in range(prime))
+            result = labels
             for _ in range(prime + 1):
                 classes: dict[tuple[int, tuple[tuple[int, bool, bool], ...]], int] = {}
                 refined = []

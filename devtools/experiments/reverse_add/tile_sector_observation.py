@@ -43,6 +43,12 @@ from number_compiler.hashlife.tiles.tile_region_memo import normalize_cached_reg
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 
 
+def _primitive_adapter(adapter: object, message: str) -> PrimitiveTileKernelAdapter:
+    if type(adapter) is not PrimitiveTileKernelAdapter:
+        raise TypeError(message)
+    return adapter
+
+
 def _primitive_branch(
     adapter: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
@@ -193,11 +199,10 @@ def observe_reverse_sector_product(
         raise TypeError("reverse sector observation requires a tile application")
     source = application_source(application)
     scheduler = application.scheduler
-    adapter = scheduler.adapter
-    if type(adapter) is not PrimitiveTileKernelAdapter:
-        raise TypeError(
-            "reverse sector observation requires the primitive tile runtime"
-        )
+    adapter = _primitive_adapter(
+        scheduler.adapter,
+        "reverse sector observation requires the primitive tile runtime",
+    )
     if scheduler.results.action_authority is not adapter:
         raise ValueError("reverse sector application has another action authority")
     adapter.validate_action(application.action)
@@ -324,9 +329,10 @@ def _observe_reverse_interval_forcing(
         raise ValueError("reverse interval forcing requires a positive dyadic extent")
     source = application_source(application)
     scheduler = application.scheduler
-    adapter = scheduler.adapter
-    if type(adapter) is not PrimitiveTileKernelAdapter:
-        raise TypeError("reverse interval forcing requires the primitive tile runtime")
+    adapter = _primitive_adapter(
+        scheduler.adapter,
+        "reverse interval forcing requires the primitive tile runtime",
+    )
     if scheduler.results.action_authority is not adapter:
         raise ValueError("reverse interval application has another action authority")
     adapter.validate_action(application.action)
@@ -375,12 +381,12 @@ def _observe_reverse_interval_forcing(
                 raise ValueError(
                     "reverse interval did not normalize to one dyadic tile"
                 )
-            ports = adapter.initial_ports(application.action)
+            left_port, right_port = adapter.initial_ports(application.action)
             observed = primitive_interface_payload(
                 scheduler.results,
                 application.action,
                 view.tile,
-                PrimitiveCausalPorts(*ports),
+                PrimitiveCausalPorts(left_port, right_port),
                 application.wiring,
                 TemporalCocycle(),
             )

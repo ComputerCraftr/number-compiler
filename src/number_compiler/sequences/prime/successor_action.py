@@ -851,20 +851,20 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         action: Hashable,
         cached_source: SourceImageView,
         cached_result: SourceImageView,
-        new_source: SourceImageView,
+        source: SourceImageView,
     ) -> SourceImageCandidate:
         self.validate_action(action)
         self.validate_payload(cached_source.payload)
         self.validate_payload(cached_result.payload)
-        self.validate_payload(new_source.payload)
+        self.validate_payload(source.payload)
         old_source = cast(PrimeSuccessorImagePayload, cached_source.payload)
         old_result = cast(PrimeSuccessorImagePayload, cached_result.payload)
-        new = cast(PrimeSuccessorImagePayload, new_source.payload)
+        new = cast(PrimeSuccessorImagePayload, source.payload)
         parent_period = self.arena.descriptor.parent_period
         if (
             old_source.outgoing_phase != new.outgoing_phase
             or cached_source.binding.extent % parent_period
-            != new_source.binding.extent % parent_period
+            != source.binding.extent % parent_period
         ):
             raise ValueError("prime relative transfer has another incoming state")
         exact_action = cast(PrimeSuccessorActionID, action)
@@ -888,7 +888,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         self._check_capacity(3)
         return SourceImageCandidate(
             result,
-            new_source.binding.extent + node.width,
+            source.binding.extent + node.width,
             (result.entering_phase, result.outgoing_phase),
         )
 

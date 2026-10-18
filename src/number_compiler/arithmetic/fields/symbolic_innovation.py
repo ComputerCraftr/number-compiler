@@ -797,8 +797,9 @@ class SymbolicInnovationArena:
                         memo.owner, entries=chain_nodes, nodes=chain_nodes
                     )
 
+        pending: list[tuple[InnovationID, bool, _Node | None]] = []
+        active_frames = 0
         try:
-            pending: list[tuple[InnovationID, bool, _Node | None]] = []
 
             def push_frame(
                 reference: InnovationID, expanded: bool, node: _Node | None
@@ -813,7 +814,6 @@ class SymbolicInnovationArena:
                     _fields_keys.SYMBOLIC_INNOVATION_PROJECTION_WORKSPACE_FRAMES
                 )
 
-            active_frames = 0
             push_frame(action.innovation, False, None)
             while pending:
                 reference, expanded, retained_node = pending.pop()

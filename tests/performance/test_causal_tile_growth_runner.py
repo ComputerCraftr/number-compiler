@@ -127,7 +127,7 @@ def test_worker_fingerprint_is_checked_before_row_payload(
     source = GitSource("commit", "tree", "sha1", False)
     result = runner._one_trial(("fixed-width", 4, 4, 1), 0, source)
     assert result["status"] == "failed"
-    assert result["failure_reason"] == "worker Git state differed from parent"
+    assert result.get("failure_reason") == "worker Git state differed from parent"
 
 
 def test_completed_worker_without_memory_sample_is_missing_evidence(
@@ -154,7 +154,7 @@ def test_completed_worker_without_memory_sample_is_missing_evidence(
         ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
     )
     assert result["status"] == "failed"
-    assert result["failure_reason"] == "worker guard produced no memory samples"
+    assert result.get("failure_reason") == "worker guard produced no memory samples"
 
 
 def test_successful_trial_retains_memory_evidence(
@@ -178,9 +178,9 @@ def test_successful_trial_retains_memory_evidence(
     result = runner._one_trial(
         ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
     )
-    assert result["sampled_peak_bytes"] == 1024
-    assert result["memory_measurement"] == "test"
-    assert result["memory_samples"] == 1
+    assert result.get("sampled_peak_bytes") == 1024
+    assert result.get("memory_measurement") == "test"
+    assert result.get("memory_samples") == 1
 
 
 def test_trial_aggregation_reports_median_spread_and_stable_counters() -> None:

@@ -23,6 +23,7 @@ from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.semantic_identity import (
     SemanticIdentity,
     SemanticIdentityDomain,
+    SemanticIdentityValidator,
 )
 from number_compiler.arithmetic.functions.finite_observer import (
     canonical_partition,
@@ -249,9 +250,25 @@ def capture_primitive_behavior(
     identity: SemanticIdentity,
 ) -> PrimitiveBehaviorTable:
     """Freeze one kernel's complete local transition/output behavior."""
+    validator = SemanticIdentityValidator()
+    try:
+        table = _capture_primitive_behavior(kernel, identity, validator=validator)
+        validator.finish()
+        return table
+    except BaseException:
+        validator._discard()
+        raise
+
+
+def _capture_primitive_behavior(
+    kernel: PrimitiveBehaviorKernel,
+    identity: SemanticIdentity,
+    *,
+    validator: SemanticIdentityValidator,
+) -> PrimitiveBehaviorTable:
     if type(identity) is not SemanticIdentity:
         raise TypeError("primitive behavior requires a semantic kernel identity")
-    identity.__post_init__()
+    validator.validate(identity)
     for value, name in (
         (kernel.left_count, "left count"),
         (kernel.right_count, "right count"),
@@ -333,8 +350,14 @@ def capture_primitive_behavior(
         PRIMITIVE_OCCURRENCE_SCHEMA,
         observations,
     )
+    table_identity = SemanticIdentity._from_validator(
+        SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_TABLE,
+        key,
+        validator,
+    )
+    validator.validate(identity)
     return PrimitiveBehaviorTable(
-        SemanticIdentity(SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_TABLE, key),
+        table_identity,
         alphabet_size,
         kernel.blank,
         left,
@@ -351,9 +374,29 @@ def minimize_primitive_behavior(
     work: PrimitiveBehaviorWork | None = None,
 ) -> PrimitiveBehaviorQuotient:
     """Return the coarsest exact two-sided output congruence."""
+    validator = SemanticIdentityValidator()
+    try:
+        quotient = _minimize_primitive_behavior(
+            table,
+            work=work,
+            validator=validator,
+        )
+        validator.finish()
+        return quotient
+    except BaseException:
+        validator._discard()
+        raise
+
+
+def _minimize_primitive_behavior(
+    table: PrimitiveBehaviorTable,
+    *,
+    work: PrimitiveBehaviorWork | None,
+    validator: SemanticIdentityValidator,
+) -> PrimitiveBehaviorQuotient:
     if type(table) is not PrimitiveBehaviorTable:
         raise TypeError("primitive minimization requires a frozen behavior table")
-    _validate_table(table)
+    _validate_table(table, validate_identity=validator.validate)
     if work is not None and type(work) is not PrimitiveBehaviorWork:
         raise TypeError("primitive refinement work requires a transient counter record")
     primitive_observations = table.left_count * table.alphabet_size * table.right_count
@@ -465,11 +508,14 @@ def minimize_primitive_behavior(
         projected_channels,
         projected_observations,
     )
+    semantic_identity = SemanticIdentity._from_validator(
+        SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_QUOTIENT,
+        semantic_key,
+        validator,
+    )
     return PrimitiveBehaviorQuotient(
         table.identity,
-        SemanticIdentity(
-            SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_QUOTIENT, semantic_key
-        ),
+        semantic_identity,
         table.alphabet_size,
         table.blank,
         left_part,

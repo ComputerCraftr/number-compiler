@@ -427,6 +427,15 @@ class MahlerMixedOddHarmonicRing:
         seen: dict[tuple[int, int, int, int], int] = {}
         emissions: list[tuple[int, int, int, int]] = []
         successor_states: list[tuple[int, int, int, int]] = []
+        # The source-approved motif fixes these coefficients. Precompute each
+        # modular gain once per motif phase and radix cell, then reuse it for
+        # every state visited by the bounded q orbit.
+        moduli = tuple(radix**j for j in range(1, places + 1))
+        gains = tuple(
+            tuple(pow(3, exponent, m) for m in moduli) for exponent in self.exponents
+        )
+        full_gains = tuple(row[-1] for row in gains)
+        binary_shifts = tuple(pow(2, exponent, modulus) for exponent in self.exponents)
         cycle_start: int | None = None
         while len(emissions) < max_states:
             if state in seen:
@@ -435,15 +444,14 @@ class MahlerMixedOddHarmonicRing:
             seen[state] = len(emissions)
             q, powtwo, phase, six_phase = state
             exponent = self.exponents[phase]
-            gain = pow(3, exponent, modulus)
-            factor2 = pow(2, exponent, modulus)
+            gain = full_gains[phase]
+            factor2 = binary_shifts[phase]
             powtwo_next = factor2 * powtwo % modulus
             q_next = (gain * q + powtwo_next) % modulus
             carry_mask, borrow_mask = 0, 0
-            for j in range(1, places + 1):
-                m = radix**j
+            for j, m in enumerate(moduli, start=1):
                 before = q % m
-                product = pow(3, exponent, m) * before % m
+                product = gains[phase][j - 1] * before % m
                 summand = powtwo_next % m
                 after = (product + summand) % m
                 if after != q_next % m:

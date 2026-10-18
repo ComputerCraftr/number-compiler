@@ -1,13 +1,11 @@
-"""Bounded, source-qualified normalized Collatz dyadic cylinder macros.
+"""Bounded source-qualified dyadic macros for normalized Collatz runs.
 
-A width-w occurrence owns its complete low-w source germ. Its affine action
-is target_origin + 3**odd_symbols * high_fiber. The live run producer supplies
-proved cylinder coefficients; cache lookup admits the complete source germ.
+Each width-w occurrence owns its low-w source germ and affine high-fiber action.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -20,6 +18,16 @@ from number_compiler.resources.process_cache import (
     CacheRecordIssuerMismatch,
     get_process_cache,
 )
+from number_compiler.sequences.collatz.conditional_scheduler_memo import (
+    ConditionalSchedulerMemoOwner,
+)
+from number_compiler.sequences.collatz.source_cylinder_types import (
+    CollatzDyadicOccurrence,
+    _admit_source_key,
+)
+from number_compiler.sequences.collatz.source_cylinder_types import (
+    _canonical_gain as _canonical_gain,  # noqa: PLC0414 - cache tests patch this hook
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
     compose_width_ledger,
@@ -29,29 +37,6 @@ from number_compiler.sequences.collatz.tape_width import (
 _OCCURRENCE_PUBLISHER = object()
 _GAIN_PUBLISHER = object()
 _WIDTH_SPINE_PUBLISHER = object()
-
-
-def _canonical_gain(odd_symbols: int) -> int:
-    """Return a trusted exact gain; callers charge each construction."""
-    if type(odd_symbols) is not int or odd_symbols < 0:
-        raise ValueError("Collatz odd-symbol count must be a natural integer")
-    return int(3**odd_symbols)
-
-
-def _low_residue(value: int, width: int) -> int:
-    """Return low-width bits without allocating a mask wider than the value."""
-    if width >= value.bit_length():
-        return value
-    return value & ((1 << width) - 1)
-
-
-def _admit_source_key(source: int, width: int) -> tuple[int, int]:
-    """Validate one source germ and return its residue and actual key size."""
-    if type(source) is not int or source <= 0:
-        raise ValueError("Collatz macro source must be positive")
-    if type(width) is not int or width < 8 or width & (width - 1):
-        raise ValueError("Collatz macro width must be dyadic and at least eight")
-    return _low_residue(source, width), source.bit_length() + width.bit_length()
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -64,12 +49,15 @@ class _CanonicalGain:
 
     odd_symbols: int
     multiplier: int
+    _seal: tuple[int, int] = field(repr=False, compare=False)
 
     def __init__(self, odd_symbols: int) -> None:
         if type(odd_symbols) is not int or odd_symbols < 0:
             raise ValueError("Collatz gain exponent must be natural")
         object.__setattr__(self, "odd_symbols", odd_symbols)
-        object.__setattr__(self, "multiplier", _canonical_gain(odd_symbols))
+        multiplier = _canonical_gain(odd_symbols)
+        object.__setattr__(self, "multiplier", multiplier)
+        object.__setattr__(self, "_seal", (odd_symbols, multiplier))
 
     @classmethod
     def _from_issued_payload(cls, odd_symbols: int, multiplier: int) -> _CanonicalGain:
@@ -83,81 +71,14 @@ class _CanonicalGain:
         gain = object.__new__(cls)
         object.__setattr__(gain, "odd_symbols", odd_symbols)
         object.__setattr__(gain, "multiplier", multiplier)
+        object.__setattr__(gain, "_seal", (odd_symbols, multiplier))
         return gain
 
-
-@dataclass(frozen=True, slots=True)
-class CollatzDyadicOccurrence:
-    width: int
-    residue: int
-    odd_symbols: int
-    target_origin: int
-    multiplier: int
-
-    def __post_init__(self) -> None:
-        self._validate(None)
-        self._validate(_canonical_gain(self.odd_symbols))
-
-    def _validate(self, canonical_gain: int | None) -> None:
-        if any(
-            type(value) is not int
-            for value in (
-                self.width,
-                self.residue,
-                self.odd_symbols,
-                self.target_origin,
-                self.multiplier,
-            )
-        ):
-            raise TypeError("Collatz occurrence coordinates require exact integers")
-        if self.width < 8 or self.width & (self.width - 1):
-            raise ValueError("Collatz occurrence width must be dyadic")
-        if (
-            self.residue < 0
-            or self.residue.bit_length() > self.width
-            or not 0 <= self.odd_symbols <= self.width
-        ):
-            raise ValueError("Collatz occurrence germ or odd count is invalid")
-        if self.multiplier <= 0 or not 0 <= self.target_origin < self.multiplier:
-            raise ValueError("Collatz occurrence centered coefficients are invalid")
-        if canonical_gain is not None and self.multiplier != canonical_gain:
-            raise ValueError("Collatz occurrence centered coefficients are invalid")
-
-    @classmethod
-    def _from_gain(
-        cls,
-        width: int,
-        residue: int,
-        odd_symbols: int,
-        target_origin: int,
-        gain: _CanonicalGain,
-    ) -> CollatzDyadicOccurrence:
-        if (
-            type(gain) is not _CanonicalGain
-            or type(odd_symbols) is not int
-            or gain.odd_symbols != odd_symbols
-            or type(gain.multiplier) is not int
-            or gain.multiplier <= 0
-        ):
-            raise ValueError("Collatz occurrence has invalid canonical gain")
-        occurrence = object.__new__(cls)
-        object.__setattr__(occurrence, "width", width)
-        object.__setattr__(occurrence, "residue", residue)
-        object.__setattr__(occurrence, "odd_symbols", odd_symbols)
-        object.__setattr__(occurrence, "target_origin", target_origin)
-        object.__setattr__(occurrence, "multiplier", gain.multiplier)
-        occurrence._validate(gain.multiplier)
-        return occurrence
-
-    def apply(self, source: int) -> int:
-        if type(source) is not int or source < 0:
-            raise ValueError("Collatz cylinder needs a nonnegative exact source")
-        if _low_residue(source, self.width) != self.residue:
-            raise ValueError("Collatz cylinder source germ differs")
-        return self.target_origin + self.multiplier * (source >> self.width)
+    def matches_seal(self) -> bool:
+        return self._seal == (self.odd_symbols, self.multiplier)
 
 
-class CollatzDyadicMacros:
+class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
     """Ledger-owned bounded local records with optional bounded cross-query reuse."""
 
     LIMIT = 4096
@@ -255,9 +176,12 @@ class CollatzDyadicMacros:
 
         try:
             self.occurrences = cast(
-                OwnedMemo[tuple[int, int], tuple[CollatzDyadicOccurrence, int]],
+                OwnedMemo[
+                    tuple[int, int],
+                    tuple[CollatzDyadicOccurrence, int, tuple[int, ...]],
+                ],
                 make_store(
-                    "-occurrences", "query_memo", nodes_per_entry=2, evictable=True
+                    "-occurrences", "query_memo", nodes_per_entry=3, evictable=True
                 ),
             )
             self.width_spines = cast(
@@ -271,10 +195,10 @@ class CollatzDyadicMacros:
             )
             self.gains = cast(
                 OwnedMemo[int, _CanonicalGain],
-                make_store("-gains", "query_memo", evictable=True),
+                # Each immutable gain seal retains one additional tuple.
+                make_store("-gains", "query_memo", nodes_per_entry=1, evictable=True),
             )
-            # A binary frontier of already executed, adjacent source occurrences.
-            # Endpoints are transient construction data, never shared-cache identity.
+            # Adjacent executed occurrences form a temporary binary frontier.
             self.frontier = cast(
                 OwnedMemo[int, tuple[int, int, CollatzTapeWidthSummary | None]],
                 make_store("-frontier", "execution_stack", nodes_per_entry=10),
@@ -296,14 +220,14 @@ class CollatzDyadicMacros:
         if self._cleanup_complete:
             return
         self._closed = True
-        cleanup_all(
-            (
-                self.frontier.dispose,
-                self.gains.dispose,
-                self.width_spines.dispose,
-                self.occurrences.dispose,
-            )
-        )
+        disposals = [
+            self.close_conditional_scheduler_memo,
+            self.frontier.dispose,
+            self.gains.dispose,
+            self.width_spines.dispose,
+            self.occurrences.dispose,
+        ]
+        cleanup_all(disposals)
         self._cleanup_complete = True
 
     def _check_open(self) -> None:
@@ -337,6 +261,7 @@ class CollatzDyadicMacros:
                 or found.odd_symbols != odd_symbols
                 or type(found.multiplier) is not int
                 or found.multiplier <= 0
+                or not found.matches_seal()
             ):
                 raise ValueError("Collatz local canonical gain is malformed")
             self._bump("gain_local_hits")
@@ -366,7 +291,8 @@ class CollatzDyadicMacros:
                             raise ValueError(
                                 "Collatz canonical gain cache is malformed"
                             )
-                        gain = _CanonicalGain._from_issued_payload(*value)
+                        gain_payload = cast(tuple[int, int], value)
+                        gain = _CanonicalGain._from_issued_payload(*gain_payload)
                         self._retain_gain(gain)
                         self._bump("gain_process_hits")
                         return gain
@@ -405,15 +331,66 @@ class CollatzDyadicMacros:
         ) >= self.LIMIT:
             del self.occurrences[next(iter(self.occurrences))]
             self._bump("occurrence_evictions")
+        # The occurrence is frozen only by convention: object.__setattr__ can
+        # still alter its fields after publication. Keep an independent scalar
+        # snapshot beside it so a local memo hit cannot silently reuse a
+        # changed affine action or publisher fiber.
         self.occurrences[occurrence.width, occurrence.residue] = (
             occurrence,
             publisher_fiber,
+            self._occurrence_snapshot(occurrence, publisher_fiber),
         )
         self._bump("occurrence_publications")
         level = occurrence.width.bit_length() - 1
         previous = self.ledger.counters.get(_collatz_keys.COLLATZ_HASHLIFE_MAX_LEVEL, 0)
         self._bump("max_level", max(0, level - previous))
         return occurrence
+
+    @staticmethod
+    def _occurrence_snapshot(
+        occurrence: CollatzDyadicOccurrence, publisher_fiber: int
+    ) -> tuple[int, ...]:
+        return (
+            occurrence.width,
+            occurrence.residue,
+            occurrence.odd_symbols,
+            occurrence.target_origin,
+            occurrence.multiplier,
+            publisher_fiber,
+        )
+
+    @classmethod
+    def _checked_local_occurrence(
+        cls, value: object, width: int, residue: int
+    ) -> tuple[CollatzDyadicOccurrence, int]:
+        if not (
+            type(value) is tuple
+            and len(value) == 3
+            and type(value[0]) is CollatzDyadicOccurrence
+            and type(value[1]) is int
+            and value[1] >= 0
+            and type(value[2]) is tuple
+            and len(value[2]) == 6
+            and all(type(item) is int for item in value[2])
+        ):
+            raise ValueError("Collatz local occurrence record is malformed")
+        raw_occurrence, raw_fiber, raw_snapshot = cast(
+            tuple[object, object, object], value
+        )
+        occurrence = cast(CollatzDyadicOccurrence, raw_occurrence)
+        publisher_fiber = cast(int, raw_fiber)
+        snapshot = cast(tuple[int, ...], raw_snapshot)
+        try:
+            occurrence._validate(None)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Collatz local occurrence binding was changed") from exc
+        if (
+            occurrence.width != width
+            or occurrence.residue != residue
+            or (cls._occurrence_snapshot(occurrence, publisher_fiber) != snapshot)
+        ):
+            raise ValueError("Collatz local occurrence binding was changed")
+        return occurrence, publisher_fiber
 
     def lookup(self, source: int, width: int) -> CollatzDyadicOccurrence | None:
         self._check_open()
@@ -425,17 +402,9 @@ class CollatzDyadicMacros:
         local = self.occurrences.get((width, residue))
         if local is not None:
             try:
-                if not (
-                    type(local) is tuple
-                    and len(local) == 2
-                    and type(local[0]) is CollatzDyadicOccurrence
-                    and type(local[1]) is int
-                    and local[1] >= 0
-                    and local[0].width == width
-                    and local[0].residue == residue
-                ):
-                    raise ValueError("Collatz local occurrence record is malformed")
-                found, publisher_fiber = local
+                found, publisher_fiber = self._checked_local_occurrence(
+                    local, width, residue
+                )
             except (TypeError, ValueError):
                 self._bump("occurrence_admission_rejections")
                 self._bump("failed_work")
@@ -473,7 +442,8 @@ class CollatzDyadicMacros:
                             raise ValueError(
                                 "Collatz shared occurrence payload is invalid"
                             )
-                        ones, origin, gain, publisher_fiber = payload
+                        occurrence_payload = cast(tuple[int, int, int, int], payload)
+                        ones, origin, gain, publisher_fiber = occurrence_payload
                         if not 0 <= ones <= width or publisher_fiber < 0:
                             raise ValueError(
                                 "Collatz shared occurrence has an invalid gain key"
@@ -599,15 +569,9 @@ class CollatzDyadicMacros:
         if occurrence_key in self.occurrences:
             try:
                 existing_record = self.occurrences[occurrence_key]
-                if (
-                    type(existing_record) is not tuple
-                    or len(existing_record) != 2
-                    or type(existing_record[0]) is not CollatzDyadicOccurrence
-                    or type(existing_record[1]) is not int
-                    or existing_record[1] < 0
-                ):
-                    raise ValueError("Collatz duplicate occurrence record is malformed")
-                existing = existing_record[0]
+                existing, _publisher_fiber = self._checked_local_occurrence(
+                    existing_record, width, residue
+                )
                 existing._validate(None)
                 canonical_gain = self._gain(ones)
                 self._bump(

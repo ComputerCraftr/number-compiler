@@ -48,7 +48,7 @@ class _DecimalAdapter:
         if type(payload) is not int or payload < 0:
             raise ValueError("invalid decimal payload")
 
-    def identity_action(self, _source: object) -> _Action:
+    def identity_action(self, source: object) -> _Action:
         return _Action(())
 
     def action_children(self, action: object) -> tuple[_Action, _Action] | None:

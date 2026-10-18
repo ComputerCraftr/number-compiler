@@ -1,6 +1,7 @@
 """Source authority and bounded reuse for the normalized joint macro cache."""
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -229,11 +230,15 @@ def test_failed_batch_publication_clears_the_completed_frontier(
     with scratch.scope(), builder:
         frame = D8CylinderFrame(source)
         builder.begin_d8_batch(source)
+        last_transition: tuple[DyadicTerminalFieldAction, int, int] | None = None
         for _ in range(2):
             frame, ones, residue, _origin, _width, action = (
                 table.transition_with_joint_action(frame)
             )
             builder.append_d8_transition(action, ones, residue)
+            last_transition = action, ones, residue
+        assert last_transition is not None
+        action, ones, residue = last_transition
 
         def fail_publication(*_args: object, **_kwargs: object) -> bool:
             raise RuntimeError("injected joint cache publication failure")
@@ -261,6 +266,25 @@ def test_joint_cache_rejects_forged_sum_with_same_endpoint() -> None:
         assert len(cache.actions) == 0
 
 
+def test_joint_run_rejects_even_normalized_endpoint_with_pending_half_step() -> None:
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointRunAction,
+    )
+
+    fields = DyadicTerminalFieldAction.zero_run(1)
+    with pytest.raises(ValueError, match="requires an odd normalized endpoint"):
+        CollatzJointRunAction(
+            source=12,
+            endpoint=19,
+            normalized_endpoint=6,
+            physical_ticks=2,
+            normalized_steps=1,
+            odd_symbols=0,
+            phase=1,
+            fields=fields,
+        )
+
+
 def test_accumulator_requires_prepared_source_image_and_matches_literal_run() -> None:
     seed, ticks, modulus = 27, 17, 257
     term = PoweredCollatzTerm(seed, ticks, shared_cache=False)
@@ -284,17 +308,24 @@ def test_accumulator_requires_prepared_source_image_and_matches_literal_run() ->
     root = term._source_image()
     view = root.scheduler._source_image_core().view(root.root_image)
     joint_ports = tuple(
-        port
+        cast(tuple[object, ...], port)
         for port in view.binding.boundary_ports
-        if type(port) is tuple
-        and port
+        if isinstance(port, tuple)
+        and len(port) > 0
         and port[0] == "collatz-joint-temporal-action-v1"
     )
     assert len(joint_ports) == 1
-    wire_payload = joint_ports[0][1]
+    joint_port = joint_ports[0]
+    assert len(joint_port) > 1
+    wire_payload = joint_port[1]
     assert type(wire_payload) is tuple
-    assert all(type(value) is int for value in wire_payload)
-    forged_payload = (*wire_payload[:10], wire_payload[10] + 1, *wire_payload[11:])
+    typed_payload = cast(tuple[int, ...], wire_payload)
+    assert all(type(value) is int for value in typed_payload)
+    forged_payload = (
+        *typed_payload[:10],
+        typed_payload[10] + 1,
+        *typed_payload[11:],
+    )
     forged_port = (joint_ports[0][0], forged_payload)
     forged_ports = tuple(
         forged_port if port is joint_ports[0] else port

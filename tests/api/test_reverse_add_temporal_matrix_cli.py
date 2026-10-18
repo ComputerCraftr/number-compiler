@@ -27,6 +27,8 @@ def test_reverse_matrix_matches_independent_twenty_step_endpoint(
                 "--no-value",
                 "--info",
                 "temporal.matrix",
+                "--temporal-matrix-kind",
+                "innovation",
                 "--format",
                 "json",
             ]
@@ -63,6 +65,8 @@ def test_modular_reverse_matrix_never_materializes_the_endpoint(
                 "--no-value",
                 "--info",
                 "temporal.matrix",
+                "--temporal-matrix-kind",
+                "innovation",
                 "--temporal-matrix-modulus",
                 "1009",
                 "--format",
@@ -120,6 +124,8 @@ def test_reverse_temporal_observers_reject_nondecimal_sources() -> None:
                 "2",
                 "--info",
                 "temporal.matrix",
+                "--temporal-matrix-kind",
+                "innovation",
             ]
         )
 

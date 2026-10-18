@@ -1,12 +1,19 @@
 """Resource limits fail before allocation and retain an auditable owner inventory."""
 
+from collections.abc import Iterator
+from copy import copy
 from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+    ResourceScope,
+)
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
@@ -64,6 +71,79 @@ def test_combined_reservation_is_atomic_and_owner_release_is_checked() -> None:
     assert (ledger.peak_entries, ledger.peak_nodes) == (3, 2)
 
 
+def test_single_owner_reservation_matches_one_item_batch() -> None:
+    single = ResourceLedger(max_nodes=5, max_cache_entries=4)
+    batch = ResourceLedger(max_nodes=5, max_cache_entries=4)
+    single_owner = single.register("single", "SUMMARY")
+    batch_owner = batch.register("single", "SUMMARY")
+
+    single.reserve(single_owner, entries=2, nodes=3)
+    batch.reserve_many(((batch_owner, 2, 3),))
+
+    assert single.snapshot() == batch.snapshot()
+
+
+@pytest.mark.parametrize(
+    ("entries", "nodes", "error_type"),
+    (
+        (-1, 0, ValueError),
+        (True, 0, TypeError),
+        (0, -1, ValueError),
+        (0, False, TypeError),
+    ),
+)
+def test_single_owner_reservation_matches_batch_validation(
+    entries: int, nodes: int, error_type: type[Exception]
+) -> None:
+    single = ResourceLedger()
+    batch = ResourceLedger()
+    single_owner = single.register("single", "SUMMARY")
+    batch_owner = batch.register("single", "SUMMARY")
+    single_before = single.snapshot()
+    batch_before = batch.snapshot()
+
+    with pytest.raises(error_type) as single_error:
+        single.reserve(single_owner, entries=entries, nodes=nodes)
+    with pytest.raises(error_type) as batch_error:
+        batch.reserve_many(((batch_owner, entries, nodes),))
+
+    assert str(single_error.value) == str(batch_error.value)
+    assert single.snapshot() == single_before
+    assert batch.snapshot() == batch_before
+
+
+def test_single_owner_reservation_matches_disposed_and_tightened_owner_checks() -> None:
+    single = ResourceLedger(max_nodes=5, max_cache_entries=5)
+    batch = ResourceLedger(max_nodes=5, max_cache_entries=5)
+    single_owner = single.register("single", "SUMMARY")
+    batch_owner = batch.register("single", "SUMMARY")
+    single.reserve(single_owner, entries=1, nodes=1)
+    batch.reserve_many(((batch_owner, 1, 1),))
+    single.tighten_limits(max_nodes=1, max_cache_entries=5)
+    batch.tighten_limits(max_nodes=1, max_cache_entries=5)
+    single_before = single.snapshot()
+    batch_before = batch.snapshot()
+
+    with pytest.raises(BlockContextBudgetExceeded) as single_error:
+        single.reserve(single_owner, nodes=1)
+    with pytest.raises(BlockContextBudgetExceeded) as batch_error:
+        batch.reserve_many(((batch_owner, 0, 1),))
+
+    assert str(single_error.value) == str(batch_error.value)
+    assert single.snapshot() == single_before
+    assert batch.snapshot() == batch_before
+
+    single.release(single_owner, entries=1, nodes=1)
+    batch.release(batch_owner, entries=1, nodes=1)
+    single.mark_disposed(single_owner)
+    batch.mark_disposed(batch_owner)
+    with pytest.raises(RuntimeError, match="disposed") as single_disposed:
+        single.reserve(single_owner)
+    with pytest.raises(RuntimeError, match="disposed") as batch_disposed:
+        batch.reserve_many(((batch_owner, 0, 0),))
+    assert str(single_disposed.value) == str(batch_disposed.value)
+
+
 def test_inventory_counts_registered_owners_and_typed_roots_once() -> None:
     ledger = ResourceLedger()
     owner = ledger.register("summary", "TRANSFER_SUMMARY")
@@ -117,6 +197,21 @@ def test_invalid_owner_and_negative_operations_do_not_change_ledger() -> None:
     assert ledger.snapshot() == before
 
 
+def test_reservation_fast_validation_preserves_error_order_and_messages() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("source", "EXACT_SOURCE")
+    ledger.max_nodes = False
+    ledger.max_cache_entries = -1
+
+    with pytest.raises(TypeError, match="node budget must be an integer"):
+        ledger.reserve(owner, entries=-1, nodes=False)
+
+    ledger.max_nodes = None
+    ledger.max_cache_entries = None
+    with pytest.raises(ValueError, match="cache entry count must be >= 0"):
+        ledger.reserve(owner, entries=-1, nodes=False)
+
+
 def test_owned_memo_accounts_updates_eviction_and_clear() -> None:
     ledger = ResourceLedger(max_nodes=2, max_cache_entries=2)
     owner = ledger.register("memo", "ACTION_PROGRAM")
@@ -136,6 +231,118 @@ def test_owned_memo_accounts_updates_eviction_and_clear() -> None:
     assert tuple(ledger.iter_payloads()) == ((owner, 2), (owner, "second"))
     memo.clear()
     assert (ledger.entries, ledger.nodes) == (0, 0)
+
+
+def test_dynamic_memo_adopts_exact_workspace_charge() -> None:
+    ledger = ResourceLedger(max_nodes=8, max_cache_entries=2)
+    source = ledger.register("memo-workspace", "WORKSPACE")
+    target = ledger.register("memo-retained", "ACTION_PROGRAM")
+    reservation = LedgerReservation(ledger, source)
+    reservation.reserve(entries=1, nodes=8)
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger, target, node_cost=lambda _key, value: len(value)
+    )
+
+    memo.adopt_reserved("root", (1, 2), reservation)
+
+    assert memo["root"] == (1, 2)
+    assert ledger.entries == ledger.peak_entries == 1
+    assert ledger.nodes == ledger.peak_nodes == 8
+    inventory = ledger.inventory()
+    assert inventory[source].nodes == 5
+    assert inventory[target].nodes == 3
+    assert inventory[source].entries == 0
+    assert inventory[target].entries == 1
+    reservation.close()
+    assert ledger.nodes == 3
+    memo.clear()
+    assert ledger.nodes == ledger.entries == 0
+
+
+def _assert_adoption_refusal_is_atomic(
+    memo: OwnedMemo[str, tuple[int, ...]],
+    key: str,
+    reservation: LedgerReservation,
+) -> None:
+    before = memo.ledger.snapshot()
+    with pytest.raises(ValueError, match="exceeds this reservation"):
+        memo.adopt_reserved(key, (1, 2), reservation)
+    assert memo.ledger.snapshot() == before
+
+
+def test_dynamic_memo_adoption_rejects_unowned_or_duplicate_credit() -> None:
+    ledger = ResourceLedger(max_nodes=8, max_cache_entries=4)
+    source = ledger.register("memo-adoption-source", "WORKSPACE")
+    target = ledger.register("memo-adoption-target", "ACTION_PROGRAM")
+    foreign_ledger = ResourceLedger(max_nodes=8)
+    foreign_owner = foreign_ledger.register("foreign", "WORKSPACE")
+    foreign = LedgerReservation(foreign_ledger, foreign_owner)
+    foreign.reserve(nodes=8)
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger, target, node_cost=lambda _key, value: len(value)
+    )
+    with pytest.raises(ValueError, match="different ledgers"):
+        memo.adopt_reserved("new", (1, 2), foreign)
+    foreign.close()
+
+    ledger.reserve(source, nodes=3)
+    untracked = LedgerReservation(ledger, source)
+    copied = copy(untracked)
+    with pytest.raises(RuntimeError, match="closed or is foreign"):
+        copied.transfer_to(target, nodes=1)
+    with pytest.raises(AttributeError, match="binding is immutable"):
+        untracked._ledger = foreign_ledger
+    with pytest.raises(AttributeError):
+        untracked._nodes = 3
+    _assert_adoption_refusal_is_atomic(memo, "new", untracked)
+    ledger.release(source, nodes=3)
+    with pytest.raises(ValueError, match="closing the owner's reservations"):
+        ledger.mark_disposed(source)
+    untracked.close()
+
+    reservation = LedgerReservation(ledger, source)
+    reservation.reserve(entries=1, nodes=2)
+    _assert_adoption_refusal_is_atomic(memo, "new", reservation)
+    reservation.reserve(nodes=4)
+    memo["existing"] = (9,)
+    before_duplicate = ledger.snapshot()
+    with pytest.raises(KeyError, match="new key"):
+        memo.adopt_reserved("existing", (1, 2), reservation)
+    assert ledger.snapshot() == before_duplicate
+    reservation.close()
+    memo.clear()
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_dynamic_memo_adoption_rolls_back_on_base_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger(max_nodes=8, max_cache_entries=2)
+    source = ledger.register("memo-rollback-source", "WORKSPACE")
+    target = ledger.register("memo-rollback-target", "ACTION_PROGRAM")
+    reservation = LedgerReservation(ledger, source)
+    reservation.reserve(entries=1, nodes=8)
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger, target, node_cost=lambda _key, value: len(value)
+    )
+    original_setitem = LedgerDict.__setitem__
+
+    def insert_then_cancel(
+        store: LedgerDict[object, object], key: object, value: object
+    ) -> None:
+        original_setitem(store, key, value)
+        raise KeyboardInterrupt("interrupted after insertion")
+
+    monkeypatch.setattr(LedgerDict, "__setitem__", insert_then_cancel)
+    with pytest.raises(KeyboardInterrupt, match="after insertion"):
+        memo.adopt_reserved("root", (1, 2), reservation)
+    assert "root" not in memo
+    assert ledger.inventory()[source].nodes == 8
+    assert ledger.inventory()[target].nodes == 0
+    assert ledger.inventory()[source].entries == 1
+    assert ledger.inventory()[target].entries == 0
+    reservation.close()
+    assert ledger.nodes == ledger.entries == 0
 
 
 def test_owned_memo_charges_dynamic_payload_nodes_atomically() -> None:
@@ -241,6 +448,38 @@ def test_multi_owner_reservation_rejects_without_changing_peaks() -> None:
     assert (ledger.entries, ledger.nodes) == (1, 1)
 
 
+def test_multi_owner_reservation_rechecks_limits_after_arbitrary_iteration() -> None:
+    ledger = ResourceLedger(max_nodes=2, max_cache_entries=2)
+    owner = ledger.register("nodes", "ACTION_PROGRAM")
+    before = ledger.snapshot()
+
+    def reservations() -> Iterator[tuple[int, int, int]]:
+        yield owner, 1, 1
+        ledger.max_nodes = False
+
+    with pytest.raises(TypeError, match="node budget"):
+        ledger.reserve_many(reservations())
+
+    assert ledger.snapshot() == before
+
+
+def test_multi_owner_reservation_rejects_disposed_owner_before_atomic_commit() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("disposed-mid-reservation", "ACTION_PROGRAM")
+
+    def reservations() -> Iterator[tuple[int, int, int]]:
+        yield owner, 1, 1
+        ledger.mark_disposed(owner)
+
+    with pytest.raises(RuntimeError, match="disposed"):
+        ledger.reserve_many(reservations())
+
+    inventory = ledger.inventory()[owner]
+    assert inventory.disposed
+    assert (ledger.entries, ledger.nodes) == (0, 0)
+    assert (inventory.entries, inventory.nodes) == (0, 0)
+
+
 def test_resource_reassignment_is_net_bounded_and_atomic() -> None:
     ledger = ResourceLedger(max_nodes=2, max_cache_entries=4)
     workspace = ledger.register("workspace", "semantic_function_workspace")
@@ -261,6 +500,43 @@ def test_resource_reassignment_is_net_bounded_and_atomic() -> None:
         2,
         2,
     )
+
+
+def test_resource_reassignment_rechecks_mutable_budget_after_iteration() -> None:
+    ledger = ResourceLedger(max_nodes=2, max_cache_entries=2)
+    source = ledger.register("source", "semantic_function_workspace")
+    target = ledger.register("target", "semantic_function")
+    ledger.reserve(source, entries=1, nodes=1)
+    before = ledger.snapshot()
+
+    def releases() -> Iterator[tuple[int, int, int]]:
+        yield source, 1, 1
+        ledger.max_nodes = False
+
+    with pytest.raises(TypeError, match="node budget"):
+        ledger.reassign_many(releases(), ((target, 1, 1),))
+
+    assert ledger.snapshot() == before
+
+
+def test_resource_reassignment_rechecks_staged_owners_before_commit() -> None:
+    ledger = ResourceLedger()
+    source = ledger.register("source", "semantic_function_workspace")
+    target = ledger.register("target", "semantic_function")
+    ledger.reserve(source, entries=1, nodes=1)
+
+    def reservations() -> Iterator[tuple[int, int, int]]:
+        yield target, 1, 1
+        ledger.mark_disposed(target)
+
+    with pytest.raises(RuntimeError, match="disposed"):
+        ledger.reassign_many(((source, 1, 1),), reservations())
+
+    inventory = {row.name: row for row in ledger.inventory()}
+    assert (ledger.entries, ledger.nodes) == (1, 1)
+    assert (inventory["source"].entries, inventory["source"].nodes) == (1, 1)
+    assert inventory["target"].disposed
+    assert (inventory["target"].entries, inventory["target"].nodes) == (0, 0)
 
 
 def test_failed_resource_reassignment_changes_no_account_or_peak() -> None:
@@ -454,6 +730,41 @@ def test_ownership_audit_cache_is_invalidated_by_new_execution_roots() -> None:
     second = audit_execution_ownership(ledger)
     assert second is not first
     assert second.unregistered_containers == 1
+
+
+def test_reservation_bookkeeping_audits_mutable_children() -> None:
+    from number_compiler.resources.ownership import audit_execution_ownership
+
+    ledger = ResourceLedger()
+    owner = ledger.register("reservation-audit", "WORKSPACE")
+    reservation = LedgerReservation(ledger, owner)
+    state = ledger._reservation_state(reservation)
+    assert audit_execution_ownership(ledger).violations == ()
+
+    ledger._reservations[reservation] = (owner, 0, [])  # type: ignore[assignment]
+    audit = audit_execution_ownership(ledger)
+    assert any("_reservations.value" in item.path for item in audit.violations)
+
+    ledger._reservations[reservation] = state
+    reservation.close()
+
+
+def test_reservation_close_rejects_foreign_and_spoofed_handles() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("reservation-close", "WORKSPACE")
+    reservation = LedgerReservation(ledger, owner)
+    foreign = ResourceLedger()
+    foreign_owner = foreign.register("foreign-reservation-close", "WORKSPACE")
+    foreign_reservation = LedgerReservation(foreign, foreign_owner)
+
+    with pytest.raises(TypeError, match="exact tracker"):
+        ledger._close_reservation(object())
+    with pytest.raises(ValueError, match="another ledger"):
+        ledger._close_reservation(foreign_reservation)
+    assert ledger._reservation_state(reservation) == (owner, 0, 0)
+    reservation.close()
+    reservation.close()
+    foreign_reservation.close()
 
 
 def test_public_metrics_reuse_audits_until_a_registered_store_mutates() -> None:

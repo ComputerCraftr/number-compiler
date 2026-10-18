@@ -9,7 +9,7 @@ from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.border_identity import (
-        BoundaryActionIdentity,
+        BoundaryOccurrenceProducerStamp,
     )
     from number_compiler.sequences.collatz.border_return_grammar import (
         BorderReturnMacro,
@@ -65,7 +65,7 @@ def finalize_collatz_temporal_run(
     cycle_repetitions: int,
     normalized_f5: CollatzF5AffineAction | None,
     physical_f5: CollatzF5AffineAction | None,
-    first_boundary: tuple[int, int, int, BoundaryActionIdentity] | None,
+    first_boundary_stamp: BoundaryOccurrenceProducerStamp | None,
     first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None,
     unified_skew_chain: UnifiedSkewChain | None = None,
 ) -> CollatzTemporalRunQuotient:
@@ -146,6 +146,9 @@ def finalize_collatz_temporal_run(
         CollatzTemporalRunQuotient,
     )
 
+    first_boundary = (
+        None if first_boundary_stamp is None else first_boundary_stamp.occurrence
+    )
     return CollatzTemporalRunQuotient(
         seed,
         physical_ticks,
@@ -167,6 +170,7 @@ def finalize_collatz_temporal_run(
         first_boundary_macro,
         innovation_observation,
         unified_skew_chain,
+        first_boundary_stamp,
     )
 
 

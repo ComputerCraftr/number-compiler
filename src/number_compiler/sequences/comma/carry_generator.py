@@ -17,9 +17,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .arithmetic import (
+    _phase_prefix_displacement_from_transfer,
     cycle_transfer,
     decimal_sector,
-    phase_prefix_displacement,
 )
 
 WorkCharge = Callable[[int], None]
@@ -191,7 +191,15 @@ def _fixed_sector_displacement(
     charge_work: WorkCharge | None,
     charge_bits: BitsCharge | None,
 ) -> int:
-    """Use the shared fixed-sector prefix owner after conservative charging."""
+    """Apply the sparse weighted C1 power after conservative charging.
+
+    The 100-state weighted matrix has one successor in every row. Its power
+    is therefore represented by complete unit-digit cycles plus a tail of
+    fewer than ten transitions; the separate CRT phase advance supplies the
+    exact suffix endpoint. C1Return derives the accumulated exponent from
+    displacement and both suffixes, retaining the physical carry
+    ``(x + 10 * (x % 10) + f) // 100``.
+    """
     entering_digit = phase.ones
     transfer = cycle_transfer(phase.sector, entering_digit)
     _charge(
@@ -202,7 +210,7 @@ def _fixed_sector_displacement(
         phase.suffix,
         extra_bits=4 * steps.bit_length() + 160,
     )
-    return phase_prefix_displacement(phase.sector, entering_digit, steps)
+    return _phase_prefix_displacement_from_transfer(transfer, steps)
 
 
 @dataclass(frozen=True, slots=True, init=False)

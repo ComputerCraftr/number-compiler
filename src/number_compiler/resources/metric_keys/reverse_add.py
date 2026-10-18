@@ -135,6 +135,19 @@ REVERSE_Q19_BORDER_CONTROL_STATE_VISITS: Final = (
 REVERSE_Q19_BORDER_CONTROL_STEPS: Final = "reverse_q19_border_control_steps"
 REVERSE_Q19_BORDER_WIDTH_PUBLICATIONS: Final = "reverse_q19_border_width_publications"
 REVERSE_Q19_BORDER_WIDTH_REFUSALS: Final = "reverse_q19_border_width_refusals"
+REVERSE_Q19_WORD_FIBER_CACHE_HITS: Final = "reverse_q19_word_fiber_cache_hits"
+REVERSE_Q19_WORD_FIBER_CACHE_MISSES: Final = "reverse_q19_word_fiber_cache_misses"
+REVERSE_Q19_WORD_FIBER_CACHE_PUBLICATIONS: Final = (
+    "reverse_q19_word_fiber_cache_publications"
+)
+REVERSE_Q19_WORD_FIBER_CACHE_BYPASSES: Final = "reverse_q19_word_fiber_cache_bypasses"
+REVERSE_Q19_WORD_FIBER_FAILED_WORK: Final = "reverse_q19_word_fiber_failed_work"
+REVERSE_Q19_WORD_FIBER_DAG_NODES_VISITED: Final = (
+    "reverse_q19_word_fiber_dag_nodes_visited"
+)
+REVERSE_Q19_WORD_FIBER_INTERVAL_NODES_VISITED: Final = (
+    "reverse_q19_word_fiber_interval_nodes_visited"
+)
 REVERSE_Q19_CONDITIONAL_GT_BANK_ISSUED: Final = "reverse_q19_conditional_gt_bank_issued"
 REVERSE_Q19_CONDITIONAL_GT_BANK_OUTPUT_NODES: Final = (
     "reverse_q19_conditional_gt_bank_output_nodes"
@@ -187,6 +200,8 @@ REVERSE_Q19_PUNCTURED_EVENT_REGIONS: Final = "reverse_q19_punctured_event_region
 REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS: Final = (
     "reverse_q19_punctured_failed_applications"
 )
+REVERSE_Q19_PUNCTURED_T2_APPLICATIONS: Final = "reverse_q19_punctured_t2_applications"
+REVERSE_Q19_PUNCTURED_T4_APPLICATIONS: Final = "reverse_q19_punctured_t4_applications"
 REVERSE_Q19_PUNCTURED_INPUT_GRAMMAR_NODES_VISITED: Final = (
     "reverse_q19_punctured_input_grammar_nodes_visited"
 )

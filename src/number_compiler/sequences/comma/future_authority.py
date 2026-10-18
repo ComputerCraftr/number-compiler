@@ -15,13 +15,19 @@ from number_compiler.resources.immutable_signature import (
 FutureControlKind = Literal["fork", "landmine"]
 FutureClassRow = tuple[int | None, int | None]
 
+# Contract v2 binds the producer model and prefix-selection theorem together
+# with global future safety. It does not, by itself, prove the Python runtime
+# implementation; the empty registry still requires artifact/source review.
 GLOBAL_RELEASE_SESSION_ID = "Comma_Semantic_Future_Instance"
 GLOBAL_RELEASE_THEOREM_ID = (
-    "Comma_Semantic_Global_Safety.comma_semantic_global_release_safety"
+    "Comma_Semantic_Release.comma_semantic_producer_global_release_contract"
 )
-GLOBAL_RELEASE_CONTRACT_ID: Final[str] = "comma-semantic-global-release-safety-v1"
+GLOBAL_RELEASE_CONTRACT_ID: Final[str] = "comma-semantic-producer-global-release-v2"
 GLOBAL_RELEASE_CLAIMS = frozenset(
     {
+        "producer-writer-point-and-prefix-refinement",
+        "boundary-scalar-chart-to-published-macro-refinement",
+        "boundary-grouped-chart-termination",
         "complete-source-map",
         "semantic-control-equality",
         "ordered-child-equality",

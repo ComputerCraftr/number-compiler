@@ -8,6 +8,7 @@ session Shared_S_Arithmetic in "arithmetic/s_arithmetic" = HOL +
   theories
     CRT_Predicate
     S_Arithmetic_Skew
+    Integer_Cylinder_Transport
     Hensel_Cylinders
     Dyadic_Source_Lift
     Dyadic_Prefix_Summary
@@ -35,3 +36,6 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = HOL +
     Port_Valued_Mealy
     Temporal_Moment_Algebra
     Temporal_Decimal_Carry_Monoid
+    Finite_Transfer_Power
+    Ordered_Tripling_Carry
+    Checked_Border_Transfer

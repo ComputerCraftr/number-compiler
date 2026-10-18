@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -119,10 +119,12 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
     validated: list[tuple[object, SourceCellID, FieldGeometryID]] = []
     leaf_contexts: list[object | None] = []
     child_derivations = 0
+    expected_action = action
+    expected_signature = signature
 
     class Adapter:
-        def validate_action(self, selected: FieldCellActionID) -> None:
-            images.validate_action(selected)
+        def validate_action(self, action: FieldCellActionID) -> None:
+            images.validate_action(action)
 
         def compose_actions(
             self, before: FieldCellActionID, after: FieldCellActionID
@@ -131,11 +133,11 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
             return action
 
         def signature(
-            self, selected: FieldCellActionID, geometry: FieldGeometryID
+            self, action: FieldCellActionID, geometry: FieldGeometryID
         ) -> PortSignatureID:
-            assert selected == action
+            assert action == expected_action
             images.geometries.resolve(geometry)
-            return signature
+            return expected_signature
 
         def validate_context(
             self,
@@ -171,14 +173,14 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
             self,
             complete: FieldCellActionID,
             consumer: FieldCellActionID,
-            provider_input: ProviderImageInput,
+            provider: ProviderImageInput,
             geometry: FieldGeometryID,
-            selected_signature: PortSignatureID,
+            signature: PortSignatureID,
         ) -> FieldImageCandidate:
             assert complete == consumer == action
-            assert selected_signature == signature
-            leaf_contexts.append(provider_input.context)
-            prior = images.resolve(provider_input.image)
+            assert signature == expected_signature
+            leaf_contexts.append(provider.context)
+            prior = images.resolve(provider.image)
             return FieldImageCandidate(
                 prior.interface,
                 prior.output,
@@ -188,15 +190,15 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
         def join(
             self,
             complete: FieldCellActionID,
-            provider_input: ProviderImageInput,
+            provider: ProviderImageInput,
             left: FieldImageID,
             right: FieldImageID,
             geometry: FieldGeometryID,
-            selected_signature: PortSignatureID,
+            signature: PortSignatureID,
         ) -> FieldImageCandidate:
-            assert complete == action and provider_input.context is root_context
-            assert selected_signature == signature
-            prior = images.resolve(provider_input.image)
+            assert complete == action and provider.context is root_context
+            assert signature == expected_signature
+            prior = images.resolve(provider.image)
             return FieldImageCandidate(
                 prior.interface,
                 prior.output,
@@ -250,10 +252,12 @@ def test_provider_context_authority_is_checked_before_a_warm_image_probe() -> No
         providers, images, provider, source, image, 2, foreign_context
     )
     before_requests = ledger.counters.get("field_image_binding_requests", 0)
+    expected_action = action
+    expected_signature = signature
 
     class Adapter:
-        def validate_action(self, selected: FieldCellActionID) -> None:
-            images.validate_action(selected)
+        def validate_action(self, action: FieldCellActionID) -> None:
+            images.validate_action(action)
 
         def compose_actions(
             self, before: FieldCellActionID, after: FieldCellActionID
@@ -262,10 +266,10 @@ def test_provider_context_authority_is_checked_before_a_warm_image_probe() -> No
             return action
 
         def signature(
-            self, selected: FieldCellActionID, selected_geometry: FieldGeometryID
+            self, action: FieldCellActionID, geometry: FieldGeometryID
         ) -> PortSignatureID:
-            assert selected == action
-            return signature
+            assert action == expected_action
+            return expected_signature
 
         def validate_context(
             self,
@@ -281,10 +285,25 @@ def test_provider_context_authority_is_checked_before_a_warm_image_probe() -> No
                 size=1,
             )
 
-        def compile_leaf(self, *_args: object) -> Never:
+        def compile_leaf(
+            self,
+            complete: FieldCellActionID,
+            consumer: FieldCellActionID,
+            provider: ProviderImageInput,
+            geometry: FieldGeometryID,
+            signature: PortSignatureID,
+        ) -> FieldImageCandidate:
             raise AssertionError("warm root unexpectedly traversed a leaf")
 
-        def join(self, *_args: object) -> Never:
+        def join(
+            self,
+            complete: FieldCellActionID,
+            provider: ProviderImageInput,
+            left: FieldImageID,
+            right: FieldImageID,
+            geometry: FieldGeometryID,
+            signature: PortSignatureID,
+        ) -> FieldImageCandidate:
             raise AssertionError("warm root unexpectedly traversed a parent")
 
     executor = ProviderFieldImageExecutor(providers, inputs, images, Adapter())

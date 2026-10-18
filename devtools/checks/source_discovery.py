@@ -77,8 +77,8 @@ def authored_files(root: Path) -> tuple[Path, ...]:
         sorted(
             path
             for path in paths
-            if path.is_file()
-            and path.is_relative_to(root)
+            if path.is_relative_to(root)
             and not _ignored(path.relative_to(git_root))
+            and path.is_file()
         )
     )

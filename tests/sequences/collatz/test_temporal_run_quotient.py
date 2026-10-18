@@ -39,6 +39,7 @@ def test_runs_match_physical_clock_at_every_half_step() -> None:
 def test_aggregate_counts_cannot_replace_the_pending_odd_port() -> None:
     seed, ticks = 931386509544713451, 1001
     expected, odd = seed, 0
+    last = 0
     for _ in range(ticks):
         last = expected & 1
         odd += last

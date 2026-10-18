@@ -86,4 +86,18 @@ struct
     in
       Thm.consolidate [serialized_refs, wrong_lift_rejected, serialized_descriptors]
     end
+
+  structure Candidate = Comma_Semantic_B1_Template_Constructor
+  structure Publication = Comma_Semantic_B1_Occurrence_Publication
+
+  fun check_candidate ctxt =
+    let
+      val _ = Publication.check_candidate_examples ()
+      val refs = [[Candidate.Terminal_Ref (2, 7), Candidate.Goto_Ref (3, 17, 4)]]
+      val encoded = Publication.serialize_lift_refs refs
+      val descriptors = [{period = 4, slot = 3, template_cid = 9, net_shift = 17}:
+        Candidate.lift_descriptor]
+      val encoded_descriptors = Publication.serialize_lift_descriptors descriptors
+    in check_lift_serialization ctxt encoded encoded_descriptors end
+
 end

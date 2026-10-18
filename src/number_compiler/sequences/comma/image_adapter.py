@@ -42,9 +42,6 @@ if TYPE_CHECKING:
 SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v4-cycle-phase-coset"
 STRICT_INTERIOR_CYCLE_CONSUMER_TAG: Final[str] = "strict-interior-cycle-v2-phase-coset"
 SOURCE = 20
-FIRST_FORK_VALUE = 19_999_999_918
-# Historical one-based location of the first fork, used only for exact checks.
-FIRST_FORK_INDEX = 412_987_859
 
 
 class UnresolvedCommaBranch(ValueError):
@@ -300,6 +297,8 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             state = node.boundary_source
             if state is None:
                 raise ValueError("comma boundary action is incomplete")
+            root: CommaImagePayload | None = None
+            prior_steps = 0
             if node.kind == "boundary-prefix":
                 exponent = node.boundary_exponent
                 if exponent < 5:
@@ -344,6 +343,8 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             if node.kind == "boundary-prefix-occurrence":
                 if node.boundary_exponent != 0:
                     raise ValueError("comma receiver-bound prefix has a fixed exponent")
+                if root is None:
+                    raise AssertionError("receiver prefix lost its source payload")
                 if root.boundary_cursor != payload.boundary_cursor:
                     raise ValueError(
                         "comma receiver prefix has another source occurrence "
@@ -433,10 +434,11 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             children = comma_children(payload.value)
             if children != SOURCE20_FIRST_FORK_CHILDREN:
                 raise ValueError("comma source-20 action has altered children")
+            ordered_children = (children[0], children[1])
             entry = bind_source20_first_child_entry(
                 parent_index=payload.absolute_index,
                 parent_value=payload.value,
-                ordered_children=children,
+                ordered_children=ordered_children,
                 child_index=SOURCE20_SELECTED_CHILD_INDEX,
                 provider=provider,
                 charge_work=self.arena.charge,

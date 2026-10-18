@@ -495,9 +495,9 @@ def test_spatial_walsh64_reuses_forced_gt_bank_and_refuses_unknown_lanes() -> No
 
 def test_source_certified_temporal_bank_forces_ring_f5_orbit_without_replay() -> None:
     """The reverse/add GT-bank supplies an *input* to the inward ring, not an observer."""
-    from tests.support.reverse_add_banks import source_guarded_periodic_banks
+    from tests.support.reverse_add_banks import source_guarded_periodic_temporal_bank
 
-    with source_guarded_periodic_banks() as (_ledger, owner, cert, bank, _spatial):
+    with source_guarded_periodic_temporal_bank() as (_ledger, owner, cert, bank):
         pos = bank.coordinate
         unconstrained = cert.temporal_ring_bank(positions=(pos,))
         assert len(unconstrained.target_pair_domain(pos)) > 1
@@ -613,9 +613,9 @@ def test_temporal_ring_marks_finite_horizon_and_center_refusals() -> None:
 
 def test_periodic_bank_cannot_bypass_wrong_certified_border_owner() -> None:
     """A different owner/certificate cannot supply conditional inlet authority."""
-    from tests.support.reverse_add_banks import source_guarded_periodic_banks
+    from tests.support.reverse_add_banks import source_guarded_periodic_temporal_bank
 
-    with source_guarded_periodic_banks() as (_ledger, _owner, _cert, bank, _spatial):
+    with source_guarded_periodic_temporal_bank() as (_ledger, _owner, _cert, bank):
         other_ledger, other_owner = owner_for(17071)
         try:
             other_cert = other_owner.certify_border_growth(

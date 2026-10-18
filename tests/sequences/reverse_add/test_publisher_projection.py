@@ -127,13 +127,10 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     )
 
 
-def test_reference_publisher_rejects_coordinated_action_substitution_without_work() -> (
-    None
-):
-    term = ReverseAddPoweredTerm(196, 8)
-    publisher = _reference_publisher(term)
-    assert type(publisher) is ReversePublisherProjection
+def _substitute_action_and_rebind(publisher: ReversePublisherProjection) -> None:
+    """Forge a self-consistent binding while retaining the original issuer schema."""
     publisher.action = publisher.actions.identity
+    assert publisher.output_encoding in ("digits", "pair")
     publisher._binding = (
         publisher.source,
         publisher.action,
@@ -142,6 +139,15 @@ def test_reference_publisher_rejects_coordinated_action_substitution_without_wor
         publisher.program,
         publisher.output_encoding,
     )
+
+
+def test_reference_publisher_rejects_coordinated_action_substitution_without_work() -> (
+    None
+):
+    term = ReverseAddPoweredTerm(196, 8)
+    publisher = _reference_publisher(term)
+    assert type(publisher) is ReversePublisherProjection
+    _substitute_action_and_rebind(publisher)
     before = term._ledger.snapshot()
     with pytest.raises(ValueError, match="canonical action was changed"):
         publisher.validate_execution()
@@ -169,15 +175,7 @@ def test_pending_publisher_rejects_coordinated_action_and_schema_mutation() -> N
     original_schema = publisher._schema
     before = publisher.ledger.snapshot()
     try:
-        publisher.action = publisher.actions.identity
-        publisher._binding = (
-            publisher.source,
-            publisher.action,
-            publisher.source_local_action,
-            publisher._source_ports,
-            publisher.program,
-            publisher.output_encoding,
-        )
+        _substitute_action_and_rebind(publisher)
         with pytest.raises(ValueError, match="canonical action was changed"):
             publisher.validate_execution()
         assert publisher._macro is None

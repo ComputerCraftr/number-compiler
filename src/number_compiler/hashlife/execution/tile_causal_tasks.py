@@ -439,6 +439,7 @@ def composite_result_key(
         ResultWiring,
     )
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+    from number_compiler.resources.causal_workspace import admitted_action_metadata
 
     if not isinstance(left, CausalPrefix) or not isinstance(right, CausalPrefix):
         return None
@@ -451,10 +452,6 @@ def composite_result_key(
         children = adapter.action_children(action)
         action_wiring = adapter.wiring(action)
     else:
-        from number_compiler.resources.causal_workspace import (
-            admitted_action_metadata,
-        )
-
         signature, _kernel, record = admitted_action_metadata(
             action_admission, adapter, action
         )

@@ -554,12 +554,13 @@ def normalization_defect(
 def linear_normalization_defect(
     coefficients: Iterable[int], *, base: int, boundary_in: int = 0
 ) -> NormalizationDefect:
+    coeffs = tuple(coefficients)
     digits, carries = linear_normalization_fields(
-        coefficients,
+        coeffs,
         base=base,
         boundary_in=boundary_in,
     )
-    return normalization_defect(coefficients, digits, carries, base=base)
+    return normalization_defect(coeffs, digits, carries, base=base)
 
 
 def normalize_cyclic_block(block: RadixCarryBlock) -> EndAroundCarryNormalization:
@@ -733,10 +734,11 @@ def end_around_normalization_defect(
     coefficients: Iterable[int], normalization: EndAroundCarryNormalization
 ) -> NormalizationDefect:
     """Return the boundary-aware defect certificate for one cyclic normalization."""
+    coeffs = tuple(coefficients)
     digits = normalization_digits_lsf(normalization)
-    carries = normalization_carry_boundaries(coefficients, normalization)
+    carries = normalization_carry_boundaries(coeffs, normalization)
     defect = normalization_defect(
-        coefficients,
+        coeffs,
         digits,
         carries,
         base=normalization.block.base,

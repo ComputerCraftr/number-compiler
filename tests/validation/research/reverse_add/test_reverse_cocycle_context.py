@@ -33,6 +33,7 @@ def _check(
         assert all(context.bits.evaluate(f, binding) is None for f in action.outputs)
         return
     assert width == len(expected)
+    assert width is not None
     for i, symbol in enumerate(expected):
         slot = min(i, width - 1 - i) if context.symmetric else i
         coords = [

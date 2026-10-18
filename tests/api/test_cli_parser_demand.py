@@ -117,7 +117,7 @@ def test_collatz_help_distinguishes_term_and_event_information(
     assert stopped.value.code == 0
     help_text = re.sub(r"\s+", " ", capsys.readouterr().out)
     assert (
-        "--nth: temporal, metrics, temporal.clock, temporal.accumulator, "
+        "--nth: temporal, metrics, temporal.matrix, temporal.clock, temporal.accumulator, "
         "temporal.macro, temporal.innovation-borrow"
     ) in help_text
     assert (

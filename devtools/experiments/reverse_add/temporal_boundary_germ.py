@@ -61,7 +61,9 @@ class BoundaryGerm3:
 
 def boundary_germ(word: tuple[int, ...]) -> BoundaryGerm3:
     """Extract the coupled Q95 halo; absent cells receive a distinct marker."""
-    if not word or any(type(cell) is not int or not 0 <= cell < BLANK for cell in word):
+    if len(word) == 0 or any(
+        type(cell) is not int or not 0 <= cell < BLANK for cell in word
+    ):
         raise ValueError("word must contain one or more exact Q95 cells")
     low = (
         word[0],

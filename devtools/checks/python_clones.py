@@ -538,9 +538,11 @@ def _token_fragment(
                 if (
                     name == "body"
                     and isinstance(item, list)
-                    and isinstance(value, (*_FUNCTIONS, ast.ClassDef))
+                    and isinstance(
+                        value, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                    )
                 ):
-                    item = _without_docstring(item)
+                    item = _without_docstring(value.body)
                 fields.append(item)
             # The reference walk resolves binding fields eagerly while reading
             # an AST node, before serializing any of that node's children.

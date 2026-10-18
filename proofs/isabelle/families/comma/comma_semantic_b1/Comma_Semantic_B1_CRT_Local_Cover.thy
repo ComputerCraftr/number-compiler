@@ -427,12 +427,109 @@ definition comma_semantic_b1_crt_lift_local_cover_witness ::
       occurrence_descriptors templates source parent refs descriptors)
       [0..<length refs]"
 
+lemma comma_semantic_b1_crt_lift_local_cover_child_index_bound:
+  assumes witness:
+      "comma_semantic_b1_crt_lift_local_cover_witness sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors"
+    and slot: "slot < length refs"
+    and reference: "refs!slot=Comma_B1_Lift_Goto_Ref slot child_index lift_cid"
+  shows "child_index < length sources"
+proof -
+  have slots_valid:
+      "list_all (comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors)
+        [0..<length refs]"
+    using witness
+    unfolding comma_semantic_b1_crt_lift_local_cover_witness_def by blast
+  have selected_valid:
+      "comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors slot"
+    using slots_valid slot by (auto simp: list_all_iff)
+  have base_valid:
+      "comma_semantic_b1_crt_lift_slot_valid sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors slot"
+    using selected_valid
+    by (auto simp: comma_semantic_b1_crt_lift_local_slot_valid_def)
+  show ?thesis
+    using base_valid reference
+    by (auto simp: comma_semantic_b1_crt_lift_slot_valid_def
+        split: if_splits option.splits prod.splits
+          comma_source_continuation_action.splits)
+qed
+
 lemma comma_semantic_b1_crt_lift_local_cover_rejects_truncated_refs:
   assumes truncated: "length refs < comma_decisive_sector_period source"
   shows "\<not> comma_semantic_b1_crt_lift_local_cover_witness sources occurrence_at
     occurrence_descriptors templates source parent refs descriptors"
   using truncated by (auto simp:
     comma_semantic_b1_crt_lift_local_cover_witness_def)
+
+lemma comma_semantic_b1_crt_lift_local_terminal_parent_active:
+  fixes sources :: "comma_finite_position list"
+    and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
+    and occurrence_descriptors :: "comma_semantic_b1_crt_descriptor list"
+    and templates :: "comma_crt_column list list"
+    and source :: comma_finite_position
+    and descriptors :: "comma_semantic_b1_crt_lift_descriptor list"
+    and parent :: comma_semantic_b1_crt_occurrence
+    and refs :: "comma_semantic_b1_crt_lift_ref list"
+    and slot parent_index phase :: nat
+    and ref :: comma_semantic_b1_crt_lift_ref
+    and action :: comma_source_continuation_action
+    and result :: comma_semantic_b1_result
+  assumes normalized: "source = comma_source_continuation_base source"
+    and source_period:
+      "comma_decisive_sector_period (comma_source_continuation_base source)
+        \<in> comma_semantic_b1_crt_source_periods"
+    and slot_bound:
+      "slot < comma_decisive_sector_period (comma_source_continuation_base source)"
+    and ref_bound: "slot < length refs"
+    and selected_slot: "phase mod
+      comma_decisive_sector_period (comma_source_continuation_base source) = slot"
+    and reference: "ref = Comma_B1_Lift_Terminal_Ref slot parent_index"
+    and selected_ref: "refs ! slot = ref"
+    and action:
+      "comma_semantic_b1_source_slot_action source slot = action"
+    and terminal:
+      "comma_semantic_b1_terminal_action_result action = Some result"
+    and slot_valid:
+      "comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors slot"
+    and phase_bound: "phase < 924"
+  shows "\<exists>index<length (comma_semantic_b1_crt_occurrence_columns parent).
+    comma_semantic_b1_crt_occurrence_beta parent ! index = result \<and>
+    comma_crt_eval phase
+      (comma_crt_shift (comma_semantic_b1_crt_occurrence_rebase parent)
+        (comma_semantic_b1_crt_occurrence_columns parent ! index))"
+proof -
+  let ?period = "comma_decisive_sector_period (comma_source_continuation_base source)"
+  let ?scope = "comma_crt_source_scope_column (?period, slot)"
+  have covered:
+      "comma_semantic_b1_crt_local_piece_covered parent ?scope result"
+    using slot_valid normalized ref_bound slot_bound reference selected_ref action terminal
+    by (auto simp: comma_semantic_b1_crt_lift_local_slot_valid_def
+        split: option.splits)
+  have scope_admitted: "comma_crt_admitted 0 ?scope"
+    by (rule comma_semantic_b1_crt_lift_scope_admitted[OF source_period slot_bound])
+  have scope_active: "comma_crt_eval phase ?scope"
+    using comma_semantic_b1_crt_lift_scope_eval
+      [OF source_period slot_bound phase_bound] selected_slot by simp
+  obtain parent_column where selected:
+      "comma_semantic_b1_crt_local_parent_column parent result = Some parent_column"
+    and active: "comma_crt_eval phase parent_column"
+    using comma_semantic_b1_crt_local_piece_covered_sound
+      [OF covered scope_admitted phase_bound scope_active]
+    by blast
+  obtain index where index_bound:
+      "index < length (comma_semantic_b1_crt_occurrence_columns parent)"
+    and beta: "comma_semantic_b1_crt_occurrence_beta parent ! index = result"
+    and column: "parent_column = comma_crt_shift
+      (comma_semantic_b1_crt_occurrence_rebase parent)
+      (comma_semantic_b1_crt_occurrence_columns parent ! index)"
+    by (rule comma_semantic_b1_crt_local_parent_column_some[OF selected])
+  show ?thesis
+    using index_bound beta active column by blast
+qed
 
 lemma comma_semantic_b1_crt_lift_local_terminal_lookup:
   fixes sources :: "comma_finite_position list"
@@ -470,21 +567,20 @@ lemma comma_semantic_b1_crt_lift_local_terminal_lookup:
     and phase_bound: "phase < 924"
   shows "comma_semantic_b1_crt_occurrence_lookup parent phase = Some result"
 proof -
-  let ?period = "comma_decisive_sector_period (comma_source_continuation_base source)"
-  let ?scope = "comma_crt_source_scope_column (?period, slot)"
-  have covered:
-      "comma_semantic_b1_crt_local_piece_covered parent ?scope result"
-    using slot_valid normalized ref_bound slot_bound reference selected_ref action terminal
-    by (auto simp: comma_semantic_b1_crt_lift_local_slot_valid_def
-        split: option.splits)
-  have scope_admitted: "comma_crt_admitted 0 ?scope"
-    by (rule comma_semantic_b1_crt_lift_scope_admitted[OF source_period slot_bound])
-  have scope_active: "comma_crt_eval phase ?scope"
-    using comma_semantic_b1_crt_lift_scope_eval
-      [OF source_period slot_bound phase_bound] selected_slot by simp
+  obtain index where index_bound:
+      "index < length (comma_semantic_b1_crt_occurrence_columns parent)"
+    and beta: "comma_semantic_b1_crt_occurrence_beta parent ! index = result"
+    and active:
+      "comma_crt_eval phase
+        (comma_crt_shift (comma_semantic_b1_crt_occurrence_rebase parent)
+          (comma_semantic_b1_crt_occurrence_columns parent ! index))"
+    using comma_semantic_b1_crt_lift_local_terminal_parent_active
+      [OF normalized source_period slot_bound ref_bound selected_slot reference
+        selected_ref action terminal slot_valid phase_bound]
+    by blast
   show ?thesis
-    by (rule comma_semantic_b1_crt_local_piece_lookup
-      [OF parent_wellformed covered scope_admitted phase_bound scope_active])
+    by (rule comma_semantic_b1_crt_local_parent_lookup_from_column
+      [OF parent_wellformed phase_bound index_bound beta active])
 qed
 
 ML \<open>
@@ -492,7 +588,7 @@ ML \<open>
   val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=terminal-lookup"
 \<close>
 
-lemma comma_semantic_b1_crt_lift_local_goto_lookup:
+lemma comma_semantic_b1_crt_lift_local_goto_parent_active:
   fixes sources :: "comma_finite_position list"
     and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
     and occurrence_descriptors :: "comma_semantic_b1_crt_descriptor list"
@@ -520,12 +616,15 @@ lemma comma_semantic_b1_crt_lift_local_goto_lookup:
     and child_present: "occurrence_at child_index = Some child_occurrence"
     and child_wellformed:
       "comma_semantic_b1_crt_occurrence_wellformed child_occurrence"
-    and parent_wellformed:
-      "comma_semantic_b1_crt_occurrence_wellformed parent"
     and phase_bound: "phase < 924"
-  shows "comma_semantic_b1_crt_occurrence_lookup parent phase =
-    comma_semantic_b1_crt_occurrence_lookup child_occurrence
-      ((phase + shift) mod 924)"
+  shows "\<exists>parent_index result.
+      parent_index < length (comma_semantic_b1_crt_occurrence_columns parent) \<and>
+      comma_semantic_b1_crt_occurrence_beta parent ! parent_index = result \<and>
+      comma_crt_eval phase
+        (comma_crt_shift (comma_semantic_b1_crt_occurrence_rebase parent)
+          (comma_semantic_b1_crt_occurrence_columns parent ! parent_index)) \<and>
+      comma_semantic_b1_crt_occurrence_lookup child_occurrence
+        ((phase + shift) mod 924) = Some result"
 proof -
   let ?period = "comma_decisive_sector_period source"
   let ?child_columns = "comma_semantic_b1_crt_occurrence_columns child_occurrence"
@@ -645,217 +744,106 @@ proof -
     using row_covered
     by (auto simp: comma_semantic_b1_crt_local_piece_covered_def
         split: option.splits)
-  have parent_value:
-      "comma_semantic_b1_crt_occurrence_lookup parent phase =
+  obtain parent_column where parent_selected:
+      "comma_semantic_b1_crt_local_parent_column parent (?child_beta ! selected) =
+        Some parent_column"
+    and parent_active: "comma_crt_eval phase parent_column"
+    using comma_semantic_b1_crt_local_piece_covered_sound
+      [OF row_covered lifted_admitted phase_bound lifted_active]
+    by blast
+  obtain parent_index where parent_index_bound:
+      "parent_index < length (comma_semantic_b1_crt_occurrence_columns parent)"
+    and parent_beta:
+      "comma_semantic_b1_crt_occurrence_beta parent ! parent_index =
+        ?child_beta ! selected"
+    and parent_column_eq:
+      "parent_column = comma_crt_shift
+        (comma_semantic_b1_crt_occurrence_rebase parent)
+        (comma_semantic_b1_crt_occurrence_columns parent ! parent_index)"
+    by (rule comma_semantic_b1_crt_local_parent_column_some[OF parent_selected])
+  have selected_child_value:
+      "comma_semantic_b1_crt_occurrence_lookup child_occurrence ?child_clock =
         Some (?child_beta ! selected)"
-    by (rule comma_semantic_b1_crt_local_piece_lookup
-      [OF parent_wellformed row_covered lifted_admitted phase_bound lifted_active])
-  show ?thesis using parent_value child_value by simp
+    using child_value by simp
+  show ?thesis
+    using parent_index_bound parent_beta parent_active parent_column_eq
+      selected_child_value by blast
 qed
 
-ML \<open>
-  val _ = Thm.consolidate @{thms comma_semantic_b1_crt_lift_local_goto_lookup}
-  val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=goto-lookup"
-\<close>
-
-ML \<open>Comma_Proof_Profile.report "Local cover stage=candidate-matches proof entered"\<close>
-
-theorem comma_semantic_b1_crt_lift_local_cover_candidate_matches:
+lemma comma_semantic_b1_crt_lift_local_goto_lookup:
   fixes sources :: "comma_finite_position list"
     and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
     and occurrence_descriptors :: "comma_semantic_b1_crt_descriptor list"
     and templates :: "comma_crt_column list list"
-    and children :: "comma_finite_position \<Rightarrow> comma_semantic_b1_crt_occurrence option"
     and source :: comma_finite_position
-    and parent :: comma_semantic_b1_crt_occurrence
-    and refs :: "comma_semantic_b1_crt_lift_ref list"
     and descriptors :: "comma_semantic_b1_crt_lift_descriptor list"
-  assumes witness:
-      "comma_semantic_b1_crt_lift_local_cover_witness sources occurrence_at
-        occurrence_descriptors templates source parent refs descriptors"
+    and parent child_occurrence :: comma_semantic_b1_crt_occurrence
+    and refs :: "comma_semantic_b1_crt_lift_ref list"
+    and slot child_index lift_cid shift phase :: nat
+    and child :: comma_finite_position
+  assumes normalized: "source = comma_source_continuation_base source"
+    and source_period:
+      "comma_decisive_sector_period source \<in> comma_semantic_b1_crt_source_periods"
+    and slot_bound: "slot < comma_decisive_sector_period source"
+    and ref_bound: "slot < length refs"
+    and selected_slot: "phase mod comma_decisive_sector_period source = slot"
+    and reference:
+      "refs ! slot = Comma_B1_Lift_Goto_Ref slot child_index lift_cid"
+    and action:
+      "comma_semantic_b1_source_slot_action source slot =
+        Comma_Continuation_Goto child shift"
+    and slot_valid:
+      "comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
+        occurrence_descriptors templates source parent refs descriptors slot"
+    and child_present: "occurrence_at child_index = Some child_occurrence"
+    and child_wellformed:
+      "comma_semantic_b1_crt_occurrence_wellformed child_occurrence"
     and parent_wellformed:
       "comma_semantic_b1_crt_occurrence_wellformed parent"
-    and children_wellformed:
-      "\<And>i child. i < length sources \<Longrightarrow>
-        occurrence_at i = Some child \<Longrightarrow>
-        comma_semantic_b1_crt_occurrence_wellformed child"
-    and children_resolve:
-      "\<And>i. i < length sources \<Longrightarrow>
-        children (sources ! i) = occurrence_at i"
-  shows "comma_semantic_b1_crt_occurrence_candidate_matches children source parent"
+    and phase_bound: "phase < 924"
+  shows "comma_semantic_b1_crt_occurrence_lookup parent phase =
+    comma_semantic_b1_crt_occurrence_lookup child_occurrence
+      ((phase + shift) mod 924)"
 proof -
-  let ?period = "comma_decisive_sector_period source"
-  have source_base: "source = comma_source_continuation_base source"
-    and source_admitted: "comma_round_admitted source"
-    and refs_length: "length refs = ?period"
-    and refs_slots:
-      "map comma_semantic_b1_crt_lift_ref_slot refs = [0..<length refs]"
-    and slots_valid:
-      "list_all (comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
-        occurrence_descriptors templates source parent refs descriptors)
-        [0..<length refs]"
-    using witness by (auto simp: comma_semantic_b1_crt_lift_local_cover_witness_def)
-  have source_period_base:
-      "comma_decisive_sector_period (comma_source_continuation_base source)
-        \<in> comma_semantic_b1_crt_source_periods"
-    by (rule comma_semantic_b1_generated_source_period_six[OF source_admitted])
-  have source_period: "?period \<in> comma_semantic_b1_crt_source_periods"
-    using source_period_base source_base by simp
-  have period_positive: "0 < ?period"
-    using source_period by (auto simp: comma_semantic_b1_crt_source_periods_def)
-  show ?thesis
-    unfolding comma_semantic_b1_crt_occurrence_candidate_matches_def
-  proof (intro allI impI)
-    fix clock :: nat
-    assume clock_bound: "clock < 924"
-    let ?slot = "clock mod ?period"
-    let ?ref = "refs ! ?slot"
-    have slot_bound: "?slot < ?period" using period_positive by simp
-    have ref_bound: "?slot < length refs" using slot_bound refs_length by simp
-    have slots_at:
-        "(map comma_semantic_b1_crt_lift_ref_slot refs) ! ?slot =
-          [0..<length refs] ! ?slot"
-      by (rule arg_cong[OF refs_slots, where f="\<lambda>xs. xs ! ?slot"])
-    have ref_slot:
-        "comma_semantic_b1_crt_lift_ref_slot ?ref = ?slot"
-      using slots_at ref_bound by (simp add: nth_map nth_upt)
-    have slot_member: "?slot \<in> set [0..<length refs]"
-      using ref_bound by simp
-    have selected_slot_valid:
-        "comma_semantic_b1_crt_lift_local_slot_valid sources occurrence_at
-          occurrence_descriptors templates source parent refs descriptors ?slot"
-      using slots_valid slot_member by (simp add: list_all_iff)
-    have base_slot_valid:
-        "comma_semantic_b1_crt_lift_slot_valid sources occurrence_at
-          occurrence_descriptors templates source parent refs descriptors ?slot"
-      using selected_slot_valid
-      by (simp add: comma_semantic_b1_crt_lift_local_slot_valid_def)
-    show "comma_semantic_b1_crt_occurrence_lookup parent clock =
-      comma_semantic_b1_crt_occurrence_local_step children source clock"
-    proof (cases "\<exists>child shift.
-        comma_semantic_b1_source_slot_action source ?slot =
-          Comma_Continuation_Goto child shift")
-      case True
-      then obtain child shift where action:
-          "comma_semantic_b1_source_slot_action source ?slot =
-            Comma_Continuation_Goto child shift"
-        by blast
-      obtain child_index lift_cid where reference:
-          "?ref = Comma_B1_Lift_Goto_Ref ?slot child_index lift_cid"
-        using base_slot_valid ref_slot ref_bound slot_bound action source_base
-        by (cases ?ref)
-          (auto simp: comma_semantic_b1_crt_lift_slot_valid_def
-            split: option.splits)
-      have child_present: "occurrence_at child_index \<noteq> None"
-        using base_slot_valid reference action source_base ref_bound slot_bound
-        by (auto simp: comma_semantic_b1_crt_lift_slot_valid_def
-            split: option.splits prod.splits)
-      obtain child_occurrence where child_at:
-          "occurrence_at child_index = Some child_occurrence"
-        using child_present by (cases "occurrence_at child_index") auto
-      have index_bound: "child_index < length sources"
-        using base_slot_valid reference action source_base ref_bound slot_bound
-        by (auto simp: comma_semantic_b1_crt_lift_slot_valid_def)
-      have child_wellformed:
-          "comma_semantic_b1_crt_occurrence_wellformed child_occurrence"
-        by (rule children_wellformed[OF index_bound child_at])
-      have source_child:
-          "sources ! child_index = comma_source_continuation_base child"
-        using base_slot_valid reference action child_at source_base ref_bound slot_bound
-        by (auto simp: comma_semantic_b1_crt_lift_slot_valid_def
-            split: option.splits prod.splits)
-      have decrease:
-          "shift = 0 \<and> child = comma_source_continuation_base child \<and>
-           comma_round_admitted child \<and>
-           9-comma_sector_number child < 9-comma_sector_number source"
-        by (rule comma_semantic_b1_crt_occurrence_goto_decreases
-          [OF source_base source_admitted slot_bound action])
-      have source_child_eq: "sources ! child_index = child"
-        using source_child decrease by simp
-      have resolved_child:
-          "children child = Some child_occurrence"
-        using children_resolve[OF index_bound] child_at source_child_eq by simp
-      have selected_slot: "clock mod ?period = ?slot" by simp
-      have parent_lookup:
-          "comma_semantic_b1_crt_occurrence_lookup parent clock =
-            comma_semantic_b1_crt_occurrence_lookup child_occurrence
-              ((clock + shift) mod 924)"
-        by (rule comma_semantic_b1_crt_lift_local_goto_lookup
-          [OF source_base source_period slot_bound ref_bound
-            selected_slot reference action selected_slot_valid child_at child_wellformed
-            parent_wellformed clock_bound])
-      have local_step:
-          "comma_semantic_b1_crt_occurrence_local_step children source clock =
-            comma_semantic_b1_crt_occurrence_lookup child_occurrence
-              ((clock + shift) mod 924)"
-        using clock_bound action resolved_child selected_slot
-        by (simp add: comma_semantic_b1_crt_occurrence_local_step_def)
-      show ?thesis using parent_lookup local_step by simp
-    next
-      case False
-      obtain result where terminal:
-          "comma_semantic_b1_terminal_action_result
-            (comma_semantic_b1_source_slot_action source ?slot) = Some result"
-        using comma_semantic_b1_terminal_action_result_present[OF False] by blast
-      obtain parent_index where reference:
-          "?ref = Comma_B1_Lift_Terminal_Ref ?slot parent_index"
-        using base_slot_valid ref_slot ref_bound slot_bound terminal source_base
-        by (cases ?ref)
-          (auto simp: comma_semantic_b1_crt_lift_slot_valid_def
-            split: option.splits comma_source_continuation_action.splits)
-      have selected_ref: "refs ! ?slot = ?ref" by simp
-      have selected_slot: "clock mod ?period = ?slot" by simp
-      have base_slot_bound:
-          "?slot < comma_decisive_sector_period (comma_source_continuation_base source)"
-        using slot_bound source_base by simp
-      have base_selected_slot:
-          "clock mod comma_decisive_sector_period
-             (comma_source_continuation_base source) = ?slot"
-        using selected_slot source_base by simp
-      have parent_lookup:
-          "comma_semantic_b1_crt_occurrence_lookup parent clock = Some result"
-        by (rule comma_semantic_b1_crt_lift_local_terminal_lookup
-          [OF source_base source_period_base base_slot_bound ref_bound base_selected_slot reference
-            selected_ref _ terminal selected_slot_valid parent_wellformed clock_bound])
-          simp
-      have local_step:
-          "comma_semantic_b1_crt_occurrence_local_step children source clock =
-            Some result"
-        using clock_bound terminal selected_slot
-        by (cases "comma_semantic_b1_source_slot_action source ?slot")
-          (auto simp: comma_semantic_b1_crt_occurrence_local_step_def
-            split: comma_source_continuation_action.splits)
-      show ?thesis using parent_lookup local_step by simp
-    qed
-  qed
+  obtain parent_index result where parent_index_bound:
+      "parent_index < length (comma_semantic_b1_crt_occurrence_columns parent)"
+    and parent_beta:
+      "comma_semantic_b1_crt_occurrence_beta parent ! parent_index = result"
+    and parent_active:
+      "comma_crt_eval phase
+        (comma_crt_shift (comma_semantic_b1_crt_occurrence_rebase parent)
+          (comma_semantic_b1_crt_occurrence_columns parent ! parent_index))"
+    and child_value:
+      "comma_semantic_b1_crt_occurrence_lookup child_occurrence
+        ((phase + shift) mod 924) = Some result"
+    using comma_semantic_b1_crt_lift_local_goto_parent_active
+      [OF normalized source_period slot_bound ref_bound selected_slot reference action
+        slot_valid child_present child_wellformed phase_bound]
+    by blast
+  have parent_lookup:
+      "comma_semantic_b1_crt_occurrence_lookup parent phase = Some result"
+    by (rule comma_semantic_b1_crt_local_parent_lookup_from_column
+      [OF parent_wellformed phase_bound parent_index_bound parent_beta parent_active])
+  show ?thesis using parent_lookup child_value by simp
 qed
 
-ML \<open>Comma_Proof_Profile.report "Local cover stage=candidate-matches proof passed"\<close>
-
 ML \<open>
-  val _ = Thm.consolidate @{thms
-    comma_semantic_b1_crt_lift_local_cover_rejects_truncated_refs
-    comma_semantic_b1_crt_lift_local_terminal_lookup
-    comma_semantic_b1_crt_lift_local_goto_lookup
-    comma_semantic_b1_crt_lift_local_cover_candidate_matches}
-  val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=candidate-matches"
+  val _ = Thm.consolidate @{thms comma_semantic_b1_crt_lift_local_goto_parent_active
+    comma_semantic_b1_crt_lift_local_goto_lookup}
+  val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=goto-lookup"
 \<close>
 
-
 ML \<open>
-val _ =
-  if null (Thm_Deps.all_oracles @{thms
-    comma_semantic_b1_crt_find_result_index_sound
-    comma_semantic_b1_crt_local_parent_column_some
-    comma_semantic_b1_crt_local_piece_covered_sound
-    comma_semantic_b1_crt_local_columns_disjoint_at
-    comma_semantic_b1_crt_local_parent_lookup_from_column
-    comma_semantic_b1_crt_local_piece_lookup
+  val checked = @{thms
     comma_semantic_b1_crt_lift_local_cover_rejects_truncated_refs
+    comma_semantic_b1_crt_lift_local_terminal_parent_active
     comma_semantic_b1_crt_lift_local_terminal_lookup
-    comma_semantic_b1_crt_lift_local_goto_lookup
-    comma_semantic_b1_crt_lift_local_cover_candidate_matches
-  }) then ()
-  else error "Comma_Semantic_B1_CRT_Local_Cover local oracle audit failed"
+    comma_semantic_b1_crt_lift_local_goto_parent_active
+    comma_semantic_b1_crt_lift_local_goto_lookup};
+  val _ = Thm.consolidate checked;
+  val _ = if null (Thm_Deps.all_oracles checked) then ()
+    else error "Comma local-cover lookup used an oracle";
+  val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=oracle-audit";
 \<close>
+
 end

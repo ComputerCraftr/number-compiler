@@ -7,11 +7,51 @@ struct
   structure Publication = Comma_Semantic_B1_Occurrence_Publication
   structure Selected = Comma_Selected_List_Conversion
 
+  fun make_row_directory child_definitions child_row_extents row_count =
+    let
+      val rows = Vector.fromList (map (fn theorem =>
+        Vector.fromList (HOLogic.dest_list (Thm.term_of (Thm.rhs_of theorem))))
+        child_definitions)
+      fun prefix _ [] = []
+        | prefix total (extent :: rest) =
+            let val next = total + extent in next :: prefix next rest end
+      val ends = Vector.fromList (prefix 0 child_row_extents)
+      val extents_match = Vector.length rows = length child_row_extents andalso
+        Vector.foldli (fn (index, block, valid) =>
+          valid andalso Vector.length block = List.nth (child_row_extents, index))
+          true rows
+      val total = fold (fn extent => fn accumulated => extent + accumulated)
+        child_row_extents 0
+      val _ = if extents_match andalso total = row_count andalso
+          List.all (fn extent => extent > 0) child_row_extents then ()
+        else error "B1 lift-column block rows disagree with the authenticated directory"
+    in {rows = rows, ends = ends} end
+
+  fun locate_row {rows, ends} index =
+    let
+      fun search low high =
+        if low >= high then low
+        else
+          let val middle = (low + high) div 2
+          in if index < Vector.sub (ends, middle)
+             then search low middle else search (middle + 1) high end
+      val block = search 0 (Vector.length ends)
+      val start = if block = 0 then 0 else Vector.sub (ends, block - 1)
+    in
+      if block >= Vector.length rows then
+        error "B1 lift-column index is outside its block directory"
+      else (block, index - start)
+    end
+
+  fun row_value {rows, ...} block row =
+    Vector.sub (Vector.sub (rows, block), row)
+
   fun make ctxt =
     let
       val {root_definition, directory_definition, child_definitions,
            child_row_extents, row_count} =
         Publication.get_lift_column_id_block_definitions ctxt
+      val row_directory = make_row_directory child_definitions child_row_extents row_count
       val thy = Proof_Context.theory_of ctxt
       val natT = @{typ nat}
       val rowT = HOLogic.listT natT
@@ -85,18 +125,6 @@ struct
               else NONE
             end
         end
-      fun block_offset index =
-        let
-          fun seek _ _ [] = error "B1 lift-column index is outside its block directory"
-            | seek block remaining (extent :: rest) =
-                if remaining < extent then (block, remaining)
-                else seek (block + 1) (remaining - extent) rest
-        in seek 0 index child_row_extents end
-      fun expected_row block row =
-        let
-          val theorem = List.nth (child_definitions, block)
-          val values = HOLogic.dest_list (Thm.term_of (Thm.rhs_of theorem))
-        in List.nth (values, row) end
       fun validate request theorem expected =
         let
           val lhs = Thm.term_of (Thm.lhs_of theorem)
@@ -156,13 +184,14 @@ struct
                         val _ = if index_type = natT andalso index >= 0 andalso
                             index < row_count then ()
                           else error "B1 lift-column index exceeds its authenticated extent"
-                        val (block, row) = block_offset index
+                        val (block, row) = locate_row row_directory index
                         val request_step = Conv.arg_conv
                           (Conv.rewr_conv index_equation) cterm
                         val reduced = Simplifier.rewrite block_context
                           (Thm.rhs_of request_step)
                         val theorem = Thm.transitive request_step reduced
-                        val checked = validate request theorem (expected_row block row)
+                        val checked = validate request theorem
+                          (row_value row_directory block row)
                         val _ = Synchronized.change lookup_count (fn count => count + 1)
                         val _ = Synchronized.change locator_visits
                           (fn count => count + block + 1)
@@ -194,6 +223,7 @@ struct
       val {root_definition, directory_definition, child_definitions,
            child_row_extents, row_count} =
         Publication.get_lift_column_id_block_definitions ctxt
+      val row_directory = make_row_directory child_definitions child_row_extents row_count
       val natT = @{typ nat}
       val rowT = HOLogic.listT natT
       val root = Thm.term_of (Thm.lhs_of root_definition)
@@ -201,19 +231,10 @@ struct
       val _ = if row_count = 2444 andalso length child_definitions = 39 andalso
           child_row_extents = replicate 38 64 @ [12] then ()
         else error "B1 lift-column block catalogue has unexpected boundaries"
-      fun block_offset index =
-        let
-          fun seek _ _ [] = error "B1 lift-column fixture index exceeded blocks"
-            | seek block remaining (extent :: rest) =
-                if remaining < extent then (block, remaining)
-                else seek (block + 1) (remaining - extent) rest
-        in seek 0 index child_row_extents end
       fun expected_row index =
         let
-          val (block, offset) = block_offset index
-          val equation = List.nth (child_definitions, block)
-          val values = HOLogic.dest_list (Thm.term_of (Thm.rhs_of equation))
-        in List.nth (values, offset) end
+          val (block, offset) = locate_row row_directory index
+        in row_value row_directory block offset end
       fun check_index index =
         let
           val request = nth_root $ root $ HOLogic.mk_number natT index
@@ -251,7 +272,7 @@ struct
          table_pattern = pattern, child_name_prefix = prefix,
          child_definitions = child_definitions, child_row_extents = extents}
       val _ = expect_error "Named selected-list child has a foreign canonical name"
-        (fn () => selector "comma_semantic_b1_crt_construction_piece_source_"
+        (fn () => selector "comma_semantic_b1_crt_lift_refs_foreign_"
           child_row_extents)
       val wrong_extents = (case child_row_extents of
         first :: rest => (first + 1) :: rest

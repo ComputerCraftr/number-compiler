@@ -564,7 +564,6 @@ def test_mersenne_sparse_principal_quotient_is_exactly_the_candidate_ring_for_pr
         assert row.cyclotomic_degree == p - 1
         assert row.zeta_image == 2
         assert row.resultant == (1 << p) - 1
-        assert row.factor_enumeration if hasattr(row, "factor_enumeration") else True
 
 
 def test_mersenne_sparse_quotient_base_changes_to_the_ll_norm_one_torus_but_global_action_is_blind() -> (

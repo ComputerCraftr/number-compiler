@@ -77,20 +77,30 @@ def audit_field_action_payloads(
             )
 
             def exact_action(left: object, right: object) -> bool:
+                if (
+                    type(left) is not ActionProgramID
+                    or type(right) is not ActionProgramID
+                ):
+                    return False
                 return (
-                    type(left) is type(right) is ActionProgramID
-                    and left.owner is right.owner
+                    left.owner is right.owner
                     and left.kind == right.kind
-                    and type(left.local_id) is type(right.local_id) is int
+                    and type(left.local_id) is int
+                    and type(right.local_id) is int
                     and left.local_id == right.local_id
                 )
 
             def exact_field(left: object, right: object) -> bool:
+                if (
+                    type(left) is not FieldCellActionID
+                    or type(right) is not FieldCellActionID
+                ):
+                    return False
                 return (
-                    type(left) is type(right) is FieldCellActionID
-                    and left.owner is right.owner
+                    left.owner is right.owner
                     and left.kind == right.kind
-                    and type(left.local_id) is type(right.local_id) is int
+                    and type(left.local_id) is int
+                    and type(right.local_id) is int
                     and left.local_id == right.local_id
                 )
 

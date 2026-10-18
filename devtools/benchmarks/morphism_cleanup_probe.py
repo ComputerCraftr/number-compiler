@@ -38,11 +38,11 @@ def _collatz_event_control() -> dict[str, object]:
     event_target = event_arena.apply_exact(event_root, source)
 
     branches: tuple[Literal["E", "O"], Literal["E", "O"]] = ("O", "E")
-    expanded = tuple(
-        branch
-        for k in valuations
-        for branch in (branches[0], *(branches[1] for _ in range(k)))
-    )
+    expanded: list[Literal["E", "O"]] = []
+    for valuation in valuations:
+        expanded.append(branches[0])
+        for _ in range(valuation):
+            expanded.append(branches[1])
     branch_arena = CollatzPowerArena()
     branch_root = branch_arena.from_branches(expanded)
     branch_target = branch_root.effect.apply(source)

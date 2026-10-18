@@ -69,6 +69,7 @@ def test_tiny_class_counts_cannot_hide_quadratic_finite_port_work() -> None:
     assert baseline["release_blockers"] == []
     report = scaling_report(rows(quadratic_work=True))
     assert report["status"] == "BLOCKED"
+    assert "cold_blockers" in report["families"]["reverse"]
     assert (
         "work.finite_port_applications"
         in report["families"]["reverse"]["cold_blockers"]
@@ -96,14 +97,13 @@ def test_execution_certification_and_measured_scaling_are_independent() -> None:
 def test_identical_warm_query_work_is_an_independent_release_blocker() -> None:
     data = rows(warm_replay=True)
     report = scaling_report(data)
+    assert "cold_blockers" in report["families"]["reverse"]
+    assert "warm_blockers" in report["families"]["reverse"]
     assert report["families"]["reverse"]["cold_blockers"] == []
     assert "finite_port_applications" in report["families"]["reverse"]["warm_blockers"]
-    assert (
-        sample_deltas(data[-1]["cold"], data[-1]["warm"])["work"][
-            "finite_port_applications"
-        ]
-        == 128**2
-    )
+    delta = sample_deltas(data[-1]["cold"], data[-1]["warm"])
+    assert "work" in delta
+    assert delta["work"]["finite_port_applications"] == 128**2
 
 
 @pytest.mark.parametrize(
@@ -130,6 +130,7 @@ def test_new_counter_keys_cannot_silently_escape_the_scaling_gate() -> None:
         work_counters(row["cold"])["previously_omitted_dag_visits"] = row["steps"] ** 2
         work_counters(row["warm"])["previously_omitted_dag_visits"] = row["steps"] ** 2
     report = scaling_report(data)
+    assert "cold_blockers" in report["families"]["reverse"]
     assert (
         "work.previously_omitted_dag_visits"
         in report["families"]["reverse"]["cold_blockers"]
@@ -143,6 +144,7 @@ def test_missing_instrumentation_is_unknown_not_a_successful_zero() -> None:
         del work_counters(row["warm"])["reverse_evaluator_transitions"]
     report = scaling_report(data)
     assert report["status"] == "BLOCKED"
+    assert "missing_instrumentation" in report["families"]["reverse"]
     assert report["families"]["reverse"]["missing_instrumentation"] == [
         "reverse_evaluator_transitions"
     ]
@@ -157,6 +159,8 @@ def test_last_point_register_cannot_hide_replay_after_another_coordinate() -> No
             }
         }
     report = scaling_report(data)
+    assert "warm_blockers" in report["families"]["reverse"]
+    assert "other_query_blockers" in report["families"]["reverse"]
     assert report["families"]["reverse"]["warm_blockers"] == []
     assert report["families"]["reverse"]["other_query_blockers"] == [
         "revisited.finite_port_applications"
@@ -171,6 +175,7 @@ def test_schema_eight_requires_runtime_image_counters() -> None:
         row["warm"]["metrics_schema_version"] = 8
     report = scaling_report(data)
     assert report["status"] == "BLOCKED"
+    assert "missing_instrumentation" in report["families"]["reverse"]
     assert report["families"]["reverse"]["missing_instrumentation"] == [
         "completed_result_evaluations",
         "completed_result_publications",

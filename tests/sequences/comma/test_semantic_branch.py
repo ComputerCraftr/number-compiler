@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 from types import MappingProxyType
+from typing import cast
 
 import pytest
 
@@ -77,10 +78,6 @@ def _candidate_for_prefix(
         ],
         "ordered_children": [[None, None], [None, None], list(child_classes)],
         "class_rank_candidate": class_ranks,
-        "refinement_rounds": 1,
-        "refinement_collision_witnesses": [],
-        "seam_is_projected_from_cid": False,
-        "seam_projection_collision": {"fixture": "synthetic test authority only"},
     }
 
 
@@ -378,6 +375,44 @@ def test_semantic_branch_rejects_provider_child_class_slot_mismatch(
             provider=provider,
             charge_work=charge_work,
         )
+
+
+def test_comma_term_rejects_child_cid_mismatch_before_boundary_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.comma.image_adapter import CommaOccurrenceID
+    from number_compiler.sequences.comma.power import CommaTerm
+
+    source, prefix = _source_prefix()
+    charge_work = _work_log()
+    provider = _admitted_provider(
+        monkeypatch,
+        _candidate_for_prefix(
+            prefix,
+            selected_slot=1,
+            reverse_child_classes=True,
+        ),
+        charge_work,
+    )
+    with CommaTerm(1) as term:
+        template = term.arena._boundary_template(source.state)
+        prefix_steps = template.weight.evaluate(
+            source.exponent,
+            charge_bits=term.arena.charge_bits,
+        )
+        term.index = term._current_index + prefix_steps + 1
+        term._boundary_occurrence = source
+        term._boundary_occurrence_owner = cast(CommaOccurrenceID, term._source)
+        monkeypatch.setattr(term, "_require_global_future_provider", lambda: provider)
+
+        def reject_boundary_publication(*_args: object, **_kwargs: object) -> None:
+            pytest.fail("mismatched child CIDs reached the boundary-return publisher")
+
+        monkeypatch.setattr(
+            term.arena, "_global_boundary_return", reject_boundary_publication
+        )
+        with pytest.raises(ValueError, match="child slots differ"):
+            term._resolve()
 
 
 def test_semantic_branch_rejects_total_fake_selection_sentinel(

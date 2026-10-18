@@ -30,6 +30,12 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
         SourceGuardedGTBankAction,
     )
+    from number_compiler.sequences.reverse_add.q19_occurrence import (
+        ReversePairOutputOccurrence,
+    )
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairQ19OutputOwner,
+    )
     from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
         ReverseAddSpatialBankMorphism,
     )
@@ -305,6 +311,48 @@ class ReverseSourceImageWorkspace:
             self._image = found
         self._register_source_payload_audit_contract()
         return found
+
+    def completed_q19_occurrence(
+        self,
+    ) -> tuple[ReversePairQ19OutputOwner, ReversePairOutputOccurrence, bool, int]:
+        """Return the scheduler-published decimal endpoint and actual new work.
+
+        The seed-orbit observer and width/digit/stream consumers share this
+        same image.  A cold call demands the ordinary scheduler image once;
+        a warm call reads its already-published Q19 occurrence without
+        applying another temporal block.
+        """
+        self._check_open()
+        if self.base != 10 or self.steps < 1:
+            raise ValueError("completed Q19 endpoint requires a positive decimal run")
+        had_image = self._image is not None
+        before = self.ledger.snapshot().counters
+        image = self._demanded_image(SourceImageDemand("width"))
+        view = self.scheduler._source_image_core().view(image)
+        payload = self.adapter._validate_view(view)
+        owner = self.adapter._q19_owner
+        source = self.actions.source(self.source)
+        occurrence = payload.pair_output
+        if (
+            owner is None
+            or self.adapter._q19_source is not source
+            or occurrence is None
+            or occurrence.temporal_steps != self.steps
+            or view.binding.source != self.source
+            or view.binding.action != self.root_action
+        ):
+            raise ValueError("scheduler image has no matching issued Q19 endpoint")
+        owner.validate_issued_occurrence(occurrence)
+        after = self.ledger.snapshot().counters
+        block_keys = (
+            _reverse_add_keys.REVERSE_Q19_PRIMITIVE_PAIR_APPLICATIONS,
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_T2_APPLICATIONS,
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_T4_APPLICATIONS,
+        )
+        applications = sum(after.get(key, 0) - before.get(key, 0) for key in block_keys)
+        if applications < 0:
+            raise AssertionError("Q19 application counters moved backwards")
+        return owner, occurrence, had_image, applications
 
     @property
     def operator_nodes(self) -> int:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
+from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
@@ -190,9 +192,11 @@ def _validate_reverse_output_profile(
     # Read that exact record directly so a warm memo hit does not repeat the
     # complete temporal-DAG validation merely to compare one radix.
     record = record_lookup(key.action.local_id)
-    if record is None:
+    if type(record) is not PrimitiveTileAction:
         raise ValueError("reverse carry observation has a stale action")
     kernel = kernel_lookup(record.kernel)
+    if type(kernel) is not PrimitiveKernel:
+        raise ValueError("reverse carry observation has a stale primitive kernel")
     effect = kernel.effect
     if type(effect) not in (BaseBlockEffect, DigitNormalizeBlockEffect):
         raise ValueError("reverse carry observation has another action family")

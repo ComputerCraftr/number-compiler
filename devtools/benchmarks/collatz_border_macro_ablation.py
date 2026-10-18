@@ -41,6 +41,7 @@ class Sample(TypedDict):
     value: str
     border_actions: int
     border_macro_physical_ticks: int | None
+    conditional_physical_ticks: int | None
     mixed_macro_actions: int | None
     mixed_macro_repetitions: int | None
     mixed_macro_physical_ticks: int | None
@@ -52,6 +53,7 @@ class MacroSummary(TypedDict):
     macro: dict[str, object]
     border_actions: int
     border_macro_physical_ticks: int | None
+    conditional_physical_ticks: int | None
     mixed_macro_actions: int | None
     mixed_macro_repetitions: int | None
     mixed_macro_physical_ticks: int | None
@@ -93,6 +95,16 @@ def _selector_ablation(*, include_mixed: bool = False) -> Iterator[None]:
             patch.object(unified, "select_border_return_macro", _disabled_selector)
         )
         if include_mixed:
+            conditional = import_module(
+                "number_compiler.sequences.collatz.conditional_scheduler_adapter"
+            )
+            stack.enter_context(
+                patch.object(
+                    conditional,
+                    "issue_conditional_scheduler_candidate",
+                    _disabled_selector,
+                )
+            )
             mixed = import_module(
                 "number_compiler.sequences.collatz.temporal_mixed_execution"
             )
@@ -118,6 +130,9 @@ def _packets(packet: dict[str, object]) -> tuple[MacroSummary, object]:
     if type(action_count) is not int or action_count < 0:
         raise TypeError("temporal.macro omitted the measured 6305R count")
     mixed = named_counter_lane(collatz_work.get("mixed_clock_work"), "mixed_clock_work")
+    conditional = named_counter_lane(
+        collatz_work.get("conditional_scheduler_work"), "conditional_scheduler_work"
+    )
     border = named_counter_lane(
         collatz_work.get("border_return_work"), "border_return_work"
     )
@@ -134,6 +149,9 @@ def _packets(packet: dict[str, object]) -> tuple[MacroSummary, object]:
     )
     return {
         "macro": macro,
+        "conditional_physical_ticks": None
+        if conditional is None
+        else conditional.get("physical_ticks", 0),
         "border_actions": action_count,
         "border_macro_physical_ticks": border_ticks,
         "mixed_macro_actions": None if mixed is None else mixed.get("actions", 0),
@@ -176,6 +194,7 @@ def _sample(
         value=raw_value,
         border_actions=observed["border_actions"],
         border_macro_physical_ticks=observed["border_macro_physical_ticks"],
+        conditional_physical_ticks=observed["conditional_physical_ticks"],
         mixed_macro_actions=observed["mixed_macro_actions"],
         mixed_macro_repetitions=observed["mixed_macro_repetitions"],
         mixed_macro_physical_ticks=observed["mixed_macro_physical_ticks"],
@@ -232,7 +251,8 @@ def compare(
     if not enabled or (
         require_macro
         and any(
-            (row["mixed_macro_physical_ticks"] or 0)
+            (row["conditional_physical_ticks"] or 0)
+            + (row["mixed_macro_physical_ticks"] or 0)
             + (row["border_macro_physical_ticks"] or 0)
             < ticks - 64
             for row in enabled
@@ -245,6 +265,7 @@ def compare(
         raise AssertionError("disabled CLI query still consumed a 6305R action")
     if any(
         row["border_actions"]
+        or (row["conditional_physical_ticks"] or 0)
         or (row["mixed_macro_actions"] or 0)
         or (row["mixed_macro_physical_ticks"] or 0)
         for row in fallback
@@ -260,7 +281,7 @@ def compare(
         "scope": (
             "same-source public CLI query; independent literal physical endpoint reference; "
             "the named-only mode ablates 6305 selection; the full fallback mode "
-            "also ablates mixed-clock selection. Exact fallback execution is kept, "
+            "also ablates conditional and mixed-clock selection. Exact fallback execution is kept, "
             "and consumed mixed-action and border-action work comes from "
             "schema-eight execution metrics; "
             "timings include output"
@@ -279,7 +300,8 @@ def compare(
         "ring_capacity": ring.return_capacity,
         "powered_action_exercised": require_macro,
         "enabled_consumed_powered_physical_ticks": [
-            (row["mixed_macro_physical_ticks"] or 0)
+            (row["conditional_physical_ticks"] or 0)
+            + (row["mixed_macro_physical_ticks"] or 0)
             + (row["border_macro_physical_ticks"] or 0)
             for row in enabled
         ],

@@ -73,6 +73,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.physical_images import (
         CollatzPhysicalImageWorkspace,
     )
+    from number_compiler.sequences.collatz.temporal_source_morphism import (
+        CertifiedCollatzRootMorphism,
+    )
 
 
 # Left boundary states.  START means no active source digit has been consumed.
@@ -295,6 +298,8 @@ def power_collatz_physical_effect(
 class PoweredCollatzTerm(RadixProjectionSourceAuditor):
     """Exact physical Collatz nth state using only the powered block fast path."""
 
+    seed_digits: tuple[int, ...]
+
     __slots__ = (
         "__weakref__",
         "_active_width",
@@ -350,7 +355,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._ledger.bump(_shared_keys.TEMPORAL_LENGTH_REQUESTS, 0)
         self.seed = seed
         self.steps = steps
-        self.seed_digits = tuple(map(int, digits_lsd(seed, 2)))
+        self.seed_digits: tuple[int, ...] = tuple(map(int, digits_lsd(seed, 2)))
         pairs, remainder = divmod(steps, 2)
         pair_growth = (19 * pairs + 31) // 32
         bound = (
@@ -823,6 +828,21 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         if complete_word:
             self._innovation_tape_modulus = modulus
 
+    def true_root_morphism(self) -> CertifiedCollatzRootMorphism:
+        """Demand the source-bound root carrier from the admitted run result.
+
+        This uses the exact quotient already produced for a joint/innovation
+        observation. It cannot be requested on the ordinary term/digit path,
+        and it never compiles a second physical run.
+        """
+        if not self._joint_cocycle_demanded:
+            raise ValueError(
+                "prepare the joint-cocycle detail before requesting the root morphism"
+            )
+        if self.steps == 0:
+            raise ValueError("zero-span Collatz queries have no positive root morphism")
+        return self._source_image().true_root_morphism
+
     def observe_boundary_macro(
         self,
         *,
@@ -941,36 +961,18 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         return collatz_behavior_metrics(self)
 
     def metrics(self) -> CollatzPhysicalBlockMetrics:
-        from number_compiler.resources.collatz_power_metrics import (
-            CollatzPhysicalBlockMetrics,
+        from number_compiler.sequences.collatz.metrics_projection import (
+            project_collatz_term_metrics,
         )
-        from number_compiler.resources.metric_collection import (
-            collect_unindexed_metrics,
-        )
-        from number_compiler.resources.powered_metrics import project_powered_metrics
 
-        point = collect_unindexed_metrics(self._ledger)
-        return project_powered_metrics(
-            CollatzPhysicalBlockMetrics,
-            point,
+        return project_collatz_term_metrics(
+            self._ledger,
             seed=self.seed,
             steps=self.steps,
             operator_nodes=self.operator_nodes,
             compose_operations=self.compose_operations,
             syntax_depth_bound=self.syntax_depth_bound,
             descriptor_bits=self.descriptor_bits,
-            # The source-image point path is intentionally index-free.  Export
-            # its explicit query counter directly instead of relying on the
-            # legacy HashLife index alias.
-            direct_powered_point_queries=self._ledger.counters.get(
-                _collatz_keys.DIRECT_POWERED_POINT_QUERIES, 0
-            ),
-            collatz_physical_factored_output_compilations=point.resource_work_counters.get(
-                _collatz_keys.COLLATZ_PHYSICAL_FACTORED_OUTPUT_COMPILATIONS, 0
-            ),
-            collatz_physical_joint_output_tables_elided=point.resource_work_counters.get(
-                _collatz_keys.COLLATZ_PHYSICAL_JOINT_OUTPUT_TABLES_ELIDED, 0
-            ),
         )
 
 

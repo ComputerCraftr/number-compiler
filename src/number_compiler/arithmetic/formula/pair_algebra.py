@@ -70,6 +70,8 @@ def carry_prefix_projection(
     Collatz/radix digit transducers.  No recursive carry row is retained.
     """
     planes = check_pair_planes(planes, spec)
+    for plane in planes:
+        arena.require_owned(plane)
     key = ("carry-prefix-monoid", spec.base, tuple(p.id for p in planes))
     cached = arena.metadata_get(key)
     if isinstance(cached, FormulaPrefixMonoidProjection):

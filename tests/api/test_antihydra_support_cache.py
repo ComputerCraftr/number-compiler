@@ -465,6 +465,7 @@ def test_fragment_cache_rejects_boolean_key_alias_before_lookup() -> None:
 def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> None:
     result = run(8)
     inventory_after_first: int | None = None
+    request: SpaceTimeProjection | None = None
     for index in range(40):
         request = SpaceTimeProjection(
             result,
@@ -479,6 +480,7 @@ def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> 
         if inventory_after_first is None:
             inventory_after_first = len(result.ledger.inventory())
     assert len(result.ledger.inventory()) == inventory_after_first
+    assert request is not None
     request_reference = ref(request)
     del request
     gc.collect()

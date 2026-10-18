@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -14,6 +14,9 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     TransferSummaryID,
+)
+from number_compiler.hashlife.execution.continuations.diamond_expression_closures import (
+    ClosureProgramID,
 )
 from number_compiler.hashlife.execution.continuations.diamond_higher_context import (
     HigherContextRecord,
@@ -183,12 +186,15 @@ def test_summary_program_and_binding_reservations_are_atomic() -> None:
 
 def test_summary_records_reject_numeric_payload_disguises() -> None:
     _runtime, primitive = machine()
-    for constructor, args in (
-        (HigherUnaryRecord, (primitive, 0, 123)),
-        (HigherContextRecord, (primitive, primitive, 123, 456)),
-    ):
-        with pytest.raises(ValueError):
-            constructor(*args)
+    with pytest.raises(ValueError):
+        HigherUnaryRecord(primitive, 0, cast(ClosureProgramID, 123))
+    with pytest.raises(ValueError):
+        HigherContextRecord(
+            primitive,
+            primitive,
+            cast(ClosureProgramID, 123),
+            cast(ClosureProgramID, 456),
+        )
 
 
 @pytest.mark.parametrize("side", [0, 1])

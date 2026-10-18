@@ -32,7 +32,7 @@ class SMBFormulaView:
 def smb_formula_view(
     arena: FormulaArena, pair: FormulaRoot, spec: RadixSpec
 ) -> SMBFormulaView:
-    key = ("smb-formula-view", spec.base, canonical_root_key(pair))
+    key = ("smb-formula-view", spec.base, canonical_root_key(pair, arena))
     cached = arena.metadata_get(key)
     if isinstance(cached, SMBFormulaView):
         return cached

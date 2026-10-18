@@ -47,6 +47,7 @@ class FormulaEvalMixin(FormulaStorage):
         charge every probe in JumpAudit.  General point evaluation remains
         prohibited by :meth:`eval_closed_bit`.
         """
+        self.require_owned(root)
         position = int(position)
         if not 0 <= position < root.width:
             raise IndexError(position)

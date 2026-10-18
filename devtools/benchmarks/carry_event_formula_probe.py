@@ -43,7 +43,7 @@ def _orbit(
     int,
 ]:
     source: tuple[int, ...] = (7, 18, 7)
-    states = [source]
+    states: list[tuple[int, ...]] = [source]
     carries = []
     events = []
     growths = []

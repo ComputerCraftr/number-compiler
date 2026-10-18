@@ -57,15 +57,15 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
         len(core._applications),
     )
     original = ledger.reserve_many
+    original_single = ledger.reserve
     appended = 0
     source_image_owner = core._node_owner
     # Aggregate-only publication constructs one support node. An explicitly
     # chronological consumer still exercises rollback after several children.
     rejection_at = 4 if workspace.retain_chronological_support() else 1
 
-    def capped(reservations: Iterable[tuple[int, int, int]]) -> None:
+    def inspect_reservations(rows: tuple[tuple[int, int, int], ...]) -> None:
         nonlocal appended
-        rows = tuple(reservations)
         if any(owner == workspace.support_owner for owner, _, _ in rows):
             appended += 1
             if failure_stage == "candidate" and appended == rejection_at:
@@ -80,9 +80,18 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
             # Reject the shared scheduler's publication after the family
             # constructor returned its complete candidate.
             ledger.max_nodes = ledger.nodes
+
+    def capped_many(reservations: Iterable[tuple[int, int, int]]) -> None:
+        rows = tuple(reservations)
+        inspect_reservations(rows)
         original(rows)
 
-    monkeypatch.setattr(ledger, "reserve_many", capped)
+    def capped_single(owner: int, entries: int = 0, nodes: int = 0) -> None:
+        inspect_reservations(((owner, entries, nodes),))
+        original_single(owner, entries=entries, nodes=nodes)
+
+    monkeypatch.setattr(ledger, "reserve_many", capped_many)
+    monkeypatch.setattr(ledger, "reserve", capped_single)
     try:
         with pytest.raises(BlockContextBudgetExceeded):
             workspace.scheduler.source_image_demanded(
@@ -94,6 +103,7 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
     finally:
         ledger.max_nodes = 4096
         monkeypatch.setattr(ledger, "reserve_many", original)
+        monkeypatch.setattr(ledger, "reserve", original_single)
 
     assert appended >= rejection_at
     assert (

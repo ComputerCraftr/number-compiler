@@ -1,5 +1,5 @@
 theory Comma_CRT_Support
-  imports Comma_CRT_Apply Shared_S_Arithmetic.CRT_Predicate
+  imports Comma_CRT_Apply_Right_Quotient Shared_S_Arithmetic.CRT_Predicate
 begin
 
 text \<open>

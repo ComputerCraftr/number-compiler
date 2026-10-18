@@ -899,6 +899,7 @@ def audit_field_image_payloads(
             )
             for index, signature_record in enumerate(root._signatures):
                 valid = type(signature_record) is MacroInterface
+                diamond_signature_handle: PortSignatureID | None = None
                 retained_handle: object = None
                 try:
                     root._validate_interface(signature_record)
@@ -917,7 +918,7 @@ def audit_field_image_payloads(
                     retained_handle = root._signature_keys.get(signature_record)
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
-                if valid:
+                if valid and diamond_signature_handle is not None:
                     approved.update(
                         (
                             id(signature_record),
@@ -930,6 +931,7 @@ def audit_field_image_payloads(
                     all_valid = False
             for index, quotient_record in root._nodes.items():
                 valid = type(quotient_record) is QuotientRecord
+                quotient_handle: LocalInterfaceID | None = None
                 try:
                     valid &= type(quotient_record.components) is MacroComponents
                     root._validate_components(
@@ -945,7 +947,7 @@ def audit_field_image_payloads(
                     valid &= root._keys.get(quotient_record) == quotient_handle
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     valid = False
-                if valid:
+                if valid and quotient_handle is not None:
                     approved.update(
                         (
                             id(quotient_record),

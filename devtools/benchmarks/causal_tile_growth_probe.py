@@ -720,7 +720,7 @@ def series_report(
     linear_envelopes: dict[str, bool | None] = {}
     logarithmic_envelopes: dict[str, bool | None] = {}
     for field in (*WORK_FIELDS, *SPACE_FIELDS):
-        if not complete:
+        if not values or not complete:
             linear_envelopes[field] = None
             logarithmic_envelopes[field] = None
             continue

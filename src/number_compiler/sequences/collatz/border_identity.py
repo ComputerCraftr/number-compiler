@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final, TypeAlias, TypeGuard
+from typing import Final, Protocol, TypeAlias, TypeGuard
+from weakref import ReferenceType, ref
 
 CLOSED_BORDER_CYCLE_TAG: Final[str] = "collatz-closed-border-cycle-v1"
 GUARDED_BORDER_PATH_TAG: Final[str] = "collatz-guarded-border-path-v1"
@@ -205,6 +206,144 @@ BoundaryActionIdentity: TypeAlias = CycleEntryPhase | GuardedBorderPath
 CollatzSegmentIdentity: TypeAlias = BoundaryActionIdentity | NonBorderSegment
 BoundaryOccurrence: TypeAlias = tuple[int, int, int, BoundaryActionIdentity]
 
+_BOUNDARY_OCCURRENCE_ISSUER = object()
+
+
+class _SelectedBoundaryMacro(Protocol):
+    """Exact fields shared by the two producer-issued boundary macro types."""
+
+    @property
+    def source(self) -> int: ...
+
+    @property
+    def physical_ticks(self) -> int: ...
+
+    @property
+    def identity(self) -> BoundaryActionIdentity: ...
+
+
+@dataclass(frozen=True, slots=True, init=False, weakref_slot=True)
+class BoundaryOccurrenceProducerStamp:
+    """Bind a selected macro to its actual source-relative temporal position."""
+
+    source: int
+    horizon: int
+    occurrence: BoundaryOccurrence
+    macro: object
+    _issuer: object
+    _snapshot: tuple[object, ...]
+    _issued_self: ReferenceType[BoundaryOccurrenceProducerStamp]
+
+    @classmethod
+    def _issue(
+        cls,
+        source: int,
+        horizon: int,
+        occurrence: BoundaryOccurrence,
+        macro: _SelectedBoundaryMacro,
+    ) -> BoundaryOccurrenceProducerStamp:
+        _require_selected_macro(macro)
+        if (
+            type(source) is not int
+            or source <= 0
+            or type(horizon) is not int
+            or horizon < 0
+            or not is_boundary_occurrence(occurrence)
+            or occurrence[0] + occurrence[2] > horizon
+        ):
+            raise ValueError("cannot stamp a malformed boundary occurrence")
+        stamp = object.__new__(cls)
+        for name, value in (
+            ("source", source),
+            ("horizon", horizon),
+            ("occurrence", occurrence),
+            ("macro", macro),
+            ("_issuer", _BOUNDARY_OCCURRENCE_ISSUER),
+            ("_snapshot", (source, horizon, occurrence, macro)),
+        ):
+            object.__setattr__(stamp, name, value)
+        object.__setattr__(stamp, "_issued_self", ref(stamp))
+        return stamp
+
+    @classmethod
+    def _issue_selected_macro(
+        cls,
+        source: int,
+        horizon: int,
+        remaining: int,
+        macro: _SelectedBoundaryMacro,
+        *,
+        boundary_offset: int | None = None,
+    ) -> BoundaryOccurrenceProducerStamp:
+        """Stamp the actual selected macro source, including reentry seams."""
+        if (
+            type(horizon) is not int
+            or horizon < 0
+            or type(remaining) is not int
+            or not 0 <= remaining <= horizon
+        ):
+            raise ValueError("selected boundary run has an invalid horizon")
+        _require_selected_macro(macro)
+        start_tick = horizon - remaining if boundary_offset is None else boundary_offset
+        boundary_source = macro.source
+        physical_ticks = macro.physical_ticks
+        identity = macro.identity
+        if (
+            type(start_tick) is not int
+            or start_tick < 0
+            or type(boundary_source) is not int
+            or type(physical_ticks) is not int
+            or type(identity) not in (CycleEntryPhase, GuardedBorderPath)
+        ):
+            raise ValueError("selected boundary macro has malformed occurrence data")
+        occurrence = (start_tick, boundary_source, physical_ticks, identity)
+        return cls._issue(source, horizon, occurrence, macro)
+
+    def certifies(
+        self,
+        source: int,
+        horizon: int,
+        occurrence: BoundaryOccurrence,
+        macro: object,
+    ) -> bool:
+        return (
+            self._issuer is _BOUNDARY_OCCURRENCE_ISSUER
+            and self._issued_self() is self
+            and type(self.source) is int
+            and self.source > 0
+            and type(self.horizon) is int
+            and self.horizon >= 0
+            and is_boundary_occurrence(self.occurrence)
+            and type(self._snapshot) is tuple
+            and len(self._snapshot) == 4
+            and type(self._snapshot[0]) is int
+            and type(self._snapshot[1]) is int
+            and self._snapshot[0] == self.source
+            and self._snapshot[1] == self.horizon
+            and self._snapshot[2] is self.occurrence
+            and self._snapshot[3] is self.macro
+            and type(source) is int
+            and source == self.source
+            and type(horizon) is int
+            and horizon == self.horizon
+            and is_boundary_occurrence(occurrence)
+            and occurrence == self.occurrence
+            and macro is self.macro
+        )
+
+
+def _require_selected_macro(macro: object) -> None:
+    """Reject structural lookalikes; stamps bind only issued family macros."""
+    from number_compiler.sequences.collatz.border_return_grammar import (
+        BorderReturnMacro,
+    )
+    from number_compiler.sequences.collatz.boundary_macros import (
+        CollatzBoundaryMacro,
+    )
+
+    if type(macro) not in (CollatzBoundaryMacro, BorderReturnMacro):
+        raise TypeError("boundary occurrence stamp requires an issued macro")
+
 
 def is_boundary_occurrence(value: object) -> TypeGuard[BoundaryOccurrence]:
     """Validate the typed identity carried by one admitted border occurrence."""
@@ -274,6 +413,7 @@ __all__ = [
     "BorderExitPort",
     "BoundaryActionIdentity",
     "BoundaryOccurrence",
+    "BoundaryOccurrenceProducerStamp",
     "BoundaryPathKind",
     "ClosedBorderCycle",
     "CollatzSegmentIdentity",

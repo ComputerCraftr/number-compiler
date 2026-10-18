@@ -82,10 +82,12 @@ class ObservationId(StrEnum):
     TEMPORAL_BANK = "temporal.bank"
     TEMPORAL_BIRTH_LAYERS = "temporal.birth-layers"
     TEMPORAL_OPEN_RING = "temporal.open-ring"
+    TEMPORAL_SEED_ORBIT = "temporal.seed-orbit"
     TEMPORAL_GRAMMAR = "temporal.grammar"
     TEMPORAL_RADIX_WALSH = "temporal.radix-walsh"
     TEMPORAL_CLOSED_FORM = "temporal.closed-form"
     TEMPORAL_RESIDUE99 = "temporal.residue99"
+    TEMPORAL_SEED_MORPHISM = "temporal.seed-morphism"
     TEMPORAL_CARRY_SAFETY = "temporal.carry-safety"
     TEMPORAL_ACCUMULATOR = "temporal.accumulator"
     TEMPORAL_INNOVATION_BORROW = "temporal.innovation-borrow"
@@ -198,11 +200,13 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_STENCIL,
         ObservationId.TEMPORAL_BANK,
         ObservationId.TEMPORAL_OPEN_RING,
+        ObservationId.TEMPORAL_SEED_ORBIT,
         ObservationId.TEMPORAL_BIRTH_LAYERS,
         ObservationId.TEMPORAL_GRAMMAR,
         ObservationId.TEMPORAL_RADIX_WALSH,
         ObservationId.TEMPORAL_CLOSED_FORM,
         ObservationId.TEMPORAL_RESIDUE99,
+        ObservationId.TEMPORAL_SEED_MORPHISM,
         ObservationId.TEMPORAL_CARRY_SAFETY,
         ObservationId.TEMPORAL_ACCUMULATOR,
         ObservationId.TEMPORAL_INNOVATION_BORROW,
@@ -318,3 +322,24 @@ __all__ = [
     "output_status",
     "selector_id",
 ]
+
+
+def family_observation_kind(name: ObservationId) -> str:
+    """Translate the wire identifier to a family-owned observer selector."""
+    return {
+        ObservationId.TEMPORAL_CLOCK: "clock",
+        ObservationId.ARITHMETIC_MODULAR: "modular",
+        ObservationId.ARITHMETIC_TWISTED: "twisted",
+        ObservationId.ARITHMETIC_HASSE: "hasse",
+        ObservationId.ARITHMETIC_HENSEL: "hensel",
+        ObservationId.ARITHMETIC_TROPICAL: "tropical",
+        ObservationId.ARITHMETIC_FACTOR: "factor",
+        ObservationId.SAFETY_EXECUTION: "safety",
+        ObservationId.SAFETY_LEDGER: "ledger",
+        ObservationId.SPATIAL_TAPE: "tape",
+        ObservationId.TEMPORAL_SPACETIME: "spacetime",
+        ObservationId.ARITHMETIC_MAHLER: "mahler",
+        ObservationId.NUMBER_THEORY_PRIMALITY: "primality",
+        ObservationId.NUMBER_THEORY_FACTOR: "factor",
+        ObservationId.NUMBER_THEORY_ROOT: "root",
+    }.get(name, name.value)

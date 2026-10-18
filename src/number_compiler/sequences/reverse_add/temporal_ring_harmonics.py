@@ -12,31 +12,26 @@ cyclic, do not authorize an unbounded source-to-source temporal REPEAT.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
-from number_compiler.arithmetic.carry.carry_monoid import apply_carry_fn
 from number_compiler.arithmetic.functions.partial_count_action import ActionUniverse
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
-from ._q19_issuance import issue_q19_record
 from .macro_conditioned_harmonics import (
     CycleHarmonicAction,
     MacroPhaseInwardOrbit,
-    _inward_orbit_at,
 )
-from .temporal_inward_constraints import ReverseInwardConstraints
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 
-    from .border_carry_safety import BilateralCyclePort
     from .conditional_pair_ring import ConditionalRingPairAction
     from .diagonal_growth_bank import CertifiedDiagonalComparison, WidthGrowthBounds
     from .q19_border_control import CertifiedBorderGrowth
     from .q19_controlled_gt_bank import SourceGuardedGTBankAction
     from .symmetric_carry_filter import InwardCarryFilter
+    from .temporal_carry_phase import CertifiedCarryPhase, CertifiedCarryWord
 
 _ISSUER = object()
 _BANKS = ("lt_low", "lt_high", "eq", "gt_low", "gt_high")
@@ -121,6 +116,12 @@ class ReverseAddTemporalRingBank:
     finite_moore_classes: tuple[int, ...]
     macro: CycleHarmonicAction | None
     rounds: int
+    # A source-owned two-sided carry word is retained rather than rederived
+    # from independent output masks after the solver has discarded its maps.
+    carry_wire_phases: tuple[tuple[CertifiedCarryPhase, ...], ...] = ()
+    center_domains: tuple[tuple[int, ...], ...] = ()
+    global_residues99: tuple[int | None, ...] = ()
+    global_residues198: tuple[int | None, ...] = ()
     complete_integer_certified: bool = False
     temporal_repeat_certified: bool = False
     _seal: object = field(default=None, repr=False, compare=False)
@@ -136,6 +137,38 @@ class ReverseAddTemporalRingBank:
         ):
             raise ValueError("ring bank must be issued by a live border certificate")
         self._check()
+
+    def _carry_phase_snapshot(self) -> tuple[object, ...]:
+        """Value snapshot for nested carry phases, independent of object refs."""
+        return tuple(
+            tuple(
+                (
+                    phase.tick,
+                    phase.width,
+                    (
+                        phase.port.source.k,
+                        phase.port.source.high,
+                        phase.port.source.low,
+                    ),
+                    (
+                        phase.port.target.k,
+                        phase.port.target.high,
+                        phase.port.target.low,
+                    ),
+                    phase.port.growth,
+                    phase.port.low_carry,
+                    phase.port.admitted_middle,
+                    phase.middle_wire.outer_pairs,
+                    phase.middle_wire.pair_domains,
+                    phase.middle_wire.transfers,
+                    phase.middle_wire.reset_witnesses,
+                    phase.middle_wire.possible_first_resets,
+                    phase.middle_wire.source_width,
+                )
+                for phase in frame
+            )
+            for frame in self.carry_wire_phases
+        )
 
     def _snapshot(self) -> tuple[object, ...]:
         return (
@@ -153,6 +186,10 @@ class ReverseAddTemporalRingBank:
             self.finite_moore_classes,
             self.macro,
             self.rounds,
+            self._carry_phase_snapshot(),
+            self.center_domains,
+            self.global_residues99,
+            self.global_residues198,
             self.complete_integer_certified,
             self.temporal_repeat_certified,
             self._registry_key,
@@ -282,6 +319,28 @@ class ReverseAddTemporalRingBank:
                 )
             ):
                 raise ValueError("temporal ring contains an invalid inward orbit")
+        if (
+            len(self.carry_wire_phases) != self.duration
+            or len(self.center_domains) != self.duration + 1
+            or len(self.global_residues99) != self.duration + 1
+            or len(self.global_residues198) != self.duration + 1
+            or any(not row for row in self.center_domains)
+            or any(
+                residue is not None and not 0 <= residue < 99
+                for residue in self.global_residues99
+            )
+            or any(
+                residue is not None and not 0 <= residue < 198
+                for residue in self.global_residues198
+            )
+        ):
+            raise ValueError("ring lost its correlated center/cyclotomic cylinder")
+        for offset, phases in enumerate(self.carry_wire_phases):
+            for phase in phases:
+                if phase.tick != self.start + offset:
+                    raise ValueError("ring carry phase has an incorrect physical tick")
+                if phase.width != self.widths[offset]:
+                    raise ValueError("ring carry phase has incorrect physical width")
         if type(self.rounds) is not int or self.rounds < 0:
             raise ValueError("temporal ring has an invalid constraint work count")
 
@@ -314,6 +373,78 @@ class ReverseAddTemporalRingBank:
             if frame.position == position and frame.channel == channel
         )
 
+    def carry_phase(self, tick: int, *, border_digits: int = 1) -> CertifiedCarryPhase:
+        """A retained correlated carry phase with source owner validation."""
+        self._check()
+        if type(tick) is not int or not 0 <= tick < self.duration:
+            raise IndexError("outside certified carry interval")
+        for phase in self.carry_wire_phases[tick]:
+            if phase.port.source.k == border_digits:
+                return phase
+        raise ValueError("no certified K-digit carry phase at this tick")
+
+    def conditional_carry_word(self, *, border_digits: int = 1) -> CertifiedCarryWord:
+        """Compose the physical window, never asserting any future repetition."""
+        self._check()
+        from .temporal_carry_phase import CertifiedCarryWord
+
+        phases = tuple(
+            self.carry_phase(i, border_digits=border_digits)
+            for i in range(self.duration)
+        )
+        return CertifiedCarryWord(
+            self.certificate,
+            self.start,
+            self.widths[0],
+            phases,
+            (self,),
+        )
+
+    def conditional_joint_center_period(self, period: int) -> str:
+        """Compare a whole finite modular/carry/center witness at one lag.
+
+        Equality is only a compatible conditional hypothesis, NOT a source-
+        closed physical repeat. Carry words are checked at every phase, and
+        the modulo-198 parity lift is preserved when it is available.
+        """
+        self._check()
+        if type(period) is not int or period < 1 or period > self.duration:
+            raise ValueError("candidate period outside issued finite horizon")
+        for t in range(self.duration + 1 - period):
+            if (self.widths[t] - self.widths[t + period]) % 2:
+                return "contradicted"
+            if not set(self.center_domains[t]).intersection(
+                self.center_domains[t + period]
+            ):
+                return "contradicted"
+            for residues in (self.global_residues99, self.global_residues198):
+                if (
+                    residues[t] is not None
+                    and residues[t + period] is not None
+                    and residues[t] != residues[t + period]
+                ):
+                    return "contradicted"
+        for t in range(self.duration - period):
+            if (
+                self.certificate.growth_word[self.start + t]
+                != self.certificate.growth_word[self.start + t + period]
+            ):
+                return "contradicted"
+            if (self.widths[t] - self.widths[t + period]) % 2:
+                return "contradicted"
+            earlier = {p.port.source.k: p for p in self.carry_wire_phases[t]}
+            later = {p.port.source.k: p for p in self.carry_wire_phases[t + period]}
+            for k in earlier.keys() & later.keys():
+                a, b = earlier[k], later[k]
+                if (
+                    a.low_carry != b.low_carry
+                    or not set(a.middle_transfers).intersection(b.middle_transfers)
+                    or not set(a.high_carries).intersection(b.high_carries)
+                ):
+                    return "contradicted"
+        # No all-depth successor closure or physical power is asserted.
+        return "conditional_not_authorized"
+
     def then(self, later: ReverseAddTemporalRingBank) -> ReverseAddTemporalRingBank:
         """Compose adjacent *already source-issued* finite phase programs.
 
@@ -332,6 +463,30 @@ class ReverseAddTemporalRingBank:
         for pos in self.positions:
             if self.target_pair_domain(pos) != later.source_pair_domain(pos):
                 raise ValueError("conditional Q19 source/target port seam mismatch")
+        center_seam = tuple(
+            sorted(set(self.center_domains[-1]) & set(later.center_domains[0]))
+        )
+        if not center_seam:
+            raise ValueError("joint center fiber has no temporal seam")
+
+        def merge_residue(left: int | None, right: int | None) -> int | None:
+            if left is not None and right is not None and left != right:
+                raise ValueError("joint cyclotomic port has no temporal seam")
+            return left if left is not None else right
+
+        combined_centers = (
+            self.center_domains[:-1] + (center_seam,) + later.center_domains[1:]
+        )
+        combined_mod99 = (
+            self.global_residues99[:-1]
+            + (merge_residue(self.global_residues99[-1], later.global_residues99[0]),)
+            + later.global_residues99[1:]
+        )
+        combined_mod198 = (
+            self.global_residues198[:-1]
+            + (merge_residue(self.global_residues198[-1], later.global_residues198[0]),)
+            + later.global_residues198[1:]
+        )
         ledger = self.certificate.owner.ledger
         names = (
             "pair_f5",
@@ -390,6 +545,11 @@ class ReverseAddTemporalRingBank:
             ).action
         except ValueError:
             pass  # Matching width does not prove an outer border return.
+        from .temporal_ring_construction import (
+            _finite_future_classes,
+            _issue_temporal_ring_bank,
+        )
+
         return _issue_temporal_ring_bank(
             self.certificate,
             start=self.start,
@@ -402,12 +562,20 @@ class ReverseAddTemporalRingBank:
             finite_moore_classes=_finite_future_classes(
                 result,
                 self.duration + later.duration,
+                center_domains=combined_centers,
+                global_residues99=combined_mod99,
+                global_residues198=combined_mod198,
+                carry_wire_phases=self.carry_wire_phases + later.carry_wire_phases,
                 on_lane_visit=lambda: ledger.bump(
                     _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
                 ),
             ),
             macro=macro,
             rounds=max(self.rounds, later.rounds),
+            carry_wire_phases=self.carry_wire_phases + later.carry_wire_phases,
+            center_domains=combined_centers,
+            global_residues99=combined_mod99,
+            global_residues198=combined_mod198,
         )
 
     def spatial_walsh64_mod5(
@@ -595,6 +763,33 @@ class ReverseAddTemporalRingBank:
         """Small certificate summary, without claiming indefinite periodicity."""
         self._check()
         return {
+            "correlated_carry_phases": sum(map(len, self.carry_wire_phases)),
+            "unique_middle_carry_maps": sum(
+                len(phase.middle_transfers) == 1
+                for frame in self.carry_wire_phases
+                for phase in frame
+            ),
+            "middle_first_reset_ports": tuple(
+                {
+                    "tick": phase.tick,
+                    "border_digits": phase.port.source.k,
+                    "low_carry": phase.low_carry,
+                    "high_carries": phase.high_carries,
+                    "middle_transfers": tuple(
+                        fn.value for fn in phase.middle_transfers
+                    ),
+                    "first_reset_witnesses": tuple(
+                        (position, transfer.value)
+                        for position, transfer in phase.first_reset_witnesses
+                    ),
+                    "first_non9_positions": phase.first_reset_positions[:16],
+                }
+                for frame in self.carry_wire_phases[:16]
+                for phase in frame
+            ),
+            "center_domains": self.center_domains[:16],
+            "cyclotomic_mod99": self.global_residues99[:16],
+            "cyclotomic_mod198": self.global_residues198[:16],
             "steps": self.duration,
             "growth": self.certificate.growth_word[
                 self.start : self.start + self.duration
@@ -618,55 +813,6 @@ class ReverseAddTemporalRingBank:
         }
 
 
-def _finite_future_classes(
-    words: tuple[RingPhaseHarmonic, ...],
-    duration: int,
-    *,
-    on_lane_visit: Callable[[], None] | None = None,
-) -> tuple[int, ...]:
-    """Coarsest suffix-output signatures on the finite certified path only.
-
-    Unlike the `2rev10` source-input Moore automaton, these labels have NO
-    defined transition beyond the finite final row. They cannot power a
-    complete-root action; identical suffixes *inside* the window may merge.
-    """
-    codes: dict[tuple[object, ...], int] = {}
-    result = [0] * (duration + 1)
-    for t in range(duration - 1, -1, -1):
-        lane_values = []
-        for word in words:
-            if on_lane_visit is not None:
-                on_lane_visit()
-            lane_values.append(word.lanes[t])
-        signature = (tuple(lane_values), result[t + 1])
-        result[t] = codes.setdefault(signature, len(codes) + 1)
-    return tuple(result)
-
-
-def _restrict_bilateral_port(
-    system: ReverseInwardConstraints,
-    t: int,
-    k: int,
-    port: BilateralCyclePort,
-    source_width: int,
-) -> None:
-    """Intersect low overflow, one shared middle map and high ingress."""
-    system.constrain_carry(t, k, port.low_carry)
-    if not port.admitted_middle:
-        raise ValueError("certified bilateral port has no middle transfer")
-    system.constrain_middle_transfer(t, k, port.admitted_middle)
-    high = {apply_carry_fn(fn, port.low_carry) for fn in port.admitted_middle}
-    if len(high) == 1:
-        system.constrain_carry(t, source_width - k, next(iter(high)))
-    # The known high tile can reset the ingress into the leading digit even
-    # when the middle transfer is still conditional.
-    from .border_carry_safety import border_carry_port
-
-    outer = border_carry_port(port.source)
-    if outer.forced_msd_ingress is not None:
-        system.constrain_carry(t, source_width - 1, outer.forced_msd_ingress)
-
-
 def authorize_temporal_ring_bank(
     certificate: CertifiedBorderGrowth,
     *,
@@ -678,290 +824,19 @@ def authorize_temporal_ring_bank(
     max_cells: int = 16384,
     bank_action: SourceGuardedGTBankAction | None = None,
 ) -> ReverseAddTemporalRingBank:
-    """Source-certify finite macro-specific harmonics at *any* inward positions.
+    """Source-certify finite macro-specific harmonics at any inward position."""
+    from .temporal_ring_construction import authorize_temporal_ring_bank as build
 
-    No periodic source hypothesis, fixed period<=8, or literal `2rev10` clock
-    is required. Every certified multi-digit border edge constrains one
-    correlated low->middle->high carry circuit. The digit/Q19 F5/borrow
-    restrictions are propagated forward AND backward across physical ticks.
-    """
-    certificate.validate(certificate.owner, certificate.source)
-    if (
-        type(start) is not int
-        or start < 0
-        or type(positions) is not tuple
-        or not positions
-        or any(type(i) is not int or i < 0 for i in positions)
-        or len(positions) > 64
-        or len(set(positions)) != len(positions)
-    ):
-        raise ValueError("invalid temporal macro range or ring positions")
-    if duration is not None and (type(duration) is not int or duration < 1):
-        raise ValueError("temporal ring duration must be a positive integer")
-    if type(max_cells) is not int or not 1 <= max_cells <= 16384:
-        raise ValueError("temporal ring cell budget must be in 1..16384")
-    if type(include_source_digits) is not bool:
-        raise TypeError("source digit inclusion flag must be Boolean")
-    if type(source_pair_prefix) is not int or source_pair_prefix < 0:
-        raise ValueError("invalid source-pair prefix")
-    skip = int(certificate.source is not certificate.owner.initial)
-    initial_width = (
-        certificate.source.output_width if skip else certificate.source.pair_width
-    )
-    if source_pair_prefix > (initial_width + 1) // 2:
-        raise ValueError("source-pair probe reaches beyond center")
-    if bank_action is not None:
-        from .q19_controlled_gt_bank import SourceGuardedGTBankAction
-
-        if type(bank_action) is not SourceGuardedGTBankAction:
-            raise TypeError("temporal ring requires a source-issued GT bank action")
-        bank_action._validate()
-        if (
-            not bank_action.control_certified
-            or bank_action.border_certificate is not certificate
-            or bank_action.owner is not certificate.owner
-            or bank_action.source is not certificate.source
-            or bank_action.growth_control != certificate.growth_word
-            or bank_action.steps != len(certificate.growth_word)
-        ):
-            raise ValueError("GT bank action does not match this border certificate")
-    try:
-        return _build_temporal_ring_bank(
-            certificate,
-            start=start,
-            duration=duration,
-            positions=positions,
-            source_pair_prefix=source_pair_prefix,
-            include_source_digits=include_source_digits,
-            max_cells=max_cells,
-            bank_action=bank_action,
-            skip=skip,
-            initial_width=initial_width,
-        )
-    except Exception:
-        certificate.owner.ledger.bump(
-            _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_FAILURES
-        )
-        raise
-
-
-def _build_temporal_ring_bank(
-    certificate: CertifiedBorderGrowth,
-    *,
-    start: int,
-    duration: int | None,
-    positions: tuple[int, ...],
-    source_pair_prefix: int,
-    include_source_digits: bool,
-    max_cells: int,
-    bank_action: SourceGuardedGTBankAction | None,
-    skip: int,
-    initial_width: int,
-) -> ReverseAddTemporalRingBank:
-    """Run a prevalidated request and charge only work reached by execution."""
-    stop = len(certificate.growth_word) if duration is None else start + duration
-    if type(stop) is not int or not start < stop <= len(certificate.growth_word):
-        raise ReverseTemporalRingRefused(
-            "ring exceeds the finite source-certified horizon"
-        )
-    if start < skip:
-        raise ReverseTemporalRingRefused(
-            "later Q19 occurrence's consumed growth is outside the ring window"
-        )
-    width = initial_width + sum(certificate.growth_word[skip:start])
-    widths = [initial_width]
-    for growth in certificate.growth_word[skip:]:
-        widths.append(widths[-1] + growth)
-    for j in range(start, stop):
-        if any(position >= (width + 1) // 2 for position in positions):
-            raise ReverseTemporalRingRefused(
-                "ring position crosses the moving pair center"
-            )
-        width += certificate.growth_word[j]
-    domain_cells = sum(widths)
-    if domain_cells > max_cells:
-        raise ValueError("requires finite, positive nonshrinking width tape")
-    carry_cells = sum(w + 1 for w in widths[:-1])
-    borrow_cells = sum(
-        max(widths[t], widths[t + 1]) + 1 for t in range(len(widths) - 1)
-    )
-    certificate.owner.ledger.bump(
-        _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_CONSTRAINT_CELLS,
-        domain_cells + carry_cells + borrow_cells,
-    )
-    system = certificate.inward_temporal_constraints(
-        max_cells=max_cells,
-        source_pair_prefix=source_pair_prefix,
-        include_source_digits=include_source_digits,
-    )
-    # Source-bound K-digit windows provide strictly stronger carry safety
-    # than the one-digit border. Unproved windows are kept conditional.
-    windows = certificate.bilateral_window_ports()
-    coarse = certificate.bilateral_carry_ports()
-    for j in range(start, stop):
-        t = j - skip
-        width = system.widths[t]
-        # Apply both the unit border and the stronger admitted K-digit
-        # window when available. The larger port refines the same inward
-        # transfer factor; it does not replace or weaken the unit boundary.
-        for port in (coarse[j], windows[j]):
-            if port is not None and width >= 2 * port.source.k + 1:
-                _restrict_bilateral_port(system, t, port.source.k, port, width)
-    # The finite trace's outer return may be compiled with the same 96-cycle
-    # exact homogeneous F5 action, but its *forcing* remains conditional.
-    macro = None
-    if (
-        certificate.outer_pairs
-        and all(pair is not None for pair in certificate.outer_pairs[start : stop + 1])
-        and certificate.outer_pairs[start] == certificate.outer_pairs[stop]
-    ):
-        from .macro_conditioned_harmonics import authorize_finite_macro_window
-
-        macro = authorize_finite_macro_window(
-            certificate, start=start, duration=stop - start
-        ).action
-        system.constrain_macro_cycle(macro.cycle, start=start - skip)
-    # A source-issued periodic bank already provides a complete, source-
-    # aligned temporal output at its protected coordinate. Feed that action
-    # BACK into the bilateral finite constraint system before propagation:
-    # downstream F5/carry/bank masks must consume the same authenticated
-    # coefficients instead of recomputing unrelated coarse domain guesses.
-    # Only the specific owner-guarded coordinate is authorized here. No
-    # extrapolation to adjacent positions, changing periods or future repeats.
-    if bank_action is not None:
-        position = bank_action.coordinate
-        if position in positions:
-            for j in range(start, stop + 1):
-                source_time = j - skip
-                if source_time < 0:
-                    continue
-                if position >= (system.widths[source_time] + 1) // 2:
-                    raise ReverseTemporalRingRefused(
-                        "GT bank coordinate reached the moving pair center"
-                    )
-                system.constrain_pair(source_time, position, bank_action.at(j))
-    system.propagate(
-        on_round=lambda: certificate.owner.ledger.bump(
-            _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_PROPAGATION_ROUNDS
-        )
-    )
-    duration = stop - start
-    orbits = tuple(
-        _inward_orbit_at(system, start - skip, duration, i) for i in positions
-    )
-    phase_pairs = tuple(
-        tuple(system.pair_domain(t, i) for t in range(start - skip, stop - skip + 1))
-        for i in positions
-    )
-    outputs: list[RingPhaseHarmonic] = []
-    for position, orbit in zip(positions, orbits, strict=True):
-        for channel in _RING_CHANNELS:
-            if channel in _BANKS:
-                bit_rows: list[int | None] = []
-                for bands in orbit.selected_bands:
-                    certificate.owner.ledger.bump(
-                        _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
-                    )
-                    possible = {int(channel == band) for band in bands}
-                    bit_rows.append(
-                        next(iter(possible)) if len(possible) == 1 else None
-                    )
-                bits = tuple(bit_rows)
-            else:
-                values = {
-                    "f5": orbit.pair_f5,
-                    "low_carry": orbit.low_carries,
-                    "reflected_carry": orbit.reflected_carries,
-                    "raw_borrow": orbit.raw_innovation_borrow,
-                    "carry_xor": orbit.reflected_xor,
-                    "carry_borrow_xor": orbit.carry_borrow_xor,
-                    "low_birth": orbit.low_birth,
-                    "low_death": orbit.low_death,
-                    "high_birth": orbit.reflected_birth,
-                    "high_death": orbit.reflected_death,
-                }[channel]
-                bit_rows = []
-                for row in values:
-                    certificate.owner.ledger.bump(
-                        _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
-                    )
-                    bit_rows.append(row[0] if len(row) == 1 else None)
-                bits = tuple(bit_rows)
-            outputs.append(
-                RingPhaseHarmonic(
-                    position,
-                    channel,
-                    bits,
-                    _scalar_harmonics(bits),
-                    _finite_period(bits),
-                )
-            )
-    words = tuple(outputs)
-    return _issue_temporal_ring_bank(
+    return build(
         certificate,
         start=start,
         duration=duration,
         positions=positions,
-        widths=system.widths[start - skip : stop - skip + 1],
-        output_orbits=orbits,
-        phase_pair_domains=phase_pairs,
-        bank_words=words,
-        finite_moore_classes=_finite_future_classes(
-            words,
-            duration,
-            on_lane_visit=lambda: certificate.owner.ledger.bump(
-                _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
-            ),
-        ),
-        macro=macro,
-        rounds=system.rounds,
+        source_pair_prefix=source_pair_prefix,
+        include_source_digits=include_source_digits,
+        max_cells=max_cells,
+        bank_action=bank_action,
     )
-
-
-def _issue_temporal_ring_bank(
-    certificate: CertifiedBorderGrowth,
-    *,
-    start: int,
-    duration: int,
-    positions: tuple[int, ...],
-    widths: tuple[int, ...],
-    output_orbits: tuple[MacroPhaseInwardOrbit, ...],
-    phase_pair_domains: tuple[tuple[tuple[int, ...], ...], ...],
-    bank_words: tuple[RingPhaseHarmonic, ...],
-    finite_moore_classes: tuple[int, ...],
-    macro: CycleHarmonicAction | None,
-    rounds: int,
-) -> ReverseAddTemporalRingBank:
-    """Publish one owner-retained snapshot after exact source computation."""
-    owner = certificate.owner
-    certificate.validate(owner, certificate.source)
-    registry = owner._issuance_registry
-    key = registry.allocate_temporal_ring_bank_key()
-    record = object.__new__(ReverseAddTemporalRingBank)
-    values = {
-        "certificate": certificate,
-        "start": start,
-        "duration": duration,
-        "positions": positions,
-        "widths": widths,
-        "output_orbits": output_orbits,
-        "phase_pair_domains": phase_pair_domains,
-        "bank_words": bank_words,
-        "finite_moore_classes": finite_moore_classes,
-        "macro": macro,
-        "rounds": rounds,
-        "complete_integer_certified": False,
-        "temporal_repeat_certified": False,
-        "_registry_key": key,
-    }
-    issue_q19_record(record, values, _ISSUER)
-    registry.retain_temporal_ring_bank(key, record)
-    try:
-        record.__post_init__()
-    except BaseException:
-        registry.discard_temporal_ring_bank(key, record)
-        raise
-    return record
 
 
 __all__ = [

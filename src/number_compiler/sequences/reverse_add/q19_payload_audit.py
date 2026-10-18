@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence, Sized
 from itertools import chain
 
 from number_compiler.arithmetic.automata.slp import SLPNode
+from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import (
     OwnedMemo,
     ResourceInventory,
@@ -237,7 +238,7 @@ def audit_reverse_pair_output_roots(
             and root.machine.base == 10
             and type(root.machine) is _FrozenPairStepLaw
             and type(root._binding) is tuple
-            and len(root._binding) == 13
+            and len(root._binding) == 14
             and root._binding[0] is ledger
             and root._binding[1] is root._digits
             and root._binding[2] == 10
@@ -251,6 +252,7 @@ def audit_reverse_pair_output_roots(
             and root._binding[10] is root._spatial_bank_windows
             and root._binding[11] is root._temporal_ring_banks
             and root._binding[12] is root._diagonal_comparisons
+            and root._binding[13] is root._word_fibers
             and root._issuance_registry.diagonal_comparisons
             is root._diagonal_comparisons
             and root._issuance_registry.diagonal_comparison_next
@@ -270,6 +272,11 @@ def audit_reverse_pair_output_roots(
             (arena._rep, arena.owners[3], "reverse_pair_output_interner"),
             (root._summaries, root._summary_owner, "reverse_pair_q19_summary"),
             (root._issued, owner, "reverse_pair_output_occurrence"),
+            (
+                root._word_fibers,
+                root._word_fibers_owner,
+                "observation_memo",
+            ),
             (
                 root._border_certificates,
                 root._border_certificates_owner,
@@ -418,6 +425,69 @@ def audit_reverse_pair_output_roots(
                 and occurrence.growth == occurrence.output_width - len(root._digits)
                 and 0 <= occurrence.growth <= occurrence.temporal_steps
             )
+        from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
+            Q19WordFiber,
+            _fiber_snapshot,
+        )
+
+        checked_seeds: dict[int, bool] = {}
+        for fiber_key, cached in root._word_fibers.items():
+            recognized.update((id(fiber_key), id(cached)))
+            fiber_valid = (
+                type(fiber_key) is tuple
+                and len(fiber_key) == 3
+                and all(type(part) is int for part in fiber_key)
+                and type(cached) is tuple
+                and len(cached) == 2
+                and type(cached[0]) is Q19WordFiber
+                and type(cached[1]) is tuple
+            )
+            if not fiber_valid:
+                valid = False
+                invalid.add((root._word_fibers_owner, id(cached)))
+                continue
+            fiber, fiber_binding = cached
+            recognized.update((id(fiber), id(fiber_binding)))
+            occurrence = fiber.occurrence
+            seed = fiber_key[2]
+            if seed not in checked_seeds:
+                checked_seeds[seed] = seed >= 0 and digits_lsd(seed, 10) == root._digits
+            fiber_valid = (
+                fiber_binding == _fiber_snapshot(fiber)
+                and type(occurrence) is ReversePairOutputOccurrence
+                and fiber_key[:2] == (occurrence.root, occurrence.temporal_steps)
+                and fiber_key[2] >= 0
+                and checked_seeds[seed]
+                and root._issued.get((occurrence.root, occurrence.temporal_steps))
+                is occurrence
+                and fiber.generation == occurrence.temporal_steps
+                and fiber.root == occurrence.root
+                and fiber.width == occurrence.output_width
+                and fiber.pair_width == occurrence.pair_width
+                and type(fiber.center) is tuple
+                and len(fiber.center) == (1 if fiber.width & 1 else 2)
+                and all(
+                    type(digit) is int and 0 <= digit <= 9 for digit in fiber.center
+                )
+                and type(fiber.residue99) is int
+                and 0 <= fiber.residue99 < 99
+                and type(fiber.residue198) is int
+                and 0 <= fiber.residue198 < 198
+                and type(fiber.exterior99) is int
+                and 0 <= fiber.exterior99 < 99
+                and type(fiber.exterior198) is int
+                and 0 <= fiber.exterior198 < 198
+                and type(fiber.middle_carry_map) is tuple
+                and fiber.middle_carry_map in ((0, 0), (0, 1), (1, 1))
+            )
+            valid &= fiber_valid
+            if fiber_valid:
+                approved.update(
+                    (id(fiber_key), id(cached), id(fiber), id(fiber_binding))
+                )
+                approved.update(id(value) for value in _fiber_snapshot(fiber))
+            else:
+                invalid.add((root._word_fibers_owner, id(fiber)))
         for certificate_key, border_issued in root._border_certificates.items():
             recognized.update((id(certificate_key), id(border_issued)))
             if type(border_issued) is not tuple or len(border_issued) != 2:
@@ -700,6 +770,7 @@ def audit_reverse_pair_output_roots(
                 root._spatial_bank_windows.values(),
                 root._temporal_ring_banks.values(),
                 root._diagonal_comparisons.values(),
+                root._word_fibers.values(),
             ):
                 if type(retained_issue) is tuple and len(retained_issue) == 2:
                     retained_record, retained_binding = retained_issue
@@ -728,6 +799,7 @@ def audit_reverse_pair_output_owner(
         *root.arena.owners,
         root._summary_owner,
         root._issued_owner,
+        root._word_fibers_owner,
         root._border_certificates_owner,
         root._controlled_gt_banks_owner,
         root._spatial_bank_windows_owner,
@@ -754,6 +826,11 @@ def audit_reverse_pair_output_owner(
             "_audit_issued",
             "reverse_pair_output_occurrence",
             root._issued_owner,
+        ),
+        (
+            "_audit_word_fibers",
+            "observation_memo",
+            root._word_fibers_owner,
         ),
         (
             "_audit_border_certificates",
@@ -805,6 +882,7 @@ def audit_reverse_pair_output_owner(
             "_audit_spatial_bank_windows": "_spatial_bank_windows",
             "_audit_temporal_ring_banks": "_temporal_ring_banks",
             "_audit_diagonal_comparisons": "_diagonal_comparisons",
+            "_audit_word_fibers": "_word_fibers",
         }.get(attribute)
         if memo_attribute is not None:
             memo = getattr(root, memo_attribute)

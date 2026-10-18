@@ -48,6 +48,17 @@ def test_open_ring_is_explicit_finite_information(
         assert len(observation["source_pair_domains"]) == count
         assert measured["reverse_q19_temporal_ring_constraint_cells"] > 0
         assert measured["double_reverse_open_ring_source_ports"] is None
+        phases = observation["joint_cyclotomic_center"]["correlated_carry_phases"]
+        for frame in phases:
+            for phase in frame:
+                witnesses = phase["first_reset_witnesses"]
+                assert witnesses
+                assert set(phase["first_reset_positions"]) == {
+                    witness["position"] for witness in witnesses
+                }
+                assert set(phase["middle_transfers"]) == {
+                    witness["middle_transfer"] for witness in witnesses
+                }
     else:
         assert observation["pair_count"] == count
         assert len(observation["output_words"]["carry_xor"]) == count

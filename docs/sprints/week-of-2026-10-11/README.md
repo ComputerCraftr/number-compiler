@@ -17,6 +17,7 @@ Period: 2026-10-11 through 2026-10-17 (Sunday–Saturday).
 | [NC15 shared carry actions, source safety and validation cost](nc15-carry-safety.md) | 0 |
 | [NC15 shared harmonic banks and finite temporal actions](nc15-harmonics.md) | 0 |
 | [NC16 source-bound harmonic rings and open temporal banks](nc16-harmonics.md) | 2 |
+| [NC17 source cylinders and actual-root temporal composition](nc17-source-rings.md) | 4 |
 <!-- sprint-topics:end -->
 
 ## Provenance

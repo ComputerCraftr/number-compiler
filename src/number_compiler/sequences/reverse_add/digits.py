@@ -35,7 +35,7 @@ def _pair_value_masks(
 ) -> tuple[Expr, ...]:
     if root.plane_count != spec.plane_count:
         raise ValueError((root.plane_count, spec.plane_count))
-    key = ("pair-value-masks", spec.base, canonical_root_key(root))
+    key = ("pair-value-masks", spec.base, canonical_root_key(root, arena))
     cached = arena.metadata_get(key)
     if isinstance(cached, tuple) and len(cached) == spec.pair_max + 1:
         return cached
@@ -57,7 +57,7 @@ def next_digit_formula(
     """
     b = spec.base
     dspec = DigitSpec(b)
-    cache_key = ("next-digit-formula", b, canonical_root_key(pair_root))
+    cache_key = ("next-digit-formula", b, canonical_root_key(pair_root, arena))
     cached = arena.metadata_get(cache_key)
     if isinstance(cached, FormulaRoot):
         return cached

@@ -148,6 +148,39 @@ def consume_border_return(
         return None, None
     if border is None:
         return None, None
+    if state.normalized_f5 is not None or include_joint:
+        from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
+            certify_pointed_low_border,
+        )
+
+        matrix = certify_pointed_low_border(
+            before,
+            border.endpoint,
+            border.fields,
+            border.odd_symbols,
+            tails=border.zero_tails,
+        )
+        from number_compiler.sequences.collatz.guarded_port_join import (
+            certify_pointed_port_join,
+        )
+
+        joined = certify_pointed_port_join(
+            before,
+            border.fields,
+            border.odd_symbols,
+            trace=border.zero_tails,
+            ledger=ledger,
+        )
+        _, final = joined.require_pointed(before)
+        if (
+            final is None
+            or final.output_pair != matrix.pair.output_pair
+            or final.output_pair != border.endpoint % 100
+        ):
+            raise ArithmeticError("6305 source-punctured port lost its endpoint pair")
+        ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS)
+        if matrix.phase is not None:
+            ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS)
     if parity_builder is not None:
         parity_builder.append_border_return_macro(border)
     if include_joint:
@@ -257,6 +290,37 @@ def consume_named_boundary(
         or boundary.normalized_symbols != plan.normalized_symbols
     ):
         raise AssertionError("Collatz boundary changed after admission")
+    if state.normalized_f5 is not None or include_joint:
+        from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
+            certify_pointed_low_border,
+        )
+
+        matrix = certify_pointed_low_border(
+            state.current,
+            boundary.endpoint,
+            boundary.fields,
+            boundary.odd_symbols,
+        )
+        from number_compiler.sequences.collatz.guarded_port_join import (
+            certify_pointed_port_join,
+        )
+
+        joined = certify_pointed_port_join(
+            state.current,
+            boundary.fields,
+            boundary.odd_symbols,
+            ledger=ledger,
+        )
+        _, final = joined.require_pointed(state.current)
+        if (
+            final is None
+            or final.output_pair != matrix.pair.output_pair
+            or final.output_pair != boundary.endpoint % 100
+        ):
+            raise ArithmeticError("named source-punctured port lost its endpoint pair")
+        ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS)
+        if matrix.phase is not None:
+            ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS)
     if parity_builder is not None:
         parity_builder.append_boundary_macro(boundary)
     if include_joint:

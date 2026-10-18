@@ -10,7 +10,435 @@ Replace repeated concrete Boolean-partition certification with a checked labelle
 selector and transport its fibers into the existing B1 occurrence contract.
 B1 must pass before B32/global acceptance and production forest/fuel retirement.
 
+### October 17 cold LiftProofID repair
+
+A controlled child-list proof schedule was tested and rejected. Run
+`20261017T185209Z-cae440792f98418eb1ba45c0aeb7080a` passed the kernel fixtures,
+including a demanded scheduler-hit assertion, and certified 36,120 scheduled
+nodes / 146,661 children at its last indexed checkpoint with zero scheduler
+fallbacks or failures. It nevertheless timed out at 300 seconds (309.12 seconds
+guarded, 3,455,071,376 sampled bytes, cleanup confirmed). At the same 910 cold
+lifts, admission took 174,248 ms versus 158,963 ms with the existing rewrite
+schedule and repaired caches. The prototype, loader, counters and prototype-only
+fixture assertion were removed; the existing exact-output assertions remain.
+The experiment did not justify replacing the live proof schedule.
+After removal, quality run `20261017T185751Z-7bdea62081f04762a33c911d7a66f3cc`
+passed all seven checks, including installed-package validation. Focused run
+`20261017T185928Z-da499fa21dc241c1a8b9912d6d4dcd96` passed all 80 tests.
+
+The diagnostic attempts preceding that run caught ML syntax/type mistakes,
+missing finite-range rewrite rules, a mismatched profiler-stage name, and a
+map-congruence middle-term mismatch. The last required using the actual
+kernel-rewritten head instead of reconstructing a beta-equivalent application.
+Those attempts did not reach concrete certification and are not performance
+evidence. No B32/global or production forest/fuel acceptance is claimed.
+
+Run `20261017T183247Z-6b9756c0f3144cc09a2fe3576832e695` passed the shared
+cofactor and bounded interval-cache fixtures, but again timed out at 300 seconds
+(309.39 seconds guarded, 3,164,570,504 sampled bytes, cleanup confirmed). The
+last indexed checkpoint completed 974 cold lifts: admission 228,382 ms, active
+Apply 203,779 ms, operand normalization 54,869 ms and reification 36,861 ms.
+At the comparable 910-lift checkpoint admission was 158,963 ms versus 165,022 ms
+in the preceding run. These partial measurements do not establish B1 acceptance.
+
+The interval owner now evicts completed facts instead of permanently refusing
+retention once full. At 974 lifts it retained 8,192 facts, recorded 90,678 hits,
+16,026 misses and 7,834 evictions, with no capacity refusals. Keys retain the
+checked block constant and exact interval; new facts are checked before
+publication. The shared cofactor cache retains a schematic-column transport
+alongside its scalar equation; each source transition remains separately
+authenticated. Earlier attempts `183018` and `183045` exposed a tuple-call error
+and bound-variable typing error; review also corrected the eviction fixture's
+expected concrete result. All were repaired without weakening assertions.
+
+Quality run `20261017T183826Z-1c67634a030044ac8da9ccd62cc9c676` passed typing,
+lint, formatting, policy, documentation, proof inventory and installed-package
+checks. The strengthened downstream C1-to-B1 source-slot record is wired into
+the producer but remains unbuilt behind concrete B1. Forest/fuel authority is
+unchanged. Further work targets the cold recursive Apply rewrite schedule.
+Focused run `20261017T184131Z-250f216f572f420eaa2d572987ab5114` passed 80 tests
+in 1.89 seconds after updating the static interval-cache assertion to follow
+the new checked publication and authority-qualified key. The prior focused
+run failed only that stale implementation-spelling assertion.
+
+Run `20261017T181919Z-0d6bef50e8d3420ab22aaf385eebe0b1` passed the repaired
+kernel fixtures and reached concrete lift certification, but still timed out
+at 300 seconds (309.42 seconds guarded, 3,133,416,352 sampled bytes, cleanup
+confirmed). At 910 lifts, admission fell from 200,190 to 165,022 ms and active
+Apply from 177,578 to 139,280 ms versus run `175353`. Final operand-normalization
+time was 37,989 ms; the bounded scalar cache built 745 equations and recorded
+142,266 hits. These are partial-stage measurements, not a completed build.
+Reification reached 68,015 ms before timeout. The 910-lift checkpoint had
+7,621 retained interval certificates against an 8,192-entry ceiling; its
+refuse-after-capacity behavior is being audited as a possible later cost cliff.
+
+The scalar-cofactor repair adds a bounded, context-owned cache of exact digit
+equations. It does not cache source authority: each cold cofactor still checks
+the owned column and exact transition theorem. Quality run
+`20261017T180831Z-fa35fe700f184531ae2f57ba6f6bd216` passed all seven checks;
+the preceding quality attempt found a test import/type issue and the missing
+explicit native audit on the new right-clock theory. Focused run
+`20261017T181016Z-b3d5497b459746269fdd1d1c7d7e0aeb` passed 80 tests in 1.91 seconds.
+
+Kernel runs `20261017T181044Z-a154bf1d57134a258c9028ad376b9ff6` and
+`20261017T181235Z-c7f7261b68ea4d2a9ca7c08f2730b262` exposed, respectively,
+a term/integer argument mismatch in the scalar-cache call and an object/meta
+equality mismatch in a migrated fixture. Both were corrected without weakening
+the assertions. Run `20261017T181347Z-fb9c0342bfb044e6a67385a375e90d0e` was
+interrupted after 71.91 seconds, with cleanup confirmed, when the migrated
+literal-column fixture exposed a no-progress fallback recursion. The repair
+rejects unchanged cofactor/source expressions before recursion and restores
+the fixture's authenticated reference boundary. These diagnostic runs did not
+reach concrete B1 certification and provide no performance acceptance.
+
+Run `20261017T175353Z-bb7f437db4244ffa946600733fb2e83d` passed the new
+owned-reference and comparison poison fixtures, but again timed out at the
+300-second session limit (309.22 seconds guarded, 2,836,988,592 sampled bytes,
+cleanup confirmed). At the same 910-lift checkpoint, admission was 200,190 ms
+and active Apply was 177,578 ms. Removing reflexive comparison storage and
+already-owned reference reification therefore did not close the gate.
+New stage timings measured 77,174 ms operand normalization, 21,725 ms
+reification and only 94 ms theorem-shape validation at that checkpoint. Nested
+rewrite/derive totals are inclusive and must not be added together.
+
+The preceding diagnostic attempts caught two instrumentation/fixture errors:
+`20261017T174226Z-dfbe8cabccb74bd19ec57fc50b48a66b` hit the Standard ML value
+restriction in the polymorphic timer record; the timer now uses a monomorphic
+state and a polymorphic top-level function. Run
+`20261017T174840Z-435beb341be34c1792f041e529de0ee6` rebuilt prerequisites but
+rejected a curried fixture lambda; its syntax is corrected. Timings accumulate
+full `Time.time` durations before conversion to milliseconds, so short calls
+are not silently lost. Neither failure changed mathematical assumptions.
+
+The subsequent concrete run `20261017T172936Z-2cd4aa9db97b481b9a66f2783a49a95c`
+passed the mixed-level clock, exact admission and warm-parent kernel fixtures,
+but still timed out at 300 seconds (309.51 seconds including orchestration and
+cleanup; 3,075,744,504 sampled bytes; cleanup confirmed). Its last indexed
+checkpoint had 910 cold lifts: 202,730 ms admission, including 179,507 ms active
+Apply work. By termination the Apply owner had published 36,278 keys, reused
+125,253 requests and constructed 34,286 recursive certificates, with no capacity
+refusals. Depth transport and right-column clock rules were reused, but those
+results do not establish a successful concrete B1 build.
+
+The actual-DAG fixture also exposed a swallowed admission-producer exception:
+an authenticated column could silently lose its right-clock quotient when its
+proof producer failed. That exception now propagates, with a poison fixture;
+unknown columns still return the explicit unsupported result. The fixes preserve
+the zero-clock branch and exact source-owned column authority. Further work is
+targeting repeated normalization and reification of already-canonical columns,
+with separate timings for cold recursive proof construction.
+
+The desktop candidate was selectively rebased onto the current proof owner.
+The first instrumented build, `20261017T164641Z-3af252a674fa42d699aead8fd4be200f`,
+still hit the standard 300-second session limit. Its last completed checkpoint
+was lift 928: admission consumed 235,767 ms, specialization 420 ms, and binding
+resolution 5,622 ms. These partial totals isolate the dominant stage; they do
+not establish concrete B1 acceptance or a cold-build speedup.
+
+The follow-up audit found that both syntactic and opened Apply shortcuts
+returned checked results without publishing them in the canonical Apply memo.
+The repair transports each admitted result to its exact normalized depth/clock
+key before publication. It retains the existing 65,536-entry bound and records
+capacity refusals. The admission simplifier base is now shared too, and the
+profile separates catalogue selection, sterile option specialization and active
+Apply work. Exact request equations, catalogue authority, foreign-reference
+rejection and closed-theorem checks remain mandatory.
+
+The first kernel fixture run (`20261017T165811Z-2147c6c39f084534a2e2345b14837527`)
+caught an obsolete cold-counter expectation: a preceding fixture had already
+published the same canonical shortcut. The replacement assertions require
+exact and clock-alias hits with no additional shortcut or recursive proof;
+cold-publication coverage remains in the preceding fixture. The normalized
+conditional-input test likewise now requires reuse of the already checked key.
+
+Run `20261017T170016Z-f5f116796ed24a4da175aec2e3920961` passed those kernel
+fixtures but still exhausted the 300-second B1 limit. At the same 928-lift
+checkpoint, admission took 213,028 ms versus 235,767 ms in the candidate-only
+run; specialization took 335 ms and binding resolution 5,053 ms. This is a
+partial-stage improvement, not an accepted B1 result. At checkpoint 672 the
+Apply memo recorded 89,712 hits, 27,275 retained keys and zero capacity refusals;
+96,978 unused-depth strips exposed another repeated proof-transport cost.
+
+Full Python run `20261017T170623Z-2b2b4ae7d99c4af793504f16a4fb0c7e` completed
+in 274.24 seconds with 10,908 passes, 418 validation-only deselections and the
+existing F4 concrete-output failure. Proof edits overlapped this development
+run, so it is not acceptance evidence for the final proof source.
+
+The right-operand clock quotient passed the generic `Comma_Semantic_B1`
+kernel build in `20261017T171412Z-72ef3f3152ea45cfbfdeac2d06edd56e`:
+39 seconds native, 50.35 seconds guarded, 2,439,221,672 sampled bytes and
+confirmed cleanup. The new theorem checked in 0.265 seconds. It derives
+clock equivalence from the admitted right column's remaining CRT levels,
+while preserving the separate zero-mod-924 shortcut branch. The left
+operand's unshifted levels do not constrain that clock. It is imported by
+the live support theory, not registered as a detached experiment. The first
+attempt failed at an unchanged-node admission proof; retaining the original
+child-admission fact fixed it without changing the theorem's assumptions.
+
+C1 reuses the arithmetic owner's complete-cycle displacement instead of
+recomputing it inside its powered return. The scalar and C1 callers share one
+bounded-tail implementation, with validation at their respective boundaries.
+The existing Entry bridge now also publishes its selected weighted move, while
+keeping the physical clock independent of the exponent clock. Its kernel rebuild
+passed in `20261017T165345Z-5b7aef1cdc734ceea1b21f0f2189614d` (33 seconds native).
+The preceding attempt failed because the new proof omitted existing sector and
+offset assumptions; those assumptions are now supplied explicitly.
+
+Carry, borrow, occurrence and comma CLI checks passed 92 tests in 7.54 seconds
+in `20261017T165520Z-87ca2f0da9e24834b14d17a6e393ea54`. The warm borrow test
+now poisons the actual displacement owner after the helper migration, preserving
+its no-reconstruction assertion. Cache/producer source checks passed 24 tests in
+`20261017T165659Z-cf99b7820c67431ab273ec29bd00fb71`. C1 is consumed by the
+source-bound occurrence/provider path; these results do not establish that it
+replaces the default CLI constructor or the B1 lift-binding proof.
+
+Development run `20261017T102058Z-c5def5c161d049e5b48cabd72c7d2d25`
+passed the shortcut-admission and warm-alias fixtures but hit the unchanged
+300-second B1 session limit (310.114 seconds guarded, 3,363,484,744 sampled
+bytes, descendant cleanup confirmed). Its last indexed checkpoint had 782
+completed lift bindings, 28,353 recursive Apply certifications and 132,885
+Apply requests. The preceding depth-quotient run stopped at 526 completed
+bindings; partial checkpoint counts are not an end-to-end benchmark or a pass.
+The shared incremental oracle certifier took 264 ms at the latest checkpoint.
+Root-exposure counters mostly reflect shallow cached theorem applications,
+not new recursive column proofs. The dominant measured work remains concrete
+lift-binding certification and normalization; no scalar-decade replay was
+recorded. C1 Entry integration is a separate obligation and cannot be credited
+with eliminating that work.
+
+The early syntactic Apply shortcut now validates operands before invoking its
+counted rewrite. The foreign-operand and normalized-conditional fixtures caught
+the earlier ordering error; their assertions were preserved. Fresh depth
+admission facts are oracle-audited through the column owner's shared certifier
+before publication, while exact proposition and theorem-cleanliness checks
+remain at reuse boundaries. No forest/fuel retirement follows from these
+repairs.
+
+C1's source-bound Entry bridge passed the kernel in development run
+`20261017T102617Z-10f2302f64f249bbb6a3ff490f59886d` (33 seconds native,
+40.856 seconds guarded, 1,885,896,672 sampled bytes, cleanup confirmed).
+The new theory checked in 0.601 seconds; imported chart theories account for
+most of the session work. It retains the high prefix and proves the exact
+physical duration, powered endpoint/carry count, source guard and literal
+Entry-to-Near path. The guard proof uses the checked headroom bound before
+natural subtraction, avoiding eager simplification of the chart expressions.
+This does not identify the physical 50-step clock with the 924-phase exponent
+clock or prove complete B1 selected-action equality. The Entry writer now
+consumes the C1 path theorem, but that downstream producer theorem remains
+unbuilt behind concrete B1. Forest/fuel admission is unchanged.
+
+The proof inventory subsequently caught missing local oracle audits in the two
+new theories. Both now have explicit transitive oracle checks. The C1 session
+rebuilt successfully in `20261017T102922Z-497109cee2b140b5a961fbdcb293f60a`
+(34 seconds native, 41.521 guarded seconds, 1,853,825,040 sampled bytes,
+cleanup confirmed); the new theory and audit took 1.164 seconds. This replaces
+the earlier C1 checkpoint for current-source evidence.
+
+The focused carry, occurrence, producer-source and cache selection passed
+63 tests in 1.32 pytest seconds (1.857 guarded seconds, 64,242,624 sampled
+bytes) in `20261017T102723Z-7ad4eb50caaa4429a7046dc97d6c4c75`.
+The same selection plus a new clock/seam regression passed 64 tests in
+`20261017T103047Z-fe1daa01ff5b4d59a104bec672569742`. The regression fixes the
+physical example `900000 → 999900` after 1,850 C1 steps, followed by the two
+literal Near edges `999900 → 999909 → 1000000`; only the final edge advances
+the exponent. Extending the fixed-sector C1 action across that seam is rejected.
+The whole-tree quality rerun passed typing, lint, formatting, source policy,
+documentation, proof inventory (139 sessions / 405 theories), and installed-wheel
+checks in `20261017T103113Z-e0aa6a6f88f24ea9ad588b8bcd777ccc`. These development
+checks do not replace the failed B1 build or constitute full-unit acceptance.
+
+The suffix-clock transport theorem passed its generic kernel build in
+`20261017T092909Z-fb85db6ca4d44502971b09a6fd49ca19` (74.234 seconds guarded
+elapsed, 2,847,715,944 sampled bytes). It preserves the zero-shift shortcut
+branch and quotients the remaining clock dimensions by depth. Its concrete
+warm-alias fixture also passed: shifts 1 and 12 at the final clock dimension
+reuse one recursive action proof while retaining their exact request equations.
+
+Concrete run `20261017T093325Z-dcc0fa88d3de4edb984989c4585faf26` still timed
+out at 300.045 native seconds (309.645 guarded seconds), with a sampled peak
+of 3,183,141,816 bytes and confirmed cleanup. The latest indexed checkpoint
+contained 654 completed lift bindings, 23,807 recursive apply certifications
+and 12,207 suffix-rule hits. Lift-binding inclusive time was 233.195 seconds;
+no scalar decade expansions were recorded. These counters do not establish
+a net speedup or concrete B1 acceptance. The next audit identified literal
+Boolean children failing to re-enter authenticated column references, leaving
+expanded node trees in the apply path. That repair remains separately gated.
+
+Development run `20261017T094416Z-ff669be09e3148a1be224f3880a51957`
+passed the Boolean-child reification, symmetric comparison-cache and shortcut
+result-normalization fixtures, then timed out at 300.059 native seconds
+(310.874 guarded seconds). Peak sampled memory was 3,499,910,288 bytes and
+cleanup was confirmed. Its latest indexed checkpoint contained 622 completed
+lift bindings, 105,557 apply requests and 22,615 recursive certifications.
+These changes did not close concrete B1. The C1 physical occurrence bridge is
+a separate integration obligation; no measured scalar-decade replay was
+removed by merely adding that dependency.
+
+The extracted fixture-owner source check passed 11 tests in 0.45 seconds
+(`20261017T091416Z-7e465d7f67e3481fbdc1f46a70a8f47b`). No new B32/global,
+installed-wheel, full-unit or production activation claim follows.
+
+Development run `20261017T074801Z-76b4ab56c49a4799a7dab536497f9835`
+passed the shifted-apply fixtures after demand-local node-level and column-ID
+normalization. It reached 558 of 2,444 cold lift bindings at its last indexed
+checkpoint, with 263,028 apply requests, before the unchanged 300-second
+session deadline. Peak sampled process-tree memory was 2,948,707,088 bytes;
+descendant cleanup was confirmed. Selected descriptor equations and successful
+admission are now reused, but the recursive apply proof still traverses its
+result repeatedly. This run does not admit B1 or the global provider.
+
+The release contract now explicitly includes grouped-chart termination as well
+as the scalar chart-to-publisher bridge; both await a concrete kernel build.
+The focused authority/consumer/source-contract selection passed 70 tests in
+1.98 seconds (`20261017T074741Z-253d852efa3d4588a4628f6377cc93b9`).
+
+The October 17 shared-column comparison repair passed its production-shaped
+kernel regressions in development run
+`20261017T072501Z-3fff55e7f78045efa3e9da76f281b359`. The concrete occurrence
+certificate still exceeded the 300-second session limit. Its final profile
+recorded 127,233 apply requests, 114,992 hits, 11,360 retained keys and zero
+derive rejections; the latest indexed checkpoint had certified 302 lift
+bindings. This is repeated lift-row work, not evidence of concrete B1 or
+global acceptance. The guard confirmed descendant cleanup and sampled a
+3,016,766,512-byte peak under the unchanged 6-GiB limit.
+
+The scalar chart walk now has a proposed bridge to the same first-terminal
+events, writer fragments and indexed macro, included in the global producer
+release contract. It remains pending kernel validation. An independent review
+confirmed the staged removal of the 4096-step chart cap matches the scalar
+production iterator; grouped execution is not a production caller. The three
+forest/runtime, packaging and legacy-proof deletion patches apply together in
+a temporary snapshot, but remain unapplied. The runtime artifact registry is
+still empty. Source-to-artifact binding, B32/global acceptance and positive
+installed CLI checks are required before activation.
+
+The runtime admission audit now rejects reversed ordered-child class bindings
+before publication. The focused branch/provider/producer-contract selection
+passed 70 tests in 2.27 seconds in
+`20261017T073148Z-ff5753d9e3074367adefd8e7e4cdfaf5`. These are dirty-tree
+development results at Git HEAD `f31261a6`, not release acceptance.
+
+An earlier concrete checkpoint is development run
+`20261017T051717Z-00eb70eceadc484faafea5367edd7c4b`: all 278 template mass
+proofs, 430 occurrence transports and the 3,225-to-2,444 used-lift projection
+passed. The build then rejected lift-descriptor admission before certifying
+its binding. It ended with a proof error, not a timeout. The generic compact
+coverage/mass induction passed in
+`20261017T050441Z-568b73cc9c61489093841a3d0f80469b` (48 seconds native session
+time). Neither result accepts concrete B1, B32, the global release theorem or
+the production cutover.
+
+Run `20261017T053430Z-d5832d1348e143a8a6e747d30cc5ca1d` narrowed that
+admission refusal to an unreduced finite-set membership test for period 28,
+not an invalid descriptor. Lift checks now use the prepared operation context
+and explicit finite-set rules; they precede the independent mass checks so a
+lift regression fails before mass certification. The subsequent run
+`20261017T053941Z-021acae37f634d3fbfae59c57220b61e` passed descriptor
+admission but reached the 300-second session limit during lift binding:
+roughly 357 of 2,444 bindings were captured, with over 74,000 CRT apply parse
+rejections. The new profile separates rejection shapes, and mass-owner
+construction is now deferred until its first demand. These repairs still
+require a passing concrete session.
+
+Diagnostic run `20261017T054803Z-67e489f9735c4342ac75f1cf93dcd790` was
+interrupted through the guard after identifying the dominant rejection:
+production columns retain authenticated `column_at(dag,cid)` children, while
+the apply cache accepted only expanded literal trees. Its first 738 production
+parse rejections were all right-column shape rejections. An independent caller
+audit also found the older column procedure could evaluate apply requests in
+the assembled occurrence context before the shared apply owner. The repair
+must connect shallow checked column equations and the same apply owner to that
+context; accepting arbitrary references or eagerly expanding the DAG is not
+an equivalent fix.
+
+Run `20261017T060023Z-484c1780a22542c79c88009d7dc4a9ce` exercised that
+shared reference-aware apply owner, but failed after 137 seconds at a cold
+lift-binding exactness check. It published 390 apply equations and recorded
+3,352 hits; generated source-axis/conditional operands still remained outside
+the completed-column cache contract. This is an incomplete concrete proof,
+not a passing B1 result or a timeout. The next repair must normalize those
+operands with checked equations and strengthen the nonterminal production
+fixture; cache-hit counts alone do not establish complete binding evaluation.
+The stronger full-depth, nonempty period-28 fixture failed early in
+`20261017T061543Z-6ce742dcbb494d6e9078287feabce5b1` (54 seconds native).
+It exposed missing source-node normalization rules and a fixture callback
+running before staged-converter initialization. Both are being repaired in
+the actual occurrence context; the no-fallback fixture is retained.
+
+The subsequent nonempty-column failures were evaluator incompleteness, not a
+false phase result. Development run
+`20261017T062846Z-e9eab0f2839947c3aa45d83f69845dc1` exposed the residual
+`comma_crt_eval 27 (Comma_CRT_Bool True)`. Replacing the recursive node code
+equation had left the Boolean leaf equation unregistered. The canonical CRT
+and MDD evaluator owners now explicitly restore their leaf code equations,
+as the support evaluator already did. The production fixture keeps the
+depth-four shifted operation, exact phase-27 witness, independent kernel
+evaluation, warm-hit no-recursion check and foreign-reference rejection.
+This repair still requires the concrete B1 and global session builds; it does
+not register the runtime candidate or authorize forest deletion by itself.
+Run `20261017T063102Z-c909875048a0459f98465d4957fea3b7` rebuilt generic
+B1 in 59 seconds and semantic-future lemmas in 35 seconds. The strengthened
+shifted fixture passed, but concrete B1 rejected lift binding 113 with an
+unresolved conjunction. The profile identified conditional operands left
+outside the apply normalizer. The follow-up selects only the branch of a
+closed, checked guard and keeps the complete binding assertion; the global
+artifact registry remains empty. Shared lookup and indexed-range helpers
+have also moved to their existing owners, replacing duplicate implementations.
+
+The runtime artifact regression also exposed duplicate reservation accounting:
+the authored quotient exceeded the default 131,072-node budget when parsing
+workspace and retained-provider costs were charged simultaneously. Publication
+now transfers its existing reservation into the retained memo. The actual
+artifact fits that unchanged budget in focused development testing. Run
+`20261017T054509Z-afe1b87190a449e2b522957311e3453e` passed 97 resource,
+provider and proof-cache source tests in 1.80 seconds. Run
+`20261017T054523Z-62d225119ee04fab85c93b01d91f49a6` passed 92 additional
+artifact, branch-selection, certificate-observer and CLI tests in 25.67 seconds.
+These are dirty-tree development results, not global proof acceptance.
+The broader resource/admission selection passed 640 tests in 29.09 seconds
+(`20261017T055318Z-b13d36d9d28240ea9dbda2aa9b6b3b88`). Authored-table
+consumer coverage passed two tests in 1.43 seconds
+(`20261017T055751Z-cb5d918738be40bd9726594fd347e361`), including the public
+CLI at index 143,710,993,553 with forest verification poisoned and explicit
+test-only global admission. Bounded literal windows and independent terminal
+fixtures check later forks; the 143-billion-transition macro is not replayed
+literally. This fixture cannot authorize the production registry.
+The strengthened CLI regression then passed in
+`20261017T060723Z-ef753716416e40a98c9f9f85baf36a00` (two tests, 1.42 seconds).
+It requests the result after two post-entry macro decisions and verifies both
+N(2,10) and N(7,12) provider selections. This closes the earlier test's
+coverage gap; it still uses explicitly synthetic global admission.
+Read-only certificate reporting for an already loaded provider previously
+incremented lease-resolution counters. Its shared validation path now has a
+snapshot mode, preserving store, ledger, generation and theorem authority
+checks without changing counters. The focused provider/admission/reporting
+selection, including repeated loaded-provider snapshots, passed 66 tests in
+1.84 seconds (`20261017T061806Z-7a8f10ddf5b84828b82e42d7d8f0e216`).
+
 ## Changes
+
+The October 17 review traced the concrete release dependency rather than adding
+another global lemma. `Comma_Semantic_Future_Instance` already connects B1's
+B32 result to the decade summary, ordered future children, global path agreement
+and producer refinement. Its prerequisite B1 occurrence publisher is still the
+blocking executable certificate. The older native/sparse global session is a
+separate route; a pass there does not certify the semantic provider.
+
+The remaining proof-reuse work has two owners: context-bound lift certificates
+for repeated descriptor applications, and checked operation-DAG composition for
+first-time shifted CRT applications. Template equality alone cannot replace
+either obligation. Keys must preserve the exact shift, Boolean operation,
+ordered column operands and catalogue authority; output bindings remain checked
+separately. The global provider registry remains empty until the concrete
+release session and the exact packaged artifact are accepted.
+
+The harmonic-ring review applies at the composition boundary: the second action
+must consume the first action's certified successor and transported clock.
+Comma already has orbit-word, semantic-word and CRT split-power composition
+theorems; no 2rev10-specific recurrence is substituted for them. The missing
+integration is concrete source-action certification from shared template and
+lift facts. An exact-expression apply cache alone does not establish that
+quotient or an end-to-end speedup.
 
 The generic selector proves exact column fibers and the unchanged partition
 checker. Labels identify columns; source bindings, clock shifts and continuation
@@ -65,6 +493,7 @@ retain positive and negative coverage.
 
 | Previous implementation assertion | Retained behavioral coverage |
 | --- | --- |
+| Per-source piece blocks, origin multiplicities and piece-directory projection | Removed with that artifact shape; compact source coverage, child ordering, template geometry and exact lift-ID bindings remain checked. Executable fixtures reject stale descriptors and incorrect output labels. |
 | Directory lookup unfolds `dag_lookup.simps` per CID | Exact interval transfer, unchanged point endpoints, same-block warm reuse, foreign-root/block/bounds rejection |
 | Cached residual retains a concrete selector tree | Closed existential witness for the exact ordered columns, unchanged partition checker, wrong-phase and wrong-label fixtures |
 | Every retained column is proved non-false during compression | Exact positional embedding; retained false is permitted, omitted true is rejected; partition coverage remains required |
@@ -79,7 +508,7 @@ session deadline. These replacements do not weaken exact output or admission tes
 
 Generic `Comma_Semantic_B1`, including the full indexed-label transfer, rebuilt
 in 35 seconds. Generic `Comma_Semantic_Future` previously rebuilt in 30 seconds.
-Concrete B1 still exceeds its 60-second deadline. The pre-compression driver
+Earlier concrete B1 runs exceeded their then-current 60-second deadline. The pre-compression driver
 completed 75 template partitions, compared with 54 in the clean baseline.
 The first compact-label integration regressed to 50 completed partitions:
 at its last diagnostic checkpoint, label-compression proofs consumed 6,469 ms
@@ -165,6 +594,115 @@ positions without an exact label embedding, bypass the shared policy, or delete
 forest/fuel admission before the concrete replacement passes.
 
 ## Validation provenance
+
+October 17 baseline at dirty Git HEAD `f31261a`: the guarded candidate,
+producer-release-source and runtime-provider selection passed 92 tests in
+19.45 seconds including runner overhead, with a sampled process-tree peak of
+177,324,728 bytes and confirmed cleanup. Evidence is in
+`results/runs/20261017T031337Z-2d45e78199c14eadb4b7cff69ba3ae70/`.
+This is Python/development evidence, not a completed Isabelle build or
+authorization to remove the forest gate.
+
+The first operation-DAG integration passed its kernel fixtures but the concrete
+B1 build still hit the standard 300-second session timeout. Run
+`20261017T033219Z-1fad0b7ca8b84a2789cc79298dd65b94` took 313.47 seconds including
+orchestration and shutdown. Its last profile recorded 5,251 shifted-apply calls
+and 10,794 node calls; the new DAG reported only its startup fixture. This is a
+failed integration gate, not evidence that the cache accelerated publication.
+The source/cache regression selection subsequently passed 45 tests in run
+`20261017T034309Z-2dd2fbd4024d44b9919161bef3df26b6` (2.30 seconds including runner
+overhead). These static/behavioral checks do not substitute for the B1 build.
+
+The local-cover bridge now obtains child wellformedness only for the exact
+referenced Goto child. Its index bound is extracted from that slot's checked
+reference; terminal slots do not require unrelated children. A separate generic
+lemma obtains occurrence wellformedness from exact template geometry, binding
+and supported-column facts. `Comma_Semantic_B1` rebuilt successfully in 57
+seconds in run `20261017T035733Z-1df1e70924054b1280e2fba5fbc3b745`; the build
+invocation including startup and shutdown took 68 seconds. This checks the
+generic bridge, not its concrete publisher or the final global release theorem.
+
+Run `20261017T040052Z-4fb5a3a5825f403395a9de7b612ee903` passed the new apply-DAG
+fixtures and reached the concrete occurrence check, but exceeded the native
+300-second session limit without stopping. The coordinator interrupted the
+guarded invocation at 397.53 seconds; cleanup was confirmed and sampled peak
+process-tree memory was 4,151,916,192 bytes. This is failed, incomplete evidence.
+The interrupted build did not preserve its buffered DAG counters, so counts
+from earlier runs must not be attributed to it. The outer orchestration limit
+covered the dependency closure and did not enforce the stalled session itself.
+
+The guard now also tracks inventory-admitted session start/finish events and
+enforces the unchanged per-session limit externally. Repeated start events cannot
+reset it, and the orchestration allowance cannot extend it. The guard/watchdog
+selection passed 49 tests in 7.34 seconds in run
+`20261017T041516Z-95628c2dd11d48f79e9dac4386c80c83`, covering descendant cleanup,
+cancellation, split output and independent sequential session deadlines.
+
+Initial validation of the piece-free generic replacement in runs
+`20261017T041346Z-00f73bd41253488a83f83eb251775913` and
+`20261017T041536Z-305c480277784a1ba3bce87101b1d229` failed respectively on an
+unavailable list helper and a nested proof-goal mismatch. Neither was a timeout
+or a concrete B1 pass. The compact source contract retains result-directed local
+coverage, exact bindings and independently checked partition geometry; published
+lift-column IDs still require their separate artifact-binding check.
+
+The corrected compact generic refinement passed in
+`20261017T041945Z-f6bb6036bf4d4a12b2e744407e29aa8b`: the rebuilt
+`Comma_Semantic_B1` session took 72 seconds (83 seconds for the build invocation).
+The checked contract has no construction-piece premise. It derives exact local
+source behavior from shared template geometry, supported columns, source/shift
+bindings and result-directed slot coverage. Concrete publication, B32/global
+acceptance and runtime activation remain separate gates.
+
+The concrete publisher and checker now use that compact contract. The obsolete
+construction-piece projection module (498 lines), piece serialization, origin
+sorting and grouped-piece checker components were deleted. Run
+`20261017T042925Z-ecc4f4f2592a44e199473542895df920` passed the executed binding
+reuse/rejection fixtures and all 278 mass certificates, then failed because the
+new shared template-geometry list had no matching evaluator dispatch. Its
+148-second build invocation was not a timeout. Saved counters show three
+recursive apply certifications, eight hits and no fallback at that failure;
+they do not establish end-to-end B1 performance.
+
+The initial aggregate-dispatch repair shared exact template geometry and used-lift
+certificates; the subsequent induction removes the geometry evaluator. Lift publication keeps the deduplication operation symbolic and
+transports the checked item facts through `list_all_remdups`, instead of proving
+concrete duplicate removal over the entire reference stream. The focused
+source/authority selection passed 109 tests in 20.91 seconds in
+`20261017T044014Z-b05f62d836394bc9844f8a4674ea93b6`. An independent coverage
+review prompted a compact Goto regression with fixed result labels and changed
+parent rebase or child net shift. Both negatives are checked by the kernel
+fixture, alongside valid admission and warm certificate reuse.
+
+Run `20261017T044128Z-dba28fc846e94d8a8a23434cdff82ae1` passed those fixtures
+but exposed a redundant partition-proof path in the new geometry dispatcher.
+It completed geometry entries 0 through 129 before the external session
+watchdog stopped the build at 300.014 seconds; total invocation time including
+shutdown was 310.183 seconds, sampled peak memory was 3,676,411,192 bytes, and
+descendant cleanup was confirmed.
+
+The replacement derives parent coverage by induction from the compact local
+witness and already checked child occurrences, then derives disjointness from
+the checked mass of 924. Generic `Comma_Semantic_B1` passed with this bridge in
+48 seconds in run `20261017T050441Z-568b73cc9c61489093841a3d0f80469b`.
+This removes the second concrete geometry certificate while retaining the
+partition theorem; concrete B1 timing remains a separate gate. The driver also
+replaces pairwise duplicate-ID scans with first-seen term-table lookups. Root
+checks retain source/index/occurrence validation and obtain construction
+validity from the aggregate source theorem rather than rechecking 46 roots.
+
+Concrete run `20261017T050549Z-a3439c2dc7114aa6bd2720ebb1b84e14` rebuilt the
+semantic future dependency in 32 seconds, completed all 278 template-mass
+proofs and reused them for all 430 occurrences. It then failed the used-lift-ID
+projection shape guard; the 206-second build invocation was not a timeout.
+The projection conversion is being repaired without relaxing catalogue bounds.
+The migrated source/authority tests passed 109 cases in 19.40 seconds in
+`20261017T051127Z-6c168a48f5624e1fb5e4b4ad7a0867b6`.
+
+The runner/provenance selection passed 68 tests in 12.49 seconds in
+`20261017T042544Z-3f04d075188b43a7a010f8778fe12890`. Profiling now has a fresh
+run-local file when requested with `COMMA_PROFILE_LOG=1`; explicit paths remain
+caller-owned. The evidence manifest records the chosen path.
 
 Baseline Git `7e9a85d` was clean. All later results below are dirty-tree
 development evidence, not acceptance of a commit. The standard runner enforces

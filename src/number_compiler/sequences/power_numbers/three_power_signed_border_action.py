@@ -22,7 +22,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.three_power_signed_phase import (
+        SourceRestrictedPhaseRelation,
         SourceSignedPhaseCountPort,
+    )
+    from number_compiler.sequences.power_numbers.three_power_two_sided_cylinder import (
+        FermatTwoSidedSourceCylinder,
     )
 
 from number_compiler.arithmetic.carry.tripling_transfer import (
@@ -514,6 +518,30 @@ class SourceWeightedTriplingAction:
             )
         return tuple(answer)
 
+    def demand_two_sided_source_cylinder(self) -> FermatTwoSidedSourceCylinder:
+        """Demand joint CRT/radial source cylinder and conditional 2w fibers.
+
+        Only independently authenticated source intervals are admitted.
+        No source or Fermat-modulus squaring is performed.
+        """
+        from number_compiler.sequences.power_numbers.three_power_two_sided_cylinder import (
+            demand_two_sided_source_cylinder,
+        )
+
+        return demand_two_sided_source_cylinder(self)
+
+    def demand_source_restricted_phase_relation(
+        self, *, max_fibers: int = 64, inward_boundaries: int = 8
+    ) -> SourceRestrictedPhaseRelation:
+        """Source-authoritative join: CRT, radial guards, signed 2w counts."""
+        from number_compiler.sequences.power_numbers.three_power_signed_phase import (
+            demand_source_restricted_phase_relation,
+        )
+
+        return demand_source_restricted_phase_relation(
+            self, max_fibers=max_fibers, inward_boundaries=inward_boundaries
+        )
+
     def demand_signed_phase_count_port(self) -> SourceSignedPhaseCountPort:
         """Demand the exact positional count quotient, retaining unknown intervals."""
         from number_compiler.sequences.power_numbers.three_power_signed_phase import (
@@ -547,6 +575,97 @@ class SourceWeightedTriplingAction:
             raise ArithmeticError("signed carry emission disagrees with 3X")
         modulus = (1 << self.fold_width) + 1
         return source % modulus, output % modulus
+
+    def demand_inward_source_refinement(
+        self,
+        *,
+        additional_binary_places: int = 1,
+        additional_decimal_places: int = 0,
+    ) -> SourceWeightedTriplingAction:
+        """Advance ONLY certified inward phase precision at the SAME source.
+
+        This is a demand-driven guarded source refinement, not a proof of
+        spatial or temporal period. Existing independently authenticated
+        windows are replayed; a missing next source digit may require an
+        additional cyclotomic precision demand, never a Fermat square.
+        """
+        if not self.producer_verified:
+            raise ValueError("unissued inward refinement source")
+        if any(
+            type(v) is not int or not 0 <= v <= 256
+            for v in (additional_binary_places, additional_decimal_places)
+        ):
+            raise ValueError("inward precision refinement outside demand budget")
+        binary = self.origin.binary_phase_bank
+        decimal = self.origin.decimal_phase_bank
+        if binary is None or decimal is None:
+            raise ValueError("inward refinement requires both phase clocks")
+        next_binary = binary.depth + additional_binary_places
+        next_decimal = decimal.depth + additional_decimal_places
+        if next_binary > 4096 or next_decimal > 512:
+            raise ValueError("inward phase precision exceeds source budget")
+        if not (additional_binary_places or additional_decimal_places):
+            return self
+        # Windows entirely inside an already-certified prefix are subsumed
+        # by the new longer prefix. Separately authenticated later islands
+        # must survive, otherwise this would broaden the source language.
+        b_windows = tuple(
+            (w.start, w.width)
+            for w in self.origin.binary_middle.windows
+            if w.start + w.width > binary.depth
+        )
+        d_windows = tuple(
+            (w.start, w.width)
+            for w in self.origin.decimal_middle.windows
+            if w.start + w.width > decimal.depth
+        )
+        b_border = self.origin.bilateral.binary
+        d_border = self.origin.bilateral.decimal
+        refined = demand_signed_tripling_action(
+            self.index,
+            self.level,
+            phase_binary_places=next_binary,
+            phase_decimal_places=next_decimal,
+            binary_windows=b_windows,
+            decimal_windows=d_windows,
+            low_binary_places=b_border.low_places,
+            low_decimal_places=d_border.low_places,
+            high_binary_places=b_border.high_places,
+            high_decimal_places=d_border.high_places,
+        )
+        if (
+            refined.origin.binary_phase_bank is None
+            or refined.origin.decimal_phase_bank is None
+            or refined.origin.binary_phase_bank.source_prefix % (1 << binary.depth)
+            != binary.source_prefix
+            or refined.origin.decimal_phase_bank.source_prefix % (10**decimal.depth)
+            != decimal.source_prefix
+        ):
+            raise ArithmeticError("refined source lost a previous certified phase")
+        # Every previous authenticated binary island must survive exactly,
+        # including requested non-prefix windows and the leading radial block.
+        for earlier in self.blocks:
+            if earlier.source_value is None:
+                continue
+            coverage = earlier.start
+            for newer in refined.blocks:
+                lo = max(coverage, newer.start)
+                hi = min(earlier.start + earlier.width, newer.start + newer.width)
+                if lo >= hi:
+                    continue
+                if newer.source_value is None:
+                    raise ArithmeticError("source refinement dropped a known island")
+                mask = (1 << (hi - lo)) - 1
+                old_bits = (earlier.source_value >> (lo - earlier.start)) & mask
+                new_bits = (newer.source_value >> (lo - newer.start)) & mask
+                if old_bits != new_bits:
+                    raise ArithmeticError("source refinement changed an issued digit")
+                coverage = hi
+                if coverage == earlier.start + earlier.width:
+                    break
+            if coverage != earlier.start + earlier.width:
+                raise ArithmeticError("source refinement lost an issued interval")
+        return refined
 
     def demanded_dyadic_endpoint(self, steps: int = 1) -> SourceWeightedTriplingAction:
         """Demand another certified endpoint, NOT an all-intermediate proof.
@@ -629,7 +748,7 @@ def signed_action_from_interior(
         raise ArithmeticError("source coverage is not contiguous")
     if blocks[-1].start + blocks[-1].width != border.source_digits:
         raise ArithmeticError("weighted source length does not match radial width")
-    reachable = [frozenset((0,))]
+    reachable: list[frozenset[int]] = [frozenset((0,))]
     for block in blocks:
         incoming = reachable[-1]
         if block.start == high_start:

@@ -18,6 +18,7 @@ from number_compiler.arithmetic.fields.integer_congruence import (
     join_congruences,
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
+from number_compiler.arithmetic.fields.radix import radix_width
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     CycleEntryPhase,
@@ -118,7 +119,7 @@ class MacroTraceGrammar:
                 "powered macro trace exceeds its label budget"
             )
         result: list[int] = []
-        stack = [self]
+        stack: list[MacroTraceGrammar] = [self]
         while stack:
             node = stack.pop()
             if node.left is None:
@@ -207,6 +208,54 @@ def _join(
 ) -> SourceCongruence | None:
     pulled = after.pullback(action)
     return None if pulled is None else before.meet(pulled)
+
+
+def _action_operand_bits(action: CrossFamilyPortAction) -> int:
+    """Bound arithmetic inputs touched by one exact source-closed join."""
+    values = (
+        *action.action.coefficient_snapshot(),
+        action.guard.residue,
+        action.guard.modulus,
+        action.guard.minimum_source,
+        action.odd_events,
+        _as_trace_grammar(action.trace).length,
+    )
+    bits = sum(abs(value).bit_length() for value in values)
+    clock = action.clock
+    if clock is not None:
+        clock_values = (
+            clock.precision,
+            clock.steps,
+            clock.odds,
+            clock.value,
+            clock.linear,
+            clock.quadratic,
+            clock.position_sum,
+        )
+        bits += sum(abs(value).bit_length() for value in clock_values)
+        if clock.first_odd is not None:
+            bits += clock.first_odd.bit_length()
+        if clock.last_odd is not None:
+            bits += clock.last_odd.bit_length()
+    return bits
+
+
+def _charge_composition(
+    ledger: ResourceLedger | None,
+    before: CrossFamilyPortAction,
+    after: CrossFamilyPortAction,
+) -> None:
+    if ledger is None:
+        return
+    from number_compiler.resources.ledger import ResourceLedger
+
+    if type(ledger) is not ResourceLedger:
+        raise TypeError("cross-family composition accounting needs a query ledger")
+    ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_ATTEMPTS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_OPERAND_BITS,
+        _action_operand_bits(before) + _action_operand_bits(after),
+    )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -301,8 +350,10 @@ class CrossFamilyPortAction:
         clock = object.__getattribute__(self, "_clock")
         trace = object.__getattribute__(self, "trace")
         return (
+            id(action),
             action.coefficient_snapshot(),
             action.producer_issued,
+            id(guard),
             (guard.residue, guard.modulus, guard.minimum_source),
             object.__getattribute__(self, "odd_events"),
             None
@@ -424,7 +475,12 @@ class CrossFamilyPortAction:
             ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_GUARD_COMPILATIONS)
         return action
 
-    def then(self, after: CrossFamilyPortAction) -> CrossFamilyPortAction | None:
+    def then(
+        self,
+        after: CrossFamilyPortAction,
+        *,
+        ledger: ResourceLedger | None = None,
+    ) -> CrossFamilyPortAction | None:
         if type(after) is not CrossFamilyPortAction:
             raise TypeError("joint temporal composition requires another port action")
         self._verify_issued()
@@ -435,8 +491,13 @@ class CrossFamilyPortAction:
             and self.clock.precision != after.clock.precision
         ):
             raise ValueError("quadratic clock precision differs across macros")
+        _charge_composition(ledger, self, after)
         joint_guard = _join(self.guard, after.guard, self.action)
         if joint_guard is None:
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_REFUSALS
+                )
             return None
         joint_action = self.action.then(after.action)
         if type(joint_action) is not DyadicTerminalFieldAction:
@@ -455,13 +516,27 @@ class CrossFamilyPortAction:
         )
 
     def power(
-        self, repetitions: int, *, max_coefficient_bits: int = 8192
+        self,
+        repetitions: int,
+        *,
+        max_coefficient_bits: int = 8192,
+        ledger: ResourceLedger | None = None,
     ) -> CrossFamilyPortAction | None:
         self._verify_issued()
         if type(repetitions) is not int or repetitions < 0:
             raise ValueError("power repetitions must be a natural integer")
         if type(max_coefficient_bits) is not int or max_coefficient_bits < 1:
             raise ValueError("powered coefficient budget must be positive")
+        if ledger is not None:
+            from number_compiler.resources.ledger import ResourceLedger
+
+            if type(ledger) is not ResourceLedger:
+                raise TypeError("cross-family power accounting needs a query ledger")
+
+        def refused() -> None:
+            if ledger is not None:
+                ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_POWER_REFUSALS)
+
         result = self.identity(precision=self.clock.precision if self.clock else None)
         factor = self
         remaining = repetitions
@@ -470,21 +545,25 @@ class CrossFamilyPortAction:
                 if (
                     result.action.steps + factor.action.steps
                 ) * 4 > max_coefficient_bits:
+                    refused()
                     raise BlockContextBudgetExceeded(
                         "joint temporal power exceeds its bit budget"
                     )
-                joined = result.then(factor)
+                joined = result.then(factor, ledger=ledger)
                 if joined is None:
+                    refused()
                     return None
                 result = joined
             remaining >>= 1
             if remaining:
                 if factor.action.steps * 8 > max_coefficient_bits:
+                    refused()
                     raise BlockContextBudgetExceeded(
                         "joint temporal square exceeds its bit budget"
                     )
-                doubled = factor.then(factor)
+                doubled = factor.then(factor, ledger=ledger)
                 if doubled is None:
+                    refused()
                     return None
                 factor = doubled
         return result
@@ -497,6 +576,146 @@ class CrossFamilyPortAction:
         if not self.admits(source):
             raise ValueError("source is outside the cross-family parity cylinder")
         return self.action.endpoint(source)
+
+    def demanded_outer_inner_future(
+        self,
+        source: int,
+        *,
+        binary_bits: int = 128,
+        five_places: int = 1,
+        leading_bits: int = 8,
+        max_returns: int = 8,
+        max_tail: int = 128,
+        conditional_tail_horizon: int = 6,
+        radix_places: dict[int, int] | None = None,
+        walsh64: bool = False,
+        include_width_coverage: bool = False,
+    ) -> dict[str, object]:
+        """Bind the outer interval, inner CRT cone and next 6305 driver.
+
+        The *entire* finite cylinder is intersected with the already-issued
+        cross-family source guard before transporting the full affine stride.
+        Only a next return that is common to every surviving source is
+        published. The symbolic radial/helix fields share this very action;
+        a leading multiplier prefix is never substituted for endpoint bits.
+        This remains an explicit-demand path, not eager macro selection.
+        """
+        from number_compiler.sequences.collatz.collatz_two_sided_ring import (
+            CollatzTwoSidedCylinder,
+        )
+
+        if not self.admits(source):
+            raise ValueError("outer/inner ring requires an authenticated root source")
+        if (
+            type(conditional_tail_horizon) is not int
+            or not 0 <= conditional_tail_horizon <= 64
+        ):
+            raise ValueError("conditional border horizon must be in 0..64")
+        initial = CollatzTwoSidedCylinder.from_pointed_source(
+            source,
+            binary_bits=binary_bits,
+            five_places=five_places,
+            leading_bits=leading_bits,
+        )
+        # Named-family guards can constrain a source further than the finite
+        # parity word. Track that refinement rather than claiming that all
+        # original upper/lower alternatives admit a published border family.
+        if self.guard.minimum_source > initial.upper:
+            raise ValueError("cross-family lower source bound excludes the interval")
+        restricted = CollatzTwoSidedCylinder(
+            max(initial.lower, self.guard.minimum_source),
+            initial.upper,
+            initial.residue,
+            initial.modulus,
+        )
+        guarded = restricted.intersect_congruence(
+            self.guard.residue, self.guard.modulus
+        )
+        if guarded is None or not guarded.contains(source):
+            raise ArithmeticError("cross-family guard excludes its original witness")
+        restricted = guarded
+        parity_admitted = restricted.admitted_by(self.action)
+        if parity_admitted is None or parity_admitted.count != restricted.count:
+            raise ArithmeticError("certified parity word is not forced by its guard")
+        endpoint = parity_admitted.transport(self.action)
+        if not endpoint.contains(self.action.endpoint(source)):
+            raise AssertionError("two-sided action lost its authenticated endpoint")
+        suffix, future, tails = endpoint.forced_future(
+            max_returns=max_returns, max_tail=max_tail
+        )
+        if not future.contains(suffix.endpoint(self.action.endpoint(source))):
+            raise AssertionError("forced future lost its exact Collatz source")
+        requested_ports = None
+        if radix_places is not None or walsh64:
+            requested = radix_places if radix_places is not None else {64: 64}
+            requested_ports = self.demanded_ports(
+                source,
+                base=64 if walsh64 else next(iter(requested)),
+                places=64 if walsh64 else next(iter(requested.values())),
+                radix_places=requested,
+                walsh=walsh64,
+            )
+            if requested_ports["endpoint"] != self.action.endpoint(source):
+                raise AssertionError("joint carry ports lost their affine source")
+        conditional_inlets = (
+            future.conditional_next_tails(max_tail=conditional_tail_horizon)
+            if conditional_tail_horizon and future.forced_residue(10) == 3
+            else ()
+        )
+        if type(include_width_coverage) is not bool:
+            raise TypeError("width coverage request must be Boolean")
+        coverage_packet: dict[str, object] | None = None
+        if include_width_coverage:
+            width_coverage: dict[str, object] = {}
+            for name, ring in (
+                ("source", restricted),
+                ("endpoint", endpoint),
+                ("future", future),
+            ):
+                coverage = ring.radix6_coverage(
+                    max_leading_digits=leading_bits,
+                    max_trailing_digits=min(binary_bits, 256),
+                )
+                width_coverage[name] = (
+                    None if coverage is None else coverage.observation()
+                )
+                width_coverage[name + "_width_range"] = (
+                    radix_width(ring.first, 6),
+                    radix_width(ring.last, 6),
+                )
+            coverage_packet = width_coverage
+        packet = {
+            "conditional_next_tail_branches": tuple(
+                (j, child.residue, child.modulus, child.count)
+                for j, child in conditional_inlets
+            ),
+            "conditional_tail_branch_count": sum(
+                child.count for _, child in conditional_inlets
+            ),
+            "source_alternatives": initial.count,
+            "guarded_alternatives": restricted.count,
+            "guard_restricts_initial_fiber": restricted.count != initial.count,
+            "source_ring": restricted.summary(high_bits=min(leading_bits, 8)),
+            "endpoint_ring": endpoint.summary(high_bits=min(leading_bits, 8)),
+            "future_ring": future.summary(high_bits=min(leading_bits, 8)),
+            "certified_future_three_tails": tails,
+            "certified_future_normalized_steps": suffix.steps,
+            "certified_future_odd_events": 2 * len(tails),
+            "radial_scale": (self.odd_events, self.action.steps),
+            "quadratic_clock": None
+            if self.clock is None
+            else (self.clock.value, self.clock.linear, self.clock.quadratic),
+            "demanded_radix_walsh_ports": requested_ports,
+            "candidate_authority": (
+                "exact source coset and issued parity/finite candidate guard; "
+                "not maximal named-family authority"
+            ),
+            "unforced_inlets_refused": True,
+            "scope": "finite source-wide future, not global Collatz Moore closure",
+        }
+        if include_width_coverage:
+            packet["radix6_digit_coverage"] = coverage_packet
+        return packet
 
     def demanded_odd_position_moore(
         self,

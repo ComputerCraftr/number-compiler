@@ -7,6 +7,7 @@ sequence transition and therefore cannot become a parallel semantic state.
 from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterable, Sequence
+from typing import cast
 
 
 def bit_width(value: int) -> int:
@@ -15,6 +16,53 @@ def bit_width(value: int) -> int:
     if value < 0:
         value = -value
     return max(1, value.bit_length())
+
+
+def radix_width(
+    number: int, base: int, *, charge_bits: Callable[[int], None] | None = None
+) -> int:
+    """Exact width, optionally charging power and comparison operand bits."""
+    if type(number) is not int or number < 1 or type(base) is not int or base < 2:
+        raise ValueError("radix width requires a positive integer and base >= 2")
+
+    def power_below(exponent: int) -> bool:
+        if charge_bits is not None:
+            charge_bits(base.bit_length() + exponent.bit_length())
+        candidate = cast(int, pow(base, exponent))
+        if charge_bits is not None:
+            charge_bits(candidate.bit_length() + number.bit_length())
+        return candidate <= number
+
+    upper = 1
+    while power_below(upper):
+        upper <<= 1
+    lower = upper >> 1
+    while lower + 1 < upper:
+        middle = (lower + upper) >> 1
+        if power_below(middle):
+            lower = middle
+        else:
+            upper = middle
+    return lower + 1
+
+
+def digit_threshold_mask(base: int, threshold: int, bit: int) -> int:
+    """Encode one side of a radix-digit threshold as a finite-domain mask.
+
+    Bit zero denotes digits below ``threshold``; bit one denotes digits at
+    or above it. This is the common representation for threshold carry ports.
+    """
+    if (
+        type(base) is not int
+        or base < 2
+        or type(threshold) is not int
+        or not 1 <= threshold < base
+        or type(bit) is not int
+        or bit not in (0, 1)
+    ):
+        raise ValueError((base, threshold, bit))
+    lower = (1 << threshold) - 1
+    return lower if bit == 0 else ((1 << base) - 1) ^ lower
 
 
 def iter_digits_lsd(
@@ -223,6 +271,7 @@ def value_from_lsd_digits(digits: Sequence[int] | Iterable[int], base: int) -> i
 
 __all__ = [
     "bit_width",
+    "digit_threshold_mask",
     "digits_lsd",
     "periodic_position_bases",
     "reverse_pair_sums",

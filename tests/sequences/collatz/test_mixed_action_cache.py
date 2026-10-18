@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
@@ -285,7 +287,8 @@ def test_unissued_mixed_payload_still_checks_exact_gain(
     assert type(bucket) is tuple and bucket
     first = bucket[0]
     assert type(first) is tuple and len(first) == 17
-    changed = list(first)
+    assert all(type(value) is int for value in first)
+    changed = list(cast(tuple[int, ...], first))
     changed[2] += 1 << changed[0]
 
     with pytest.raises(ValueError, match="differs from its action"):

@@ -540,6 +540,30 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             ),
             (["not-a-family", "--nth", "0"], 2, ""),
         ]
+        for family, index, steps, source_options in (
+            ("reverse-add", 79, 2, ("--seed", "196")),
+            ("2rev10", 32, 10, ("--seed", "196")),
+            ("collatz", 2, 2, ("--seed", "11")),
+            ("antihydra", 16, 4, ()),
+            ("fermat", 2, 3, ()),
+        ):
+            commands.append(
+                (
+                    [
+                        family,
+                        *source_options,
+                        "--nth",
+                        str(index),
+                        "--no-value",
+                        "--info",
+                        "temporal.matrix",
+                        "--temporal-matrix-steps",
+                        str(steps),
+                    ],
+                    0,
+                    "",
+                )
+            )
         cold_processes: list[dict[str, object]] = []
         _report_stage(f"cold-cli:start cases={len(commands)}")
         for index, (arguments, status, value) in enumerate(commands, start=1):
@@ -568,6 +592,18 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 raise ValueError(
                     f"installed CLI contract failed: {arguments}: {observed}"
                 )
+            if "temporal.matrix" in arguments:
+                matrix = json.loads(observed.stderr)["temporal.matrix"]
+                ticks = int(arguments[arguments.index("--temporal-matrix-steps") + 1])
+                if (
+                    matrix["status"] != "available"
+                    or matrix["matrix_kind"] != "source-transfer"
+                    or matrix["requested_physical_ticks"] != ticks
+                    or matrix["execution_authority"] is not False
+                ):
+                    raise ValueError(
+                        "installed matrix consumer lost its request contract"
+                    )
             if arguments[0] == "2rev10" and "spatial.stencil" in arguments:
                 details = json.loads(observed.stderr)
                 rows = {

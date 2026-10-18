@@ -26,8 +26,6 @@ struct
             ("B1 occurrence cache stage=selector-complete name=" ^ name ^
              " elapsed_ms=" ^ Comma_Proof_Profile.elapsed_ms selected_started)
         in selector end
-      val construction_piece_selector =
-        Comma_Semantic_B1_Construction_Piece_Projection.make ctxt
       val selectors =
         [select "sources" @{thm comma_semantic_b1_crt_sources_def}
            @{term "comma_semantic_b1_crt_sources ! index"} [1024],
@@ -45,9 +43,6 @@ struct
          select "template_column_ids"
            @{thm comma_semantic_b1_crt_template_column_ids_def}
            @{term "comma_semantic_b1_crt_template_column_ids ! index"} [1024],
-         {procedure = #procedure construction_piece_selector,
-          post_procedure = #post_procedure construction_piece_selector,
-          stats = #stats construction_piece_selector},
          select "offsets" @{thm comma_offset_representatives_def}
            @{term "comma_offset_representatives ! index"} [46]]
       val lift_column_projection =
@@ -56,7 +51,6 @@ struct
         [#procedure lift_column_projection, #post_procedure lift_column_projection]
       val procedures = maps
         (fn selector => [#procedure selector, #post_procedure selector]) selectors @
-        #support_procedures construction_piece_selector @
         lift_column_procedures
       val base_context = fold Simplifier.add_proc procedures
         (ctxt addsimps Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_simp_rules)
@@ -88,6 +82,18 @@ struct
         Comma_Semantic_B1_Occurrence_Publication.get_definitions ctxt
       val columns = Comma_Semantic_B1_Column_Conversion.make ctxt
         column_definitions
+      val apply_dag = Comma_Semantic_B1_CRT_Apply_DAG.make ctxt
+        {known_column = #known_column columns,
+         column_id = #column_id columns,
+         column_value = #column_value columns,
+         cofactor_node_level = #cofactor_node_level columns,
+         prove_admitted = #prove_admitted columns,
+         resolve_column = #resolve_column columns,
+         cofactor_transition = #cofactor_transition columns,
+         reify_column = #reify columns}
+      (* Run the compact certificate-store authority and bridge fixtures before
+         building the larger mass owner, so ML/theorem regressions fail early. *)
+      val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check ctxt
       val column_mass = Comma_Semantic_B1_Column_Mass.make ctxt
         {column_value = #column_value columns, step = #step columns,
          known_column = #known_column columns, node_count = #node_count columns,
@@ -100,17 +106,6 @@ struct
         Comma_Semantic_B1_Occurrence_Publication.get_mass_annotation ctxt
       val mass_roots =
         Comma_Semantic_B1_Occurrence_Publication.get_demanded_root_cids ctxt
-      val invariant_mass = Comma_Semantic_B1_Column_Mass.make_from_nodes ctxt
-        {node_count = #node_count columns,
-         period = (fn level => Vector.sub
-           (Comma_Semantic_B1_Column_Catalog.periods, level)),
-         roots = mass_roots,
-         get_node = #mass_node_row columns,
-         source_bindings = #source_bindings columns,
-         column_value = #column_value columns,
-         known_column = #known_column columns,
-         cache_limit = 8192,
-         annotation_alias = SOME mass_annotation}
       val _ = #check_fixtures column_mass ()
       val _ = Comma_Proof_Profile.report "B1 initialization stage=column-owner-ready"
       val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check_cid_transition_cache
@@ -142,8 +137,6 @@ struct
       val failures = Unsynchronized.ref 0
       val recursive = Unsynchronized.ref 0
       val source_partial_probe = Unsynchronized.ref false
-      val slot_origin_traces = Unsynchronized.ref 0
-      val source_origin_traces = Unsynchronized.ref 0
       val context_build_traces = Unsynchronized.ref 0
       val value_checks = Unsynchronized.ref 0
       val value_nodes = Unsynchronized.ref 0
@@ -160,6 +153,8 @@ struct
       val template_mass_handler = Unsynchronized.ref
         (NONE: (term -> thm) option)
       val template_mass_stats_owner = Unsynchronized.ref (NONE: (unit -> string) option)
+      val invariant_mass_stats_owner = Unsynchronized.ref (NONE: (unit -> string) option)
+      val operation_dag_stats = Unsynchronized.ref (fn () => "apply_dag=unavailable")
       val template_partition_profile =
         Comma_Semantic_B1_Partition_Conversion.make_template_partition_profile ()
       val labelled_zipper_ref = Unsynchronized.ref (NONE:
@@ -206,7 +201,6 @@ struct
         | NONE => "labelled_zipper=lazy-uninitialized")
       val certificate_store =
         Comma_Semantic_B1_Certificate_Store.make_instance_store ctxt
-      val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check ctxt
       fun counters () =
         "lookups=" ^ Int.toString (!lookups) ^
         " hits=" ^ Int.toString (!hits) ^
@@ -231,12 +225,14 @@ struct
         " lift_columns_option_memo_hits=" ^ Int.toString (!lift_option_memo_hits) ^
         " " ^ (case !template_mass_stats_owner of
           SOME stats => stats () | NONE => "template_mass=uninitialized") ^
+        " " ^ (case !invariant_mass_stats_owner of
+          SOME stats => stats () | NONE => "column_mass_invariant=uninitialized") ^
         " " ^ (#stats template_partition_profile) () ^
         " " ^ labelled_zipper_stats () ^
+        " " ^ (!operation_dag_stats) () ^
         " " ^ (#stats certificate_store) () ^
         #counters columns () ^
         " legacy_column_mass " ^ (#stats column_mass) () ^
-        " " ^ (#stats invariant_mass) () ^
         (case Comma_Semantic_B1_Construction_Check.operation_timing_report
             (!operation_times) of
           "" => ""
@@ -258,30 +254,50 @@ struct
       val code_conversion = Unsynchronized.ref
         (NONE: (Proof.context -> conv) option)
       val operation_conversion = Unsynchronized.ref
-        (NONE: (cterm ->
-          Comma_Semantic_B1_CRT_Operation_Conversion.staged_result) option)
+        (NONE: Comma_Semantic_B1_CRT_Operation_Conversion.staged_operation_converter option)
       val operation_context_ref = Unsynchronized.ref
         (NONE: Proof.context option)
-      fun partition_operation_context () =
+      fun require_operation_context () =
         (case !operation_context_ref of SOME context => context
-        | NONE => error "B1 partition operation context is not initialized")
+        | NONE => error "B1 operation context is not initialized")
       val partition_canonicalizer_ref = Unsynchronized.ref
         (NONE: (cterm -> thm) option)
       val selected_construction_contexts_ref = Unsynchronized.ref
-        (NONE: {slot_origins: Proof.context, offset_orbit: Proof.context,
+        (NONE: {offset_orbit: Proof.context,
           source_arithmetic: Proof.context} option)
       val selected_action_context_ref = Unsynchronized.ref
         (NONE: Proof.context option)
       val thy = Proof_Context.theory_of ctxt
       val {patterns = paint_patterns, roots = paint_roots} =
         Comma_Semantic_B1_CRT_Operation_Conversion.selected_paint_memo_spec ctxt
+      val lift_binding_name =
+        @{const_name comma_semantic_b1_crt_lift_binding_certified}
+      val (lift_binding_argument_types, _) =
+        Term.strip_type (Sign.the_const_type thy lift_binding_name)
+      val lift_binding_pattern = list_comb
+        (Const (lift_binding_name, Sign.the_const_type thy lift_binding_name),
+         map_index (fn (index, argument_type) =>
+           Free ("lift_binding_argument_" ^ Int.toString index, argument_type))
+           lift_binding_argument_types)
       val selected_patterns = Comma_Semantic_B1_Construction_Check.occurrence_cache_patterns @
         Comma_Semantic_B1_CRT_Operation_Conversion.crt_operation_base_patterns @
-        paint_patterns
+        paint_patterns @ [lift_binding_pattern]
+      val recursive_apply_heads =
+        [@{const_name comma_crt_apply}, @{const_name comma_crt_apply_from},
+         @{const_name comma_crt_apply_shifted},
+         @{const_name comma_crt_apply_shifted_from},
+         @{const_name comma_crt_apply_shortcut},
+         @{const_name comma_crt_shifted_apply_shortcut}]
+      fun is_recursive_apply_pattern pattern =
+        member (op =) recursive_apply_heads
+          (case Term.head_of pattern of Const (name, _) => name | _ => "")
       val occurrence_projector =
         Comma_Semantic_B1_Construction_Check.make_occurrence_projector ctxt
       val selected_schematic_patterns = map schematize
         (selected_patterns @ Comma_Semantic_B1_Construction_Check.occurrence_projection_patterns)
+      val operation_schematic_patterns = map schematize
+        (filter_out is_recursive_apply_pattern
+          (selected_patterns @ Comma_Semantic_B1_Construction_Check.occurrence_projection_patterns))
       val catalogue_schematic_patterns = map schematize Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_patterns
       fun cacheable request =
         Comma_Semantic_B1_Construction_Check.matches_owned_request thy Comma_Semantic_B1_Construction_Check.occurrence_cache_generic_constants
@@ -298,19 +314,16 @@ struct
         [@{const_name comma_semantic_b1_source_slot_action},
          @{const_name comma_decisive_sector_period}, @{const_name comma_offset_orbit},
          @{const_name comma_semantic_b1_crt_construction_check},
+         @{const_name comma_semantic_b1_crt_compact_occurrence_check},
+         @{const_name comma_semantic_b1_crt_lift_local_cover_witness},
          @{const_name comma_semantic_b1_crt_template_geometry_certified}, @{const_name comma_semantic_b1_crt_lift_geometry_certified},
-         @{const_name comma_semantic_b1_crt_constructed_goto_slot_certificate},
-         @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches}, @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions},
+         lift_binding_name,
          @{const_name comma_semantic_b1_crt_column_ids_resolve},
-         @{const_name comma_semantic_b1_crt_group_construction_bound},
-         @{const_name comma_semantic_b1_crt_constructed_source_origins}, @{const_name comma_semantic_b1_crt_constructed_slot_origins},
-         @{const_name comma_semantic_b1_crt_lift_slot_valid_from_actions}, @{const_name comma_semantic_b1_crt_source_slot_action_row_certified},
-         @{const_name comma_semantic_b1_crt_slot_actions_table}, @{const_name comma_semantic_b1_crt_lift_columns_option},
+         @{const_name comma_semantic_b1_crt_lift_columns_option},
          @{const_name comma_crt_occurrence_split_action},
          @{const_name comma_crt_occurrence_split_from_bindings},
          @{const_name comma_crt_mdd_paint_binding},
          @{const_name comma_semantic_b1_terminal_action_result},
-         @{const_name comma_semantic_b1_crt_occurrence_binding_check},
          @{const_name comma_crt_equiv_check}, @{const_name comma_crt_supported},
          @{const_name comma_crt_admitted}, @{const_name comma_crt_apply},
          @{const_name comma_crt_apply_shifted}, @{const_name comma_crt_negate},
@@ -319,24 +332,21 @@ struct
         Comma_Semantic_B1_CRT_Operation_Conversion.crt_operation_base_heads
       val operation_context_roots =
         [@{const_name comma_semantic_b1_crt_construction_check},
+         @{const_name comma_semantic_b1_crt_compact_occurrence_check},
+         @{const_name comma_semantic_b1_crt_lift_local_cover_witness},
          @{const_name comma_semantic_b1_crt_template_geometry_certified}, @{const_name comma_semantic_b1_crt_lift_geometry_certified},
-         @{const_name comma_semantic_b1_crt_constructed_goto_slot_certificate},
-         @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches}, @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions},
+         lift_binding_name,
          @{const_name comma_semantic_b1_crt_column_ids_resolve},
-         @{const_name comma_semantic_b1_crt_group_construction_bound},
-         @{const_name comma_semantic_b1_crt_constructed_source_origins}, @{const_name comma_semantic_b1_crt_constructed_slot_origins},
-         @{const_name comma_semantic_b1_crt_lift_slot_valid_from_actions}, @{const_name comma_semantic_b1_crt_source_slot_action_row_certified},
-         @{const_name comma_semantic_b1_crt_slot_actions_table}, @{const_name comma_semantic_b1_crt_lift_columns_option},
+         @{const_name comma_semantic_b1_crt_lift_columns_option},
          @{const_name comma_crt_occurrence_split_action},
          @{const_name comma_crt_occurrence_split_from_bindings},
          @{const_name comma_crt_mdd_paint_binding},
-         @{const_name comma_semantic_b1_terminal_action_result},
-         @{const_name comma_semantic_b1_crt_occurrence_binding_check}]
+         @{const_name comma_semantic_b1_terminal_action_result}]
       val operation_request = Comma_Semantic_B1_Construction_Check.make_head_matcher operation_roots
       val operation_context_request = Comma_Semantic_B1_Construction_Check.make_head_matcher operation_context_roots
       val selected_paint_request = Comma_Semantic_B1_Construction_Check.make_head_matcher paint_roots
 
-      val timed_origin = Comma_Semantic_B1_Construction_Check.timed_origin
+      val timed_stage = Comma_Semantic_B1_Construction_Check.timed_stage
       fun note_source_action_reuse request =
         if #is_source_action_request certificate_store request then
           (#note_source_action_reuse certificate_store ();
@@ -357,8 +367,6 @@ struct
           val rhs = Thm.term_of (Thm.rhs_of theorem)
           val is_source_action = #is_source_action_request certificate_store request
           val _ = if not complete then #report_partial template_partition_profile request rhs counters else ()
-          val _ = if complete then
-              #note_context_request_completed certificate_store request else ()
           val _ = if complete then
               #remember_equation certificate_store context request theorem else ()
           val _ = if not complete andalso is_source_action andalso
@@ -426,18 +434,6 @@ struct
                         | NONE => error "B1 occurrence projection context is not initialized")
                       else if selected_paint_request request then
                         Simplifier.rewrite context cterm
-                      else if head_name request = SOME
-                          @{const_name comma_semantic_b1_crt_constructed_slot_origins} then
-                        timed_origin "constructed slot origins" slot_origin_traces 8 (fn () =>
-                          (case !selected_construction_contexts_ref of
-                            SOME contexts => Comma_Semantic_B1_Construction_Check.bounded_upt_rewrite (#slot_origins contexts) cterm
-                          | NONE => error "B1 slot-origin context is not initialized"))
-                      else if head_name request = SOME
-                          @{const_name comma_semantic_b1_crt_constructed_source_origins} then
-                        timed_origin "constructed source origins" source_origin_traces 4 (fn () =>
-                          (case !operation_context_ref of
-                            SOME source_context => Comma_Semantic_B1_Construction_Check.bounded_upt_rewrite source_context cterm
-                          | NONE => error "B1 source-origin context is not initialized"))
                       else if head_name request = SOME @{const_name comma_offset_orbit} then
                         (case !selected_construction_contexts_ref of
                           SOME contexts => Simplifier.rewrite (#offset_orbit contexts) cterm
@@ -462,15 +458,20 @@ struct
                             (#source_arithmetic contexts) cterm
                         | NONE => error "B1 source arithmetic context is not initialized")
                       else if head_name request = SOME
+                          @{const_name comma_semantic_b1_crt_lift_binding_certified} then
+                        #rewrite_lift_binding certificate_store ctxt
+                          (require_operation_context ()) request cterm
+                      else if head_name request = SOME
                           @{const_name comma_semantic_b1_crt_lift_geometry_certified} then
-                        #rewrite_lift_geometry certificate_store ctxt context request cterm
+                        #rewrite_lift_geometry certificate_store ctxt
+                          (require_operation_context ()) request cterm
                       else if is_partition_state then
                         Comma_Semantic_B1_Partition_Conversion.rewrite_partition_cofactor_checked
-                          (partition_operation_context ())
+                          (require_operation_context ())
                           (#note_cofactor_state_rewrite template_partition_profile) cterm
                       else if is_partition_certificate orelse is_template_geometry then
                         Comma_Semantic_B1_Construction_Check.convert_template_certificate
-                          {ctxt = ctxt, context = partition_operation_context (),
+                          {ctxt = ctxt, context = require_operation_context (),
                            request = request, cterm = cterm,
                            note_stage_time =
                              #note_template_geometry_stage template_partition_profile,
@@ -486,7 +487,8 @@ struct
                           | NONE => error "B1 operation context is not initialized")
                         else
                           (case !operation_conversion of
-                            SOME convert => #equation (convert cterm)
+                            SOME converter =>
+                              #equation (#convert converter cterm)
                           | NONE => error "B1 staged operation conversion is not initialized")
                       else if catalogue_request request
                       then Simplifier.rewrite context cterm
@@ -596,6 +598,12 @@ struct
          lhss = selected_schematic_patterns @ catalogue_schematic_patterns,
          proc = fn _ => memo_proc,
          identifier = []}
+      val operation_proc = Simplifier.make_simproc ctxt
+        {name = "comma_semantic_b1_operation_exact_memo",
+         kind = Simplifier.Congproc false,
+         lhss = operation_schematic_patterns @ catalogue_schematic_patterns,
+         proc = fn _ => memo_proc,
+         identifier = []}
       val selectors = catalogue_setup ctxt
       val _ = milestone "after-catalogue-setup"
       val _ = milestone "before-evaluation-context-setup"
@@ -609,23 +617,47 @@ struct
         (code_context addsimps
           Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_simp_rules)
         |> fold Simplifier.add_proc (#procedures selectors)
-      val template_mass_check = Comma_Semantic_B1_Template_Mass_Check.make ctxt
-        {context = template_mass_context, mass_row = #mass_row invariant_mass,
-         node_count = #node_count columns}
-      val _ = template_mass_handler := SOME (#prove template_mass_check)
-      val _ = template_mass_stats_owner := SOME (#stats template_mass_check)
-      val construction_context = ((evaluation_context addsimps
-        Comma_Semantic_B1_Construction_Check.occurrence_cache_arithmetic_rules) delsimps @{thms sort_key_simps insort_key.simps})
-        |> Simplifier.add_proc
-          (Comma_Semantic_B1_Construction_Check.make_origin_sort_proc ctxt)
+      fun ensure_template_mass_handler () =
+        (case !template_mass_handler of
+          SOME prove => prove
+        | NONE =>
+            let
+              val _ = Comma_Proof_Profile.report
+                "B1 occurrence cache stage=invariant-mass-initialization-start"
+              val invariant_mass = Comma_Semantic_B1_Column_Mass.make_from_nodes ctxt
+                {node_count = #node_count columns,
+                 period = (fn level => Vector.sub
+                   (Comma_Semantic_B1_Column_Catalog.periods, level)),
+                 roots = mass_roots,
+                 get_node = #mass_node_row columns,
+                 source_bindings = #source_bindings columns,
+                 column_value = #column_value columns,
+                 known_column = #known_column columns,
+                 cache_limit = 8192,
+                 annotation_alias = SOME mass_annotation}
+              val _ = invariant_mass_stats_owner := SOME (#stats invariant_mass)
+              val template_mass_check = Comma_Semantic_B1_Template_Mass_Check.make ctxt
+                {context = template_mass_context,
+                 mass_row = #mass_row invariant_mass,
+                 node_count = #node_count columns}
+              val prove = #prove template_mass_check
+              val _ = template_mass_handler := SOME prove
+              val _ = template_mass_stats_owner := SOME (#stats template_mass_check)
+              val _ = Comma_Proof_Profile.report
+                "B1 occurrence cache stage=invariant-mass-initialization-complete"
+            in prove end)
+      val construction_context = evaluation_context addsimps
+        Comma_Semantic_B1_Construction_Check.occurrence_cache_arithmetic_rules
       val operation_base_context =
         Comma_Entry_Arithmetic.natural_context ctxt
         |> (fn context => context addsimps (Comma_Semantic_B1_Construction_Check.occurrence_cache_checker_simp_rules @ Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_simp_rules))
         |> fold Simplifier.add_proc (#procedures selectors)
-        |> Simplifier.add_proc proc
-        |> fold Simplifier.add_proc [#procedure columns, #post_procedure columns]
+        |> Simplifier.add_proc operation_proc
+        |> fold Simplifier.add_proc
+          [#operation_procedure columns, #operation_post_procedure columns]
       val operation_context =
-        Comma_Semantic_B1_CRT_Operation_Conversion.operation_context operation_base_context
+        Comma_Semantic_B1_CRT_Operation_Conversion.operation_context_for_occurrence
+          (#add_to_context apply_dag operation_base_context)
       val _ = operation_context_ref := SOME operation_context
       val _ = partition_canonicalizer_ref := SOME
         (Comma_Semantic_B1_Partition_Conversion.make_partition_cofactor_canonicalizer
@@ -633,10 +665,14 @@ struct
           {note_shape_check = #note_cofactor_state_shape_check template_partition_profile,
            note_shape_cache_hit =
              #note_cofactor_state_shape_cache_hit template_partition_profile})
-      val _ = timed_origin "selected context setup" context_build_traces 1 (fn () =>
-        selected_construction_contexts_ref := SOME
-          (Comma_Semantic_B1_Selected_Contexts.make ctxt operation_context
-            Comma_Semantic_B1_Construction_Check.occurrence_cache_arithmetic_rules (#simproc endpoint_kernel)))
+      val _ = timed_stage "selected context setup" context_build_traces 1 (fn () =>
+        let
+          val contexts = Comma_Semantic_B1_Selected_Contexts.make ctxt
+            operation_context Comma_Semantic_B1_Construction_Check.occurrence_cache_arithmetic_rules
+            (#simproc endpoint_kernel)
+        in selected_construction_contexts_ref := SOME
+          {offset_orbit = #offset_orbit contexts,
+           source_arithmetic = #source_arithmetic contexts} end)
       val _ = milestone "after-evaluation-context-setup"
       val _ = milestone "before-static-converter-init"
       val _ = code_conversion := SOME (Code_Simp.static_conv
@@ -647,16 +683,20 @@ struct
       val operation_boundaries =
         Comma_Semantic_B1_CRT_Operation_Conversion.crt_operation_boundaries
           apply_depth_rules
-      val _ = operation_conversion := SOME
-        (Comma_Semantic_B1_CRT_Operation_Conversion.make_staged_operation_converter
-          {context = operation_context, boundaries = operation_boundaries,
+      val staged_converter =
+        Comma_Semantic_B1_CRT_Operation_Conversion.make_staged_operation_converter
+          {context = operation_context, apply_dag = apply_dag,
+           boundaries = operation_boundaries,
            staged_heads =
              Comma_Semantic_B1_CRT_Operation_Conversion.crt_operation_staged_heads,
            lazy_function_heads =
              Comma_Semantic_B1_CRT_Operation_Conversion.crt_operation_lazy_function_heads,
            final_argument_stagers = [],
-           complete_value = complete_value})
+           complete_value = complete_value}
+      val _ = operation_conversion := SOME staged_converter
+      val _ = operation_dag_stats := #dag_stats staged_converter
       val _ = milestone "after-static-converter-init"
+      val _ = #check_production_context apply_dag operation_context
       val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check_cofactor_state_warm_memo
         {ctxt = ctxt, context = operation_context,
          with_partition_scope = (fn work => Exn.release
@@ -758,15 +798,26 @@ struct
                 | _ => false)
               val template_mass = head_name proposition = SOME
                 @{const_name comma_semantic_b1_crt_template_mass_certified}
+              val template_geometry = head_name proposition = SOME
+                @{const_name comma_semantic_b1_crt_template_geometry_certified}
+              val lift_binding = head_name proposition = SOME
+                @{const_name comma_semantic_b1_crt_lift_binding_certified}
               val theorem =
                 if construction then
                   (case !construction_handler of
                     SOME check => check proposition
                   | NONE => error "B1 construction checker is not initialized")
                 else if template_mass then
-                  (case !template_mass_handler of
-                    SOME prove => prove proposition
-                  | NONE => error "B1 template mass handler is not initialized")
+                  ensure_template_mass_handler () proposition
+                else if template_geometry then
+                  Comma_Semantic_B1_Used_Templates.prove_owned_certificate ctxt
+                    (memo_proc context) @{const_name comma_semantic_b1_crt_template_geometry_certified}
+                    "template geometry" proposition
+                else if lift_binding then
+                  Comma_Semantic_B1_Used_Templates.prove_owned_certificate ctxt
+                    (memo_proc (require_operation_context ()))
+                    @{const_name comma_semantic_b1_crt_lift_binding_certified}
+                    "LiftProofID" proposition
                 else
                   let
                     val goal = Thm.cterm_of ctxt (HOLogic.mk_Trueprop proposition)
@@ -817,75 +868,6 @@ struct
                 else error "B1 occurrence item theorem changed its proposition"
             in theorem end
 
-          fun prove_list_all prove_selected context predicate range =
-        let
-              (* Normalize the upper bound, then prove items by zero/Suc. *)
-              val predicate_name =
-                the_default "non-constant" (head_name predicate)
-              val (range_head, range_args) = strip_comb range
-              val (lower, upper) =
-                (case (range_head, range_args) of
-                  (Const (name, _), [lo, hi]) =>
-                    if name = @{const_name upt} then (lo, hi)
-                    else error "B1 indexed certificate expected an upt range"
-                | _ => error "B1 indexed certificate expected a closed upt range")
-              val _ = if lower aconv @{term "0::nat"} andalso
-                  fastype_of range = @{typ "nat list"} andalso
-                  fastype_of predicate = @{typ "nat => bool"}
-                then () else error "B1 indexed certificate expected a natural zero-based range"
-              val upper_selected = Simplifier.rewrite context
-                (Thm.cterm_of ctxt upper)
-              val scalar_context = Comma_Entry_Arithmetic.natural_context ctxt
-              val upper_scalar = Simplifier.rewrite scalar_context
-                (Thm.rhs_of upper_selected)
-              val upper_equation = validate_equation upper
-                (Thm.transitive upper_selected upper_scalar)
-              val (_, bound) = HOLogic.dest_number
-                (Thm.term_of (Thm.rhs_of upper_equation))
-              val (predicate_label, declared_extent) =
-                Comma_Semantic_B1_Construction_Check.indexed_extent_contract
-                  predicate upper
-              val _ = if
-                  Comma_Semantic_B1_Construction_Check.indexed_extent_admitted
-                    bound declared_extent then ()
-                else error ("B1 indexed certificate range exceeds its declared extent: " ^
-                  "predicate=" ^ predicate_label ^ " bound=" ^ Int.toString bound ^
-                  " declared_extent=" ^ Int.toString declared_extent)
-              val natT = @{typ nat}
-              val list_type = @{typ "nat list"}
-              val list_all = Const (@{const_name list_all},
-                fastype_of predicate --> list_type --> @{typ bool}) $ predicate
-          fun prove_item index =
-                let
-                  val item_stage = predicate_name ^ "-item-" ^ Int.toString index
-                  val theorem = Comma_Proof_Profile.trace_stage
-                    (Comma_Proof_Profile.enabled ()) item_counter
-                    (fn current => (current, current + 1)) 256
-                    "B1 occurrence indexed list" item_stage
-                    (fn () => Comma_Semantic_B1_Construction_Check.prove_beta_item
-                      ctxt prove_selected (predicate $
-                        Comma_Semantic_B1_CRT_Operation_Conversion.natural_numeral index))
-                in theorem end
-              val prefix = Comma_Selected_List_Conversion.prove_indexed_list_all
-                {ctxt = ctxt, predicate = predicate, bound = bound,
-                 prove_item = prove_item,
-                 zero_fact = @{thm comma_indexed_all_zero},
-                 step_fact = @{thm comma_indexed_all_Suc}, successor_equation = #equation indexed_successors}
-              val normalized_range = Const (@{const_name upt},
-                natT --> natT --> list_type) $ lower $
-                  Comma_Semantic_B1_CRT_Operation_Conversion.natural_numeral bound
-              val application_eq = Conv.arg_conv
-                (Conv.arg_conv (Conv.rewr_conv upper_equation))
-                (Thm.cterm_of ctxt (list_all $ range))
-              val _ = if Thm.term_of (Thm.rhs_of application_eq) aconv
-                  list_all $ normalized_range then ()
-                else error "B1 indexed range normalization changed its structure"
-              val proposition_eq = Thm.combination
-                (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop})) application_eq
-              val _ = if Thm.prop_of prefix aconv
-                  HOLogic.mk_Trueprop (list_all $ normalized_range) then ()
-                else error "B1 indexed recurrence does not match its normalized bound"
-            in Thm.equal_elim (Thm.symmetric proposition_eq) prefix end
           fun prove_expression small_upt context expression =
             (case try (HOLogic.dest_bin @{const_name HOL.conj} @{typ bool}) expression of
               SOME (left, right) =>
@@ -894,7 +876,12 @@ struct
                    prove_expression small_upt context right]
             | NONE =>
                 (case strip_comb expression of
-                  (Const (name, _), [predicate, range]) =>
+                  (Const (name, _), []) =>
+                    if name = @{const_name comma_semantic_b1_crt_used_lift_bindings_checked}
+                    then Comma_Semantic_B1_Used_Templates.prove_used_lift_bindings_checked
+                      ctxt expression (prove_expression small_upt context)
+                    else prove_true_using small_upt context expression
+                | (Const (name, _), [predicate, range]) =>
                     if name = @{const_name list_all}
                     then
                       if predicate aconv @{term "comma_crt_admitted (0::nat)"}
@@ -904,9 +891,23 @@ struct
                           @{const_name comma_semantic_b1_crt_template_mass_certified}
                       then Comma_Semantic_B1_Used_Templates.prove ctxt context
                         (prove_true_using small_upt context) predicate range
+                      else if predicate aconv
+                          @{term "comma_semantic_b1_crt_lift_binding_certified
+                            comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+                            comma_semantic_b1_crt_lift_column_ids
+                            comma_semantic_b1_crt_lift_descriptors"}
+                          andalso range aconv
+                            @{term "comma_semantic_b1_crt_used_lift_cids
+                              comma_semantic_b1_crt_lift_refs"}
+                      then Comma_Semantic_B1_Used_Templates.prove_used_lift_bindings
+                        ctxt (prove_true_using small_upt context) predicate range
                       else if head_name range = SOME @{const_name upt} then
-                        prove_list_all (prove_expression small_upt context)
-                          context predicate range
+                        Comma_Semantic_B1_Construction_Check.prove_indexed_list_all
+                          {ctxt = ctxt, context = context, predicate = predicate,
+                           range = range,
+                           prove_selected = prove_expression small_upt context,
+                           item_counter = item_counter,
+                           successor_equation = #equation indexed_successors}
                       else prove_true_using small_upt context expression
                     else prove_true_using small_upt context expression
                 | _ => prove_true_using small_upt context expression))
@@ -930,7 +931,7 @@ struct
             SOME check => check ()
           | NONE => ())
           val theorem = Thm.equal_elim (Thm.symmetric unfolded) rhs_proof
-          val _ = milestone "after-piecewise-proof"
+          val _ = milestone "after-compact-proof"
           val _ = if Thm.prop_of theorem aconv request andalso
               Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
               null (Thm.tpairs_of theorem) then ()

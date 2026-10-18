@@ -28,6 +28,9 @@ termination
 definition double_reverse_T :: "nat \<Rightarrow> nat" where
   "double_reverse_T n = 2 * double_reverse_reverse10 n"
 
+definition double_reverse_T_run :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "double_reverse_T_run steps source = (double_reverse_T ^^ steps) source"
+
 lemma double_reverse_reverse10_ignores_trailing_zero:
   "double_reverse_reverse10 (10*n) = double_reverse_reverse10 n"
 proof (cases n)

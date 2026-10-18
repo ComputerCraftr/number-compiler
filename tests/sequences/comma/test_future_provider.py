@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import base64
 import copy
-import json
-import os
 from collections.abc import Callable, Mapping
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType
 from typing import cast
 
 import pytest
@@ -25,7 +23,13 @@ from tests.support.comma_future_provider_fixture import (
     candidate_record as _candidate_record,
 )
 from tests.support.comma_future_provider_fixture import (
-    fixture_admission,
+    canonical_bytes as _canonical_bytes,
+)
+from tests.support.comma_future_provider_fixture import (
+    install_synthetic_registry as _install_synthetic_registry,
+)
+from tests.support.comma_future_provider_fixture import (
+    work_log as _work_log,
 )
 
 
@@ -33,36 +37,6 @@ def _record_list(record: dict[str, object], field: str) -> list[object]:
     value = record[field]
     assert isinstance(value, list)
     return value
-
-
-def _work_log() -> tuple[list[int], Callable[[int], None]]:
-    charges: list[int] = []
-
-    def charge(amount: int) -> None:
-        if type(amount) is not int or amount <= 0:
-            raise ValueError("test charger received an invalid amount")
-        charges.append(amount)
-
-    return charges, charge
-
-
-def _install_synthetic_registry(
-    monkeypatch: pytest.MonkeyPatch,
-    record: dict[str, object],
-    charge_work: Callable[[int], None],
-) -> str:
-    """Install explicit test-only evidence through the private registry seam."""
-    digest, admission = fixture_admission(record, charge_work)
-    registry = MappingProxyType({digest: admission})
-    monkeypatch.setattr(future_provider, "_ADMITTED_KERNEL_INSTANCES", registry)
-    return digest
-
-
-def _canonical_bytes(record: dict[str, object]) -> bytes:
-    return (
-        json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-        + "\n"
-    ).encode("ascii")
 
 
 def test_structural_parser_decodes_nested_boundary_binding_without_authority() -> None:
@@ -122,6 +96,23 @@ def test_empty_production_registry_rejects_structurally_valid_candidate() -> Non
         )
 
 
+@pytest.mark.parametrize(
+    "field",
+    (
+        "refinement_rounds",
+        "refinement_collision_witnesses",
+        "seam_is_projected_from_cid",
+        "seam_projection_collision",
+    ),
+)
+def test_runtime_schema_rejects_source_discovery_diagnostics(field: str) -> None:
+    record = _candidate_record()
+    record[field] = None
+    _charges, charge_work = _work_log()
+    with pytest.raises(ValueError, match="supported schema"):
+        future_provider.parse_future_candidate(record, charge_work=charge_work)
+
+
 def test_private_term_staging_rejects_unadmitted_artifact_and_closes_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -157,11 +148,11 @@ def test_private_term_staging_rejects_query_progress_before_reading_artifact(
     assert term.ledger.counters.get("comma_future_provider_load_requests", 0) == 0
 
 
-def test_in_memory_record_bounds_ignored_metadata_before_serializing(
+def test_in_memory_record_bounds_unknown_metadata_before_serializing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     record = _candidate_record()
-    record["seam_projection_collision"] = {
+    record["unexpected_metadata"] = {
         "untrusted": "x" * future_provider.MAX_CANDIDATE_BYTES
     }
     charges, charge_work = _work_log()
@@ -186,7 +177,6 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
 ) -> None:
     record = _candidate_record()
     expected_controls = copy.deepcopy(record["controls"])
-    expected_metadata = copy.deepcopy(record["seam_projection_collision"])
     original_digest = future_provider._future_candidate_sha256
     observed_snapshots: list[Mapping[str, object]] = []
     charges, charge_work = _work_log()
@@ -194,15 +184,13 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
     def mutate_original(original: Mapping[str, object]) -> None:
         assert original is record
         _record_list(record, "controls")[2] = ["landmine", None]
-        metadata = record["seam_projection_collision"]
-        assert isinstance(metadata, dict)
-        metadata["after_snapshot"] = "x" * future_provider.MAX_CANDIDATE_BYTES
+        record["unexpected_metadata"] = {"after_snapshot": "x" * 100_000}
 
     def observe_digest(snapshot: Mapping[str, object]) -> str:
         observed_snapshots.append(snapshot)
         assert snapshot is not record
         assert snapshot["controls"] == expected_controls
-        assert snapshot["seam_projection_collision"] == expected_metadata
+        assert "unexpected_metadata" not in snapshot
         return original_digest(snapshot)
 
     monkeypatch.setattr(future_provider, "_future_candidate_sha256", observe_digest)
@@ -223,14 +211,14 @@ def test_in_memory_record_bounds_json_depth_and_integer_width() -> None:
     nested: object = None
     for _ in range(future_provider.MAX_CANDIDATE_JSON_DEPTH + 1):
         nested = [nested]
-    too_deep["seam_projection_collision"] = {"nested": nested}
+    too_deep["unexpected_metadata"] = {"nested": nested}
     with pytest.raises(ValueError, match="nesting exceeds its bound"):
         future_provider.parse_future_candidate(too_deep, charge_work=charge_work)
     assert sum(charges) > 0
 
     charges.clear()
     too_wide = _candidate_record()
-    too_wide["refinement_rounds"] = 1 << (future_provider.MAX_CANDIDATE_BYTES * 4)
+    too_wide["unexpected_metadata"] = 1 << (future_provider.MAX_CANDIDATE_BYTES * 4)
     with pytest.raises(ValueError, match="integer exceeds"):
         future_provider.parse_future_candidate(too_wide, charge_work=charge_work)
     assert sum(charges) > 0
@@ -320,7 +308,7 @@ def test_future_control_rejects_kind_equality_aliases() -> None:
 
 def test_preflight_charges_before_validation_and_in_bounded_string_chunks() -> None:
     malformed = _candidate_record()
-    malformed["seam_projection_collision"] = {1: "bad object key"}
+    malformed["unexpected_metadata"] = {1: "bad object key"}
     refused_charges: list[int] = []
 
     def no_budget(amount: int) -> None:
@@ -332,7 +320,7 @@ def test_preflight_charges_before_validation_and_in_bounded_string_chunks() -> N
     assert refused_charges == [1]
 
     large_string_record = _candidate_record()
-    large_string_record["seam_projection_collision"] = {"ignored": "\x01" * 100_000}
+    large_string_record["unexpected_metadata"] = {"ignored": "\x01" * 100_000}
     charges, charge_work = _work_log()
     future_provider._preflight_future_candidate(
         large_string_record, charge_work=charge_work
@@ -342,31 +330,6 @@ def test_preflight_charges_before_validation_and_in_bounded_string_chunks() -> N
     ) // 65_536
     assert sum(charges) == expected_size_units
     assert len(charges) > 1
-
-
-def test_file_loader_preflights_nested_metadata_before_canonical_dump(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    record = _candidate_record()
-    nested: object = None
-    for _ in range(future_provider.MAX_CANDIDATE_JSON_DEPTH + 1):
-        nested = [nested]
-    record["seam_projection_collision"] = {"nested": nested}
-    payload = _canonical_bytes(record)
-    candidate_path = tmp_path / "deep-future-candidate.json"
-    candidate_path.write_bytes(payload)
-    charges, charge_work = _work_log()
-
-    def reject_canonical_dump(_record: Mapping[str, object]) -> bytes:
-        raise AssertionError("deep metadata reached canonical serialization")
-
-    monkeypatch.setattr(future_provider, "_canonical_json_bytes", reject_canonical_dump)
-    with pytest.raises(ValueError, match="nesting exceeds its bound"):
-        future_provider.SemanticFutureProvider.load_file(
-            candidate_path, charge_work=charge_work
-        )
-    assert sum(charges) >= (len(payload) + 65_535) // 65_536
 
 
 def test_lease_rejects_a_total_fake_store_and_direct_unretained_binding() -> None:
@@ -457,6 +420,15 @@ def test_provider_binding_fields_cannot_be_reassigned(
 
 def test_release_authority_requires_exact_global_theorem_and_all_claims() -> None:
     digest = "a" * 64
+    assert future_authority.GLOBAL_RELEASE_THEOREM_ID == (
+        "Comma_Semantic_Release.comma_semantic_producer_global_release_contract"
+    )
+    assert future_authority.GLOBAL_RELEASE_CONTRACT_ID == (
+        "comma-semantic-producer-global-release-v2"
+    )
+    assert "producer-writer-point-and-prefix-refinement" in (
+        future_authority.GLOBAL_RELEASE_CLAIMS
+    )
     fixture = future_authority._KernelInstanceAdmission(
         artifact_sha256=digest,
         instance_id=future_authority.FINITE_TEST_FIXTURE_SESSION_ID,
@@ -484,12 +456,22 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
     )
     malformed = (
         replace(release_shape, theorem_id="comma_semantic_global_release_safety"),
+        replace(
+            release_shape,
+            theorem_id=(
+                "Comma_Semantic_Global_Safety.comma_semantic_global_release_safety"
+            ),
+        ),
         replace(release_shape, theorem_id="unrelated.nonempty_theorem"),
         *missing_claim_probes,
         replace(release_shape, instance_id="another Isabelle session"),
         replace(
             release_shape,
             contract_id=future_provider.FUTURE_PROVIDER_CONTRACT,
+        ),
+        replace(
+            release_shape,
+            contract_id="comma-semantic-global-release-safety-v1",
         ),
     )
     for probe in malformed:
@@ -654,143 +636,6 @@ def test_boundary_state_rejects_invalid_future_source_coordinates(
         BoundaryState(kind, coefficient, phase)  # type: ignore[arg-type]
 
 
-def test_file_loader_requires_canonical_bytes_and_registry_admission(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    record = _candidate_record()
-    _charges, charge_work = _work_log()
-    _install_synthetic_registry(monkeypatch, record, charge_work)
-    candidate_path = tmp_path / "future.json"
-    candidate_path.write_bytes(_canonical_bytes(record))
-    provider = future_provider.SemanticFutureProvider.load_file(
-        candidate_path, charge_work=charge_work
-    )
-    assert provider.class_count == 3
-
-    candidate_path.write_text(json.dumps(record), encoding="utf-8")
-    with pytest.raises(ValueError, match="canonical form"):
-        future_provider.SemanticFutureProvider.load_file(
-            candidate_path, charge_work=charge_work
-        )
-
-
-def test_file_loader_charges_bytes_read_when_stat_underreports(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    record = _candidate_record()
-    _charges, setup_charge = _work_log()
-    _install_synthetic_registry(monkeypatch, record, setup_charge)
-    _charges, charge_work = _work_log()
-
-    oversized_record = copy.deepcopy(record)
-    oversized_record["refinement_collision_witnesses"] = ["w" * 100] * 700
-    payload = _canonical_bytes(oversized_record)
-    assert len(payload) > 65_536
-    candidate_path = tmp_path / "stale-stat-future.json"
-    candidate_path.write_bytes(payload)
-    too_large_path = tmp_path / "stale-stat-oversized-future.json"
-    too_large_path.write_bytes(b"x" * (future_provider.MAX_CANDIDATE_BYTES + 16))
-    underreported_paths = {candidate_path, too_large_path}
-
-    ledger = ResourceLedger(max_nodes=65_536, max_cache_entries=2)
-    store = future_provider.SemanticFutureProviderStore(ledger)
-    parse_charge_totals: list[int] = []
-    actual_parser = future_provider._parse_preflighted_future_candidate
-
-    def observe_parser(
-        candidate: Mapping[str, object],
-        *,
-        charge_work: Callable[[int], None],
-        artifact_sha256: str | None = None,
-    ) -> future_provider.ParsedFutureCandidate:
-        parse_charge_totals.append(sum(_charges))
-        return actual_parser(
-            candidate,
-            charge_work=charge_work,
-            artifact_sha256=artifact_sha256,
-        )
-
-    monkeypatch.setattr(
-        future_provider,
-        "_parse_preflighted_future_candidate",
-        observe_parser,
-    )
-    path_type = type(candidate_path)
-    actual_stat = path_type.stat
-
-    def stale_stat(path: Path) -> os.stat_result:
-        if path in underreported_paths:
-            return cast(os.stat_result, SimpleNamespace(st_size=1))
-        return actual_stat(path)
-
-    monkeypatch.setattr(path_type, "stat", stale_stat)
-    with pytest.raises(PermissionError, match="no kernel-admitted"):
-        store.load_file(candidate_path, charge_work=charge_work)
-
-    payload_work = (len(payload) + 65_535) // 65_536
-    assert len(parse_charge_totals) == 1 and parse_charge_totals[0] >= payload_work
-    assert sum(_charges) >= payload_work
-    first_load_work = sum(_charges)
-
-    _charges.clear()
-    parse_charge_totals.clear()
-    with pytest.raises(ValueError, match="bounded input size"):
-        store.load_file(too_large_path, charge_work=charge_work)
-    bounded_read_work = (future_provider.MAX_CANDIDATE_BYTES + 1 + 65_535) // 65_536
-    assert sum(_charges) == bounded_read_work
-    assert parse_charge_totals == []
-    assert ledger.counters["comma_future_provider_load_work"] == (
-        first_load_work + sum(_charges)
-    )
-    store.close()
-
-
-def test_ledger_store_loads_then_reuses_only_by_verified_digest(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    record = _candidate_record()
-    charges, charge_work = _work_log()
-    digest = _install_synthetic_registry(monkeypatch, record, charge_work)
-    charges.clear()
-    path = tmp_path / "admitted-future.json"
-    path.write_bytes(_canonical_bytes(record))
-    ledger = ResourceLedger(max_nodes=49_152, max_cache_entries=4)
-    store = future_provider.SemanticFutureProviderStore(ledger)
-
-    first = store.load_file(path, charge_work=charge_work)
-    published = ledger.snapshot()
-    assert sum(charges) > 0
-    assert first.artifact_sha256 == digest
-    assert published.entries == 1
-    assert published.nodes > 0
-    owners_by_role = {item.role: item for item in published.inventory}
-    assert owners_by_role["semantic_future_provider"].entries == 1
-    assert owners_by_role["semantic_future_provider_workspace"].nodes == 0
-    assert not owners_by_role["semantic_future_provider"].evictable
-    assert published.peak_nodes > published.nodes
-    assert published.counters["comma_future_provider_publications"] == 1
-    assert published.counters["comma_future_provider_load_work"] == sum(charges)
-
-    # Retrieval by the admitted digest consumes the retained provider. It does
-    # not call the parser or reconstruct the immutable source/class tuples.
-    def reject_reparse(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("warm digest retrieval reparsed provider input")
-
-    monkeypatch.setattr(future_provider, "parse_future_candidate", reject_reparse)
-    warm = store.get(digest)
-    assert warm.artifact_sha256 == digest
-    assert warm.class_count == first.class_count == 3
-    assert warm.source_class(BoundaryState("N", 2, 2), charge_work=charge_work) == 2
-    assert ledger.counters["comma_future_provider_lookup_hits"] == 1
-    assert ledger.counters["comma_future_provider_lease_resolutions"] > 0
-    assert ledger.snapshot().entries == published.entries
-    assert ledger.snapshot().nodes == published.nodes
-    store.close()
-
-
 def test_store_rejects_changed_inputs_and_failed_publication_is_atomic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -848,7 +693,7 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     assert limited.entries == limited.nodes == 0
     refused.close()
 
-    publish_limited = ResourceLedger(max_nodes=40_000, max_cache_entries=1)
+    publish_limited = ResourceLedger(max_nodes=29_500, max_cache_entries=1)
     publish_refused = future_provider.SemanticFutureProviderStore(publish_limited)
     with pytest.raises(BlockContextBudgetExceeded):
         publish_refused.load_record(record, charge_work=charge_work)

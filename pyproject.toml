@@ -42,5 +42,10 @@ files = ["src", "tests", "devtools"]
 mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 explicit_package_bases = true
 
+[tool.pyright]
+typeCheckingMode = "standard"
+include = ["src", "tests", "devtools"]
+extraPaths = ["src"]
+
 [tool.ruff.lint]
 extend-select = ["RUF100"]

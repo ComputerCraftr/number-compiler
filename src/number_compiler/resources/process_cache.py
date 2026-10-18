@@ -553,7 +553,12 @@ class ProcessCache:
             if record is None:
                 self._misses += 1
                 return default
-            if expected_issuer is not None and record[4] is not expected_issuer:
+            # An ordinary reader owns only unissued records. Issued payloads
+            # belong to the producer capability that published them, even if
+            # another caller accidentally reuses the same namespace/version/
+            # source tuple. Without this check a cross-family reader using
+            # ``get`` could bypass the isolation enforced by ``get_issued``.
+            if record[4] is not expected_issuer:
                 raise CacheRecordIssuerMismatch(
                     "process-cache record has another publisher capability"
                 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import fields
-from typing import Never, cast
+from typing import Never, Protocol, cast
 
 import pytest
 
@@ -45,6 +45,12 @@ from number_compiler.sequences.reverse_add.higher_interface import (
     ReverseHigherInterfaceCompiler,
 )
 from tests.support.assertions import assert_rejected_atomically
+
+
+class _HasBehavior(Protocol):
+    behavior: object
+
+
 from tests.support.reverse_higher_interface import _direct_step
 from tests.support.reverse_higher_runtime import (
     _fixture,
@@ -240,7 +246,7 @@ def test_reverse_higher_interface_records_have_no_future_or_proof_payloads() -> 
         if type(value) is tuple:
             pending.extend(value)
         elif hasattr(value, "behavior"):
-            pending.append(value.behavior)
+            pending.append(cast(_HasBehavior, value).behavior)
 
 
 def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:

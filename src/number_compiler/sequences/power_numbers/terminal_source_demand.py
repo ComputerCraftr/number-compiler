@@ -24,8 +24,17 @@ if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.three_dyadic_radial_counter_tape import (
         DyadicCertifiedTape,
     )
+    from number_compiler.sequences.power_numbers.three_power_outer_inner_cyclotomic import (
+        FermatOuterInnerPhaseConstraint,
+    )
     from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
         SourceWeightedTriplingAction,
+    )
+    from number_compiler.sequences.power_numbers.three_power_signed_phase import (
+        SourceRestrictedPhaseRelation,
+    )
+    from number_compiler.sequences.power_numbers.three_power_two_sided_cylinder import (
+        FermatTwoSidedSourceCylinder,
     )
 
 from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
@@ -305,6 +314,71 @@ class SourceTerminalDemand:
                 phase_decimal_places=phase_decimal_places,
             )
             for level in self.last_four_source_levels
+        )
+
+    def observe_fermat_two_sided_cylinders(
+        self,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        max_level: int = MAX_EXPLICIT_OBSERVED_LEVEL,
+    ) -> tuple[FermatTwoSidedSourceCylinder, ...]:
+        """Join all five issued Fermat borders with their common CRT source.
+
+        Finite fibers may force exact signed folds. Large fibers stay open;
+        this does NOT change ``source_to_global_fold_proven``.
+        """
+        return tuple(
+            action.demand_two_sided_source_cylinder()
+            for action in self.observe_fermat_signed_border_actions(
+                phase_binary_places=phase_binary_places,
+                phase_decimal_places=phase_decimal_places,
+                max_level=max_level,
+            )
+        )
+
+    def observe_fermat_source_restricted_phase(
+        self,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        max_level: int = MAX_EXPLICIT_OBSERVED_LEVEL,
+        inward_boundaries: int = 8,
+    ) -> tuple[SourceRestrictedPhaseRelation, ...]:
+        """Five joint source-restricted signed phase relations, no squares."""
+        return tuple(
+            action.demand_source_restricted_phase_relation(
+                inward_boundaries=inward_boundaries
+            )
+            for action in self.observe_fermat_signed_border_actions(
+                phase_binary_places=phase_binary_places,
+                phase_decimal_places=phase_decimal_places,
+                max_level=max_level,
+            )
+        )
+
+    def observe_fermat_outer_inner_cyclotomic(
+        self,
+        *,
+        phase_binary_places: int = 64,
+        phase_decimal_places: int = 6,
+        max_level: int = MAX_EXPLICIT_OBSERVED_LEVEL,
+        inward_boundaries: int = 8,
+    ) -> tuple[FermatOuterInnerPhaseConstraint, ...]:
+        """Expose the SAME issued source-cylinders' mod99/100 × 2w constraints.
+
+        A global cyclotomic residue restricts the unknown middle, but does
+        not authorize the global Fermat prime bit or a repeating inner word.
+        Every packet retains its precise dyadic/physical clock owner.
+        """
+        return tuple(
+            joint.outer_inner
+            for joint in self.observe_fermat_source_restricted_phase(
+                phase_binary_places=phase_binary_places,
+                phase_decimal_places=phase_decimal_places,
+                max_level=max_level,
+                inward_boundaries=inward_boundaries,
+            )
         )
 
     def observe_fermat_sources(

@@ -281,7 +281,7 @@ def test_bound_difference_reconstructs_sibling_high_and_composes_warm(
     monkeypatch.setattr(borrow, "_powered_return_summary", forbidden)
     monkeypatch.setattr(
         carry_generator,
-        "phase_prefix_displacement",
+        "_fixed_sector_displacement",
         forbidden,
     )
     joined = first.then(second)

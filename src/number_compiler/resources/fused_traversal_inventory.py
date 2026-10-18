@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypeGuard
 
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
@@ -16,9 +15,9 @@ def _valid_frame(
     adapter: PrimitiveTileKernelAdapter,
     frame: object,
     port_count: int,
-) -> TypeGuard[tuple[TileID, tuple[int, ...], bool]]:
+) -> tuple[TileID, tuple[int, ...], bool] | None:
     if type(frame) is not tuple or len(frame) != 3:
-        return False
+        return None
     tile, ports, ready = frame
     if (
         type(tile) is not TileID
@@ -27,9 +26,9 @@ def _valid_frame(
         or any(type(port) is not int for port in ports)
         or type(ready) is not bool
     ):
-        return False
+        return None
     adapter.tiles.resolve(tile)
-    return True
+    return tile, ports, ready
 
 
 def audit_fused_traversal_workspace(
@@ -106,9 +105,9 @@ def audit_fused_traversal_workspace(
             )
             port_count = 0
         for frame in workspace.frames:
-            if _valid_frame(adapter, frame, port_count):
-                assert isinstance(frame, tuple)
-                approved.update((id(frame), id(frame[1])))
+            validated = _valid_frame(adapter, frame, port_count)
+            if validated is not None:
+                approved.update((id(frame), id(validated[1])))
             else:
                 invalid.add((workspace.frame_owner, id(frame)))
         for value in workspace.values:

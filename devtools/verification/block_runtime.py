@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from devtools.verification.block_partition import (
@@ -189,17 +188,29 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         raise NotImplementedError
 
     budget: BlockContextBudget
-    boundary_universe: Callable[[BoundarySide], tuple[BoundaryState, ...] | None]
-    _intern_functional_state: Callable[
-        [BoundarySide, BoundaryState, tuple[BoundaryState, ...]],
-        _FunctionalBoundaryState,
-    ]
-    _canonical_partition_state: Callable[
-        [BoundarySide, _PartitionBoundaryState], _PartitionBoundaryState
-    ]
-    _advance_partition: Callable[
-        [BoundarySide, _PartitionBoundaryState, int], _PartitionBoundaryState
-    ]
+
+    def boundary_universe(
+        self, side: BoundarySide, *, max_states: int | None = None
+    ) -> tuple[BoundaryState, ...] | None:
+        raise NotImplementedError
+
+    def _intern_functional_state(
+        self,
+        side: BoundarySide,
+        anchor: BoundaryState,
+        image: tuple[BoundaryState, ...],
+    ) -> _FunctionalBoundaryState:
+        raise NotImplementedError
+
+    def _canonical_partition_state(
+        self, side: BoundarySide, state: _PartitionBoundaryState
+    ) -> _PartitionBoundaryState:
+        raise NotImplementedError
+
+    def _advance_partition(
+        self, side: BoundarySide, state: _PartitionBoundaryState, symbol: int
+    ) -> _PartitionBoundaryState:
+        raise NotImplementedError
 
     def advance_uniform(
         self,

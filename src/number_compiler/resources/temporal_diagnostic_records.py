@@ -71,6 +71,10 @@ class TemporalDemand:
 class TemporalObservations:
     """Family observation and forbidden replay work, in original units."""
 
+    collatz_two_sided_cylinder_constructions: int | None = None
+    collatz_two_sided_cylinder_operand_bits: int | None = None
+    collatz_radix6_coverage_evaluations: int | None = None
+    collatz_radix6_coverage_operand_bits: int | None = None
     arithmetic_returns: int | None = None
     arithmetic_result_validation_blocks: int | None = None
     arithmetic_result_validation_reconstructions: int | None = None
@@ -79,6 +83,8 @@ class TemporalObservations:
     mahler_associated_action_demands: int | None = None
     mahler_root_shell_projections: int | None = None
     mahler_root_shell_operand_bits: int | None = None
+    mahler_center_matrix_demands: int | None = None
+    mahler_center_matrix_physical_steps: int | None = None
     physical_roof_evaluations: int | None = None
     query_observer_reuses: int | None = None
     higher_concrete_operation_evaluations: int | None = None
@@ -104,6 +110,8 @@ class TemporalObservations:
     double_reverse_birth_layer_source_port_reads: int | None = None
     double_reverse_birth_layer_strip_steps: int | None = None
     double_reverse_birth_layer_model_states: int | None = None
+    double_reverse_birth_layer_induction_rows: int | None = None
+    double_reverse_birth_layer_period_comparisons: int | None = None
     double_reverse_birth_layer_publications: int | None = None
     double_reverse_birth_layer_refusals: int | None = None
     double_reverse_open_ring_source_ports: int | None = None
@@ -190,6 +198,9 @@ class TemporalFamilyWork:
         default=None, kw_only=True
     )
     mixed_clock_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
+    conditional_scheduler_work: tuple[tuple[str, int], ...] | None = field(
         default=None, kw_only=True
     )
 

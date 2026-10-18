@@ -718,8 +718,8 @@ class SourceBoundSchedulerCore:
         )
         if not reserved:
             self.ledger.reserve(self._node_owner, entries=1, nodes=1)
+        local_id = len(self._nodes)
         try:
-            local_id = len(self._nodes)
             self._nodes.append(record)
             self._publication_seals.append_image(snapshot)
         except BaseException:

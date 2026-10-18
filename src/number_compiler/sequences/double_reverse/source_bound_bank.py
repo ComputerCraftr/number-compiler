@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
@@ -57,6 +58,13 @@ from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     decimal_residues_from_slp,
     source_residue_quotient,
 )
+
+if TYPE_CHECKING:
+    from .temporal_center_cyclotomic import (
+        CertifiedCyclotomicCenter,
+        CertifiedCyclotomicCenterDriver,
+    )
+    from .temporal_seed_morphism import CertifiedSeedOrbitMorphism
 
 
 @dataclass(frozen=True, slots=True)
@@ -626,6 +634,8 @@ class DoubleReverseBankMixin:
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_SOURCE_PORT_READS,
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_STRIP_STEPS,
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_MODEL_STATES,
+            _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS,
+            _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS,
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_PUBLICATIONS,
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_REFUSALS,
         ):
@@ -685,6 +695,103 @@ class DoubleReverseBankMixin:
             )
         except ValueError as exc:
             raise UncertifiedPointedStencilError(str(exc)) from exc
+
+    def temporal_cyclotomic_center_driver(self) -> CertifiedCyclotomicCenterDriver:
+        """Source-certify the last four physical center steps and mod-99 clock.
+
+        On-demand pointed cones only: no complete endpoint and no guessed
+        future driver motif.  Misaligned source width clocks refuse.
+        """
+        from .temporal_center_cyclotomic import certified_cyclotomic_center_driver
+
+        self._check_open()
+        if self.generation < 4:
+            raise UncertifiedPointedStencilError(
+                "center monodromy needs four certified physical steps"
+            )
+        _entry, source = self._prepare_bank_source(
+            max_prefix=min(32, self.generation - 4)
+        )
+        return certified_cyclotomic_center_driver(source)
+
+    def temporal_cyclotomic_center_join(
+        self,
+        witnesses: tuple[CertifiedSpatialBankMorphism | ExactPointedBankWindow, ...],
+    ) -> CertifiedCyclotomicCenter:
+        """Join exact source residues to a *fully covered* spatial exterior.
+
+        Witnesses must have been published by this same source owner/time.
+        Repeated spatial motifs are folded algebraically; missing coverage
+        refuses instead of demanding every interior output digit.
+        """
+        from .temporal_center_cyclotomic import certified_cyclotomic_center
+
+        self._check_open()
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError(
+                "center join requires a certified two-step source suffix"
+            )
+        _entry, source = self._prepare_bank_source(
+            max_prefix=min(32, self.generation - 2)
+        )
+        return certified_cyclotomic_center(source, witnesses)
+
+    def temporal_seed_orbit_morphism(
+        self, steps: int, *, start_f_steps: int = 0
+    ) -> CertifiedSeedOrbitMorphism:
+        """Power the whole digit word and join exact outer and center ports.
+
+        The action remains tied to this source occurrence. It never reuses an
+        observed center driver as a future input word.
+        """
+        from .temporal_seed_morphism import certified_seed_orbit_morphism
+
+        self._check_open()
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError(
+                "seed temporal morphism needs an authenticated T² suffix"
+            )
+        _entry, source = self._prepare_bank_source(
+            max_prefix=min(32, self.generation - 2)
+        )
+        return certified_seed_orbit_morphism(
+            source, steps=steps, start_f_steps=start_f_steps
+        )
+
+    def temporal_seed_orbit_morphism_square(
+        self, earlier: CertifiedSeedOrbitMorphism
+    ) -> CertifiedSeedOrbitMorphism:
+        """Square from the actual intermediate SLP source root."""
+        from .temporal_seed_morphism import square_seed_orbit_morphism
+
+        self._check_open()
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError("no certified temporal square")
+        _entry, source = self._prepare_bank_source(
+            max_prefix=min(32, self.generation - 2)
+        )
+        return square_seed_orbit_morphism(source, earlier)
+
+    def temporal_seed_orbit_morphism_power_of_two(
+        self, exponent: int
+    ) -> CertifiedSeedOrbitMorphism:
+        """Build a source-bound action for ``2**exponent`` T² steps."""
+        from .temporal_seed_morphism import (
+            certified_seed_orbit_morphism,
+            square_seed_orbit_morphism,
+        )
+
+        self._check_open()
+        exponent = require_integer(exponent, "temporal power exponent", 0)
+        if self.generation < 2:
+            raise UncertifiedPointedStencilError("no certified temporal power")
+        _entry, source = self._prepare_bank_source(
+            max_prefix=min(32, self.generation - 2)
+        )
+        result = certified_seed_orbit_morphism(source, steps=1)
+        for _ in range(exponent):
+            result = square_seed_orbit_morphism(source, result)
+        return result
 
     def temporal_residue_quotient(
         self,

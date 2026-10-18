@@ -7,6 +7,34 @@ import pytest
 from number_compiler.arithmetic.fields import radix
 
 
+@pytest.mark.parametrize("base", (2, 3, 6, 10, 257))
+def test_exact_radix_width_at_power_boundaries(base: int) -> None:
+    assert radix.radix_width(1, base) == 1
+    for exponent in (1, 2, 17, 129):
+        power = base**exponent
+        assert radix.radix_width(power - 1, base) == exponent
+        assert radix.radix_width(power, base) == exponent + 1
+        assert radix.radix_width(power + 1, base) == exponent + 1
+
+
+def test_radix_width_charges_work_before_power_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    charged: list[int] = []
+    assert radix.radix_width(6**100, 6, charge_bits=charged.append) == 101
+    assert charged and all(bits > 0 for bits in charged)
+
+    def refuse(_: int) -> None:
+        raise ValueError("width work exhausted")
+
+    def no_power(*_: object) -> int:
+        raise AssertionError("power ran after a refused work charge")
+
+    monkeypatch.setattr(radix, "pow", no_power, raising=False)
+    with pytest.raises(ValueError, match="width work exhausted"):
+        radix.radix_width(1000, 6, charge_bits=refuse)
+
+
 @pytest.mark.parametrize("base", (2, 3, 4, 7, 10, 16, 32, 36, 257))
 @pytest.mark.parametrize("width", (0, 1, 31, 32, 33, 63, 64, 65, 129, 1025))
 def test_balanced_conversion_matches_positional_reference(
@@ -51,6 +79,18 @@ def test_width_and_invalid_digits_preserve_contract() -> None:
         radix.digits_lsd(10, 10, 1)
     with pytest.raises(ValueError):
         radix.value_from_lsd_digits([0] * 64 + [10], 10)
+
+
+def test_digit_threshold_masks_partition_the_radix_alphabet() -> None:
+    low = radix.digit_threshold_mask(base=10, threshold=5, bit=0)
+    high = radix.digit_threshold_mask(base=10, threshold=5, bit=1)
+    assert tuple(d for d in range(10) if low & (1 << d)) == (0, 1, 2, 3, 4)
+    assert tuple(d for d in range(10) if high & (1 << d)) == (5, 6, 7, 8, 9)
+    assert low & high == 0
+    assert low | high == (1 << 10) - 1
+    for arguments in ((10, 5, True), (10, 0, 0), (10, 10, 1), (1, 1, 0)):
+        with pytest.raises(ValueError):
+            radix.digit_threshold_mask(*arguments)
 
 
 @pytest.mark.parametrize("value", (0, 1, 123))

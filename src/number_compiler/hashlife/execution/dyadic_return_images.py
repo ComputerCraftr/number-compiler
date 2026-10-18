@@ -230,7 +230,7 @@ class DyadicReturnImageWorkspace(
             ).value
             if type(projected) is not DyadicReturnImageID:
                 raise TypeError("dyadic return projection changed its payload sort")
-            self.root_payload = projected
+            self.root_payload: DyadicReturnImageID = projected
         except BaseException:
             self._rollback_construction()
             self._bump("image_rollbacks")

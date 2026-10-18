@@ -192,6 +192,8 @@ def validate_fusion_contexts(
     action_admission: object | None = None,
 ) -> int:
     """Validate each temporal side in its own input or output alphabet."""
+    from number_compiler.resources.causal_workspace import admitted_action_metadata
+
     if type(fusion) is not FusedBoundaryContract:
         raise TypeError("execution fusion requires an exact boundary contract")
     fusion.__post_init__()
@@ -213,10 +215,6 @@ def validate_fusion_contexts(
         children_hook = getattr(arena.action_authority, "action_children", None)
         children = None
     else:
-        from number_compiler.resources.causal_workspace import (
-            admitted_action_metadata,
-        )
-
         _signature, _kernel, record = admitted_action_metadata(
             action_admission, arena.action_authority, action
         )

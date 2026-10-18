@@ -562,6 +562,9 @@ def audit_reverse_field_action_root(
                 and type(record) is tuple
                 and root._semantic_identity_issued.get(identity_source) is record
             )
+            radial_identity: SemanticIdentity | None = None
+            digest: str | None = None
+            behavior: tuple[object, ...] | None = None
             try:
                 if not valid:
                     raise TypeError("invalid reverse semantic identity cache entry")
@@ -595,7 +598,12 @@ def audit_reverse_field_action_root(
                 )
             except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                 valid = False
-            if valid:
+            if (
+                valid
+                and type(radial_identity) is SemanticIdentity
+                and type(digest) is str
+                and type(behavior) is tuple
+            ):
                 approved.update(
                     (
                         id(identity_source),

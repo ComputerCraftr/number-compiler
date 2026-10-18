@@ -6,7 +6,6 @@ IDs are diagnostics only; they are never a lifetime boundary for HashLife reuse.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
 
 from devtools.verification.block_recursive import (
@@ -111,9 +110,12 @@ class SpacetimeRuntimeMixin:
     _provider_task_cache: dict[tuple[object, ...], BoundaryState]
     _provider_task_hits: int
     _provider_task_misses: int
-    _canonical_child_state: Callable[
-        [object, BoundarySide, BoundaryState], BoundaryState
-    ]
+
+    @staticmethod
+    def _canonical_child_state(
+        effect: object, side: BoundarySide, state: BoundaryState
+    ) -> BoundaryState:
+        raise NotImplementedError
 
     def _memo_store(
         self,

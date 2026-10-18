@@ -290,12 +290,6 @@ class CanonicalSequenceCompiler:
             raise TypeError(type(out))
         return out
 
-    @staticmethod
-    def _special_constraint_failure_bit(
-        state: SpecialGermConstraintState,
-    ) -> bool | None:
-        return state.constraint_failure_bit
-
     def _refine_special_constraint_state(
         self, family: str, parameter: int, constraint: SpecialGermConstraintState
     ) -> SpecialGermConstraintState:
@@ -309,9 +303,7 @@ class CanonicalSequenceCompiler:
             raise TypeError("special family must be a string")
         key = (family, require_integer(parameter, "special parameter", 0))
         refined = self._special_constraint_state(*key).then(constraint)
-        self._special_constraint_failure_bit(
-            refined
-        )  # reject contradictory evidence now
+        _ = refined.constraint_failure_bit  # Reject contradictory evidence now.
         self._special_constraint_cache[key] = refined
         return refined
 
@@ -532,23 +524,24 @@ class CanonicalSequenceCompiler:
 
         require_special_candidate_budget(family, parameter, max_candidate_bits)
         factor_witness_key = ("etale-factor-witness", family, parameter)
+        factor_cache_key = (
+            "etale-factor-output",
+            max_factor_products,
+            family,
+            parameter,
+            use_factor_projection,
+            factor_limit if use_factor_projection else 0,
+            use_terminal_certificate,
+        )
+        cached_factor = None
         if collect_etale_factor:
             # Factor output enriches the existing theorem result without replaying it.
             known_witness = self._theorem_cache.get(factor_witness_key)
             if known_witness is not None and known_witness.factor_witness is not None:
                 return known_witness
-            factor_cache_key = (
-                "etale-factor-output",
-                max_factor_products,
-                family,
-                parameter,
-                use_factor_projection,
-                factor_limit if use_factor_projection else 0,
-                use_terminal_certificate,
-            )
             cached_factor = self._theorem_cache.get(factor_cache_key)
         state = self._special_constraint_state(family, parameter)
-        pulled_bit = self._special_constraint_failure_bit(state)
+        pulled_bit = state.constraint_failure_bit
         if collect_etale_factor and cached_factor is not None:
             support = state.support_gcd
             modulus = state.support_modulus
@@ -687,7 +680,7 @@ class CanonicalSequenceCompiler:
                 raise TypeError(type(mask))
             return coordinate.restrict(mask.require_possible())
         state = self._special_constraint_state(family, parameter)
-        pulled_bit = self._special_constraint_failure_bit(state)
+        pulled_bit = state.constraint_failure_bit
         coordinate = (
             coordinate.resolve(pulled_bit)
             if pulled_bit is not None
@@ -837,6 +830,8 @@ class CanonicalSequenceCompiler:
     ) -> FermatCompilation:
         from number_compiler.api.sequence_terms import symbolic_sparse_term
 
+        jet_builder = None
+        sensitivity_builder = None
         if diagnostics:
             from number_compiler.arithmetic.fields.adic_morphism import (
                 fermat_shifted_square_sensitivity,
@@ -844,6 +839,9 @@ class CanonicalSequenceCompiler:
             from number_compiler.arithmetic.polynomials.primary_jet import (
                 primary_jet_from_runs,
             )
+
+            jet_builder = primary_jet_from_runs
+            sensitivity_builder = fermat_shifted_square_sensitivity
         # ``test_through`` is a legacy theorem policy, not source identity.
         # Normalize it away in the cached source compilation.
         source_spec = FermatSequenceSpec(
@@ -866,7 +864,7 @@ class CanonicalSequenceCompiler:
             # that extent into a CanonicalWord run.
             run_count = 1 if index == 0 else 3
             jet = None
-            if diagnostics and index <= 4096:
+            if jet_builder is not None and index <= 4096:
                 # Diagnostics are explicitly optional.  Keep legacy primary-jet
                 # observability for practical indices while the semantic source
                 # itself remains algebraic.
@@ -874,7 +872,7 @@ class CanonicalSequenceCompiler:
                 jet_runs = (
                     ((1, 2),) if index == 0 else ((1, 1), (0, exponent - 1), (1, 1))
                 )
-                jet = primary_jet_from_runs(jet_runs, degree=4, modulus=32)
+                jet = jet_builder(jet_runs, degree=4, modulus=32)
             radix_word = symbolic_sparse_term(
                 index,
                 2,
@@ -913,8 +911,8 @@ class CanonicalSequenceCompiler:
                     None,
                     reinterpretations,
                     (
-                        fermat_shifted_square_sensitivity(16).power(index)
-                        if diagnostics
+                        sensitivity_builder(16).power(index)
+                        if sensitivity_builder is not None
                         else None
                     ),
                     None,
@@ -929,10 +927,13 @@ class CanonicalSequenceCompiler:
     ) -> MersenneCompilation:
         from number_compiler.api.sequence_terms import symbolic_word_term
 
+        sensitivity_builder = None
         if diagnostics:
             from number_compiler.arithmetic.fields.adic_morphism import (
                 mersenne_successor_2adic_sensitivity,
             )
+
+            sensitivity_builder = mersenne_successor_2adic_sensitivity
         source_spec = MersenneSequenceSpec(
             spec.exponents,
             test_through=0,
@@ -968,10 +969,8 @@ class CanonicalSequenceCompiler:
                     None,
                     reinterpretations,
                     (
-                        mersenne_successor_2adic_sensitivity(16).power(
-                            max(0, exponent - 1)
-                        )
-                        if diagnostics
+                        sensitivity_builder(16).power(max(0, exponent - 1))
+                        if sensitivity_builder is not None
                         else None
                     ),
                     None,

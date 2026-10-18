@@ -23,11 +23,15 @@ struct
          thread ownership instead of locking: Simplifier simprocs re-enter. *)
       val store_owner_thread = Isabelle_Thread.self ()
       val store_generation = serial ()
+      val lift_binding_head =
+        @{const_name comma_semantic_b1_crt_lift_binding_certified}
       val catalog_terms = [columns, templates_table, template_ids, lift_ids,
         sources_table, occurrence_at, occurrence_descriptors, lift_refs_table,
         lift_descriptors, action_table]
       val lift_authority = [columns, templates_table, template_ids,
         lift_ids, lift_descriptors]
+      val lift_binding_authority = [columns, templates_table, lift_ids,
+        lift_descriptors]
       val _ = if List.all Comma_Selected_List_Conversion.closed catalog_terms
         then () else error "B1 certificate store requires one closed catalogue"
       (* Geometry identities are the published CIDs.  These tables live only
@@ -36,6 +40,10 @@ struct
          below remain keyed by their full closed requests. *)
       val templates = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val lifts = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
+      (* LiftProofIDs are pinned separately from the temporary exact-term LRU.
+         The theorem's full catalogue authority is checked on capture and each
+         lookup; the CID is only an index inside this closed store instance. *)
+      val lift_bindings = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val slots = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
       val slot_validity = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
       val bindings = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
@@ -45,6 +53,20 @@ struct
       val template_reused = Unsynchronized.ref 0
       val lift_captured = Unsynchronized.ref 0
       val lift_reused = Unsynchronized.ref 0
+      val lift_binding_captured = Unsynchronized.ref 0
+      val lift_binding_reused = Unsynchronized.ref 0
+      val lift_binding_recursive_evaluations = Unsynchronized.ref 0
+      val lift_binding_admission_ms = Unsynchronized.ref (0: LargeInt.int)
+      val lift_binding_specialization_ms = Unsynchronized.ref (0: LargeInt.int)
+      val lift_binding_resolution_ms = Unsynchronized.ref (0: LargeInt.int)
+      fun timed total action =
+        let
+          val started = Time.now ()
+          val result = Exn.capture action ()
+          val elapsed = Time.toMilliseconds (Time.- (Time.now (), started))
+          val _ = total := !total + elapsed
+        in Exn.release result end
+      val lift_geometry_from_binding = Unsynchronized.ref 0
       val slot_captured = Unsynchronized.ref 0
       val slot_reused = Unsynchronized.ref 0
       val slot_valid_captured = Unsynchronized.ref 0
@@ -80,9 +102,6 @@ struct
       val captured_oracle_elapsed = Unsynchronized.ref Time.zeroTime
       val scope_selection_captures = Unsynchronized.ref 0
       val scope_selection_reuses = Unsynchronized.ref 0
-      val template_context_lookups = Unsynchronized.ref 0
-      val template_context_requests_completed = Unsynchronized.ref 0
-      val pending_template_context = Unsynchronized.ref (Termtab.empty: unit Termtab.table)
 
       fun root_args name term =
         (case strip_comb term of
@@ -94,7 +113,8 @@ struct
       fun is_certificate_request request =
         exists (fn head => is_some (root_args head request))
           [template_head, lift_head, slot_head, slot_valid_head, binding_head,
-           action_row_head, slot_valid_actions_head, binding_actions_head]
+           action_row_head, slot_valid_actions_head, binding_actions_head,
+           lift_binding_head]
       val source_action_head = @{const_name comma_semantic_b1_source_slot_action}
       fun require_store_theory context =
         (require_store_thread ();
@@ -169,6 +189,13 @@ struct
               (Comma_Entry_Arithmetic.numeral_context context)
               (Thm.rhs_of equation))
         in (equation, normalized) end
+      (* Complete memoized RHS values with explicit rules before admission. *)
+      fun selected_catalogue_equation context rules request =
+        let
+          val equation = selected_equation context request
+          val completion = Simplifier.rewrite (context addsimps rules)
+            (Thm.rhs_of equation)
+        in Thm.transitive equation completion end
       fun selected_period_value context source =
         let
           val request = @{term comma_decisive_sector_period} $
@@ -306,6 +333,8 @@ struct
       fun remember context request theorem =
         let
           val template_authority = [columns, templates_table, template_ids]
+          val lift_binding_authority = [columns, templates_table, lift_ids,
+            lift_descriptors]
           val slot_authority = [columns, templates_table, template_ids,
             lift_ids, occurrence_descriptors, lift_descriptors]
           val slot_valid_authority = [sources_table, occurrence_at,
@@ -339,7 +368,17 @@ struct
                      insert_cid lifts lift_capacity lift_captured cid request theorem
                  | NONE => error "B1 lift geometry certificate has no canonical CID"))
             | NONE =>
-              (case root_args slot_head request of
+              (case root_args lift_binding_head request of
+                SOME args =>
+                  (checked_authority args lift_binding_authority
+                     "B1 lift binding used foreign catalogue terms";
+                   (case canonical_cid args 5 4 lift_capacity of
+                     SOME cid =>
+                       insert_cid lift_bindings lift_capacity
+                         lift_binding_captured cid request theorem
+                   | NONE => error
+                       "B1 lift binding certificate has no canonical LiftProofID"))
+              | NONE => (case root_args slot_head request of
                 SOME args =>
                   (checked_authority args slot_authority
                      "B1 slot certificate used foreign catalogue terms";
@@ -451,7 +490,7 @@ struct
                           else error "B1 action-piece binding changed action row"
                       in insert_exact bindings bindings_per_source_capacity
                         binding_captured request theorem end
-                  | NONE => ()))))))))
+                  | NONE => ())))))))))
         end
       fun reset_current_source index =
         (require_store_thread ();
@@ -469,7 +508,7 @@ struct
          active_source_equation := NONE;
          active_parent_equation := NONE;
          Array.modify (fn _ => 0) current_source_metrics;
-         pending_template_context := Termtab.empty)
+         ())
       fun remember_equation context request theorem =
         let
           val _ = require_store_theory context
@@ -564,22 +603,29 @@ struct
              lift_descriptors] request of
           SOME theorem => (lift_reused := !lift_reused + 1; SOME theorem)
         | NONE => NONE)
-      fun selected_table_extent context table =
-        let
-          val extent_request = Const (@{const_name size},
-            fastype_of table --> @{typ nat}) $ table
-          val (extent_equation, normalized_extent) =
-            selected_numeral_equation context extent_request
-          val raw_rhs = Thm.term_of (Thm.rhs_of extent_equation)
-          val normalized_rhs = Thm.term_of (Thm.rhs_of normalized_extent)
-        in
-          (case actual_numeral normalized_rhs of
-            SOME extent => extent
-          | NONE => error ("B1 exact lift catalogue has a non-numeral table extent; " ^
-              "request=" ^ Syntax.string_of_term context extent_request ^
-              "; raw_rhs=" ^ Syntax.string_of_term context raw_rhs ^
-              "; normalized_rhs=" ^ Syntax.string_of_term context normalized_rhs))
-        end
+      fun lookup_lift_binding request args =
+        if not (exact_prefix args lift_binding_authority) then NONE
+        else (case canonical_cid args 5 4 lift_capacity of
+          SOME cid =>
+            (case Inttab.lookup (!lift_bindings) cid of
+              SOME theorem =>
+                if Thm.term_of (Thm.lhs_of theorem) aconv request then
+                  (lift_binding_reused := !lift_binding_reused + 1; SOME theorem)
+                else error "B1 LiftProofID resolved to a different binding request"
+            | NONE => NONE)
+        | NONE => NONE)
+      val lift_binding_rewrite =
+        Comma_Semantic_B1_Used_Templates.make_lift_binding_rewrite
+          ctxt lift_capacity lift_ids lift_descriptors templates_table template_ids
+          actual_numeral selected_equation selected_numeral_equation
+          selected_catalogue_equation
+      val lift_descriptor_admission_failure =
+        #admission_failure lift_binding_rewrite
+      val lift_binding_rewrite_context = #rewrite_context lift_binding_rewrite
+      val lift_binding_specialization_context =
+        #specialization_context lift_binding_rewrite
+      val lift_binding_map_congruence_uses = #congruence_uses lift_binding_rewrite
+      val lift_binding_stage_timings = #stage_timings lift_binding_rewrite
       fun exact_admitted_lift_request context request =
         (case root_args lift_head request of
           SOME args =>
@@ -587,48 +633,144 @@ struct
             else (case canonical_cid args 6 5 lift_capacity of
               NONE => false
             | SOME lift_cid =>
-                let
-                  val lift_id_extent = selected_table_extent context lift_ids
-                  val lift_descriptor_extent = selected_table_extent context lift_descriptors
-                in
-                  if lift_cid >= lift_id_extent orelse
-                      lift_cid >= lift_descriptor_extent then false
-                  else
-                    let
-                      val descriptorT = @{typ comma_semantic_b1_crt_lift_descriptor}
-                      val descriptor_request = Const (@{const_name nth},
-                        HOLogic.listT descriptorT --> @{typ nat} --> descriptorT) $
-                          lift_descriptors $ HOLogic.mk_number @{typ nat} lift_cid
-                      val descriptor_equation = selected_equation context descriptor_request
-                      val descriptor = Thm.term_of (Thm.rhs_of descriptor_equation)
-                      val descriptor_valid_request =
-                        Const (@{const_name comma_semantic_b1_crt_lift_descriptor_valid},
-                          fastype_of templates_table --> descriptorT --> @{typ bool}) $
-                          templates_table $ descriptor
-                      val descriptor_valid_equation =
-                        selected_equation context descriptor_valid_request
-                      val descriptor_valid = Thm.term_of
-                        (Thm.rhs_of descriptor_valid_equation) aconv @{term True}
-                    in
-                      if not descriptor_valid then false
-                      else
-                        let
-                          val template_cid_request = Const
-                            (@{const_name comma_semantic_b1_crt_lift_descriptor_template_cid},
-                             descriptorT --> @{typ nat}) $ descriptor
-                          val template_cid_equation =
-                            selected_equation context template_cid_request
-                        in
-                          (case actual_numeral
-                              (Thm.term_of (Thm.rhs_of template_cid_equation)) of
-                            SOME template_cid =>
-                              template_cid < selected_table_extent context templates_table
-                              andalso template_cid < selected_table_extent context template_ids
-                          | NONE => false)
-                        end
-                    end
-                end)
+                is_none (lift_descriptor_admission_failure context lift_cid))
         | NONE => false)
+      fun lift_binding_admission_failure context request =
+        (case root_args lift_binding_head request of
+          NONE => SOME "wrong request head"
+        | SOME args =>
+            if length args <> 5 then SOME "wrong request arity"
+            else if not (exact_prefix args lift_binding_authority) then
+              SOME "foreign LiftProofID catalogue"
+            else if not (Comma_Selected_List_Conversion.closed request) then
+              SOME "open request"
+            else
+              (case actual_numeral (nth args 4) of
+                NONE => SOME "CID is not a canonical natural numeral"
+              | SOME lift_cid => lift_descriptor_admission_failure context lift_cid))
+      fun validate_true_equation request theorem message =
+        let
+          val checked = Comma_Selected_List_Conversion.validate_equation request theorem
+          val rhs = Thm.term_of (Thm.rhs_of checked)
+          val cid = (case root_args lift_binding_head request of
+            SOME args => (case actual_numeral (List.last args) of
+              SOME value => " cid=" ^ Int.toString value | NONE => " cid=?")
+          | NONE => "")
+        in
+          if rhs aconv @{term True} andalso
+              Comma_Semantic_B1_Construction_Check.standalone checked then checked
+          else error (message ^ cid ^ " residual=" ^
+            Comma_Semantic_B1_Construction_Check.residual_conjunct_summary rhs)
+        end
+      fun bool_true_equation request proposition_fact =
+        validate_true_equation request
+          (Comma_Semantic_B1_CRT_Operation_Conversion.bool_true_equation
+            ctxt request proposition_fact)
+          "B1 cached certificate failed exact boolean transport"
+      fun true_fact_of_bool_equation context equation =
+        let
+          val proposition_equation = Thm.combination
+            (Thm.reflexive (Thm.cterm_of context @{term Trueprop})) equation
+        in Thm.equal_elim (Thm.symmetric proposition_equation) @{thm TrueI} end
+      fun rewrite_lift_binding ctxt context request cterm =
+        (require_store_theory ctxt;
+         require_store_theory context;
+         case root_args lift_binding_head request of
+           SOME args =>
+             (case lookup_lift_binding request args of
+               SOME theorem => theorem
+             | NONE =>
+                 let
+                   val next_cold = !lift_binding_recursive_evaluations + 1
+                   val _ = if Comma_Proof_Profile.enabled () andalso
+                       (next_cold = 1 orelse next_cold mod 32 = 0) then
+                     Comma_Proof_Profile.report
+                       ("B1 cold-lift admission-start ordinal=" ^
+                        Int.toString next_cold ^ " cid=" ^
+                        (case actual_numeral (nth args 4) of
+                          SOME value => Int.toString value | NONE => "noncanonical"))
+                     else ()
+                   val admitted = timed lift_binding_admission_ms
+                     (fn () => lift_binding_admission_failure context request)
+                 in (case admitted of
+                   SOME reason => error ("B1 LiftProofID request refused: " ^ reason)
+                 | NONE =>
+                   let
+                     (* This is the only cold shifted-operation evaluation for
+                        this canonical LiftProofID.  The exact closed result is
+                        pinned before returning to the occurrence consumer.
+                        Unfold this outer root explicitly before simplification:
+                        the production context contains the occurrence memo
+                        simproc for this same head, and simplifying the intact
+                        root would recursively re-enter its active request. *)
+                     val _ = lift_binding_recursive_evaluations :=
+                       !lift_binding_recursive_evaluations + 1
+                     val unfolded = Conv.rewr_conv
+                       (@{thm comma_semantic_b1_crt_lift_binding_certified_def}
+                         RS @{thm eq_reflection}) cterm
+                     val lift_cid = (case actual_numeral (nth args 4) of
+                       SOME value => value
+                     | NONE => error "B1 LiftProofID lost its canonical CID")
+                     (* First consume the exact descriptor and option result
+                        in a sterile context. The production operation
+                        simproc is fixed to the global owner context, so a
+                        local option simp fact alone cannot prevent it from
+                        rediscovering this option while the binding is
+                        rewritten. The staged option theorem removes that
+                        root before the active context sees the binding. *)
+                     val specialized_binding = timed lift_binding_specialization_ms
+                       (fn () =>
+                         Simplifier.rewrite
+                           (lift_binding_specialization_context context lift_cid)
+                           (Thm.rhs_of unfolded))
+                     val specialized_rhs =
+                       Thm.term_of (Thm.rhs_of specialized_binding)
+                     val unresolved_lift_option = Term.exists_subterm
+                       (fn Const (name, _) =>
+                           name = @{const_name comma_semantic_b1_crt_lift_columns_option}
+                         | _ => false) specialized_rhs
+                     val _ = if unresolved_lift_option then
+                       error "B1 sterile LiftProofID pass left an unresolved option"
+                       else ()
+                     val theorem = timed lift_binding_resolution_ms (fn () =>
+                       let
+                         val active_context =
+                           lift_binding_rewrite_context context lift_cid
+                       in validate_true_equation request
+                         (Thm.transitive unfolded
+                           (Thm.transitive specialized_binding
+                             (Simplifier.rewrite active_context
+                               (Thm.rhs_of specialized_binding))))
+                         "B1 cold LiftProofID did not certify its exact binding"
+                       end)
+                     val _ = remember_equation context request theorem
+                     val _ = if Comma_Proof_Profile.enabled () andalso
+                         (next_cold = 1 orelse next_cold mod 32 = 0) then
+                       Comma_Proof_Profile.report
+                         ("B1 cold-lift checkpoint count=" ^ Int.toString next_cold ^
+                          " cid=" ^ Int.toString lift_cid ^
+                          " admission_ms=" ^ LargeInt.toString
+                            (!lift_binding_admission_ms) ^
+                          " specialization_ms=" ^ LargeInt.toString
+                            (!lift_binding_specialization_ms) ^
+                          " resolution_ms=" ^ LargeInt.toString
+                            (!lift_binding_resolution_ms))
+                       else ()
+                   in theorem end)
+                 end)
+         | NONE => error "B1 lift-binding converter received another request")
+      fun make_lift_geometry_from_binding ctxt request binding_equation template_equation =
+        let
+          val binding_fact = true_fact_of_bool_equation ctxt binding_equation
+          val template_fact = true_fact_of_bool_equation ctxt template_equation
+          val proposition = HOLogic.mk_Trueprop request
+          val geometry_fact = Goal.prove ctxt [] [] proposition
+            (fn {context, ...} =>
+              resolve_tac context
+                [@{thm comma_semantic_b1_crt_lift_geometry_from_binding_and_template_geometry}] 1
+              THEN resolve_tac context [binding_fact] 1
+              THEN resolve_tac context [template_fact] 1)
+        in bool_true_equation request geometry_fact end
       fun lookup_equation request =
         (require_store_thread ();
          lookup_first
@@ -637,6 +779,8 @@ struct
            fn () => lookup_source_action request,
            fn () => lookup_root request template_head (lookup_template request),
            fn () => lookup_root request lift_head (lookup_lift request),
+           fn () => lookup_root request lift_binding_head
+             (lookup_lift_binding request),
            fn () => lookup_root request slot_head
              (fn _ => lookup_with_use slots request slot_reused),
            fn () => lookup_root request slot_valid_head
@@ -656,55 +800,104 @@ struct
               val descriptor_listT = HOLogic.listT descriptorT
               val selected_descriptor = Const (@{const_name nth},
                 descriptor_listT --> natT --> descriptorT) $ descriptors $ lift_cid
-              val descriptor_eq = Simplifier.rewrite context
-                (Thm.cterm_of ctxt selected_descriptor)
+              val descriptor_eq = selected_equation context selected_descriptor
               val descriptor_value = Thm.term_of (Thm.rhs_of descriptor_eq)
               (* Record selectors are polymorphic in the record extension.  Fix
                  that parameter to the concrete descriptor type before applying
                  the selector to the nth descriptor. *)
-              val selected_template = Const
+              val template_selector = Const
                 (@{const_name comma_semantic_b1_crt_lift_descriptor_template_cid},
-                  descriptorT --> natT) $ descriptor_value
-              val template_id_eq = Simplifier.rewrite context
-                (Thm.cterm_of ctxt selected_template)
+                  descriptorT --> natT)
+              val selected_template = template_selector $ descriptor_value
+              val template_id_eq = selected_equation context selected_template
               val template_cid = Thm.term_of (Thm.rhs_of template_id_eq)
+              val selected_template_from_catalogue =
+                template_selector $ selected_descriptor
+              val selected_template_equation = Thm.transitive
+                (Thm.combination
+                  (Thm.reflexive (Thm.cterm_of context template_selector)) descriptor_eq)
+                template_id_eq
               val template_request = list_comb
                 (Const (template_head,
                   Sign.the_const_type (Proof_Context.theory_of ctxt) template_head),
                  [lift_columns, lift_templates, lift_template_ids, template_cid])
-            in lookup_cid templates
-              [lift_columns, lift_templates, lift_template_ids, template_cid]
-              4 3 template_capacity [columns, templates_table, template_ids]
-              template_request end
+              val symbolic_template_prefix = list_comb
+                (Const (template_head,
+                  Sign.the_const_type (Proof_Context.theory_of ctxt) template_head),
+                 [lift_columns, lift_templates, lift_template_ids])
+              val symbolic_template_request = symbolic_template_prefix $
+                selected_template_from_catalogue
+              val template_index =
+                (case actual_numeral template_cid of
+                  SOME value => value
+                | NONE => error "B1 LiftProofID has a noncanonical template CID")
+              val _ = if template_index < template_capacity then ()
+                else error "B1 LiftProofID refers outside the template CID extent"
+              val template_args =
+                [lift_columns, lift_templates, lift_template_ids, template_cid]
+              val cached = lookup_template template_request template_args
+            in
+              (case cached of
+                SOME theorem =>
+                  let
+                    val transported_request = Thm.combination
+                      (Thm.reflexive (Thm.cterm_of context symbolic_template_prefix))
+                      selected_template_equation
+                    val transported = Thm.transitive transported_request theorem
+                  in SOME (Comma_Selected_List_Conversion.validate_equation
+                    symbolic_template_request transported) end
+              | NONE => error
+                  "B1 admitted lift geometry is missing its captured TemplateCID certificate")
+            end
         | _ => NONE)
       fun rewrite_lift_geometry ctxt context request cterm =
         (require_store_theory ctxt;
          require_store_theory context;
-         (case exact_template_equation_for_lift ctxt context request of
-          SOME theorem =>
-            let
-              val _ = template_context_lookups := !template_context_lookups + 1
-              val _ = pending_template_context := Termtab.update (request, ())
-                (!pending_template_context)
-            in Simplifier.rewrite (context addsimps [theorem]) cterm end
-        | NONE =>
-            if exact_admitted_lift_request context request then
-              error "B1 admitted lift geometry is missing its captured TemplateCID certificate"
-            else Simplifier.rewrite context cterm))
-      (* Counts successful conversions supplied with a cached template theorem.
-         This does not establish that simplification used that theorem. *)
-      fun note_context_request_completed request =
-        (require_store_thread ();
-         if Termtab.defined (!pending_template_context) request then
-           (pending_template_context := Termtab.delete request (!pending_template_context);
-            template_context_requests_completed := !template_context_requests_completed + 1)
-         else ())
+         (case root_args lift_head request of
+           NONE => error "B1 lift-geometry converter received another request"
+         | SOME args =>
+             (case lookup_lift request args of
+               SOME theorem => theorem
+             | NONE =>
+                 if not (exact_admitted_lift_request context request) then
+                   error "B1 lift geometry has foreign authority or an invalid descriptor"
+                 else
+                   (case exact_template_equation_for_lift ctxt context request of
+                     NONE => error "B1 admitted lift has no exact template geometry"
+                   | SOME template_equation =>
+                       let
+                         val binding_request = list_comb
+                           (Const (lift_binding_head,
+                             Sign.the_const_type store_theory lift_binding_head),
+                            [nth args 0, nth args 1, nth args 3, nth args 4, nth args 5])
+                         val binding_equation = rewrite_lift_binding ctxt context
+                           binding_request (Thm.cterm_of ctxt binding_request)
+                         val theorem = make_lift_geometry_from_binding ctxt request
+                           binding_equation template_equation
+                         val _ = remember_equation context request theorem
+                         val _ = lift_geometry_from_binding :=
+                           !lift_geometry_from_binding + 1
+                       in theorem end))))
       fun stats () =
         (require_store_thread ();
         "template_geometry_captured=" ^ Int.toString (!template_captured) ^
         " template_geometry_cid_reused=" ^ Int.toString (!template_reused) ^
         " lift_geometry_captured=" ^ Int.toString (!lift_captured) ^
         " lift_geometry_cid_reused=" ^ Int.toString (!lift_reused) ^
+        " lift_binding_proofs_captured=" ^ Int.toString (!lift_binding_captured) ^
+        " lift_binding_proofs_reused=" ^ Int.toString (!lift_binding_reused) ^
+        " lift_binding_cold_evaluations=" ^
+          Int.toString (!lift_binding_recursive_evaluations) ^
+        " lift_binding_admission_ms=" ^ LargeInt.toString
+          (!lift_binding_admission_ms) ^
+        " lift_binding_specialization_ms=" ^ LargeInt.toString
+          (!lift_binding_specialization_ms) ^
+        " lift_binding_resolution_ms=" ^ LargeInt.toString
+          (!lift_binding_resolution_ms) ^
+        " lift_binding_map_congruence_uses=" ^
+          Int.toString (lift_binding_map_congruence_uses ()) ^
+        " " ^ lift_binding_stage_timings () ^
+        " lift_geometry_from_binding=" ^ Int.toString (!lift_geometry_from_binding) ^
         " source_slot_certificates_captured=" ^ Int.toString (!slot_captured) ^
         " source_slot_certificates_reused=" ^ Int.toString (!slot_reused) ^
         " source_action_slot_certificates_captured=" ^
@@ -727,8 +920,6 @@ struct
           (Time.toMilliseconds (!captured_oracle_elapsed)) ^
         " selected_source_scope_captures=" ^ Int.toString (!scope_selection_captures) ^
         " selected_source_scope_reuses=" ^ Int.toString (!scope_selection_reuses) ^
-        " template_context_lookups=" ^ Int.toString (!template_context_lookups) ^
-        " template_context_requests_completed=" ^ Int.toString (!template_context_requests_completed) ^
         " construction_source_index=" ^ (case (!source_construction_active, !active_index) of
           (true, SOME index) => Int.toString index | _ => "none") ^
         " store_generation=" ^ Int.toString store_generation ^ " " ^
@@ -743,10 +934,10 @@ struct
       fun retained_entry_counts () =
         (require_store_thread ();
          [Inttab.size (!templates), Inttab.size (!lifts),
+          Inttab.size (!lift_bindings),
           Termtab.size (!slots), Termtab.size (!slot_validity),
           Termtab.size (!bindings), Termtab.size (!source_actions),
-          Termtab.size (!action_rows), Termtab.size (!selected_equations),
-          Termtab.size (!pending_template_context)])
+          Termtab.size (!action_rows), Termtab.size (!selected_equations)])
       fun is_source_action_request request =
         is_some (root_args source_action_head request)
       fun is_binding_request request =
@@ -767,7 +958,13 @@ struct
       {remember_equation = remember_equation, lookup_equation = lookup_equation,
        reset_current_source = reset_current_source,
        rewrite_lift_geometry = rewrite_lift_geometry,
-       note_context_request_completed = note_context_request_completed,
+       rewrite_lift_binding = rewrite_lift_binding,
+       lift_geometry_counters = fn () =>
+         (require_store_thread ();
+          (!lift_geometry_from_binding, !lift_reused)),
+       lift_binding_counters = fn () =>
+         (require_store_thread ();
+          (!lift_binding_recursive_evaluations, !lift_binding_reused)),
        note_source_action_reuse = note_source_action_reuse,
        is_source_action_request = is_source_action_request,
        is_binding_request = is_binding_request,

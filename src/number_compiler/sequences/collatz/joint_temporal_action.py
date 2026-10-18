@@ -30,6 +30,8 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.source_cylinder_cache import (
         CollatzDyadicMacros,
+    )
+    from number_compiler.sequences.collatz.source_cylinder_types import (
         CollatzDyadicOccurrence,
     )
     from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
@@ -82,6 +84,10 @@ class CollatzJointRunAction:
             raise ValueError("joint run clocks do not compose")
         if self.fields.endpoint(self.source) != self.normalized_endpoint:
             raise ValueError("joint affine action differs from its source endpoint")
+        if self.phase == 1 and self.normalized_endpoint % 2 != 1:
+            raise ValueError(
+                "pending odd half-step requires an odd normalized endpoint"
+            )
         expected_endpoint = (
             self.normalized_endpoint
             if self.phase == 0

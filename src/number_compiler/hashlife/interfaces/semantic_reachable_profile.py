@@ -561,7 +561,7 @@ class _FixedTableLookup:
 
     def compile(self, values: tuple[int, ...]) -> tuple[int, ...]:
         root = (0, values)
-        pending = [(root, False)]
+        pending: list[tuple[tuple[int, tuple[int, ...]], bool]] = [(root, False)]
         pending_slots = len(values)
         ledger, circuit = self.arena.ledger, self.circuit
         while pending:

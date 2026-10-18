@@ -268,6 +268,7 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_B1_CRT_Column_DAG
     Comma_Semantic_B1_CRT_Column_Lookup
     Comma_CRT_Apply
+    Comma_CRT_Apply_Right_Quotient
     Comma_CRT_Support
     Comma_CRT_Power
     Comma_CRT_Equivalence
@@ -283,6 +284,7 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_B1_CRT_Split_Bindings
     Comma_Semantic_B1_CRT_Lift_Bindings
     Comma_Semantic_B1_CRT_Local_Cover
+    Comma_Semantic_B1_CRT_Local_Cover_Candidate
     Comma_Semantic_B1_CRT_Partition_Coverage
     Comma_Semantic_B1_CRT_Parent_Partition
     Comma_Semantic_B1_CRT_Labelled_Selector
@@ -303,6 +305,9 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_B1_CRT_Constructed_Occurrence
     Comma_Semantic_B1_CRT_Constructor_Mass
     Comma_Semantic_B1_CRT_Constructed_Refinement
+    Comma_Semantic_B1_CRT_Cover_Mass
+    Comma_Semantic_B1_CRT_Compact_Refinement
+    Comma_Semantic_B1_CRT_Compact_Mass
     Comma_Semantic_B1_CRT_Construction_Regression
 session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semantic_Future +
   options [document = false, quick_and_dirty = false]
@@ -314,7 +319,7 @@ session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semanti
     Comma_Semantic_Summary_Instance
 session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma_Semantic_B1_Instance +
   options [document = false, quick_and_dirty = false]
-  sessions Comma_Source_Entry Comma_Source_Uniqueness
+  sessions Comma_Source_Entry Comma_Source_Uniqueness Comma_C1_Occurrence
   theories
     Comma_Semantic_Future_Candidate_Data
     Comma_Semantic_Future_Instance
@@ -323,6 +328,7 @@ session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma
     Comma_Semantic_Global_Safety
     Comma_Semantic_Weighted_Selection
     Comma_Semantic_Fragment_Refinement
+    Comma_Semantic_Producer_Record_Refinement
     Comma_Semantic_Producer_Refinement
     Comma_Semantic_Producer_Coefficients
     Comma_Python_Chart_Refinement
@@ -573,8 +579,10 @@ session Comma_Decade_Occurrence_Lift in comma_decade_occurrence_lift = Comma_Dec
     Comma_Decade_Occurrence_Lift
 session Comma_C1_Occurrence in comma_c1_occurrence = Comma_C1_Borrow_Cocycle +
   options [document = false, quick_and_dirty = false]
+  sessions Comma_Chart_Bridge
   theories
     Comma_C1_Occurrence
+    Comma_C1_Entry_Chart_Refinement
 session Comma_Native_Summary in comma_native_summary = Comma_Decade_Occurrence_Lift +
   options [document = false, quick_and_dirty = false]
   sessions Comma_Sparse_Core Comma_Terminal_Weight

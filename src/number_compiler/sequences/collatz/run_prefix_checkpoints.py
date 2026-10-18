@@ -31,6 +31,31 @@ def temporal_run_share_width(seed: int, physical_ticks: int) -> int:
     return 1 << (bounded_extent.bit_length() - 1)
 
 
+def defer_unified_skew_reentry_for_root_checkpoint(
+    macros: CollatzDyadicMacros | None,
+    share_width: int,
+    normalized: int,
+    *,
+    include_joint: bool,
+    include_innovation: bool,
+    width_complete: bool,
+) -> bool:
+    """Leave room to publish a complete root cylinder before skew reentry.
+
+    A skew action may cross a dyadic checkpoint in one step. Defer only fresh
+    ordinary traces; explicit observers retain their authenticated seam route.
+    """
+    return (
+        macros is not None
+        and share_width >= 64
+        and normalized > 0
+        and normalized < share_width
+        and not include_joint
+        and not include_innovation
+        and not width_complete
+    )
+
+
 def observe_temporal_run_prefix(
     macros: CollatzDyadicMacros | None,
     width_spine: CollatzWidthSpineAccumulator,

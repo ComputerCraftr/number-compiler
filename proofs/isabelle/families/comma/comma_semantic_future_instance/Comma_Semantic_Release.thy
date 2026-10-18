@@ -161,6 +161,119 @@ proof -
   show ?thesis using scalar selected by blast
 qed
 
+definition comma_semantic_b32_boundary_chart_publisher_contract :: bool where
+  "comma_semantic_b32_boundary_chart_publisher_contract \<longleftrightarrow>
+    (\<forall>p near a. 5 \<le> p \<longrightarrow> 2 \<le> a \<longrightarrow>
+      a \<le> 9 \<longrightarrow>
+      (\<exists>moves events outcome terminal fragments macro.
+        comma_python_scalar_chart_walk p
+          (comma_python_boundary_chart_initial near a) moves outcome terminal \<and>
+        comma_python_first_terminal_walk p
+          (comma_python_boundary_chart_initial near a) events outcome terminal \<and>
+        comma_semantic_boundary_step comma_semantic_decade_summary
+          ((if near then Comma_N else Comma_Z), a, p mod 924) = Some outcome \<and>
+        comma_python_writer_run p
+          (comma_python_boundary_chart_initial near a) None events outcome
+          terminal fragments \<and>
+        macro = comma_python_make_indexed_macro_output
+          ((if near then Comma_N else Comma_Z), a, p mod 924)
+          outcome fragments))"
+
+theorem comma_semantic_b32_boundary_chart_publisher_closed:
+  "comma_semantic_b32_boundary_chart_publisher_contract"
+proof -
+  have contract:
+    "\<forall>p near a. 5 \<le> p \<longrightarrow> 2 \<le> a \<longrightarrow>
+      a \<le> 9 \<longrightarrow>
+      (\<exists>moves events outcome terminal fragments macro.
+        comma_python_scalar_chart_walk p
+          (comma_python_boundary_chart_initial near a) moves outcome terminal \<and>
+        comma_python_first_terminal_walk p
+          (comma_python_boundary_chart_initial near a) events outcome terminal \<and>
+        comma_semantic_boundary_step comma_semantic_decade_summary
+          ((if near then Comma_N else Comma_Z), a, p mod 924) = Some outcome \<and>
+        comma_python_writer_run p
+          (comma_python_boundary_chart_initial near a) None events outcome
+          terminal fragments \<and>
+        macro = comma_python_make_indexed_macro_output
+          ((if near then Comma_N else Comma_Z), a, p mod 924)
+          outcome fragments)"
+  proof (intro allI impI)
+    fix p near a
+    assume exponent: "5 \<le> p" and lower: "2 \<le> a" and upper: "a \<le> 9"
+    obtain moves outcome terminal where scalar:
+        "comma_python_scalar_chart_walk p
+          (comma_python_boundary_chart_initial near a) moves outcome terminal"
+      and selected:
+        "comma_semantic_boundary_step comma_semantic_decade_summary
+          ((if near then Comma_N else Comma_Z), a, p mod 924) = Some outcome"
+      using comma_semantic_b32_scalar_chart_terminates
+        [OF exponent lower upper, of near] by blast
+    obtain chart_events where chart_walk:
+        "comma_python_first_terminal_walk p
+          (comma_python_boundary_chart_initial near a)
+          chart_events outcome terminal"
+      using comma_python_scalar_chart_walk_to_first_terminal_walk[OF scalar]
+      by blast
+    let ?q = "((if near then Comma_N else Comma_Z), a, p mod 924)"
+    have valid: "comma_boundary_valid ?q"
+      using lower upper by (simp add: comma_boundary_valid_def)
+    have phase: "p mod 924 = snd (snd ?q)" by simp
+    have initial: "comma_finite_initial ?q =
+        comma_python_boundary_chart_initial near a"
+      by (cases near)
+        (simp_all add: comma_finite_initial_def
+          comma_python_boundary_chart_initial_def)
+    obtain events' terminal' outcome' fragments' macro' where coefficient_walk:
+        "comma_python_first_terminal_walk p (comma_finite_initial ?q)
+          events' outcome' terminal'"
+      and coefficient_selected:
+        "comma_semantic_boundary_step comma_semantic_decade_summary ?q =
+          Some outcome'"
+      and writer:
+        "comma_python_writer_run p (comma_finite_initial ?q) None events'
+          outcome' terminal' fragments'"
+      and macro:
+        "macro' = comma_python_make_indexed_macro_output ?q outcome' fragments'"
+      using comma_python_boundary_indexed_macro_fields
+        [OF comma_semantic_decade_summary_provider_exact valid exponent phase]
+      by blast
+    have outcome_eq: "outcome' = outcome"
+      using selected coefficient_selected by simp
+    have coefficient_walk':
+        "comma_python_first_terminal_walk p
+          (comma_python_boundary_chart_initial near a)
+          events' outcome terminal'"
+      using coefficient_walk outcome_eq initial by simp
+    have walk_fields:
+        "chart_events = events' \<and> terminal = terminal'"
+      by (rule comma_python_first_terminal_walk_result_unique
+        [OF chart_walk coefficient_walk'])
+    have writer':
+        "comma_python_writer_run p
+          (comma_python_boundary_chart_initial near a) None events' outcome
+          terminal' fragments'"
+      using writer outcome_eq initial by simp
+    have macro':
+        "macro' = comma_python_make_indexed_macro_output ?q outcome fragments'"
+      using macro outcome_eq by simp
+    show "\<exists>moves events outcome terminal fragments macro.
+        comma_python_scalar_chart_walk p
+          (comma_python_boundary_chart_initial near a) moves outcome terminal \<and>
+        comma_python_first_terminal_walk p
+          (comma_python_boundary_chart_initial near a) events outcome terminal \<and>
+        comma_semantic_boundary_step comma_semantic_decade_summary ?q = Some outcome \<and>
+        comma_python_writer_run p
+          (comma_python_boundary_chart_initial near a) None events outcome
+          terminal fragments \<and>
+        macro = comma_python_make_indexed_macro_output ?q outcome fragments"
+      using scalar chart_walk selected writer' walk_fields macro'
+      by blast
+  qed
+  show ?thesis
+    using contract by (simp add: comma_semantic_b32_boundary_chart_publisher_contract_def)
+qed
+
 theorem comma_semantic_b32_grouped_chart_terminates:
   fixes p a :: nat and near :: bool
   assumes exponent: "5 \<le> p"
@@ -587,7 +700,17 @@ proof (intro allI impI)
 qed
 
 theorem comma_semantic_producer_global_release_contract:
-  "(\<forall>p x. comma_decade_admitted (Comma_Decade (p mod 924) x) \<longrightarrow>
+  "comma_semantic_b32_boundary_chart_publisher_contract \<and>
+   ((\<forall>p near a. 5 \<le> p \<longrightarrow> 2 \<le> a \<longrightarrow>
+       a \<le> 9 \<longrightarrow>
+       (\<exists>moves outcome terminal.
+         comma_python_grouped_chart_walk p
+           (comma_python_boundary_chart_initial near a)
+           moves outcome terminal \<and>
+         comma_semantic_boundary_step comma_semantic_decade_summary
+           ((if near then Comma_N else Comma_Z), a, p mod 924) =
+             Some outcome)) \<and>
+    ((\<forall>p x. comma_decade_admitted (Comma_Decade (p mod 924) x) \<longrightarrow>
       5 \<le> p \<longrightarrow>
       (\<exists>h terminal events final fragments.
         comma_semantic_decade_writer_release_result p x h terminal events final
@@ -618,20 +741,43 @@ theorem comma_semantic_producer_global_release_contract:
      (\<forall>source. 0<source \<longrightarrow>
        (\<exists>path :: nat \<Rightarrow> nat. path 0=source \<and>
          (\<forall>j. comma_child (path j) (path (Suc j)))) \<longrightarrow>
-       20 \<le> source)))"
-  by (rule conjI[OF comma_semantic_decade_summary_writer_release_closed],
-      rule conjI[OF comma_semantic_decade_writer_partial_selection_closed
-        comma_semantic_global_release_safety])
+       20 \<le> source)))))"
+proof -
+  have grouped:
+    "\<forall>p near a. 5 \<le> p \<longrightarrow> 2 \<le> a \<longrightarrow>
+       a \<le> 9 \<longrightarrow>
+       (\<exists>moves outcome terminal.
+         comma_python_grouped_chart_walk p
+           (comma_python_boundary_chart_initial near a)
+           moves outcome terminal \<and>
+         comma_semantic_boundary_step comma_semantic_decade_summary
+           ((if near then Comma_N else Comma_Z), a, p mod 924) =
+             Some outcome)"
+    using comma_semantic_b32_grouped_chart_terminates by blast
+  show ?thesis
+    by (rule conjI[OF comma_semantic_b32_boundary_chart_publisher_closed],
+        rule conjI[OF grouped],
+        rule conjI[OF comma_semantic_decade_summary_writer_release_closed],
+        rule conjI[OF comma_semantic_decade_writer_partial_selection_closed
+          comma_semantic_global_release_safety])
+qed
 
 ML \<open>
   val endpoints = @{thms comma_semantic_decade_summary_writer_release_closed
     comma_semantic_decade_writer_partial_selection_closed
+    comma_semantic_b32_boundary_chart_publisher_closed
+    comma_semantic_b32_grouped_chart_terminates
     comma_semantic_producer_global_release_contract
     comma_semantic_global_release_safety}
   val _ = Comma_Proof_Dependency_Audit.require_native_closed_expected_paths
     @{context} "Concrete comma producer bridge and global release safety"
     ["comma_semantic_decade_summary_total_exact",
      "comma_decade_summary_python_macro_writer_output",
+     "comma_python_boundary_indexed_macro_fields",
+     "comma_python_scalar_chart_walk_to_first_terminal_walk",
+     "comma_semantic_b32_scalar_chart_terminates",
+     "comma_semantic_b32_boundary_chart_publisher_closed",
+     "comma_semantic_b32_grouped_chart_terminates",
      "comma_python_actual_writer_point_at_prefix_cut",
      "comma_python_actual_writer_published_displacement_prefixes",
      "comma_python_writer_run_fragments_unique",
@@ -655,10 +801,12 @@ ML \<open>
     "Concrete B32 summary to producer writer bridge"
     @{thms comma_python_writer_edge_outputs_unique
       comma_python_first_terminal_walk_result_unique
+      comma_python_scalar_chart_walk_to_first_terminal_walk
       comma_python_writer_run_fragments_unique
       comma_semantic_decade_summary_writer_release
       comma_semantic_b32_boundary_chart_loop_structurally_terminates
       comma_semantic_b32_scalar_chart_terminates
+      comma_semantic_b32_boundary_chart_publisher_closed
       comma_semantic_b32_grouped_chart_terminates
       comma_semantic_decade_writer_partial_selection}
 \<close>

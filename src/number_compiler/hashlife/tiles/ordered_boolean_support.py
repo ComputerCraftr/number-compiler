@@ -60,7 +60,7 @@ class OrderedBooleanSupport:
         """Evaluate this word in a caller-supplied monoid without expansion."""
         self.owner.validate(self)
         values: dict[int, T] = {}
-        pending = [(self, False)]
+        pending: list[tuple[OrderedBooleanSupport, bool]] = [(self, False)]
         while pending:
             node, ready = pending.pop()
             self.owner.validate(node)

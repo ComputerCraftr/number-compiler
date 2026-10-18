@@ -42,10 +42,16 @@ def test_fixed_seed_cli_reports_no_macro_hits_without_failing(
     monkeypatch.setattr(benchmark, "cli_sample", no_macro_cli)
     payload = benchmark.compare(horizons=(65,), trials=1)
 
-    assert len(queries) == 8
+    # Each of two consumers warms and measures all three ablation modes.
+    assert len(queries) == 12
     samples = payload["samples"]
     assert isinstance(samples, list)
-    assert len(samples) == 4
+    assert len(samples) == 6
+    assert {row["mode"] for row in samples} == {
+        "enabled",
+        "odd_macro_disabled",
+        "prefilter_disabled",
+    }
     summaries = payload["summaries"]
     assert isinstance(summaries, list)
     assert [row["consumer"] for row in summaries] == ["antihydra", "mahler"]

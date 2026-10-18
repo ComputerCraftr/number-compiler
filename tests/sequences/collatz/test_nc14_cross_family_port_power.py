@@ -8,6 +8,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_0563,
     ENTRY_89_AT_NINE,
@@ -101,6 +102,7 @@ def test_affine_preimage_transports_minimum_source_bound() -> None:
     action = DyadicTerminalFieldAction.one_run(1)
     target = SourceCongruence(2, 6, minimum_source=5)
     pulled = target.pullback(action)
+    assert pulled is not None
     assert pulled == SourceCongruence(1, 4, minimum_source=3)
     assert not pulled.admits(1)
     assert pulled.admits(5)
@@ -205,13 +207,35 @@ def test_temporal_power_is_bounded_and_does_not_expand_trace() -> None:
         DyadicTerminalFieldAction.zero_run(1)
     )
     guarded = CrossFamilyPortAction(action, SourceCongruence(1, 20), 1, None, (1, 2))
-    powered = guarded.power(64, max_coefficient_bits=2_048)
+    ledger = ResourceLedger()
+    powered = guarded.power(64, max_coefficient_bits=2_048, ledger=ledger)
     assert powered is not None
+    assert (
+        ledger.counters[collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_ATTEMPTS]
+        > 0
+    )
+    assert (
+        ledger.counters[
+            collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_OPERAND_BITS
+        ]
+        > 0
+    )
+    assert (
+        ledger.counters.get(
+            collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_REFUSALS, 0
+        )
+        == 0
+    )
     trace = powered.trace
     assert isinstance(trace, MacroTraceGrammar)
     assert trace.length == 128
     assert trace.left is not None and trace.right is not None
+    limited_ledger = ResourceLedger()
     with pytest.raises(BlockContextBudgetExceeded):
-        guarded.power(64, max_coefficient_bits=8)
+        guarded.power(64, max_coefficient_bits=8, ledger=limited_ledger)
+    assert (
+        limited_ledger.counters[collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_POWER_REFUSALS]
+        == 1
+    )
     with pytest.raises(BlockContextBudgetExceeded):
         trace.materialize(max_labels=64)

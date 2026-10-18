@@ -35,6 +35,8 @@ class FormulaBuildMixin(FormulaStorage):
         if width <= 0:
             raise ValueError(width)
         args = tuple(args)
+        for argument in args:
+            self.require_owned(argument)
         param = tuple(param)
         key = (kind, width, tuple(a.id for a in args), param)
         old = self._nodes.get(key)
@@ -76,6 +78,7 @@ class FormulaBuildMixin(FormulaStorage):
         return self._raw("RANGE", width, param=(lo, hi), pbits=_bits(lo) + _bits(hi))
 
     def not_(self, x: Expr) -> Expr:
+        self.require_owned(x)
         if x.kind == "ZERO":
             return self.ones(x.width)
         if x.kind == "ONES":
@@ -84,10 +87,10 @@ class FormulaBuildMixin(FormulaStorage):
             return x.args[0]
         return self._raw("NOT", x.width, (x,))
 
-    @staticmethod
-    def _flatten(kind: str, items: Iterable[Expr]) -> list[Expr]:
+    def _flatten(self, kind: str, items: Iterable[Expr]) -> list[Expr]:
         out: list[Expr] = []
         for item in items:
+            self.require_owned(item)
             out.extend(item.args if item.kind == kind else (item,))
         return out
 
@@ -271,6 +274,7 @@ class FormulaBuildMixin(FormulaStorage):
         return self.xor_many((a, b), a.width)
 
     def _shift(self, x: Expr, amount: int, kind: str) -> Expr:
+        self.require_owned(x)
         amount = int(amount)
         if kind not in ("SHL", "SHR"):
             raise ValueError(kind)
@@ -296,6 +300,7 @@ class FormulaBuildMixin(FormulaStorage):
         return self._shift(x, amount, "SHR")
 
     def mirror(self, x: Expr) -> Expr:
+        self.require_owned(x)
         if x.kind in ("ZERO", "ONES"):
             return x
         if x.kind == "MIRROR":
@@ -303,6 +308,7 @@ class FormulaBuildMixin(FormulaStorage):
         return self._raw("MIRROR", x.width, (x,))
 
     def resize(self, x: Expr, width: int) -> Expr:
+        self.require_owned(x)
         width = int(width)
         if width < x.width:
             raise ValueError("resize only zero-extends")
@@ -314,6 +320,7 @@ class FormulaBuildMixin(FormulaStorage):
 
     def crop(self, x: Expr, width: int) -> Expr:
         """Keep the least-significant ``width`` positions without materializing."""
+        self.require_owned(x)
         width = int(width)
         if width <= 0 or width > x.width:
             raise ValueError((x.width, width))
@@ -344,6 +351,8 @@ class FormulaBuildMixin(FormulaStorage):
 
     def ite(self, selector: Expr, when_false: Expr, when_true: Expr) -> Expr:
         """Canonical pointwise if-then-else used by reduced decision DAGs."""
+        for argument in (selector, when_false, when_true):
+            self.require_owned(argument)
         if selector.width != when_false.width or selector.width != when_true.width:
             raise ValueError((selector.width, when_false.width, when_true.width))
         if when_false.id == when_true.id:
@@ -371,6 +380,8 @@ class FormulaBuildMixin(FormulaStorage):
         args = tuple(args)
         if not args:
             raise ValueError("BOOLFUNC requires at least one width-bearing argument")
+        for argument in args:
+            self.require_owned(argument)
         width = args[0].width
         if any(a.width != width for a in args):
             raise ValueError("BOOLFUNC width mismatch")

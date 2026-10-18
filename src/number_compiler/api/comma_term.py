@@ -10,6 +10,9 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.comma.future_provider import (
+        SemanticFutureProviderLease,
+    )
     from number_compiler.sequences.comma.power import CommaTerm
 
 
@@ -43,6 +46,35 @@ class CommaTermPayload:
             memo=self.term.certificate_memo,
             global_provider=global_provider,
         )
+
+    @property
+    def certificate_provider(self) -> SemanticFutureProviderLease | None:
+        """Observe an already retained global lease without charging a hit."""
+        with self.term._future_provider_lock:
+            lease = self.term._future_provider_lease
+            if lease is None:
+                return None
+            try:
+                from number_compiler.sequences.comma.future_provider import (
+                    SemanticFutureProviderStore,
+                    registered_global_release_artifact_sha256,
+                )
+
+                provider = lease._status_provider()
+                if provider is None:
+                    return None
+                provider.require_global_release_admission()
+                store = getattr(lease, "_store", None)
+                if type(store) is not SemanticFutureProviderStore:
+                    return None
+                if store.ledger is not self.term.ledger:
+                    return None
+                expected = registered_global_release_artifact_sha256()
+                if expected is None or provider.artifact_sha256 != expected:
+                    return None
+                return lease
+            except (PermissionError, RuntimeError, TypeError):
+                return None
 
     @property
     def estimated_bit_length(self) -> int:

@@ -8,6 +8,8 @@ sig
   type equation_checker =
     {check: term -> thm -> checked_equation, complete_value: term -> bool}
   type staged_result = {equation: thm, operands_unchanged: bool}
+  type staged_operation_converter =
+    {convert: cterm -> staged_result, dag_stats: unit -> string}
   val crt_operation_simp_rules: Proof.context -> thm list
   val apply_depth_simp_rules: Proof.context -> thm list
   val crt_operation_boundaries: thm list -> (string * thm list) list
@@ -21,12 +23,14 @@ sig
   val reflect_boundaries: (string * thm list) list -> (string * thm list) list
   val make_staged_operation_converter:
     {context: Proof.context,
+     apply_dag: Comma_Semantic_B1_CRT_Apply_DAG.owner,
      boundaries: (string * thm list) list,
      staged_heads: string list, lazy_function_heads: string list,
      final_argument_stagers: (string * (cterm -> thm)) list,
      complete_value: term -> bool} ->
-    cterm -> staged_result
+    staged_operation_converter
   val operation_context: Proof.context -> Proof.context
+  val operation_context_for_occurrence: Proof.context -> Proof.context
   val selected_period_equation:
     {ctxt: Proof.context, context: Proof.context, period: cterm -> thm option,
      shape: term -> string} -> cterm -> thm
@@ -53,14 +57,6 @@ struct
       comma_source_continuation_shift.simps
       comma_semantic_b1_source_slot_action_code
       comma_semantic_b1_source_slot_action_width_def}
-  val constructed_case_rules =
-    @{thms comma_semantic_b1_crt_piece_ref.case
-      comma_semantic_b1_crt_lift_ref.case
-      comma_source_continuation_action.case}
-  val constructed_case_congs =
-    @{thms comma_semantic_b1_crt_piece_ref.case_cong_weak
-      comma_semantic_b1_crt_lift_ref.case_cong_weak
-      comma_source_continuation_action.case_cong_weak}
   val source_action_congs =
     @{thms let_weak_cong prod.case_cong_weak comma_decade_outcome.case_cong_weak
       comma_finite_move.case_cong_weak comma_finite_position.case_cong_weak
@@ -71,10 +67,7 @@ struct
       of_nat_numeral of_nat_0 of_nat_1 zmod_zminus1_eq_if zmod_zminus2_eq_if}
 
   fun make ctxt operation_context arithmetic_rules endpoint_simproc =
-    {slot_origins = fold Simplifier.add_cong constructed_case_congs
-       (operation_context addsimps (constructed_case_rules @
-         @{thms comma_semantic_b1_crt_constructed_slot_origins_def})),
-     offset_orbit = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+    {offset_orbit = Comma_Entry_Arithmetic.natural_context ctxt addsimps
        offset_orbit_rules,
      source_arithmetic = fold Simplifier.add_cong source_action_congs
        ((operation_context addsimps
@@ -127,9 +120,7 @@ struct
       val (found_upt, bounded) = inspect term
     in if found_upt andalso bounded then SOME (ctxt addsimps @{thms upt_rec}) else NONE end
 
-  fun argument_at index conversion ct =
-    if index = 0 then Conv.arg_conv conversion ct
-    else Conv.fun_conv (argument_at (index - 1) conversion) ct
+  val argument_at = Comma_Semantic_B1_Column_Lookup_Cache.argument_at
 
   fun natural_numeral value = HOLogic.mk_number @{typ nat} value
 
@@ -141,50 +132,11 @@ struct
         if name = @{const_name Cons} then SOME (SOME (head, tail)) else NONE
     | _ => NONE)
 
-  val operation_congs =
-    @{thms option.case_cong_weak
-      comma_semantic_b1_result.case_cong_weak
-      comma_crt_column.case_cong_weak
-      comma_crt_boolean_operation.case_cong_weak}
-
-  fun crt_operation_simp_rules _ =
-    @{thms comma_crt_period_def
-      comma_crt_admitted.simps comma_crt_supported.simps(1)
-      comma_crt_supported_node_short_circuit
-      comma_crt_node_def comma_crt_node_cons
-      comma_crt_negate.simps comma_crt_cofactor.simps
-      comma_crt_apply_shortcut_def comma_crt_shifted_apply_shortcut_def
-      comma_crt_cofactor_or_false_def comma_crt_shifted_cofactor_or_false_def
-      comma_crt_boolean_value_def comma_crt_column.case
-      comma_crt_result_at_def comma_crt_equiv_check_def
-      comma_crt_apply_from_def comma_crt_apply_def
-      comma_crt_apply_shifted_def comma_crt_apply_shifted_from.simps
-      comma_crt_shift.simps rotate_drop_take drop_Nil take_Nil
-      drop_Cons' take_Cons'
-      comma_semantic_b1_weight_after_def
-      option.inject option.distinct
-      comma_crt_column.inject comma_crt_column.distinct
-      comma_semantic_b1_result.inject comma_semantic_b1_result.distinct
-      list.map list.case list.size list.inject list.distinct
-      list_all_Nil_iff list_all_Cons_iff list_ex_Nil_iff list_ex_Cons_iff
-      id_def List.map_filter_simps list.sel map_of.simps fun_upd_apply
-      concat.simps append.simps filter.simps upt_rec nth_Cons' Let_def
-      prod.case option.case fst_conv snd_conv case_prod_beta
-      comma_semantic_b1_result.case comma_crt_boolean_operation.case
-      comma_finite_move.case comma_finite_position.case comma_round_result.case}
+  fun crt_operation_simp_rules ctxt =
+    Comma_Semantic_B1_CRT_Apply_DAG.crt_operation_simp_rules ctxt
 
   fun apply_depth_simp_rules ctxt =
-    let
-      val natT = @{typ nat}
-      fun numeral n = HOLogic.mk_number natT n
-      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
-        addsimps @{thms power_0 power_one_right power_numeral_even power_numeral_odd}
-      fun specialize depth =
-        Simplifier.simplify arithmetic
-          (Drule.infer_instantiate ctxt
-            [( ("remaining", 0), Thm.cterm_of ctxt (numeral depth))]
-            @{thm comma_crt_apply_shifted_from.simps(2)})
-    in map specialize (0 upto 3) end
+    Comma_Semantic_B1_CRT_Apply_DAG.apply_depth_simp_rules ctxt
 
   fun crt_operation_boundaries apply_depth_rules =
     [(@{const_name comma_crt_supported},
@@ -227,10 +179,14 @@ struct
 
   val crt_operation_lazy_function_heads = []
 
+  (* Keep legacy standalone evaluation available for local arithmetic checks.
+     The production occurrence owner uses this variant: recursive apply
+     equations are removed so its exact memo procedure can route every nested
+     request through the proof-producing DAG before ordinary rewriting. *)
   fun operation_context ctxt =
-    let
-      val rules = crt_operation_simp_rules ctxt @ apply_depth_simp_rules ctxt
-    in fold Simplifier.add_cong operation_congs (ctxt addsimps rules) end
+    Comma_Semantic_B1_CRT_Apply_DAG.operation_context true ctxt
+  fun operation_context_for_occurrence ctxt =
+    Comma_Semantic_B1_CRT_Apply_DAG.operation_context false ctxt
 
   fun selected_period_equation {ctxt, context, period, shape} cterm =
     let
@@ -282,6 +238,8 @@ struct
   type equation_checker =
     {check: term -> thm -> checked_equation, complete_value: term -> bool}
   type staged_result = {equation: thm, operands_unchanged: bool}
+  type staged_operation_converter =
+    {convert: cterm -> staged_result, dag_stats: unit -> string}
   fun reflect_boundaries boundaries =
     map (fn (name, rules) =>
       (name, map (fn rule => rule RS @{thm eq_reflection}) rules)) boundaries
@@ -289,7 +247,7 @@ struct
   (* Preserve operand-first evaluation; simplifying a parent before selecting
      its operands can expand both sides before the parent result is available. *)
   fun make_staged_operation_converter
-      {context, boundaries, staged_heads, lazy_function_heads,
+      {context, apply_dag, boundaries, staged_heads, lazy_function_heads,
        final_argument_stagers, complete_value} =
     let
       val reflected = reflect_boundaries boundaries
@@ -311,8 +269,17 @@ struct
           (case request_head request of
             Const (name, _) => member (op =) bounded_column_heads name
           | _ => false)
-        in Simplifier.full_rewrite
-          (if bounded_request then bounded_column_context else context) end
+          val simplifier = Simplifier.full_rewrite
+            (if bounded_request then bounded_column_context else context)
+          (* The generic normalizer is also used below constructor roots. Give
+             embedded shifted applications the same checked DAG owner as a
+             top-level request, before recursive simplification can replay
+             their child applications. *)
+          fun normalize ct =
+            (case #convert apply_dag ct of
+              SOME theorem => theorem
+            | NONE => simplifier ct)
+        in normalize end
       fun rules_for request =
         (case request_head request of
           Const (name, _) =>
@@ -603,28 +570,36 @@ struct
           val operands_unchanged = Thm.term_of staged_rhs aconv request
           val root_rules = rules_for request
           val root_started = Time.now ()
+          (* Probe the proof-producing recursive apply memo before constructing
+             any alternate root observation. A complete hit is the result. *)
+          val apply_root = #convert apply_dag staged_rhs
           val root_short_circuit =
-            (case request_head request of
+            (case apply_root of
+              SOME _ => NONE
+            | NONE => (case request_head request of
               Const (name, _) =>
                 if name = @{const_name comma_crt_node} then
                   smart_node normalize staged_rhs
                 else if name = @{const_name comma_crt_supported} then
                   short_circuit_support normalize staged_rhs
                 else NONE
-            | _ => NONE)
+            | _ => NONE))
           val root_ms = milliseconds root_started
           val finish_started = Time.now ()
           val completed =
-            (case root_short_circuit of
+            (case apply_root of
               SOME root => Thm.transitive staged root
             | NONE =>
-                if null root_rules then Thm.transitive staged (normalize staged_rhs)
-                else
-                  let val root = Conv.try_conv (Conv.rewrs_conv root_rules) staged_rhs
-                  in if Thm.is_reflexive root then
-                       Thm.transitive staged (normalize staged_rhs)
-                     else Thm.transitive staged
-                       (Thm.transitive root (normalize (Thm.rhs_of root))) end)
+                (case root_short_circuit of
+                  SOME root => Thm.transitive staged root
+                | NONE =>
+                    if null root_rules then Thm.transitive staged (normalize staged_rhs)
+                    else
+                      let val root = Conv.try_conv (Conv.rewrs_conv root_rules) staged_rhs
+                      in if Thm.is_reflexive root then
+                           Thm.transitive staged (normalize staged_rhs)
+                         else Thm.transitive staged
+                           (Thm.transitive root (normalize (Thm.rhs_of root))) end))
           val finish_ms = milliseconds finish_started
           val total_ms = stage_ms + root_ms + finish_ms
           val operation_name = request_head request
@@ -646,10 +621,13 @@ struct
                 " stage_ms=" ^ LargeInt.toString stage_ms ^
                 " root_ms=" ^ LargeInt.toString root_ms ^
                 " finish_ms=" ^ LargeInt.toString finish_ms ^
-                " total_ms=" ^ LargeInt.toString total_ms))
+                " total_ms=" ^ LargeInt.toString total_ms ^
+                " dag={" ^ #stats apply_dag () ^ "}"))
             else ()
         in {equation = completed, operands_unchanged = operands_unchanged}: staged_result end
-    in convert end
+    in
+      {convert = convert, dag_stats = #stats apply_dag}: staged_operation_converter
+    end
   fun make_column_value_checker ctxt known_column =
     let
       val thy = Proof_Context.theory_of ctxt

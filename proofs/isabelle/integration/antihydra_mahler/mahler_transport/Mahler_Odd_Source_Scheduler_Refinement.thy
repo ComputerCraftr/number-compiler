@@ -3,6 +3,167 @@ theory Mahler_Odd_Source_Scheduler_Refinement
     "Collatz_Cylinder_Refinement.Collatz_Cylinder_Constructor"
 begin
 
+lemma mahler_source_split_endpoint:
+  assumes split: "3*D+1 = 2^(Suc k)*u" and odd_u: "odd u"
+  shows "mahler_orbit D (Suc k) = 3^k*u"
+proof -
+  have odd_D: "odd D"
+    by (rule mahler_positive_two_power_split_source_odd[OF split])
+  show ?thesis
+    by (rule mahler_odd_event_block_refines_endpoint_and_ledger(1)
+        [OF odd_D split odd_u])
+qed
+
+lemma mahler_odd_word_minimum_nonpositive:
+  "mahler_odd_word_minimum as \<le> 0"
+proof (induction as)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a as)
+  have "min (min 0 (3-int a)) ((3-int a) + mahler_odd_word_minimum as)
+      \<le> min 0 (3-int a)"
+    by (rule min.cobounded1)
+  also have "... \<le> 0" by (rule min.cobounded1)
+  finally have bound:
+    "min (min 0 (3-int a)) ((3-int a) + mahler_odd_word_minimum as) \<le> 0" .
+  show ?case using bound
+    by (simp only: mahler_odd_word_minimum.simps)
+qed
+
+lemma mahler_odd_word_delta_append:
+  "mahler_odd_word_delta (as @ bs) =
+    mahler_odd_word_delta as + mahler_odd_word_delta bs"
+  by (simp add: mahler_odd_word_delta_def)
+
+lemma mahler_odd_word_minimum_append:
+  "mahler_odd_word_minimum (as @ bs) =
+    min (mahler_odd_word_minimum as)
+      (mahler_odd_word_delta as + mahler_odd_word_minimum bs)"
+proof (induction as)
+  case Nil
+  then show ?case
+    using mahler_odd_word_minimum_nonpositive[of bs]
+    by (simp add: mahler_odd_word_delta_def)
+next
+  case (Cons a as)
+  show ?case
+    using Cons.IH
+    by (simp add: mahler_odd_word_delta_def min_add_distrib_right
+        min.assoc min.left_commute min.commute)
+qed
+
+lemma mahler_odd_word_endpoint_append:
+  "mahler_odd_word_endpoint (as @ bs) D =
+    mahler_odd_word_endpoint bs (mahler_odd_word_endpoint as D)"
+  by (induction as arbitrary: D) simp_all
+
+lemma mahler_odd_word_admitted_append:
+  "mahler_odd_word_admitted D (as @ bs) \<longleftrightarrow>
+    mahler_odd_word_admitted D as \<and>
+      mahler_odd_word_admitted (mahler_odd_word_endpoint as D) bs"
+proof (induction as arbitrary: D)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a as)
+  show ?case
+  proof
+    assume joined: "mahler_odd_word_admitted D ((a#as) @ bs)"
+    then obtain k u where
+      a: "a = Suc k" and
+      split: "3*D+1 = 2^(Suc k)*u" and
+      odd_u: "odd u" and
+      tail: "mahler_odd_word_admitted (3^k*u) (as @ bs)"
+      by auto
+    have endpoint: "mahler_orbit D a = 3^k*u"
+      using a mahler_source_split_endpoint[OF split odd_u] by simp
+    have tail_parts:
+      "mahler_odd_word_admitted (3^k*u) as \<and>
+        mahler_odd_word_admitted (mahler_odd_word_endpoint as (3^k*u)) bs"
+      using Cons.IH[of "3^k*u"] tail by blast
+    have tail_first: "mahler_odd_word_admitted (3^k*u) as"
+      using tail_parts by blast
+    have tail_second:
+      "mahler_odd_word_admitted (mahler_odd_word_endpoint as (3^k*u)) bs"
+      using tail_parts by blast
+    have first: "mahler_odd_word_admitted D (a#as)"
+      using a split odd_u tail_first by auto
+    have second:
+      "mahler_odd_word_admitted (mahler_odd_word_endpoint (a#as) D) bs"
+      using tail_second endpoint
+      by (simp only: mahler_odd_word_endpoint.simps endpoint)
+    show "mahler_odd_word_admitted D (a#as) \<and>
+        mahler_odd_word_admitted (mahler_odd_word_endpoint (a#as) D) bs"
+      using first second by blast
+  next
+    assume parts:
+      "mahler_odd_word_admitted D (a#as) \<and>
+        mahler_odd_word_admitted (mahler_odd_word_endpoint (a#as) D) bs"
+    have first_part: "mahler_odd_word_admitted D (a#as)"
+      using parts by blast
+    have second_part:
+      "mahler_odd_word_admitted (mahler_odd_word_endpoint (a#as) D) bs"
+      using parts by blast
+    then obtain k u where
+      a: "a = Suc k" and
+      split: "3*D+1 = 2^(Suc k)*u" and
+      odd_u: "odd u" and
+      tail: "mahler_odd_word_admitted (3^k*u) as"
+      using first_part by auto
+    have endpoint: "mahler_orbit D a = 3^k*u"
+      using a mahler_source_split_endpoint[OF split odd_u] by simp
+    have tail_bs:
+      "mahler_odd_word_admitted (mahler_odd_word_endpoint as (3^k*u)) bs"
+      using second_part endpoint
+      by (simp only: mahler_odd_word_endpoint.simps endpoint)
+    have tail_joined: "mahler_odd_word_admitted (3^k*u) (as @ bs)"
+      using Cons.IH[of "3^k*u"] tail tail_bs by blast
+    show "mahler_odd_word_admitted D ((a#as) @ bs)"
+      using a split odd_u tail_joined by auto
+  qed
+qed
+
+theorem mahler_odd_word_prefix_safety_append:
+  assumes first: "mahler_odd_word_admitted D as"
+      and second: "mahler_odd_word_admitted (mahler_odd_word_endpoint as D) bs"
+  shows "(\<forall>j\<le>mahler_odd_word_span (as @ bs).
+      0 \<le> incoming_balance + ledger_at D j) \<longleftrightarrow>
+    ((\<forall>j\<le>mahler_odd_word_span as.
+        0 \<le> incoming_balance + ledger_at D j) \<and>
+      (\<forall>j\<le>mahler_odd_word_span bs.
+        0 \<le> incoming_balance + mahler_odd_word_delta as +
+          ledger_at (mahler_odd_word_endpoint as D) j))"
+proof -
+  have admitted_append: "mahler_odd_word_admitted D (as @ bs)"
+    using first second by (simp add: mahler_odd_word_admitted_append)
+  have whole:
+    "(\<forall>j\<le>mahler_odd_word_span (as @ bs).
+        0 \<le> incoming_balance + ledger_at D j) \<longleftrightarrow>
+      0 \<le> incoming_balance + mahler_odd_word_minimum (as @ bs)"
+    by (rule mahler_odd_word_prefix_safety_iff[OF admitted_append])
+  have left:
+    "(\<forall>j\<le>mahler_odd_word_span as.
+        0 \<le> incoming_balance + ledger_at D j) \<longleftrightarrow>
+      0 \<le> incoming_balance + mahler_odd_word_minimum as"
+    by (rule mahler_odd_word_prefix_safety_iff[OF first])
+  have right:
+    "(\<forall>j\<le>mahler_odd_word_span bs.
+        0 \<le> incoming_balance + mahler_odd_word_delta as +
+          ledger_at (mahler_odd_word_endpoint as D) j) \<longleftrightarrow>
+      0 \<le> incoming_balance + mahler_odd_word_delta as +
+        mahler_odd_word_minimum bs"
+    by (rule mahler_odd_word_prefix_safety_iff[OF second])
+  have joined_minimum:
+    "incoming_balance + mahler_odd_word_minimum (as @ bs) =
+      min (incoming_balance + mahler_odd_word_minimum as)
+        (incoming_balance + mahler_odd_word_delta as +
+          mahler_odd_word_minimum bs)"
+    by (simp add: mahler_odd_word_minimum_append min_add_distrib_right
+        algebra_simps)
+  show ?thesis using whole left right joined_minimum by simp
+qed
+
 text \<open>This integration theorem connects the scheduler's exact odd seam
 to the existing source-selected Mahler cylinder.  Collatz's shared
 two-adic split supplies the exponent from the current integer; it is not an
@@ -811,8 +972,11 @@ proof -
 qed
 
 ML \<open>
-  val _ = if null (Thm_Deps.all_oracles
-    @{thms mahler_source_selected_odd_block
+  val checked = @{thms mahler_source_split_endpoint
+      mahler_odd_word_minimum_nonpositive mahler_odd_word_delta_append
+      mahler_odd_word_minimum_append mahler_odd_word_endpoint_append
+      mahler_odd_word_admitted_append mahler_odd_word_prefix_safety_append
+      mahler_source_selected_odd_block
       mahler_source_odd_exponents_admitted mahler_source_odd_scheduler_trace
       mahler_source_scheduler_q_barrier mahler_source_odd_macro_bit_projection
       mahler_D_step_strict_positive mahler_orbit_lower_bound
@@ -820,8 +984,11 @@ ML \<open>
       mahler_odd_word_repeated_source_admission
       mahler_odd_word_source_capacity_bridge
       mahler_odd_word_source_capacity_trace
-      mahler_odd_word_source_selected_capacity_trace})
-    then () else error "Mahler source scheduler bridge depends on an oracle";
+      mahler_odd_word_source_selected_capacity_trace};
+  val _ = if null (Thm_Deps.all_oracles checked) then ()
+    else error "Mahler source scheduler bridge depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof checked
+    then error "Skipped Mahler source scheduler proof" else ();
 \<close>
 
 end

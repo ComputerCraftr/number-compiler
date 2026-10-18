@@ -174,7 +174,7 @@ def test_transient_collatz_cut_contains_valid_machine_ports_not_numeric_words() 
     stream = app._stream(result.view)
     next(stream)
     assert isgenerator(stream) and stream.gi_frame is not None
-    ports = stream.gi_frame.f_locals["ports"]
+    ports = cast(tuple[_Mul3Port | _ShiftPort, ...], stream.gi_frame.f_locals["ports"])
     assert len(ports) > 4
     for port in ports:
         assert type(port) in (_Mul3Port, _ShiftPort)

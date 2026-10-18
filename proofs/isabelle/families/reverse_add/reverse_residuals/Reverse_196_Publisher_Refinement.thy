@@ -478,12 +478,51 @@ lemma valid_pair_run:
   using assms
   by (induction n arbitrary: ss) (auto intro: valid_pair_successor)
 
+lemma reverse_add_run_source_root_square:
+  "run f (first + second) source =
+    run f second (run f first source)"
+proof (induction first arbitrary: source)
+  case 0
+  then show ?case by simp
+next
+  case (Suc first)
+  have shifted:
+    "run f (Suc first + second) source =
+      run f (first + second) (f source)"
+    by simp
+  also have "... = run f second (run f first (f source))"
+    by (rule Suc.IH)
+  also have "... = run f second (run f (Suc first) source)"
+    by simp
+  finally show ?case .
+qed
+
+theorem reverse_196_source_root_temporal_square:
+  "run step (2 * n) [7,18,7] =
+    run step n (run step n [7,18,7])"
+proof -
+  have "2 * n = n + n" by simp
+  then show ?thesis
+    by (simp only: reverse_add_run_source_root_square)
+qed
+
+theorem reverse_196_publisher_at_actual_temporal_midpoint:
+  "reverse_two_port_publisher (run step (2 * n) [7,18,7]) =
+    step (run step n (run step n [7,18,7]))"
+  using reverse_two_port_publisher_refines_step[OF
+      all_196_pair_fields_valid[of "2*n"]]
+    reverse_196_source_root_temporal_square
+  by simp
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms reverse_two_port_scan_no_growth
       reverse_two_port_publisher_no_growth reverse_two_port_scan_growth
       reverse_two_port_publisher_growth reverse_two_port_publisher_refines_step
       reverse_two_port_publisher_refines_all_196_steps
+      reverse_add_run_source_root_square
+      reverse_196_source_root_temporal_square
+      reverse_196_publisher_at_actual_temporal_midpoint
       reverse_q19_bilateral_carry_normalization
       reverse_q19_middle_ingress_is_source_transfer
       valid_pair_run}) then ()

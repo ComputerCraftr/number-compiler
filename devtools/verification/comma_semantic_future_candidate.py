@@ -95,7 +95,7 @@ class SemanticFutureCandidate:
 
     def certificate_record(self) -> dict[str, object]:
         """Return a deterministic, JSON-ready untrusted checker input."""
-        packed_ids = _encode_unsigned_varints(
+        packed_ids = future_artifact.encode_unsigned_varints(
             self.class_ids, max_value=_candidate_universe_size() - 1
         )
         return {
@@ -191,22 +191,6 @@ def _candidate_universe_size() -> int:
     return len(("N", "Z")) * len(range(2, 10)) * PERIOD
 
 
-def _encode_unsigned_varints(values: tuple[int, ...], *, max_value: int) -> bytes:
-    """Pack the source-state-to-CID map without duplicating edge rows."""
-    if type(max_value) is not int or max_value < 0:
-        raise ValueError("candidate CID varint bound must be nonnegative")
-    result = bytearray()
-    for value in values:
-        if type(value) is not int or not 0 <= value <= max_value:
-            raise ValueError("candidate class id leaves its declared universe")
-        remaining = value
-        while remaining >= 0x80:
-            result.append((remaining & 0x7F) | 0x80)
-            remaining >>= 7
-        result.append(remaining)
-    return bytes(result)
-
-
 def _decode_unsigned_varints(
     payload: bytes, *, max_values: int, max_value: int
 ) -> tuple[int, ...]:
@@ -246,7 +230,7 @@ def _decode_unsigned_varints(
     if current_bytes != 0:
         raise ValueError("truncated candidate CID varint")
     decoded = tuple(values)
-    if _encode_unsigned_varints(decoded, max_value=max_value) != payload:
+    if future_artifact.encode_unsigned_varints(decoded, max_value=max_value) != payload:
         raise ValueError("candidate CID varints are not canonically encoded")
     return decoded
 
@@ -560,7 +544,7 @@ def _reencode_candidate(
     class_count = len(controls)
     dense_ids = _validate_class_map(tuple(class_ids), class_count)
     max_cid = _candidate_universe_size() - 1
-    packed_ids = _encode_unsigned_varints(dense_ids, max_value=max_cid)
+    packed_ids = future_artifact.encode_unsigned_varints(dense_ids, max_value=max_cid)
     if (
         _decode_unsigned_varints(
             packed_ids, max_values=_candidate_universe_size(), max_value=max_cid
@@ -584,19 +568,23 @@ def _reencode_candidate(
         raise ValueError("checked Isabelle data must be distinct from outputs")
     if any(path.exists() for path in paths):
         raise FileExistsError("candidate outputs must be new files")
-    compact = {
-        "format": "comma-semantic-future-candidate-v2",
-        "authority": "untrusted-source-derived-candidate",
-        "state_universe": "kind=N,Z; a=2..9; residue=0..923; nested-order",
-        "class_of_state_varint_base64": base64.b64encode(packed_ids).decode("ascii"),
-        "controls": [list(control) for control in normalized_controls],
-        "ordered_children": [list(row) for row in normalized_children],
-        "class_rank_candidate": list(rank_candidate),
-        "refinement_rounds": source.get("refinement_rounds"),
-        "refinement_collision_witnesses": refinement_witnesses,
-        "seam_is_projected_from_cid": source.get("seam_is_projected_from_cid"),
-        "seam_projection_collision": source.get("seam_projection_collision"),
-    }
+    compact = future_artifact.runtime_candidate_record(
+        {
+            "format": "comma-semantic-future-candidate-v1",
+            "authority": "untrusted-source-derived-candidate",
+            "state_universe": "kind=N,Z; a=2..9; residue=0..923; nested-order",
+            "class_of_state_varint_base64": base64.b64encode(packed_ids).decode(
+                "ascii"
+            ),
+            "controls": [list(control) for control in normalized_controls],
+            "ordered_children": [list(row) for row in normalized_children],
+            "class_rank_candidate": list(rank_candidate),
+            "refinement_rounds": source.get("refinement_rounds"),
+            "refinement_collision_witnesses": refinement_witnesses,
+            "seam_is_projected_from_cid": source.get("seam_is_projected_from_cid"),
+            "seam_projection_collision": source.get("seam_projection_collision"),
+        }
+    )
     checked_runtime_sha256 = (
         None
         if checked_isabelle_data_path is None
@@ -647,7 +635,7 @@ def _reencode_candidate(
         "ranked_classes": sum(rank is not None for rank in rank_candidate),
         "class_rows": len(normalized_controls),
         "collision_witnesses": len(refinement_witnesses),
-        "seam_projected_from_cid": compact["seam_is_projected_from_cid"],
+        "seam_projected_from_cid": source.get("seam_is_projected_from_cid"),
         "candidate_bytes": candidate_bytes,
         "candidate_sha256": future_artifact.canonical_candidate_sha256(compact),
         "checked_isabelle_data": (
@@ -768,9 +756,16 @@ def verify_runtime_candidate_hol_data_binding(
     source_classes, parsed_classes = future_provider._validate_record(
         bounded_record, charge_work=discard_validation_charge
     )
-    controls = tuple(
-        (row.control.kind, row.control.fork_coefficient) for row in parsed_classes
-    )
+    control_records: list[Control] = []
+    for row in parsed_classes:
+        if row.control.kind == "fork":
+            control_kind: Literal["fork", "landmine"] = "fork"
+        elif row.control.kind == "landmine":
+            control_kind = "landmine"
+        else:
+            raise ValueError("validated candidate contains an unknown control kind")
+        control_records.append((control_kind, row.control.fork_coefficient))
+    controls = tuple(control_records)
     children = tuple(row.ordered_children for row in parsed_classes)
     ranks = tuple(row.rank for row in parsed_classes)
     generated_text = _render_candidate_data_theory(
@@ -855,37 +850,33 @@ def main() -> None:
         description="Generate an untrusted source-derived semantic FutureCID candidate"
     )
     parser.add_argument(
-        "--output",
-        type=Path,
-        required=True,
-        help="fresh run-directory path for the untrusted JSON certificate",
+        "--output", type=Path, required=True, help="fresh candidate output path"
     )
     parser.add_argument(
-        "--occurrence-output",
-        type=Path,
-        help="separate fresh run-directory path for occurrence-only C1/weight data",
+        "--from-isabelle-data", type=Path, help="export authored tables"
     )
-    parser.add_argument(
-        "--runtime-output",
-        type=Path,
-        help="optional fresh path for canonical untrusted v2 provider bytes",
-    )
-    parser.add_argument(
-        "--reencode-input",
-        type=Path,
-        help="compact an existing v1 candidate without rebuilding source arithmetic",
-    )
-    parser.add_argument(
-        "--isabelle-data-output",
-        type=Path,
-        help="emit the compact class-map/class-row theory data at this source path",
-    )
-    parser.add_argument(
-        "--checked-isabelle-data",
-        type=Path,
-        help="check candidate CID tables against this authored theory before output",
-    )
+    parser.add_argument("--occurrence-output", type=Path, help="C1/weight audit output")
+    parser.add_argument("--runtime-output", type=Path, help="canonical v2 output")
+    parser.add_argument("--reencode-input", type=Path, help="existing v1 candidate")
+    parser.add_argument("--isabelle-data-output", type=Path, help="generated HOL data")
+    parser.add_argument("--checked-isabelle-data", type=Path, help="authored HOL data")
     args = parser.parse_args()
+    if args.from_isabelle_data is not None:
+        if any(
+            (
+                args.occurrence_output,
+                args.runtime_output,
+                args.reencode_input,
+                args.isabelle_data_output,
+                args.checked_isabelle_data,
+            )
+        ):
+            raise ValueError("HOL data export cannot be combined with other modes")
+        result = future_artifact.write_runtime_candidate_from_isabelle_data(
+            args.from_isabelle_data, args.output
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
     if args.reencode_input is not None:
         if args.runtime_output is not None:
             raise ValueError("re-encoding already writes the v2 runtime candidate")

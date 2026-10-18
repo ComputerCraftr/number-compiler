@@ -409,6 +409,43 @@ struct
         "B1 column regression stage=converter-constructed"
       val known_column = #known_column converter
       val column_value = #column_value converter
+      val bool_false_column = @{term "Comma_CRT_Bool False"}
+      val bool_true_column = @{term "Comma_CRT_Bool True"}
+      fun find_terminal_parent cid =
+        if cid >= #node_count converter then
+          error "B1 reification fixture has no node with terminal children"
+        else (case #mass_node_row converter cid of
+          SOME {level, children, ...} =>
+            if exists (fn child => child < 2) children
+            then (cid, level, children)
+            else find_terminal_parent (cid + 1)
+        | NONE => find_terminal_parent (cid + 1))
+      val (terminal_parent, terminal_level, terminal_children) =
+        find_terminal_parent 2
+      fun literal_child cid =
+        if cid = 0 then bool_false_column
+        else if cid = 1 then bool_true_column else column_value cid
+      val literal_terminal_node = Const (@{const_name Comma_CRT_Node},
+        @{typ nat} --> HOLogic.listT @{typ comma_crt_column} -->
+          @{typ comma_crt_column}) $
+        HOLogic.mk_number natT terminal_level $
+        HOLogic.mk_list @{typ comma_crt_column}
+          (map literal_child terminal_children)
+      val terminal_reification = #reify converter
+        (Thm.cterm_of ctxt literal_terminal_node)
+      val _ = require
+        (Thm.term_of (Thm.lhs_of terminal_reification) aconv literal_terminal_node andalso
+         Thm.term_of (Thm.rhs_of terminal_reification) aconv
+           (column_value terminal_parent) andalso
+         known_column (Thm.term_of (Thm.rhs_of terminal_reification)) andalso
+         clean_theorem terminal_reification)
+        "B1 literal terminal children did not reify to the authenticated DAG node"
+      val top_false_reification = #reify converter (Thm.cterm_of ctxt bool_false_column)
+      val top_true_reification = #reify converter (Thm.cterm_of ctxt bool_true_column)
+      val _ = require
+        (Thm.term_of (Thm.rhs_of top_false_reification) aconv bool_false_column andalso
+         Thm.term_of (Thm.rhs_of top_true_reification) aconv bool_true_column)
+        "B1 top-level Boolean reification changed its constructor result"
       fun find_header_parent cid =
         if cid >= #node_count converter then
           error "B1 header-admission fixture has no nonterminal parent level"
@@ -499,16 +536,16 @@ struct
       val lookup_type = @{typ "(nat \<times> nat list) option"}
       val lookup = Const (@{const_name comma_semantic_b1_crt_column_dag_lookup},
         @{typ comma_semantic_b1_crt_column_dag} --> @{typ nat} --> lookup_type)
-      val lookup_rules = Conversion.normalize_lookup_rules ctxt
+      val lookup_rules = Comma_Semantic_B1_Column_Lookup_Cache.normalize_lookup_rules ctxt
         @{thms comma_semantic_b1_crt_column_dag_lookup.simps
           comma_semantic_b1_crt_column_block_lookup.simps}
       val lookup_request = lookup $ dag_constant $ HOLogic.mk_number natT missing_cid
       val lookup_ct = Thm.cterm_of ctxt lookup_request
-      val table_step = Conversion.argument_at 1 (Conv.rewr_conv dag_equation) lookup_ct
+      val table_step = Comma_Semantic_B1_Column_Lookup_Cache.argument_at 1 (Conv.rewr_conv dag_equation) lookup_ct
       val _ = Comma_Proof_Profile.report
         "B1 column regression stage=missing-cid-directory-opened"
       val lookup_visits = Unsynchronized.ref 0
-      val lookup_step = Conversion.controlled_lookup ctxt
+      val lookup_step = Comma_Semantic_B1_Column_Lookup_Cache.controlled_lookup ctxt
         (Comma_Entry_Arithmetic.natural_context ctxt) lookup_rules lookup_visits
         (SOME (last_block_constant, last_block_definition)) (Thm.rhs_of table_step)
       val missing_lookup = Thm.transitive table_step lookup_step
@@ -640,7 +677,6 @@ struct
       val _ = require partial_declined
         ("B1 named-column congruence claimed an incomplete normalization: " ^
           partial_description)
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
       fun nat n = HOLogic.mk_number natT n
       val apply = Const (@{const_name comma_crt_apply},
         @{typ comma_crt_boolean_operation} --> @{typ comma_crt_column} -->
@@ -654,177 +690,6 @@ struct
           not (known_column first_or_value) andalso
           #complete (check_column_value first_or_value))
         "B1 OR operation did not produce a complete non-DAG intermediate"
-      val rowT = HOLogic.listT pieceT
-      val sourceT = HOLogic.listT rowT
-      val piece_refsT = HOLogic.listT sourceT
-      val piece_refs = Const (Sign.intern_const thy
-        "comma_semantic_b1_crt_construction_piece_refs", piece_refsT)
-      val piece_catalogue =
-        Comma_Semantic_B1_Construction_Piece_Projection.get_catalogue ctxt
-      val {root_definition = piece_refs_definition, child_definitions,
-           child_row_extents, block_source_extents, source_count, ...} = piece_catalogue
-      val piece_refs_selector =
-        Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
-          "regression_construction_piece_refs" piece_catalogue
-      val production_context = fold Simplifier.add_proc
-        (#support_procedures piece_refs_selector)
-        (Simplifier.add_simps (#support_simp_rules piece_refs_selector)
-          (Simplifier.add_proc (#procedure piece_refs_selector)
-            (Simplifier.add_proc (#post_procedure piece_refs_selector) evaluation_context)))
-      val nth_source = Const (@{const_name nth}, piece_refsT --> natT --> sourceT)
-      val nth_row = Const (@{const_name nth}, sourceT --> natT --> rowT)
-      val selected_source = nth_source $ piece_refs $ nat 0
-      val selected_row = nth_row $ selected_source $ nat 0
-      val source_size = Const (@{const_name size}, sourceT --> natT)
-      val source_size_request = source_size $ selected_source
-      val source_size_equation = Simplifier.rewrite production_context
-        (Thm.cterm_of ctxt source_size_request)
-      val _ = require
-        (Thm.term_of (Thm.lhs_of source_size_equation) aconv source_size_request andalso
-         Thm.term_of (Thm.rhs_of source_size_equation) aconv
-           nat (hd child_row_extents) andalso clean_theorem source_size_equation)
-        "B1 named child size selector did not derive its exact authenticated extent"
-      val flatten_source = Const (@{const_name concat}, sourceT --> rowT)
-      val flattened_source_request = flatten_source $ selected_source
-      val flattened_source_equation = Simplifier.rewrite production_context
-        (Thm.cterm_of ctxt flattened_source_request)
-      val _ = require
-        (Thm.term_of (Thm.lhs_of flattened_source_equation) aconv flattened_source_request andalso
-         clean_theorem flattened_source_equation andalso
-         can HOLogic.dest_list (Thm.term_of (Thm.rhs_of flattened_source_equation)))
-        "B1 named source flattening did not use its authenticated child equation"
-      val alternate_source_index = length child_row_extents - 1
-      val alternate_row_request = nth_row $
-        (nth_source $ piece_refs $ nat alternate_source_index) $ nat 0
-      val alternate_row_equation = Simplifier.rewrite production_context
-        (Thm.cterm_of ctxt alternate_row_request)
-      val _ = require
-        (Thm.term_of (Thm.lhs_of alternate_row_equation) aconv alternate_row_request andalso
-         clean_theorem alternate_row_equation andalso
-         can HOLogic.dest_list (Thm.term_of (Thm.rhs_of alternate_row_equation)))
-        "B1 named child selector failed on a second authenticated source row"
-      val maximum_row_extent = fold
-        (fn extent => fn maximum => Int.max (extent, maximum))
-        child_row_extents 0
-      fun first_shorter_source index [] = NONE
-        | first_shorter_source index (extent :: rest) =
-            if extent < maximum_row_extent then SOME (index, extent)
-            else first_shorter_source (index + 1) rest
-      val (short_source_index, short_source_extent) =
-        (case first_shorter_source 0 child_row_extents of
-          SOME pair => pair
-        | NONE => error "B1 named child fixture requires distinct row extents")
-      val out_of_short_row = nth_row $
-        (nth_source $ piece_refs $ nat short_source_index) $ nat short_source_extent
-      val _ = expect_error "B1 construction-piece row index exceeds its source extent"
-        "authenticated child-specific row bound" (fn () =>
-          Simplifier.rewrite production_context (Thm.cterm_of ctxt out_of_short_row))
-      val _ = if length child_definitions >= 2 then ()
-        else error "B1 named child fixtures require at least two source definitions"
-      val swapped_children = tl child_definitions @ [hd child_definitions]
-      val swapped_blocks = tl block_source_extents @ [hd block_source_extents]
-      val reordered_catalogue :
-        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
-        {root_definition = #root_definition piece_catalogue,
-         directory_definition = #directory_definition piece_catalogue,
-         child_definitions = swapped_children,
-         child_row_extents = child_row_extents,
-         block_source_extents = swapped_blocks,
-         source_count = source_count}
-      val _ = expect_error "Named selected-list child has a foreign canonical name"
-        "reordered named child directory" (fn () =>
-          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
-            "regression_reordered_construction_piece_refs" reordered_catalogue)
-      val foreign_child = Proof_Context.get_thm ctxt
-        "comma_semantic_b1_crt_lift_refs_def"
-      val foreign_children = foreign_child :: tl child_definitions
-      val foreign_catalogue :
-        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
-        {root_definition = #root_definition piece_catalogue,
-         directory_definition = #directory_definition piece_catalogue,
-         child_definitions = foreign_children,
-         child_row_extents = child_row_extents,
-         block_source_extents = block_source_extents,
-         source_count = source_count}
-      val _ = expect_error "Named selected-list child has a foreign canonical name"
-        "foreign named child definition" (fn () =>
-          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
-            "regression_foreign_construction_piece_child" foreign_catalogue)
-      val wrong_first_extent = (hd block_source_extents + 1) :: tl block_source_extents
-      val wrong_extent_catalogue :
-        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
-        {root_definition = #root_definition piece_catalogue,
-         directory_definition = #directory_definition piece_catalogue,
-         child_definitions = child_definitions,
-         child_row_extents = child_row_extents,
-         block_source_extents = wrong_first_extent,
-         source_count = source_count}
-      val _ = expect_error "Named selected-list child has an inconsistent row extent"
-        "named child row extent binding" (fn () =>
-          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
-            "regression_wrong_construction_piece_extents" wrong_extent_catalogue)
-      val wrong_source_extents = (hd child_row_extents + 1) :: tl child_row_extents
-      val wrong_source_catalogue :
-        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
-        {root_definition = #root_definition piece_catalogue,
-         directory_definition = #directory_definition piece_catalogue,
-         child_definitions = child_definitions,
-         child_row_extents = wrong_source_extents,
-         block_source_extents = block_source_extents,
-         source_count = source_count}
-      val _ = expect_error "Named selected-list child has an inconsistent row extent"
-        "named source-specific row extent binding" (fn () =>
-          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
-            "regression_wrong_source_extents" wrong_source_catalogue)
-      val production_request = selected_row
-      val production_theorem = Simplifier.rewrite production_context
-        (Thm.cterm_of ctxt production_request)
-      val production_pieces = HOLogic.dest_list
-        (Thm.term_of (Thm.rhs_of production_theorem))
-      val _ = require (Thm.term_of (Thm.lhs_of production_theorem) aconv production_request andalso
-          clean_theorem production_theorem andalso not (null production_pieces))
-        "B1 production-shaped request did not select its authenticated source row"
-      (* Exercise the exact multiplicity check used by the construction
-         certificate with a real, selected piece from that row.  Adding that
-         origin leaves set coverage unchanged, but changes the length of the
-         sorted origin list, so the certificate's sorted-list equality must
-         reject the mutation. *)
-      val originT = @{typ "nat \<times> nat"}
-      val origin_listT = HOLogic.listT originT
-      val origin_of_piece = Const
-        (@{const_name comma_semantic_b1_crt_constructed_piece_origin}, pieceT --> originT)
-      val origins = map (fn selected_piece => origin_of_piece $ selected_piece)
-        production_pieces
-      val origin_list = HOLogic.mk_list originT origins
-      val duplicated_origin_list = HOLogic.mk_list originT (hd origins :: origins)
-      val set_of_origins = Const (@{const_name set},
-        origin_listT --> @{typ "(nat \<times> nat) set"})
-      val sort_origins =
-        @{term "sort :: (nat \<times> nat) list \<Rightarrow> (nat \<times> nat) list"}
-      val size_origins = Const (@{const_name size}, origin_listT --> natT)
-      val sorted_duplicate_origins = sort_origins $ duplicated_origin_list
-      val sorted_origins = sort_origins $ origin_list
-      val same_set = HOLogic.mk_eq
-        (set_of_origins $ duplicated_origin_list, set_of_origins $ origin_list)
-      val different_sorted_list = HOLogic.mk_not
-        (HOLogic.mk_eq (sorted_duplicate_origins, sorted_origins))
-      val different_sorted_size = HOLogic.mk_not (HOLogic.mk_eq
-        (size_origins $ sorted_duplicate_origins,
-         size_origins $ sorted_origins))
-      val multiplicity_fixture = Goal.prove ctxt [] []
-        (HOLogic.mk_Trueprop (HOLogic.mk_conj (same_set,
-          HOLogic.mk_conj (different_sorted_list, different_sorted_size))))
-        (fn {context, ...} => Simplifier.simp_tac
-          (context addsimps
-            @{thms comma_semantic_b1_crt_constructed_piece_origin_def}) 1)
-      val _ = require (clean_theorem multiplicity_fixture)
-        "B1 duplicate-origin multiplicity fixture was not kernel-proved"
-      val outside_row = nth_row $ selected_source $ nat 131072
-      val outside_row_request = outside_row
-      val _ = expect_error
-        "B1 construction-piece row index exceeds its source extent"
-        "production-shaped construction row bounds" (fn () =>
-          Simplifier.rewrite production_context (Thm.cterm_of ctxt outside_row_request))
       val shift = Const (@{const_name comma_crt_shift}, natT -->
         @{typ comma_crt_column} --> @{typ comma_crt_column})
       val shifted_request = shift $ nat 1 $ first_or_value

@@ -199,14 +199,19 @@ def test_poisoned_occurrence_is_rejected_before_candidate_publication(
     ) as consumer:
         lease = consumer.lease
         assert lease is not None
-        wire = lease.get((1024, 8))
+        wire = lease.get_issued(
+            (1024, 8), mahler_source_actions._SOURCE_ACTION_PUBLISHER
+        )
         assert type(wire) is tuple
         altered = list(wire)
+        gain, offset, lower, cap = (wire[index] for index in (2, 3, 4, 10))
+        assert type(gain) is int and type(offset) is int
+        assert type(lower) is int and type(cap) is int
         if corruption == "gain":
-            altered[2] = int(altered[2]) + 2
-            altered[9] = -12 * (int(altered[2]) + int(altered[3]) - int(altered[4]))
+            altered[2] = gain + 2
+            altered[9] = -12 * (gain + 2 + offset - lower)
         else:
-            altered[10] = int(altered[10]) + (-1 if corruption == "cap_minus" else 1)
+            altered[10] = cap + (-1 if corruption == "cap_minus" else 1)
         assert lease.put_issued(
             (1024, 8),
             cast(tuple[ImmutableValue, ...], tuple(altered)),
@@ -236,7 +241,9 @@ def test_public_process_lease_cannot_forge_mahler_source_action(
     ) as consumer:
         lease = consumer.lease
         assert lease is not None
-        wire = lease.get((1024, 8))
+        wire = lease.get_issued(
+            (1024, 8), mahler_source_actions._SOURCE_ACTION_PUBLISHER
+        )
         assert type(wire) is tuple
         full_key = lease.source_qualification, (1024, 8)
         retained_record = source_cache._entries[full_key]

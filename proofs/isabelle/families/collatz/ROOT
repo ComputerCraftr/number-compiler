@@ -6,6 +6,7 @@ session Collatz_Cylinder_Refinement in temporal_collatz = Shared_S_Arithmetic +
     Collatz_Cylinder_Constructor
     Collatz_Physical_Cylinder_Lift
     Collatz_Skew_Cylinder_Temporal_Squaring
+    Collatz_Guarded_Word_Progression
     Collatz_Boundary_Macros
     Collatz_Border_Return_Refinement
     Collatz_6305_Odd_Endpoint_Cylinder

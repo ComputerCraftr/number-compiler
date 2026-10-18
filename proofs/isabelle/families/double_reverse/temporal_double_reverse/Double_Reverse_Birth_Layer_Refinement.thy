@@ -457,6 +457,149 @@ next
     by simp
 qed
 
+text \<open>The complete first-pair boundary is a separate infinite base case.
+Unlike an inward birth layer, its finite nine-edge component is closed for
+both possible incoming carries.  The following induction therefore proves a
+four-phase outer-pair return for every carry word, without assuming that any
+deeper inlet repeats.\<close>
+
+definition double_reverse_border_trace ::
+    "double_reverse_boundary_edge \<Rightarrow> nat list \<Rightarrow>
+      double_reverse_boundary_edge" where
+  "double_reverse_border_trace edge inlets =
+    foldl double_reverse_border_target edge inlets"
+
+definition double_reverse_outer_pair ::
+    "double_reverse_boundary_edge \<Rightarrow> nat \<times> nat" where
+  "double_reverse_outer_pair edge =
+    (case edge of (a,b,y,z) \<Rightarrow> (a,z))"
+
+definition double_reverse_phase_pair :: "nat \<Rightarrow> nat \<times> nat" where
+  "double_reverse_phase_pair phase =
+    (if phase mod 4 = 0 then (1,8)
+     else if phase mod 4 = 1 then (1,2)
+     else if phase mod 4 = 2 then (4,2)
+     else (4,8))"
+
+lemma double_reverse_closed_border_pair_phase:
+  assumes "edge \<in> double_reverse_closed_border"
+  shows "double_reverse_outer_pair edge =
+    double_reverse_phase_pair (double_reverse_border_phase edge)"
+  using assms
+  by (auto simp: double_reverse_closed_border_def
+      double_reverse_outer_pair_def double_reverse_phase_pair_def
+      double_reverse_border_phase_def split: prod.splits)
+
+lemma double_reverse_closed_border_phase_bounded:
+  assumes "edge \<in> double_reverse_closed_border"
+  shows "double_reverse_border_phase edge < 4"
+  using assms
+  by (auto simp: double_reverse_closed_border_def
+      double_reverse_border_phase_def split: prod.splits)
+
+lemma double_reverse_closed_border_trace:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+      and carries: "list_all (\<lambda>carry. carry < 2) inlets"
+  shows "double_reverse_border_trace edge inlets \<in>
+    double_reverse_closed_border"
+  using edge carries
+proof (induction inlets arbitrary: edge)
+  case Nil
+  then show ?case by (simp add: double_reverse_border_trace_def)
+next
+  case (Cons carry inlets)
+  have carry_bound: "carry < 2" using Cons.prems(2) by simp
+  have first:
+    "double_reverse_border_target edge carry \<in>
+      double_reverse_closed_border"
+    by (rule double_reverse_closed_border_ingress_closed[OF Cons.prems(1)
+        carry_bound])
+  have rest:
+    "double_reverse_border_trace
+        (double_reverse_border_target edge carry) inlets \<in>
+      double_reverse_closed_border"
+    by (rule Cons.IH[OF first]) (use Cons.prems(2) in simp)
+  show ?case
+    using rest by (simp add: double_reverse_border_trace_def)
+qed
+
+lemma double_reverse_closed_border_trace_phase:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+      and carries: "list_all (\<lambda>carry. carry < 2) inlets"
+  shows "double_reverse_border_phase (double_reverse_border_trace edge inlets) =
+    (double_reverse_border_phase edge + length inlets) mod 4"
+  using edge carries
+proof (induction inlets arbitrary: edge)
+  case Nil
+  have phase_bound: "double_reverse_border_phase edge < 4"
+    by (rule double_reverse_closed_border_phase_bounded[OF Nil.prems(1)])
+  then show ?case by (simp add: double_reverse_border_trace_def)
+next
+  case (Cons carry inlets)
+  have carry_bound: "carry < 2" using Cons.prems(2) by simp
+  have first:
+    "double_reverse_border_target edge carry \<in>
+      double_reverse_closed_border"
+    by (rule double_reverse_closed_border_ingress_closed[OF Cons.prems(1)
+        carry_bound])
+  have phase:
+    "double_reverse_border_phase (double_reverse_border_target edge carry) =
+      (double_reverse_border_phase edge + 1) mod 4"
+    by (rule double_reverse_closed_border_phase_step[OF Cons.prems(1)
+        carry_bound])
+  have rest:
+    "double_reverse_border_phase
+       (double_reverse_border_trace
+          (double_reverse_border_target edge carry) inlets) =
+      (double_reverse_border_phase (double_reverse_border_target edge carry) +
+        length inlets) mod 4"
+    by (rule Cons.IH[OF first]) (use Cons.prems(2) in simp)
+  show ?case
+  proof -
+    have phase_sum:
+      "((double_reverse_border_phase edge + 1) mod 4 + length inlets) mod 4 =
+        (double_reverse_border_phase edge + Suc (length inlets)) mod 4"
+      by presburger
+    show ?thesis
+      using phase rest phase_sum
+      by (simp add: double_reverse_border_trace_def)
+  qed
+qed
+
+theorem double_reverse_outer_pair_four_step_return:
+  assumes edge: "edge \<in> double_reverse_closed_border"
+      and prefix: "list_all (\<lambda>carry. carry < 2) before"
+      and block: "list_all (\<lambda>carry. carry < 2) block"
+      and four: "length block = 4"
+  shows "double_reverse_outer_pair
+      (double_reverse_border_trace edge (before @ block)) =
+    double_reverse_outer_pair (double_reverse_border_trace edge before)"
+proof -
+  have before_closed:
+    "double_reverse_border_trace edge before \<in> double_reverse_closed_border"
+    by (rule double_reverse_closed_border_trace[OF edge prefix])
+  have all_carries: "list_all (\<lambda>carry. carry < 2) (before @ block)"
+    using prefix block by simp
+  have after_closed:
+    "double_reverse_border_trace edge (before @ block) \<in>
+      double_reverse_closed_border"
+    by (rule double_reverse_closed_border_trace[OF edge all_carries])
+  have before_phase:
+    "double_reverse_border_phase (double_reverse_border_trace edge before) =
+      (double_reverse_border_phase edge + length before) mod 4"
+    by (rule double_reverse_closed_border_trace_phase[OF edge prefix])
+  have after_phase:
+    "double_reverse_border_phase (double_reverse_border_trace edge (before @ block)) =
+      (double_reverse_border_phase edge + length before + 4) mod 4"
+    using double_reverse_closed_border_trace_phase[OF edge all_carries] four
+    by (simp add: add.assoc)
+  show ?thesis
+    using double_reverse_closed_border_pair_phase[OF after_closed]
+      double_reverse_closed_border_pair_phase[OF before_closed]
+      before_phase after_phase
+    by (simp add: double_reverse_phase_pair_def)
+qed
+
 text \<open>A conditional model includes both a complete birth-ring state and
 the position in its declared input motif.  Its cycle theorem below powers
 only that pair.  It neither infers a motif from a finite source prefix nor
@@ -558,6 +701,11 @@ ML \<open>
     double_reverse_birth_model_run_add
     double_reverse_birth_conditional_return_repeats
     double_reverse_birth_conditional_future_periodic
+    double_reverse_closed_border_pair_phase
+    double_reverse_closed_border_phase_bounded
+    double_reverse_closed_border_trace
+    double_reverse_closed_border_trace_phase
+    double_reverse_outer_pair_four_step_return
     double_reverse_birth_conditional_state_periodic};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Double-reverse birth layer refinement depends on an oracle";

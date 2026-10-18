@@ -250,7 +250,6 @@ def _balanced_residue_build(
         )
 
     span, source = width, residue
-    result: tuple[_SupportNode, DyadicReturnSupportID | None]
     try:
         while True:
             cached = memo.get((span, source))
@@ -260,28 +259,30 @@ def _balanced_residue_build(
                 span.bit_length() + source.bit_length(),
             )
             if cached is not None:
-                result = cached
+                current_result = cached
                 workspace._bump("balanced_effect_memo_hits")
                 workspace._bump("reused_temporal_extent", span)
-            else:
+            elif span <= workspace.MAX_LEAF_STEPS:
                 workspace._bump("balanced_effect_memo_misses")
-            if cached is None and span <= workspace.MAX_LEAF_STEPS:
                 if retain:
                     identity = residue_macro(workspace, span, source, _keep_memo=True)
-                    result = (
+                    current_result = (
                         workspace.support_node(identity),
                         identity,
                     )
                 else:
-                    result = (
+                    current_result = (
                         _residue_effect(workspace, span, source, keep_memo=True),
                         None,
                     )
-                remember(result)
-            elif cached is None:
+            else:
+                workspace._bump("balanced_effect_memo_misses")
                 push(span, source, None)
                 span, source = _first_half_residue(span, source)
                 continue
+            result = current_result
+            if cached is None:
+                remember(result)
 
             while stack:
                 parent_span, parent_source, left = stack.pop()

@@ -1,8 +1,8 @@
-(* Candidate-only B1 quotienting over source-level CRT tables.  One generated
+(* Candidate-only B1 quotienting over source-level CRT tables. One generated
    packet-slot evaluator discovers normalized sources by sector layers and its
-   retained slot actions feed the shared CRT/MDD algebra.  It emits candidate
-   ColumnCIDs and source-piece bindings; all remain
-   untrusted until the importing theory proves the corresponding certificates. *)
+   retained slot actions feed the shared CRT/MDD algebra. It emits template
+   CIDs and compact slot/lift references; all remain untrusted until the
+   importing theory proves the corresponding certificates. *)
 structure Comma_Semantic_B1_Template_Constructor =
 struct
   open Comma_Semantic_B1_MDD
@@ -11,12 +11,6 @@ struct
     | Goto_Ref of int * int * int
   datatype pending_lift_ref = Pending_Terminal of int * output * mdd
     | Pending_Goto of int * int * int
-  datatype construction_piece =
-      Terminal_Piece of int * int * int * mdd
-    | Goto_Piece of int * int * int * int * int * int * mdd
-  datatype pending_construction_piece =
-      Pending_Terminal_Piece of int * int * mdd
-    | Pending_Goto_Piece of int * int * int * int * int * mdd
   type lift_descriptor =
     {period: int, slot: int, template_cid: int, net_shift: int}
   type lift_entry = {lift_cid: int, geometry: mdd list}
@@ -24,8 +18,7 @@ struct
     {template_cid: int, keys: mdd list}
   type occurrence =
     {root: int option, source: term, template_cid: int, return_shift: int,
-     binding: output list, lift_refs: lift_ref list,
-     construction_piece_refs: construction_piece list list}
+     binding: output list, lift_refs: lift_ref list}
 
   val natT = @{typ nat}
   val resultT = @{typ comma_semantic_b1_result}
@@ -352,7 +345,6 @@ struct
      lift_descriptors: lift_descriptor list,
      lift_refs: lift_ref list list,
      lift_column_keys: mdd list list,
-     construction_piece_refs: construction_piece list list list,
      stats: unit -> string}
 
   fun discover_template_sources lthy =
@@ -416,7 +408,6 @@ struct
         (Inttab.empty: mdd list Inttab.table)
       val slot_lift_count = Unsynchronized.ref 0
       val retained_lift_columns = Unsynchronized.ref 0
-      val expanded_child_ref_equivalent = Unsynchronized.ref 0
       fun cached_cardinality key =
         (case MDDtab.lookup (!cardinality_cache) key of
           SOME count =>
@@ -520,8 +511,7 @@ struct
         | NONE => error "B1 Goto child occurrence was not published before its parent")
       val occurrence_index_by_source = fold_index (fn (index, source) => fn prior =>
         Termtab.update (source, index) prior) source_order Termtab.empty
-      fun publish_source period source mdd_columns source_cardinalities pending_refs_rev
-          pending_construction_pieces_rev =
+      fun publish_source source mdd_columns source_cardinalities pending_refs_rev =
         let
           val source_outputs = map #1 mdd_columns
           val source_keys = map #2 mdd_columns
@@ -556,48 +546,17 @@ struct
           fun parent_column output =
             (case Termtab.lookup binding_output_indices (output_term output) of
               SOME index => index
-            | NONE => error "B1 online fold piece has no canonical parent output column")
+            | NONE => error "B1 online fold ref has no canonical parent output column")
           fun finish_ref (Pending_Terminal (slot, output, key)) =
                 if key = MDD_False then
-                  error "B1 terminal online fold piece unexpectedly has empty support"
+                  error "B1 terminal online fold ref unexpectedly has empty support"
                 else Terminal_Ref (slot, parent_column output)
             | finish_ref (Pending_Goto (slot, child_index, lift_cid)) =
                 Goto_Ref (slot, child_index, lift_cid)
           val lift_refs = map finish_ref (rev pending_refs_rev)
-          fun finish_piece (output, pending_piece) =
-            let val parent_index = parent_column output
-            in
-              (case pending_piece of
-                Pending_Terminal_Piece (slot_period, slot, key) =>
-                  if slot_period = period then
-                    Terminal_Piece (period, slot, parent_index, key)
-                  else error "B1 terminal construction piece has the wrong parent period"
-              | Pending_Goto_Piece
-                  (slot_period, slot, child_index, child_column_index, lift_cid, key) =>
-                  if slot_period = period then
-                    Goto_Piece
-                      (period, slot, child_index, child_column_index,
-                       lift_cid, parent_index, key)
-                  else error "B1 Goto construction piece has the wrong parent period")
-            end
-          val piece_rows = Array.array
-            (length binding, ([]: construction_piece list))
-          val _ = List.app (fn (output, pending_piece) =>
-            let
-              val index = parent_column output
-              val piece = finish_piece (output, pending_piece)
-            in Array.update (piece_rows, index,
-              piece :: Array.sub (piece_rows, index)) end)
-            (rev pending_construction_pieces_rev)
-          val construction_piece_refs = map (fn index =>
-            rev (Array.sub (piece_rows, index))) (0 upto (length binding - 1))
-          val _ = if length construction_piece_refs = length binding andalso
-              forall (not o null) construction_piece_refs then ()
-            else error "B1 output binding lost its grouped source pieces"
           val occurrence = {root = root, source = source,
             template_cid = #template_cid template, return_shift = shift,
-            binding = binding, lift_refs = lift_refs,
-            construction_piece_refs = construction_piece_refs}: occurrence
+            binding = binding, lift_refs = lift_refs}: occurrence
           val _ = occurrences := occurrence :: !occurrences
           val _ = occurrence_by_source :=
             Termtab.update (source, occurrence) (!occurrence_by_source)
@@ -616,8 +575,7 @@ struct
           val period = length actions
           val _ = if period > 0 andalso clock_size mod period = 0 then ()
             else error "B1 source slot period is not an admitted CRT divisor"
-          fun compose_slot (slot, action)
-              (prior_columns, prior_refs, prior_construction_pieces) =
+          fun compose_slot (slot, action) (prior_columns, prior_refs) =
             (case goto_child action of
               SOME (raw_child, shift) =>
                 let
@@ -643,20 +601,8 @@ struct
                         error "B1 child geometry and binding lengths differ"
                   val columns = add_child_outputs geometry
                     (#binding occurrence) prior_columns
-                  val child_piece_refs = map_index (fn (child_column_index, (key, output)) =>
-                    (output,
-                     Pending_Goto_Piece
-                       (period, slot, child_index, child_column_index, lift_cid, key)))
-                    (geometry ~~ #binding occurrence)
-                    |> filter (fn (_, Pending_Goto_Piece (_, _, _, _, _, key)) =>
-                      key <> MDD_False
-                    | _ => false)
-                  val next_pieces = rev child_piece_refs @ prior_construction_pieces
-                  val _ = expanded_child_ref_equivalent :=
-                    !expanded_child_ref_equivalent + length geometry
                 in
-                  (columns, Pending_Goto (slot, child_index, lift_cid) :: prior_refs,
-                   next_pieces)
+                  (columns, Pending_Goto (slot, child_index, lift_cid) :: prior_refs)
                 end
             | NONE =>
                 let
@@ -665,17 +611,14 @@ struct
                   val columns = add_mdd_output output slot_key prior_columns
                 in
                   (columns,
-                   Pending_Terminal (slot, output, slot_key) :: prior_refs,
-                   (output, Pending_Terminal_Piece (period, slot, slot_key)) ::
-                     prior_construction_pieces)
+                   Pending_Terminal (slot, output, slot_key) :: prior_refs)
                 end)
-          val (raw_columns, pending_refs_rev, pending_construction_pieces_rev) = fold_index
+          val (raw_columns, pending_refs_rev) = fold_index
             (fn (slot, action) => fn prior => compose_slot (slot, action) prior)
-            actions ([], [], [])
+            actions ([], [])
           val (_, source_cardinalities) =
             check_mdd_partition cached_cardinality raw_columns
-          val _ = publish_source period source raw_columns source_cardinalities pending_refs_rev
-            pending_construction_pieces_rev
+          val _ = publish_source source raw_columns source_cardinalities pending_refs_rev
           val _ = completed := !completed + 1
           val count = !completed
           val _ = if count mod 32 = 0 orelse count = source_order_count then
@@ -749,7 +692,6 @@ struct
         | NONE => error "B1 lift output table lost a descriptor CID"))
         (0 upto (!slot_lift_count - 1))
       val retained_lift_columns_stat = !retained_lift_columns
-      val expanded_child_ref_equivalent_stat = !expanded_child_ref_equivalent
       val template_reuse_hits_stat = !template_reuse_hits
       val template_keys = map #keys representative_data
       val descriptorT = HOLogic.mk_prodT (natT,
@@ -764,8 +706,6 @@ struct
       val root_occurrence_indices_term = HOLogic.mk_list natT
         (map (nat o #2) root_occurrence_pairs)
       val lift_refs = map #lift_refs occurrence_data
-      val construction_piece_refs =
-        map #construction_piece_refs occurrence_data
       val compact_lift_ref_count =
         fold (fn refs => fn count => count + length refs) lift_refs 0
       fun stats () =
@@ -802,9 +742,7 @@ struct
         " b1_template_retained_lift_columns=" ^
           Int.toString retained_lift_columns_stat ^
         " b1_template_compact_slot_refs=" ^
-          Int.toString compact_lift_ref_count ^
-        " b1_template_expanded_child_ref_equivalent=" ^
-          Int.toString expanded_child_ref_equivalent_stat
+          Int.toString compact_lift_ref_count
     in
       ({template_keys = template_keys,
         occurrence_descriptors_term = occurrence_descriptors_term,
@@ -813,7 +751,6 @@ struct
         lift_descriptors = lift_descriptors,
         lift_refs = lift_refs,
         lift_column_keys = lift_column_keys,
-        construction_piece_refs = construction_piece_refs,
         stats = stats}: artifact, lthy)
     end
 

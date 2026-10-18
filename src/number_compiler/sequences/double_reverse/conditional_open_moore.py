@@ -142,9 +142,9 @@ def minimize_conditional_open_ring(
     )
     allowed = tuple(frozenset(phase) for phase in allowed_by_phase)
     initial_node = (initial, 0)
-    states = [initial_node]
-    ids = {initial_node: 0}
-    queue = deque((initial_node,))
+    states: list[tuple[OpenRingState, int]] = [initial_node]
+    ids: dict[tuple[OpenRingState, int], int] = {initial_node: 0}
+    queue: deque[tuple[OpenRingState, int]] = deque((initial_node,))
     transitions: list[tuple[int | None, ...]] = []
     emissions: list[tuple[tuple[PeriodicBankFrame, ...] | None, ...]] = []
     while queue:

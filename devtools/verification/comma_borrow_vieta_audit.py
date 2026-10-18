@@ -360,6 +360,8 @@ def transported_key_witness_constructive(
     )
     zeta_canonical = key_canonical[-1]
     zeta_transported = key_transported[-1]
+    if type(zeta_canonical) is not int or type(zeta_transported) is not int:
+        raise AssertionError("transported borrow key ended in a noninteger zeta")
     if zeta_canonical != 999_800_000_000_000:
         raise AssertionError("canonical N(2,10) zeta witness changed")
     if zeta_transported != zeta_canonical * 10**PERIOD:
@@ -490,9 +492,9 @@ def _pointed_vieta_audit_from_live(
         else:
             z_count += 1
 
+    visited: set[int] = set()
     if live:
         cursor = live[0]
-        visited: set[int] = set()
         cycle_exponent_gain = 0
         while cursor not in visited:
             visited.add(cursor)

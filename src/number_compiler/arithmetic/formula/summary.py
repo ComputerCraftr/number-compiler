@@ -88,8 +88,8 @@ def summary_from_values(values: Sequence[int], spec: RadixSpec) -> BlockSummary:
     return BlockSummary(len(vals), False, first, last, fs, ls, R1 if ls > 0 else R0)
 
 
-def _key(root: FormulaRoot, spec: RadixSpec) -> tuple[object, ...]:
-    return ("block-summary", spec.base, canonical_root_key(root))
+def _key(arena: FormulaArena, root: FormulaRoot, spec: RadixSpec) -> tuple[object, ...]:
+    return ("block-summary", spec.base, canonical_root_key(root, arena))
 
 
 def register_summary(
@@ -97,7 +97,7 @@ def register_summary(
 ) -> BlockSummary:
     if summary.length != root.width:
         raise ValueError((summary.length, root.width))
-    arena.metadata_set(_key(root, spec), summary)
+    arena.metadata_set(_key(arena, root, spec), summary)
     return summary
 
 
@@ -116,7 +116,7 @@ def get_summary(
 def get_summary(
     arena: FormulaArena, root: FormulaRoot, spec: RadixSpec, *, required: bool = False
 ) -> BlockSummary | None:
-    value = arena.metadata_get(_key(root, spec))
+    value = arena.metadata_get(_key(arena, root, spec))
     hit = isinstance(value, BlockSummary)
     record_summary_query(hit)
     if isinstance(value, BlockSummary):

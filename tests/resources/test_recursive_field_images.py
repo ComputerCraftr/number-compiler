@@ -612,27 +612,30 @@ def test_indirect_temporal_witness_cycle_rejects_without_publication() -> None:
     left, _ = images.sources.children(source)
     leaf_geometry = images.geometries.child(geometry, 0)
     other = FieldCellActionID(action.owner, action.kind, 1)
+    root_action = action
 
     class CyclicAdapter(_Adapter):
         def validate_action(
             self,
-            candidate: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
+            action: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
         ) -> None:
-            if type(candidate) is not FieldCellActionID or candidate not in (
-                action,
+            if type(action) is not FieldCellActionID or action not in (
+                root_action,
                 other,
             ):
                 raise ValueError("foreign field action")
 
         def action_children(
             self,
-            candidate: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
+            action: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
         ) -> tuple[
             FieldCellActionID,
             FieldCellActionID,
         ]:
-            self.validate_action(candidate)
-            return (other, other) if candidate == action else (action, action)
+            self.validate_action(action)
+            return (
+                (other, other) if action == root_action else (root_action, root_action)
+            )
 
     cyclic_adapter = CyclicAdapter(
         action,

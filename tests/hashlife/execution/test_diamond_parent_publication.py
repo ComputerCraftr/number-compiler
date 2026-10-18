@@ -72,6 +72,7 @@ def test_parent_action_image_and_binding_share_one_reservation(
 
     monkeypatch.setattr(runtime.actions, "_plan_compose", forbidden)
     monkeypatch.setattr(runtime.ledger, "reserve_many", forbidden)
+    monkeypatch.setattr(runtime.ledger, "reserve", forbidden)
     assert (
         publish_parent_identity(runtime.actions, runtime.cells, runtime.macros, key)
         == result

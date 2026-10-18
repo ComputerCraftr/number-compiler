@@ -470,3 +470,11 @@ kind = "sprint-topic"
 topic = "nc16-harmonics"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-nc17-source-rings"
+path = "docs/sprints/week-of-2026-10-11/nc17-source-rings.md"
+kind = "sprint-topic"
+topic = "nc17-source-rings"
+status = "current"
+week_start = "2026-10-11"

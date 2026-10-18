@@ -220,7 +220,7 @@ def carry_event_formula_view(
     if growth is None:
         summary = get_summary(arena, root, spec, required=True)
         growth = summary.growth_from_outer_symmetry
-    key = ("carry-event-view", spec.base, canonical_root_key(root), int(growth))
+    key = ("carry-event-view", spec.base, canonical_root_key(root, arena), int(growth))
     cached = arena.metadata_get(key)
     if isinstance(cached, CarryEventFormulaView):
         return cached

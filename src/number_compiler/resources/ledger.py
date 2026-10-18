@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sized
+from collections.abc import Callable, Iterable, Iterator, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Generic, TypeVar, cast
+from typing import TypeVar
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
-from number_compiler.resources.lifecycle import clear_accounted_store
 from number_compiler.resources.metric_keys import resources as _resources_keys
+from number_compiler.resources.owned_memo import (
+    LedgerReservation,
+    OwnedMemo,
+    _DynamicMemoValue,
+)
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContractAudit,
     PayloadAuditContribution,
@@ -26,7 +30,9 @@ from number_compiler.resources.payload_contracts import (
     register_payload_audit_contract,
     remove_payload_audit_contract,
 )
-from number_compiler.resources.stores import LedgerDict, LedgerList
+from number_compiler.resources.stores import LedgerDict, LedgerList, _TrackedDict
+
+__all__ = ("LedgerReservation", "OwnedMemo", "_DynamicMemoValue")
 
 _StoreK = TypeVar("_StoreK")
 _StoreV = TypeVar("_StoreV")
@@ -108,6 +114,9 @@ class ResourceLedger:
         self.counters: dict[str, int] = {}
         self._accounts: list[_Account] = []
         self._names: dict[str, int] = {}
+        self._reservations: _TrackedDict[object, tuple[int, int, int]] = _TrackedDict(
+            self
+        )
         self._factory_containers: set[int] = set()
         self._execution_roots: dict[int, ReferenceType[object]] = {}
         self._payload_audit_contracts: dict[tuple[int, str], _PayloadAuditBinding] = {}
@@ -330,15 +339,20 @@ class ResourceLedger:
 
     @staticmethod
     def _validate_limits(max_nodes: int | None, max_cache_entries: int | None) -> None:
-        for value, name in (
-            (max_nodes, "node budget"),
-            (max_cache_entries, "cache budget"),
+        if (max_nodes is None or (type(max_nodes) is int and max_nodes >= 0)) and (
+            max_cache_entries is None
+            or (type(max_cache_entries) is int and max_cache_entries >= 0)
         ):
-            if value is not None:
-                require_integer(value, name, 0)
+            return
+        if max_nodes is not None:
+            require_integer(max_nodes, "node budget", 0)
+        if max_cache_entries is not None:
+            require_integer(max_cache_entries, "cache budget", 0)
 
     @staticmethod
     def _validate_quantities(entries: int, nodes: int) -> None:
+        if type(entries) is int and entries >= 0 and type(nodes) is int and nodes >= 0:
+            return
         require_integer(entries, "cache entry count", 0)
         require_integer(nodes, "node count", 0)
 
@@ -404,7 +418,97 @@ class ResourceLedger:
         return self._accounts[owner]
 
     def reserve(self, owner: int, entries: int = 0, nodes: int = 0) -> None:
-        self.reserve_many(((owner, entries, nodes),))
+        # Most publications charge exactly one owner. Keep this path free of
+        # the batch staging list while preserving reserve_many's validation
+        # order for the single tuple: limits, owner, disposal, quantities,
+        # then capacity.
+        self._validate_limits(self.max_nodes, self.max_cache_entries)
+        account = self._account(owner)
+        if account.disposed:
+            raise RuntimeError("resource owner has been disposed")
+        self._validate_quantities(entries, nodes)
+        next_entries = self.entries + entries
+        next_nodes = self.nodes + nodes
+        self._check_capacity_totals(next_entries, next_nodes)
+        account.entries += entries
+        account.nodes += nodes
+        self._commit_reserved_totals(next_entries, next_nodes)
+
+    def _register_reservation(self, reservation: object, owner: int) -> None:
+        if type(reservation) is not LedgerReservation:
+            raise TypeError("resource reservation needs its exact tracker")
+        if reservation in self._reservations:
+            raise ValueError("resource reservation is already registered")
+        account = self._account(owner)
+        if account.disposed:
+            raise RuntimeError("resource owner has been disposed")
+        self._reservations[reservation] = (owner, 0, 0)
+
+    def _reservation_state(self, reservation: object) -> tuple[int, int, int]:
+        if type(reservation) is not LedgerReservation:
+            raise TypeError("resource reservation needs its exact tracker")
+        state = self._reservations.get(reservation)
+        if state is None:
+            raise RuntimeError("ledger reservation has been closed or is foreign")
+        return state
+
+    def _reserve_for_reservation(
+        self, reservation: object, *, entries: int = 0, nodes: int = 0
+    ) -> None:
+        owner, held_entries, held_nodes = self._reservation_state(reservation)
+        next_state = (
+            owner,
+            held_entries + entries,
+            held_nodes + nodes,
+        )
+        self.reserve(owner, entries=entries, nodes=nodes)
+        self._reservations[reservation] = next_state
+
+    def _transfer_reservation_to(
+        self,
+        reservation: object,
+        owner: int,
+        *,
+        entries: int = 0,
+        nodes: int = 0,
+    ) -> None:
+        source, held_entries, held_nodes = self._reservation_state(reservation)
+        self._validate_quantities(entries, nodes)
+        if source == owner:
+            raise ValueError("reservation transfer needs a different owner")
+        if entries > held_entries or nodes > held_nodes:
+            raise ValueError("transfer exceeds this reservation's live charges")
+        next_state = (source, held_entries - entries, held_nodes - nodes)
+        self.reassign_many(((source, entries, nodes),), ((owner, entries, nodes),))
+        self._reservations[reservation] = next_state
+
+    def _transfer_reservation_from(
+        self,
+        reservation: object,
+        owner: int,
+        *,
+        entries: int = 0,
+        nodes: int = 0,
+    ) -> None:
+        target, held_entries, held_nodes = self._reservation_state(reservation)
+        self._validate_quantities(entries, nodes)
+        if target == owner:
+            raise ValueError("reservation transfer needs a different owner")
+        next_state = (target, held_entries + entries, held_nodes + nodes)
+        self.reassign_many(((owner, entries, nodes),), ((target, entries, nodes),))
+        self._reservations[reservation] = next_state
+
+    def _close_reservation(self, reservation: object) -> None:
+        if type(reservation) is not LedgerReservation:
+            raise TypeError("resource reservation needs its exact tracker")
+        if reservation._ledger is not self:
+            raise ValueError("cannot close a reservation from another ledger")
+        state = self._reservations.get(reservation)
+        if state is None:
+            return
+        owner, entries, nodes = state
+        self.release(owner, entries=entries, nodes=nodes)
+        del self._reservations[reservation]
 
     @contextmanager
     def reservation(
@@ -476,7 +580,11 @@ class ResourceLedger:
         """Check a required allocation before constructing any dependent store."""
         self._validate_limits(self.max_nodes, self.max_cache_entries)
         self._validate_quantities(entries, nodes)
-        next_entries, next_nodes = self.entries + entries, self.nodes + nodes
+        next_entries = self.entries + entries
+        next_nodes = self.nodes + nodes
+        self._check_capacity_totals(next_entries, next_nodes)
+
+    def _check_capacity_totals(self, next_entries: int, next_nodes: int) -> None:
         if self.max_cache_entries is not None and next_entries > self.max_cache_entries:
             raise BlockContextBudgetExceeded(
                 f"cache budget exceeded before allocation: {next_entries} > {self.max_cache_entries}"
@@ -501,14 +609,22 @@ class ResourceLedger:
             nodes += node_count
         next_entries = self.entries + entries
         next_nodes = self.nodes + nodes
+        # Keep the public validation pass after iteration: arbitrary iterables
+        # may tighten or corrupt mutable ledger limits while yielding items.
         self.check_capacity(entries=entries, nodes=nodes)
+        for account, _, _ in pending:
+            if account.disposed:
+                raise RuntimeError("resource owner has been disposed")
         for account, entry_count, node_count in pending:
             account.entries += entry_count
             account.nodes += node_count
-        self.entries = next_entries
-        self.nodes = next_nodes
-        self.peak_entries = max(self.peak_entries, next_entries)
-        self.peak_nodes = max(self.peak_nodes, next_nodes)
+        self._commit_reserved_totals(next_entries, next_nodes)
+
+    def _commit_reserved_totals(self, entries: int, nodes: int) -> None:
+        self.entries = entries
+        self.nodes = nodes
+        self.peak_entries = max(self.peak_entries, entries)
+        self.peak_nodes = max(self.peak_nodes, nodes)
 
     def reassign_many(
         self,
@@ -536,6 +652,15 @@ class ResourceLedger:
                 entries = entry_count + (0 if previous is None else previous[1])
                 nodes = node_count + (0 if previous is None else previous[2])
                 target[owner] = account, entries, nodes
+        # These iterables can execute arbitrary code while yielding. Recheck
+        # mutable budgets and every staged owner before changing any account.
+        self._validate_limits(self.max_nodes, self.max_cache_entries)
+        disposed_release = any(account.disposed for account, _, _ in released.values())
+        disposed_reservation = any(
+            account.disposed for account, _, _ in reserved.values()
+        )
+        if disposed_release or disposed_reservation:
+            raise RuntimeError("resource owner has been disposed")
         for account, entries, nodes in released.values():
             if entries > account.entries or nodes > account.nodes:
                 raise ValueError("reassignment release exceeds the owner's reservation")
@@ -545,23 +670,14 @@ class ResourceLedger:
         reserved_nodes = sum(item[2] for item in reserved.values())
         next_entries = self.entries - released_entries + reserved_entries
         next_nodes = self.nodes - released_nodes + reserved_nodes
-        if self.max_cache_entries is not None and next_entries > self.max_cache_entries:
-            raise BlockContextBudgetExceeded(
-                f"cache budget exceeded before allocation: {next_entries} > {self.max_cache_entries}"
-            )
-        if self.max_nodes is not None and next_nodes > self.max_nodes:
-            raise BlockContextBudgetExceeded(
-                f"node budget exceeded before allocation: {next_nodes} > {self.max_nodes}"
-            )
+        self._check_capacity_totals(next_entries, next_nodes)
         for account, entries, nodes in released.values():
             account.entries -= entries
             account.nodes -= nodes
         for account, entries, nodes in reserved.values():
             account.entries += entries
             account.nodes += nodes
-        self.entries, self.nodes = next_entries, next_nodes
-        self.peak_entries = max(self.peak_entries, next_entries)
-        self.peak_nodes = max(self.peak_nodes, next_nodes)
+        self._commit_reserved_totals(next_entries, next_nodes)
 
     def release(self, owner: int, entries: int = 0, nodes: int = 0) -> None:
         account = self._account(owner)
@@ -675,6 +791,8 @@ class ResourceLedger:
     def mark_disposed(self, owner: int) -> None:
         """Mark a cleared owner closed; no live payload may be hidden by disposal."""
         account = self._account(owner)
+        if any(state[0] == owner for state in self._reservations.values()):
+            raise ValueError("dispose requires closing the owner's reservations")
         if (
             account.entries
             or account.nodes
@@ -781,213 +899,3 @@ class ResourceLedger:
             self.counters.copy(),
             self.inventory(),
         )
-
-
-_K = TypeVar("_K")
-_V = TypeVar("_V")
-
-
-@dataclass(frozen=True, slots=True)
-class _DynamicMemoValue(Generic[_V]):
-    """Payload and its retained cost stored together in the owned mapping."""
-
-    value: _V
-    nodes: int
-
-
-class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
-    """An inventoried memo with fixed or payload-dependent node reservations."""
-
-    def __init__(
-        self,
-        ledger: ResourceLedger,
-        owner: int,
-        *,
-        nodes_per_entry: int = 0,
-        node_cost: Callable[[_K, _V], int] | None = None,
-        evictable: bool = False,
-        composition_entries: bool = False,
-    ) -> None:
-        require_integer(nodes_per_entry, "nodes per entry", 0)
-        if type(evictable) is not bool or type(composition_entries) is not bool:
-            raise TypeError("memo policy flags must be booleans")
-        if node_cost is not None and nodes_per_entry:
-            raise ValueError("dynamic memo cost cannot be combined with a fixed cost")
-        self.ledger = ledger
-        self.owner = owner
-        self.nodes_per_entry = nodes_per_entry
-        self.node_cost = node_cost
-        self._dynamic_nodes = 0
-        self._pending_clear_entries = self._pending_clear_nodes = 0
-        self._disposed = False
-        self._data: MutableMapping[_K, _V | _DynamicMemoValue[_V]] = ledger.make_dict(
-            owner, nodes_per_entry=nodes_per_entry
-        )
-        ledger.register_execution_root(self)
-        ledger.register_container(
-            owner,
-            self._data,
-            node_count=self._node_count,
-            payloads=self._payloads,
-            evict=self._evict if evictable else None,
-            composition_count=self._entry_count if composition_entries else None,
-        )
-
-    def _check_open(self) -> None:
-        if self._disposed:
-            raise RuntimeError("memo has been disposed")
-
-    def _entry_count(self) -> int:
-        return len(self._data)
-
-    def _node_count(self) -> int:
-        if self.node_cost is not None:
-            return self._dynamic_nodes
-        return len(self._data) * self.nodes_per_entry
-
-    def _entry_nodes(self, key: _K, value: _V) -> int:
-        if self.node_cost is None:
-            return self.nodes_per_entry
-        payload_nodes = require_integer(
-            self.node_cost(key, value), "memo payload node cost", 0
-        )
-        # One retained node accounts for the immutable cost metadata wrapper.
-        return payload_nodes + 1
-
-    def _payloads(self) -> Iterable[object]:
-        from number_compiler.resources.payload_containers import audit_mapping_items
-
-        for key, value in audit_mapping_items(self):
-            yield key
-            yield value
-
-    def _audited_value(self, value: object) -> object:
-        if self.node_cost is None:
-            return value
-        if not isinstance(value, _DynamicMemoValue):
-            raise TypeError("dynamic memo entry has invalid cost metadata")
-        return value.value
-
-    def __getitem__(self, key: _K) -> _V:
-        self._check_open()
-        value = self._data[key]
-        if self.node_cost is not None:
-            if not isinstance(value, _DynamicMemoValue):
-                raise TypeError("dynamic memo entry has invalid cost metadata")
-            return cast(_V, value.value)
-        return cast(_V, value)
-
-    def __setitem__(self, key: _K, value: _V) -> None:
-        self._check_open()
-        if key in self._data:
-            if self.node_cost is None:
-                self._data[key] = value
-                return
-            previous = self._data[key]
-            if not isinstance(previous, _DynamicMemoValue):
-                raise TypeError("dynamic memo entry has invalid cost metadata")
-            old_cost = previous.nodes
-            new_cost = self._entry_nodes(key, value)
-            difference = new_cost - old_cost
-            if difference > 0:
-                self.ledger.reserve(self.owner, nodes=difference)
-            try:
-                self._data[key] = _DynamicMemoValue(value, new_cost)
-            except BaseException:
-                self._data[key] = previous
-                if difference > 0:
-                    self.ledger.release(self.owner, nodes=difference)
-                raise
-            self._dynamic_nodes += difference
-            if difference < 0:
-                self.ledger.release(self.owner, nodes=-difference)
-            return
-        nodes = self._entry_nodes(key, value)
-        self.ledger.reserve(self.owner, entries=1, nodes=nodes)
-        try:
-            if self.node_cost is not None:
-                stored_value: _V | _DynamicMemoValue[_V] = _DynamicMemoValue(
-                    value, nodes
-                )
-            else:
-                stored_value = value
-            self._data[key] = stored_value
-        except BaseException:
-            if key in self._data:
-                del self._data[key]
-            self.ledger.release(self.owner, entries=1, nodes=nodes)
-            raise
-        if self.node_cost is not None:
-            self._dynamic_nodes += nodes
-
-    def __delitem__(self, key: _K) -> None:
-        self._check_open()
-        value = self._data[key]
-        if self.node_cost is not None:
-            if not isinstance(value, _DynamicMemoValue):
-                raise TypeError("dynamic memo entry has invalid cost metadata")
-            nodes = value.nodes
-        else:
-            nodes = self.nodes_per_entry
-        del self._data[key]
-        if self.node_cost is not None:
-            self._dynamic_nodes -= nodes
-        self.ledger.release(self.owner, entries=1, nodes=nodes)
-
-    def __len__(self) -> int:
-        self._check_open()
-        return len(self._data)
-
-    def __iter__(self) -> Iterator[_K]:
-        self._check_open()
-        return iter(self._data)
-
-    def clear(self) -> None:
-        self._check_open()
-
-        def measure() -> tuple[int, int]:
-            size = len(self._data)
-            if self.node_cost is None:
-                return size, size * self.nodes_per_entry
-            nodes = 0
-            for value in self._data.values():
-                if not isinstance(value, _DynamicMemoValue):
-                    raise TypeError("dynamic memo entry has invalid cost metadata")
-                nodes += value.nodes
-            return size, nodes
-
-        def clear_store() -> None:
-            try:
-                self._data.clear()
-            finally:
-                if self.node_cost is not None:
-                    self._dynamic_nodes = measure()[1]
-
-        def record_pending(entries: int, nodes: int) -> None:
-            self._pending_clear_entries, self._pending_clear_nodes = entries, nodes
-
-        clear_accounted_store(
-            self.ledger,
-            self.owner,
-            clear_store,
-            measure,
-            (self._pending_clear_entries, self._pending_clear_nodes),
-            record_pending,
-        )
-
-    def _evict(self) -> None:
-        if not self._disposed:
-            self.clear()
-
-    def dispose(self) -> None:
-        """Release actual memo values and invalidate every future lookup/update.
-
-        A ledger owns its registered containers for its lifetime. Disposing a
-        memo empties that container; dropping the owning index/ledger releases
-        remaining canonical arenas through ordinary garbage collection.
-        """
-        if self._disposed:
-            return
-        self.clear()
-        self.ledger.mark_disposed(self.owner)
-        self._disposed = True

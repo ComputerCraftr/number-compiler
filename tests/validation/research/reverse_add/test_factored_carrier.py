@@ -176,11 +176,13 @@ def test_temporal_squaring_matches_stepwise_execution() -> None:
         field = reverse_pair_sums(196, 10)
         source = carrier.source(field)
         power = FactoredTemporalPower(carrier)
+        out: TemporalCell | None = None
         for event in range(1, 33):
             field, _ = pair_step(field, 10)
             if event in (1, 2, 4, 8, 16, 32):
                 out = power.advance(source, event)
                 assert carrier.decode(out) == field
+        assert out is not None
         assert carrier.successor_evaluations == 32
         before = carrier.successor_evaluations
         assert power.advance(source, 32) == out

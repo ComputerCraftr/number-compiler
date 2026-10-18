@@ -91,8 +91,8 @@ class CollatzSpatialMooreProjection:
         if type(max_states) is not int or max_states < 1:
             raise ValueError("Moore state budget must be a positive integer")
         start = (0, self.root)
-        ids = {start: 0}
-        queue = [start]
+        ids: dict[tuple[int, int], int] = {start: 0}
+        queue: list[tuple[int, int]] = [start]
         rows: list[tuple[int | None, int | None]] = []
         outputs: list[object] = []
         cursor = 0

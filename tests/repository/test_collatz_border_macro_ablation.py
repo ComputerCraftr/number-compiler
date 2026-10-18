@@ -20,6 +20,10 @@ def test_packet_reads_consumed_macro_counters_from_execution_metrics() -> None:
                         "family_work": [
                             {
                                 "counter_prefix": "collatz_physical",
+                                "conditional_scheduler_work": [
+                                    ["certified_actions", 1],
+                                    ["physical_ticks", 576],
+                                ],
                                 "mixed_clock_work": [
                                     ["actions", 1],
                                     ["physical_ticks", 132],
@@ -41,6 +45,7 @@ def test_packet_reads_consumed_macro_counters_from_execution_metrics() -> None:
         "macro": {"executed_macro_actions": {"6305R": 1}},
         "border_actions": 1,
         "border_macro_physical_ticks": 19,
+        "conditional_physical_ticks": 576,
         "mixed_macro_actions": 1,
         "mixed_macro_repetitions": 12,
         "mixed_macro_physical_ticks": 132,
@@ -55,19 +60,25 @@ def test_all_selector_ablation_disables_named_and_mixed_selector() -> None:
     )
     unified = import_module("number_compiler.sequences.collatz.unified_skew_admission")
     mixed = import_module("number_compiler.sequences.collatz.temporal_mixed_execution")
+    conditional = import_module(
+        "number_compiler.sequences.collatz.conditional_scheduler_adapter"
+    )
     original = (
         execution.select_border_return_macro,
         unified.select_border_return_macro,
         mixed.select_mixed_clock_macro,
+        conditional.issue_conditional_scheduler_candidate,
     )
     with benchmark._selector_ablation(include_mixed=True):
         assert execution.select_border_return_macro() is None
         assert unified.select_border_return_macro() is None
         assert mixed.select_mixed_clock_macro() is None
+        assert conditional.issue_conditional_scheduler_candidate() is None
     assert (
         execution.select_border_return_macro,
         unified.select_border_return_macro,
         mixed.select_mixed_clock_macro,
+        conditional.issue_conditional_scheduler_candidate,
     ) == original
 
 

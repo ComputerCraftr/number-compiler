@@ -116,6 +116,9 @@ def _finite_pair_transfer(
         left, right = right, left
 
     morphism = None
+    wiring = None
+    producer_wiring = None
+    initial: tuple[int, int] | None = None
     laws = tuple(engine._law(child) for child in pair)
     if all(type(law.effect) is BaseBlockEffect and law.base == 10 for law in laws):
         if strategy._morphism is None:
@@ -184,6 +187,8 @@ def _finite_pair_transfer(
                 _reverse_add_keys.TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS
             )
             continue
+        if wiring is None or producer_wiring is None or initial is None:
+            raise AssertionError("finite pair transfer lost its observation bindings")
         key = FusedInterfaceKey(
             action,
             chunks[index],

@@ -50,6 +50,7 @@ nodes retain their original total behavior.
 \<close>
 
 declare comma_crt_eval.simps(2)[code del]
+declare comma_crt_eval.simps(1)[code]
 
 lemma comma_crt_eval_node_selected[code]:
   "comma_crt_eval phase (Comma_CRT_Node level children) =

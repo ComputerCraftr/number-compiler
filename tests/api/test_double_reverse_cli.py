@@ -74,6 +74,7 @@ def test_default_step_and_state_bit_budgets_are_stable() -> None:
     request = parse_request(["2rev10", "--seed", "10", "--nth", "1"])
     assert request is not None
     assert request.execution == DoubleReverseTermQuery(1, seed=10)
+    assert isinstance(request.execution, DoubleReverseTermQuery)
     assert request.observations == NoObservations()
     assert request.execution.max_steps == 4096
     assert request.execution.max_state_bits == 4096

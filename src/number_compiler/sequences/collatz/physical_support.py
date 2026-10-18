@@ -66,8 +66,8 @@ class PhysicalSupportArena(OrderedBooleanSupportArena):
     def odd(self) -> PhysicalSupport:
         return cast(PhysicalSupport, self.true)
 
-    def run(self, parity: bool, count: int) -> PhysicalSupport:
-        return cast(PhysicalSupport, super().run(parity, count))
+    def run(self, symbol: bool, count: int) -> PhysicalSupport:
+        return cast(PhysicalSupport, super().run(symbol, count))
 
     def concat(
         self, first: OrderedBooleanSupport, second: OrderedBooleanSupport

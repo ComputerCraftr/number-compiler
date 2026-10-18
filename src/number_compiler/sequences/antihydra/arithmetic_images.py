@@ -42,6 +42,10 @@ from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
+from number_compiler.sequences.antihydra.mahler_odd_prefilter import (
+    PREFILTER_BITS,
+    might_have_odd_macro_low_suffix,
+)
 from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
     MahlerOddMacroSelection,
     select_source_certified_odd_macro,
@@ -424,6 +428,26 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             or admitted.precision != width
             or width <= self.MAX_LEAF_STEPS
         ):
+            return None
+        # This low 2-adic check can only reject a source when every upcoming
+        # selector exponent is fixed and no repeated motif fits the exact
+        # residual budget. An unknown valuation always falls through to the
+        # full issuer. Use only the already admitted residue/lift so the
+        # negative check happens before allocating selector scratch state.
+        low_mask = (1 << PREFILTER_BITS) - 1
+        pointed_low = admitted.residue & low_mask
+        if admitted.lift and admitted.precision < PREFILTER_BITS:
+            pointed_low += (
+                admitted.lift & ((1 << (PREFILTER_BITS - admitted.precision)) - 1)
+            ) << admitted.precision
+        centered_low = (pointed_low - 1) & low_mask
+        if not might_have_odd_macro_low_suffix(
+            centered_low,
+            remaining_steps=width,
+            max_residual_steps=self.MAX_LEAF_STEPS,
+        ):
+            self._bump("temporal_odd_macro_prefilter_rejections")
+            self._bump("temporal_odd_macro_selector_misses")
             return None
         scratch_workspace = RunArithmeticWorkspace.for_ledger(
             self.ledger, self.counter_prefix

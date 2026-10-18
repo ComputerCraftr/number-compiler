@@ -65,6 +65,7 @@ primrec comma_crt_mdd_eval :: "nat \<Rightarrow> 'a comma_crt_mdd \<Rightarrow> 
      else None)"
 
 declare comma_crt_mdd_eval.simps(2)[code del]
+declare comma_crt_mdd_eval.simps(1)[code]
 
 lemma comma_crt_mdd_eval_node_selected[code]:
   "comma_crt_mdd_eval phase (Comma_CRT_MDD_Node level children) =

@@ -16,6 +16,10 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.automata.word_period import (
+    finite_suffix_period,
+    primitive_period,
+)
 from number_compiler.resources.metric_keys import double_reverse as metric_keys
 
 from ._temporal_bank_authority import (
@@ -30,6 +34,12 @@ from .temporal_birth_induction import (
     CertifiedBirthClock,
     _validate_birth_duration,
     birth_clock_for_source,
+)
+from .temporal_diagonal_induction import (
+    ClosedBorderPairReturn,
+    FiniteInductionWitness,
+    certified_closed_outer_pair_return,
+    finite_birth_period_induction,
 )
 from .temporal_hashlife import growth_ports
 
@@ -56,6 +66,19 @@ def _birth_strip_workspace_units(pairs: int, horizon: int) -> int:
 def _birth_model_workspace_units(pairs: int, max_states: int) -> int:
     """Conservative bound for one conditional orbit and its channel rows."""
     return max_states * (20 * pairs + 8)
+
+
+def _charge_period_comparisons(ledger: ResourceLedger | None, comparisons: int) -> None:
+    if ledger is not None:
+        ledger.bump(
+            metric_keys.DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS, comparisons
+        )
+
+
+def _measured_period(values: tuple[object, ...], ledger: ResourceLedger | None) -> int:
+    period, comparisons = primitive_period(values)
+    _charge_period_comparisons(ledger, comparisons)
+    return period
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,33 +233,6 @@ def assert_birth_layer_step(
     return future_deeper
 
 
-def _minimal_period(values: tuple[object, ...]) -> int:
-    """Primitive period of a *proven model cycle*, never fitted to a seed."""
-    for p in range(1, len(values) + 1):
-        if len(values) % p == 0 and all(
-            val == values[i % p] for i, val in enumerate(values)
-        ):
-            return p
-    return len(values)
-
-
-def _finite_lasso(
-    letters: tuple[BirthRingPorts, ...],
-    *,
-    min_repeats: int = 3,
-) -> tuple[int, int] | None:
-    """Observe a finite source inlet; no implication beyond its last letter."""
-    length = len(letters)
-    for p in range(1, length // min_repeats + 1):
-        for first in range(length - min_repeats * p + 1):
-            if all(
-                letters[i] == letters[first + (i - first) % p]
-                for i in range(first, length)
-            ):
-                return first, p
-    return None
-
-
 @dataclass(frozen=True, slots=True)
 class ConditionalBirthReturn:
     """Return period inside a fully specified periodic *inlet model* only."""
@@ -333,9 +329,9 @@ def _enumerate_conditional_birth_model(
     # The complete source state and input phase return. Primitive periods
     # of the emitted raw digits and Boolean masks are *future*-closed for
     # this declared conditional model, though possibly smaller.
-    raw = _minimal_period(tuple(pair_words[entry:steps]))
-    gt = _minimal_period(tuple(mask_words[entry:steps]))
-    xor = _minimal_period(tuple(xor_words[entry:steps]))
+    raw = _measured_period(tuple(pair_words[entry:steps]), ledger)
+    gt = _measured_period(tuple(mask_words[entry:steps]), ledger)
+    xor = _measured_period(tuple(xor_words[entry:steps]), ledger)
     complete = all(word is not None for word in odd_words[entry:steps])
     p_pair: int | None = None
     p_gt: int | None = None
@@ -347,14 +343,16 @@ def _enumerate_conditional_birth_model(
             if odd_word is None:
                 raise AssertionError("conditional intermediate digit is not canonical")
             physical.extend((pair_words[j], odd_word))
-        p_pair = _minimal_period(tuple(physical))
-        p_gt = _minimal_period(
-            tuple(tuple(int(a + b >= 15) for a, b in word) for word in physical)
+        p_pair = _measured_period(tuple(physical), ledger)
+        p_gt = _measured_period(
+            tuple(tuple(int(a + b >= 15) for a, b in word) for word in physical),
+            ledger,
         )
-        p_xor = _minimal_period(
+        p_xor = _measured_period(
             tuple(
                 tuple(int((a >= 5) != (b >= 5)) for a, b in word) for word in physical
-            )
+            ),
+            ledger,
         )
     return _ConditionalBirthModel(
         tuple(states),
@@ -418,6 +416,7 @@ class BirthLayerPeriod:
     source_finite_horizon_verified: bool
     indefinite_source_authorized: bool
     status: str
+    diagonal_induction: FiniteInductionWitness | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,6 +431,7 @@ class CertifiedBirthRing(_SourceAuthorizedRecord):
     clock: CertifiedBirthClock
     final_pairs: tuple[PeriodicBankFrame, ...]
     layers: tuple[BirthLayerPeriod, ...]
+    outermost_pair_return: ClosedBorderPairReturn | None
 
     @property
     def independently_powered_pairs(self) -> int:
@@ -460,6 +460,11 @@ class CertifiedBirthRing(_SourceAuthorizedRecord):
                     ),
                     "indefinite_source_authorized": False,
                     "status": layer.status,
+                    "diagonal_induction": (
+                        None
+                        if layer.diagonal_induction is None
+                        else asdict(layer.diagonal_induction)
+                    ),
                 }
             )
         return {
@@ -471,6 +476,12 @@ class CertifiedBirthRing(_SourceAuthorizedRecord):
             "clock": asdict(self.clock),
             "final_pairs": [asdict(frame) for frame in self.final_pairs],
             "layers": layer_packets,
+            "outermost_pair_return": (
+                None
+                if self.outermost_pair_return is None
+                else asdict(self.outermost_pair_return)
+            ),
+            "seam_response_classes_by_phase": (2, 4, 2, 1),
             "independently_powered_pairs": self.independently_powered_pairs,
             "indefinite_source_authorized": False,
         }
@@ -531,6 +542,8 @@ def _certified_birth_ring_reserved(
     engine = source.engine
     horizon = source.f_steps
     k = pairs
+    if type(k) is not int or k < 1:
+        raise ValueError("birth ring requires at least one boundary pair")
     arena = source.arena
     root = source.root
     phase_in = source.phase
@@ -567,6 +580,7 @@ def _certified_birth_ring_reserved(
             inlet_digits.append(digit)
             source.ledger.bump(metric_keys.DOUBLE_REVERSE_BIRTH_LAYER_SOURCE_PORT_READS)
         inlet = BirthRingPorts(*inlet_digits)
+        state, layer_inlet = current, inlet
         for depth in range(k, 0, -1):
             if depth == k:
                 state, layer_inlet = current, inlet
@@ -595,7 +609,8 @@ def _certified_birth_ring_reserved(
     layers: list[BirthLayerPeriod] = []
     for depth in range(k, 0, -1):
         word = tuple(ports[depth])
-        witness = _finite_lasso(word)
+        witness, comparisons = finite_suffix_period(word)
+        _charge_period_comparisons(source.ledger, comparisons)
         if witness is None:
             layers.append(
                 BirthLayerPeriod(
@@ -634,6 +649,18 @@ def _certified_birth_ring_reserved(
         if powered_state != expected or powered_frame != verified:
             raise AssertionError("powered birth-ring quotient changed a source digit")
         model = model_action.result
+        induction_start = start + model.preperiod
+        induction = (
+            finite_birth_period_induction(
+                tuple(states[depth]),
+                tuple(ports[depth]),
+                lag_fsteps=model.ordered_pair_period,
+                start_fstep=induction_start,
+                ledger=source.ledger,
+            )
+            if induction_start + model.ordered_pair_period < horizon
+            else None
+        )
         layers.append(
             BirthLayerPeriod(
                 depth,
@@ -643,9 +670,22 @@ def _certified_birth_ring_reserved(
                 True,
                 False,
                 "finite_source_conditional_return",
+                induction,
             )
         )
     clock = birth_clock_for_source(source)
+    border_edge = (
+        symbol_at(arena, root, 0),
+        symbol_at(arena, root, 1),
+        symbol_at(arena, root, width_in - 2),
+        symbol_at(arena, root, width_in - 1),
+    )
+    try:
+        border_period = certified_closed_outer_pair_return(border_edge)
+    except ValueError:
+        # Other admitted cylinders can be observed finitely, but do not get
+        # the separate indefinite first-pair SCC theorem.
+        border_period = None
     return issue_source_record(
         CertifiedBirthRing(
             source_generation,
@@ -656,6 +696,7 @@ def _certified_birth_ring_reserved(
             clock,
             final_frames,
             tuple(layers),
+            border_period,
         ),
         arena,
         root,
@@ -670,6 +711,7 @@ __all__ = [
     "BirthRingState",
     "CertifiedBirthRing",
     "ConditionalBirthReturn",
+    "FiniteInductionWitness",
     "assert_birth_layer_step",
     "birth_clock_for_source",
     "certified_birth_ring",

@@ -18,7 +18,10 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, cast
 
-from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
+
+from .outer_center_residue99 import constrain_center_from_outer_pairs
+from .temporal_carry_wire import MiddleCarryWire, restrict_middle_carry_wire
 
 if TYPE_CHECKING:
     from .border_carry_safety import ConditionalBorderCycle
@@ -97,6 +100,8 @@ class ReverseInwardConstraints:
         self._residues: dict[tuple[int, int], int] = {}
         self._pairs: dict[tuple[int, int], frozenset[int]] = {}
         self._middle_transfers: dict[tuple[int, int], tuple[CarryFn, ...]] = {}
+        self._middle_projections: dict[tuple[int, int], MiddleCarryWire] = {}
+        self._exterior_mod99: dict[int, int] = {}
         self._xor: dict[tuple[int, int], int] = {}
         self._period: list[tuple[int, int, int, str]] = []
         if on_middle_filter_visit is not None and not callable(on_middle_filter_visit):
@@ -143,11 +148,28 @@ class ReverseInwardConstraints:
             or type(residue) is not int
         ):
             raise ValueError("invalid modular port")
-        key = t, modulus
-        value = residue % modulus
-        if key in self._residues and self._residues[key] != value:
-            raise InconsistentReverseConstraints("modular ports disagree")
-        self._residues[key] = value
+        pending = [(t, modulus, residue % modulus)]
+        while pending:
+            row, current_modulus, value = pending.pop()
+            key = row, current_modulus
+            previous = self._residues.get(key)
+            if previous is not None and previous != value:
+                raise InconsistentReverseConstraints("modular ports disagree")
+            self._residues[key] = value
+            if current_modulus != 198:
+                continue
+            # CRT(99, 2) is exact. Carrying a second width-long mod-198
+            # automaton would recheck the same 99 residues and one parity
+            # bit at O(width * 198) per fixed-point round. Use the shared
+            # mod-99 factor and the literal LSD parity instead.
+            pending.append((row, 99, value % 99))
+            low = self.widths[row] - 1
+            options = tuple(
+                digit for digit in self.digit_domain(row, low) if digit % 2 == value % 2
+            )
+            if not options:
+                raise InconsistentReverseConstraints("mod198 parity contradicts LSD")
+            self.constrain_digit(row, low, options)
 
     def constrain_pair(
         self, t: int, i: int, allowed: str | int | tuple[str | int, ...]
@@ -170,6 +192,14 @@ class ReverseInwardConstraints:
         if not retained:
             raise InconsistentReverseConstraints("incompatible pair masks")
         self._pairs[key] = frozenset(retained)
+
+    def _restrict_pair(
+        self, t: int, i: int, allowed: str | int | tuple[str | int, ...]
+    ) -> bool:
+        """Intersect one pair domain and report whether its mask changed."""
+        previous = self._pairs.get((t, i))
+        self.constrain_pair(t, i, allowed)
+        return previous != self._pairs[(t, i)]
 
     def constrain_middle_transfer(
         self, t: int, border_digits: int, allowed: tuple[CarryFn, ...]
@@ -202,6 +232,153 @@ class ReverseInwardConstraints:
         if not retained:
             raise InconsistentReverseConstraints("middle transfer masks disagree")
         self._middle_transfers[key] = retained
+
+    def constrain_bilateral_port(self, t: int, port: object) -> None:
+        """Install the whole authenticated K-border carry transfer as one factor.
+
+        This is a conditional digit-domain intersection, not authorization to
+        repeat the border. The Q19 issuer authenticates the port provenance.
+        """
+        from .border_carry_safety import BilateralCyclePort, border_carry_port
+
+        if type(port) is not BilateralCyclePort:
+            raise TypeError("bilateral border port required")
+        if type(t) is not int or not 0 <= t < len(self._carries):
+            raise IndexError("bilateral port outside temporal tape")
+        w, k = self.widths[t], port.source.k
+        if w < 2 * k + 1 or self.widths[t + 1] != w + port.growth:
+            raise InconsistentReverseConstraints("border port width/growth conflict")
+        self.constrain_carry(t, k, port.low_carry)
+        self.constrain_middle_transfer(t, k, port.admitted_middle)
+        possible_high = {
+            apply_carry_fn(fn, port.low_carry) for fn in port.admitted_middle
+        }
+        if len(possible_high) == 1:
+            self.constrain_carry(t, w - k, next(iter(possible_high)))
+        leading = border_carry_port(port.source)
+        if leading.forced_msd_ingress is not None:
+            self.constrain_carry(t, w - 1, leading.forced_msd_ingress)
+
+    def middle_transfer_domain(self, t: int, border_digits: int) -> tuple[CarryFn, ...]:
+        """All middle maps surviving the shared two-ended fixed point."""
+        return self._middle_transfers[t, border_digits]
+
+    def middle_carry_wire(self, t: int, border_digits: int) -> MiddleCarryWire:
+        """Retain the entire correlated interior Q19/F5/carry witness."""
+        return self._middle_projections[t, border_digits]
+
+    def constrain_exterior_residue99(self, t: int, residue: int) -> None:
+        """Intersect an externally supplied exact ordered *exterior* residue.
+
+        This low-level constraint is an assumption, just like constrain_digit.
+        A physical publisher must derive it from certified outer digits/SLP;
+        guessing it from Q19 pair sums is unsound at even width.
+        """
+        if (
+            type(t) is not int
+            or not 0 <= t < len(self.widths)
+            or type(residue) is not int
+            or not 0 <= residue < 99
+        ):
+            raise ValueError("invalid exterior residue port")
+        previous = self._exterior_mod99.get(t)
+        if previous is not None and previous != residue:
+            raise InconsistentReverseConstraints("exterior residue seam mismatch")
+        self._exterior_mod99[t] = residue
+
+    def center_domain(self, t: int) -> tuple[int, ...]:
+        """Middle 1/2-digit values, with fixed width retained by the caller."""
+        w = self.widths[t]
+        if w % 2:
+            return self.digit_domain(t, w // 2)
+        lo = w // 2
+        return tuple(
+            sorted(
+                {
+                    10 * a + b
+                    for a in self.digit_domain(t, lo - 1)
+                    for b in self.digit_domain(t, lo)
+                    if a + b in self.pair_domain(t, lo - 1)
+                }
+            )
+        )
+
+    def global_residue99(self, t: int) -> int | None:
+        return self._residues.get((t, 99))
+
+    def global_residue198(self, t: int) -> int | None:
+        return self._residues.get((t, 198))
+
+    def _middle_constraints(self) -> bool:
+        """Intersect low carry, one whole symmetric reset map, high ingress.
+
+        Individual pair domains cannot be read as independent carry choices:
+        the first non-EQ coefficient selects a shared RESET0/ID/RESET1 map.
+        """
+        changed = False
+        for (t, k), allowed in sorted(self._middle_transfers.items()):
+            width = self.widths[t]
+            pairs = tuple(self.pair_domain(t, i) for i in range(k, (width + 1) // 2))
+            projection = self._middle_projections.get((t, k))
+            if not (
+                projection is not None
+                and projection.source_width == width
+                and projection.outer_pairs == k
+                and projection.pair_domains == pairs
+                and projection.transfers == allowed
+            ):
+                try:
+                    projection = restrict_middle_carry_wire(
+                        width,
+                        k,
+                        pairs,
+                        allowed,
+                        on_value_visit=self._on_middle_filter_visit,
+                    )
+                except ValueError as exc:
+                    raise InconsistentReverseConstraints(str(exc)) from exc
+            assert projection is not None
+            low = self._carries[t][k]
+            high = self._carries[t][width - k]
+            supported = {
+                (carry, fn, apply_carry_fn(fn, carry))
+                for fn in projection.transfers
+                for carry in _bits(low)
+                if high & (1 << apply_carry_fn(fn, carry))
+            }
+            if not supported:
+                raise InconsistentReverseConstraints(
+                    "inconsistent correlated middle carry"
+                )
+            surviving = tuple(
+                fn for fn in CarryFn if any(s[1] is fn for s in supported)
+            )
+            if surviving != allowed:
+                self._middle_transfers[t, k] = surviving
+                changed = True
+                projection = restrict_middle_carry_wire(
+                    width,
+                    k,
+                    pairs,
+                    surviving,
+                    on_value_visit=self._on_middle_filter_visit,
+                )
+            changed |= self._shrink(
+                self._carries[t],
+                k,
+                sum(1 << v for v in {s[0] for s in supported}),
+                f"coupled lower carry {t}",
+            )
+            changed |= self._shrink(
+                self._carries[t],
+                width - k,
+                sum(1 << v for v in {s[2] for s in supported}),
+                f"coupled upper carry {t}",
+            )
+            for i, values in enumerate(projection.pair_domains, start=k):
+                changed |= self._restrict_pair(t, i, values)
+            self._middle_projections[t, k] = projection
+        return changed
 
     def constrain_carry(self, t: int, i: int, bit: int) -> None:
         if not 0 <= t < len(self._carries) or not 0 <= i < len(self._carries[t]):
@@ -369,11 +546,13 @@ class ReverseInwardConstraints:
         for i in range(w):
             li, hi, out_i = w - 1 - i, i, w_next - 1 - i
             ca, cb = self._carries[t][i : i + 2]
+            low_digits = _members(src[li])
+            high_digits = () if li == hi else _members(src[hi])
+            incoming_carries = _bits(ca)
             keep_lo = keep_hi = keep_out = keep_ca = keep_cb = 0
-            for a in _members(src[li]):
-                highs = (a,) if li == hi else _members(src[hi])
-                for b in highs:
-                    for c in _bits(ca):
+            for a in low_digits:
+                for b in (a,) if li == hi else high_digits:
+                    for c in incoming_carries:
                         total = a + b + c
                         carry = int(total >= 10)
                         digit = total % 10
@@ -393,48 +572,11 @@ class ReverseInwardConstraints:
 
     def _pair_constraints(self) -> bool:
         changed = False
-        if self._middle_transfers:
-            from .symmetric_carry_filter import filter_symmetric_transfer
-
-            for (t, border_digits), allowed_transfers in self._middle_transfers.items():
-                pair_stop = (self.widths[t] + 1) // 2
-                center_index = self.widths[t] // 2 if self.widths[t] & 1 else None
-                if center_index is not None:
-                    pair_stop -= 1
-                domains = tuple(
-                    self.pair_domain(t, i) for i in range(border_digits, pair_stop)
-                )
-                center = (
-                    self.pair_domain(t, center_index)
-                    if center_index is not None
-                    else None
-                )
-                filtered = filter_symmetric_transfer(
-                    domains,
-                    allowed_transfers,
-                    center=center,
-                    on_value_visit=self._on_middle_filter_visit,
-                )
-                if (
-                    not filtered.possible_transfers
-                    or any(not row for row in filtered.supported_pairs)
-                    or (
-                        filtered.supported_center is not None
-                        and not filtered.supported_center
-                    )
-                ):
-                    raise InconsistentReverseConstraints(
-                        f"symmetric middle transfer at row {t} has no support"
-                    )
-                for offset, supported in enumerate(filtered.supported_pairs):
-                    index = border_digits + offset
-                    previous = self._pairs.get((t, index))
-                    self.constrain_pair(t, index, supported)
-                    changed |= previous != self._pairs[(t, index)]
-                if center_index is not None and filtered.supported_center is not None:
-                    previous = self._pairs.get((t, center_index))
-                    self.constrain_pair(t, center_index, filtered.supported_center)
-                    changed |= previous != self._pairs[(t, center_index)]
+        # Middle-transfer support is handled once, in _middle_constraints,
+        # where the same symmetric filter is joined with both carry endpoints.
+        # Re-running filter_symmetric_transfer here duplicated a full inward
+        # pass on every propagation round and used a weaker projection that
+        # ignored those endpoint carries.
         for (t, i), allowed_pair_sums in self._pairs.items():
             row = self._domains[t]
             a, b = len(row) - 1 - i, i
@@ -511,10 +653,11 @@ class ReverseInwardConstraints:
             src = (0,) if j >= len(source) else _members(source[j])
             dst = (0,) if j >= len(target) else _members(target[j])
             old, new = borrows[j : j + 2]
+            incoming_borrows = _bits(old)
             keep_src = keep_dst = keep_old = keep_new = 0
             for a in dst:
                 for b in src:
-                    for beta in _bits(old):
+                    for beta in incoming_borrows:
                         bit = int(a < b + beta)
                         if new & (1 << bit):
                             keep_src |= 1 << b
@@ -531,28 +674,32 @@ class ReverseInwardConstraints:
 
     def _residue(self, t: int, modulus: int, value: int) -> bool:
         row = self._domains[t]
+        # Domain membership is stable until the final pruning sweep below.
+        # Materialize each digit set once per column instead of recomputing it
+        # for every reachable residue state in the forward/backward passes.
+        digit_options = tuple(_members(mask) for mask in row)
         forward: list[set[int]] = [{0}]
-        for mask in row:
+        for options in digit_options:
             forward.append(
-                {(10 * r + d) % modulus for r in forward[-1] for d in _members(mask)}
+                {(10 * r + d) % modulus for r in forward[-1] for d in options}
             )
         if value not in forward[-1]:
             raise InconsistentReverseConstraints(f"mod {modulus} at row {t}")
         future: list[set[int]] = [set() for _ in range(len(row) + 1)]
         future[-1] = {value}
         for j in range(len(row) - 1, -1, -1):
+            options = digit_options[j]
+            following = future[j + 1]
             future[j] = {
                 r
                 for r in range(modulus)
-                if any(
-                    (10 * r + d) % modulus in future[j + 1] for d in _members(row[j])
-                )
+                if any((10 * r + d) % modulus in following for d in options)
             }
         changed = False
         for j, mask in enumerate(row):
             allowed = sum(
                 1 << d
-                for d in _members(mask)
+                for d in digit_options[j]
                 if any((10 * r + d) % modulus in future[j + 1] for r in forward[j])
             )
             changed |= self._shrink(row, j, allowed, f"modular row {t}")
@@ -573,14 +720,27 @@ class ReverseInwardConstraints:
             for t in range(len(self._carries)):
                 changed |= self._addition(t)
             changed |= self._pair_constraints()
+            changed |= self._middle_constraints()
             for t in range(len(self._borrows)):
                 changed |= self._raw_borrow(t)
             for (t, mod), residue in sorted(self._residues.items()):
+                if mod == 198:  # decomposed exactly into mod99 and LSD parity
+                    continue
+                if mod in (9, 11) and (t, 99) in self._residues:
+                    if self._residues[t, 99] % mod != residue:
+                        raise InconsistentReverseConstraints("CRT residue mismatch")
+                    continue
                 changed |= self._residue(t, mod, residue)
+            for t in range(len(self.widths)):
+                if (t, 99) in self._residues:
+                    changed |= constrain_center_from_outer_pairs(
+                        self, t, self._residues[t, 99], self._exterior_mod99.get(t)
+                    )
             # Iterate all shared temporal carry factors in both directions.
             for t in range(len(self._carries) - 1, -1, -1):
                 changed |= self._addition(t)
             changed |= self._pair_constraints()
+            changed |= self._middle_constraints()
             if not changed:
                 self.rounds = n
                 return self.summary()

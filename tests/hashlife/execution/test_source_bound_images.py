@@ -234,7 +234,7 @@ def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
             if type(payload) is not int or payload < 0:
                 raise ValueError("invalid payload")
 
-        def identity_action(self, _source: object) -> int:
+        def identity_action(self, source: object) -> int:
             return 0
 
         def action_children(self, action: object) -> None:

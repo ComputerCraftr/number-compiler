@@ -695,6 +695,8 @@ def _suffix_affine_projection(
             symbol_at(arena, target_root, target_width - 1),
         ),
     )
+    if phase_out is None:
+        raise AssertionError("certified suffix endpoint has no edge phase")
     if phase_out != (phase + suffix_steps) % 4:
         raise AssertionError("certified suffix edge phase did not advance")
     f_steps = suffix_steps // 2

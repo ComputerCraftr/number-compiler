@@ -24,13 +24,15 @@ from .reverse_add_sources import periodic_reverse_add_source
 
 
 @contextmanager
-def source_guarded_periodic_banks() -> Iterator[
+def _source_guarded_periodic_context(
+    *, include_spatial: bool
+) -> Iterator[
     tuple[
         ResourceLedger,
         ReversePairQ19OutputOwner,
         CertifiedBorderGrowth,
         SourceGuardedGTBankAction,
-        ReverseAddSpatialBankMorphism,
+        ReverseAddSpatialBankMorphism | None,
     ]
 ]:
     seed = periodic_reverse_add_source((5, 16), seed=9323)
@@ -47,13 +49,17 @@ def source_guarded_periodic_banks() -> Iterator[
             period_size=2,
             growth_control=certificate,
         )
-        spatial = owner.authorize_spatial_bank_morphism(
-            owner.initial,
-            steps=8,
-            start=200,
-            count=8,
-            growth_control=certificate,
-            period_size=2,
+        spatial = (
+            owner.authorize_spatial_bank_morphism(
+                owner.initial,
+                steps=8,
+                start=200,
+                count=8,
+                growth_control=certificate,
+                period_size=2,
+            )
+            if include_spatial
+            else None
         )
         yield ledger, owner, certificate, bank, spatial
     finally:
@@ -61,4 +67,37 @@ def source_guarded_periodic_banks() -> Iterator[
         assert ledger.entries == ledger.nodes == 0
 
 
-__all__ = ["source_guarded_periodic_banks"]
+@contextmanager
+def source_guarded_periodic_banks() -> Iterator[
+    tuple[
+        ResourceLedger,
+        ReversePairQ19OutputOwner,
+        CertifiedBorderGrowth,
+        SourceGuardedGTBankAction,
+        ReverseAddSpatialBankMorphism,
+    ]
+]:
+    with _source_guarded_periodic_context(include_spatial=True) as parts:
+        ledger, owner, certificate, bank, spatial = parts
+        assert spatial is not None
+        yield ledger, owner, certificate, bank, spatial
+
+
+@contextmanager
+def source_guarded_periodic_temporal_bank() -> Iterator[
+    tuple[
+        ResourceLedger,
+        ReversePairQ19OutputOwner,
+        CertifiedBorderGrowth,
+        SourceGuardedGTBankAction,
+    ]
+]:
+    with _source_guarded_periodic_context(include_spatial=False) as parts:
+        ledger, owner, certificate, bank, _spatial = parts
+        yield ledger, owner, certificate, bank
+
+
+__all__ = [
+    "source_guarded_periodic_banks",
+    "source_guarded_periodic_temporal_bank",
+]

@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
@@ -172,8 +175,74 @@ def consume_initial_mixed_route(
     )
     if dyadic_state is not None:
         return dyadic_state, d8_table
-    if oversized_mixed_parent:
-        raise MixedRouteNotAdmitted
+
+    def try_complete_conditional_parent() -> MixedRunExecutorState | None:
+        """Use a cold conditional motif only when its proved parent fits exactly.
+
+        This helper is called early only without a shared cache.  When a shared
+        cache exists, the ordinary cached/terminal/mixed route wins; the
+        conditional power is reserved for a root that route cannot complete.
+        """
+        if include_width or parity_builder is not None:
+            return None
+        if source % 10 != 3 or source.bit_length() < 256 or remaining < 256:
+            return None
+        from number_compiler.sequences.collatz.conditional_scheduler_admission import (
+            find_bounded_conditional_driver,
+        )
+
+        driver = find_bounded_conditional_driver(source, remaining)
+        if driver is None:
+            ledger.bump(_collatz_keys.COLLATZ_CONDITIONAL_SCHEDULER_FAST_REFUSALS)
+            return None
+        if macros is not None and remaining - driver[1] > 64:
+            return None
+        # Local import breaks the otherwise circular executor-state dependency.
+        from number_compiler.sequences.collatz.conditional_scheduler_adapter import (
+            consume_conditional_scheduler_candidate,
+            issue_conditional_scheduler_candidate,
+        )
+
+        candidate = issue_conditional_scheduler_candidate(
+            source,
+            remaining,
+            scratch=scratch,
+            ledger=ledger,
+            macros=macros,
+            include_f5=normalized_f5 is not None,
+            include_joint=include_joint,
+        )
+        if candidate is None or candidate.physical_ticks > remaining:
+            return None
+        if 2 * candidate.physical_ticks < remaining:
+            return None
+        if macros is not None and remaining - candidate.physical_ticks > 64:
+            return None
+        try:
+            return consume_conditional_scheduler_candidate(
+                MixedRunExecutorState(
+                    source,
+                    remaining,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    normalized_f5,
+                    physical_f5,
+                ),
+                candidate,
+                scratch=scratch,
+                control_bits=control_bits,
+                include_joint=include_joint,
+                joint_builder=joint_builder,
+                ledger=ledger,
+                macros=macros,
+            )
+        except BlockContextBudgetExceeded:
+            # Budget preflight has no publisher side effects.
+            return None
 
     terminal = None
     if source & 1:
@@ -213,6 +282,14 @@ def consume_initial_mixed_route(
             ),
             d8_table,
         )
+    # Prefer the exact power-of-two endpoint before any cold conditional
+    # discovery. A warm shared-cache parent already returned above.
+    if macros is None or oversized_mixed_parent:
+        root = try_complete_conditional_parent()
+        if root is not None:
+            return root, d8_table
+        if oversized_mixed_parent:
+            raise MixedRouteNotAdmitted
     macro, table = select_mixed_macro(
         source,
         remaining,
@@ -222,10 +299,16 @@ def consume_initial_mixed_route(
         max_preview_bits=32,
     )
     if macro is None:
+        root = try_complete_conditional_parent() if macros is not None else None
+        if root is not None:
+            return root, table
         raise MixedRouteNotAdmitted
     if remaining - macro.physical_ticks > _MAX_ROOT_ROUTE_TAIL:
         if macros is not None:
             remember_mixed_action(macros, macro, scratch)
+            root = try_complete_conditional_parent()
+            if root is not None:
+                return root, table
         raise MixedRouteNotAdmitted
     progress = consume_selected_mixed_run(
         macro,

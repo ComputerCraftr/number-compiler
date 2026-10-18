@@ -1,6 +1,49 @@
 (* Proof-producing decomposition of one selected occurrence construction check. *)
 structure Comma_Semantic_B1_Construction_Check =
 struct
+  fun residual_conjunct_summary term =
+    let
+      fun visit remaining current atoms =
+        if remaining = 0 then (remaining, atoms, true)
+        else (case current of
+          Const (name, _) $ left $ right =>
+            if name = @{const_name HOL.conj} then
+              let val (after_left, left_atoms, left_truncated) =
+                    visit (remaining - 1) left atoms
+                  val (after_right, right_atoms, right_truncated) =
+                    visit after_left right left_atoms
+              in (after_right, right_atoms,
+                left_truncated orelse right_truncated) end
+            else (remaining - 1, current :: atoms, false)
+        | _ => (remaining - 1, current :: atoms, false))
+      val (_, reverse_atoms, truncated) = visit 64 term []
+      val atoms = rev reverse_atoms
+      fun clip limit text = String.substring (text, 0, Int.min (limit, String.size text))
+      fun render atom =
+        let
+          fun show 0 _ = ("...", 0)
+            | show remaining current =
+                (case current of
+                  Const (name, _) => (Long_Name.base_name name, remaining - 1)
+                | Free (name, _) => ("Free:" ^ name, remaining - 1)
+                | Var ((name, index), _) =>
+                    ("Var:" ^ name ^ "." ^ Int.toString index, remaining - 1)
+                | Bound index => ("Bound:" ^ Int.toString index, remaining - 1)
+                | Abs (name, _, body) =>
+                    let val (body_text, rest) = show (remaining - 1) body
+                    in ("(lambda " ^ name ^ ". " ^ body_text ^ ")", rest) end
+                | function $ argument =>
+                    let val (function_text, after_function) =
+                          show (remaining - 1) function
+                        val (argument_text, after_argument) =
+                          show after_function argument
+                    in ("(" ^ function_text ^ " " ^ argument_text ^ ")",
+                      after_argument) end)
+          val (text, _) = show 32 atom
+        in clip 160 text end
+      val summary = String.concatWith " && " (map render atoms)
+    in clip 900 summary ^ (if truncated then " ..." else "") end
+
   val maximum_source_extent = 1024
   (* The occurrence contract admits at most 28 lift descriptors per source. *)
   val maximum_lift_catalog_extent = 28 * maximum_source_extent
@@ -109,7 +152,7 @@ struct
   fun add_named_operation_time table name elapsed =
     let val (calls, total) = the_default (0, 0) (Symtab.lookup (!table) name)
     in table := Symtab.update (name, (calls + 1, total + elapsed)) (!table) end
-  fun timed_origin label calls limit compute =
+  fun timed_stage label calls limit compute =
     let
       val call = !calls
       val _ = calls := call + 1
@@ -291,13 +334,13 @@ struct
         end
       val check_def = @{thm comma_semantic_b1_crt_construction_check_def}
         RS @{thm eq_reflection}
-      val bound_def = @{thm comma_semantic_b1_crt_constructed_occurrence_bound_def}
+      val compact_def = @{thm comma_semantic_b1_crt_compact_occurrence_check_def}
         RS @{thm eq_reflection}
       val check_ct = Thm.cterm_of ctxt proposition
       val check_step = time "definition" (fn () => Conv.rewr_conv check_def check_ct)
-      val bound_step = time "bound-definition" (fn () =>
-        Conv.rewr_conv bound_def (Thm.rhs_of check_step))
-      val body_ct = Thm.rhs_of bound_step
+      val compact_step = time "compact-definition" (fn () =>
+        Conv.rewr_conv compact_def (Thm.rhs_of check_step))
+      val body_ct = Thm.rhs_of compact_step
       val if_true = @{thm if_True} RS @{thm eq_reflection}
       fun expose_if ct =
         (case strip_comb (Thm.term_of ct) of
@@ -361,36 +404,28 @@ struct
         (Thm.transitive occurrence_step
           (Thm.transitive selected_case (Thm.transitive selected_beta lets_eq)))
       val expanded = Thm.transitive check_step
-        (Thm.transitive bound_step skeleton_eq)
+        (Thm.transitive compact_step skeleton_eq)
       val body_term = Thm.term_of body
       fun conjuncts term =
         (case try (HOLogic.dest_bin @{const_name HOL.conj} @{typ bool}) term of
           SOME (left, right) => left :: conjuncts right
         | NONE => [term])
-      val labels =
-        ["source-normalization", "source-admission", "lift-reference-width",
-         "lift-slot-order", "descriptor-width", "piece-row-width",
-         "parent-descriptor-and-column-resolution", "parent-binding",
-         "beta-nonempty", "beta-distinct", "source-action-row", "lift-slots",
-         "goto-source-order", "origin-multiplicity",
-         "group-geometry-and-piece-binding"]
       val components = conjuncts body_term
-      val _ = if length components = length labels then ()
-        else error "B1 staged construction body has an unexpected component count"
-      fun prove_components [] [] =
-            error "B1 staged construction body unexpectedly had no components"
-        | prove_components [component] [label] =
-            time label (fn () => prove_expression
-              (label = "lift-slot-order") construction_context component)
-        | prove_components (component :: rest) (label :: remaining) =
+      val _ = if null components then
+          error "B1 compact construction body unexpectedly had no components" else ()
+      fun prove_components [] =
+            error "B1 compact construction body unexpectedly had no components"
+        | prove_components [component] =
+            time "compact-component-0" (fn () => prove_expression
+              false construction_context component)
+        | prove_components (component :: rest) =
             let
-              val head = time label (fn () => prove_expression
-                (label = "lift-slot-order") construction_context component)
-              val tail = prove_components rest remaining
+              val ordinal = length components - length rest - 1
+              val head = time ("compact-component-" ^ Int.toString ordinal)
+                (fn () => prove_expression false construction_context component)
+              val tail = prove_components rest
             in @{thm conjI} OF [head, tail] end
-        | prove_components _ _ =
-            error "B1 staged construction component labels do not match"
-      val body_proof = prove_components components labels
+      val body_proof = prove_components components
       val proposition_equation = Thm.combination
         (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop})) expanded
       val result = Thm.equal_elim (Thm.symmetric proposition_equation) body_proof
@@ -437,123 +472,74 @@ struct
     in {theorem = result, body_theorem = body_proof, body = body} end
   fun prove_beta_item ctxt prove_body proposition =
     #theorem (prove_beta_item_with_body ctxt prove_body proposition)
-  val origin_pairT = @{typ "nat \<times> nat"}
-  val origin_listT = HOLogic.listT origin_pairT
-  val origin_list_limit = 4096
-  fun natural_literal term =
+  fun prove_indexed_list_all
+      {ctxt, context, predicate, range, prove_selected, item_counter,
+       successor_equation} =
     let
-      fun scalar remaining value =
-        (case try HOLogic.dest_number value of
-          SOME (typ, number) => typ = @{typ nat} andalso number >= 0
-        | NONE => (case value of
-            Const (name, _) $ predecessor => remaining > 0 andalso
-              name = @{const_name Suc} andalso scalar (remaining - 1) predecessor
-          | _ => false))
-    in scalar origin_list_limit term end
-  fun origin_pair_literal term =
-    fastype_of term = origin_pairT andalso
-      (case try HOLogic.dest_prod term of
-        SOME (left, right) => natural_literal left andalso natural_literal right
-      | NONE => false)
-
-  fun literal_origins term =
-    let
-      fun spine remaining value =
-        (case value of
-          Const (name, _) => name = @{const_name Nil}
-        | Const (name, _) $ head $ tail =>
-            name = @{const_name Cons} andalso remaining > 0 andalso
-              origin_pair_literal head andalso spine (remaining - 1) tail
-        | _ => false)
-    in fastype_of term = origin_listT andalso spine origin_list_limit term end
-
-  fun identity_key term =
-    fastype_of term = origin_pairT --> origin_pairT andalso
-      (case term of
-        Const (name, _) => name = @{const_name id}
-      | Abs (_, domain, Bound 0) => domain = origin_pairT
-      | _ => false)
-
-  fun make_origin_sort_proc ctxt =
-    let
-      val origins = Var (("origins", 0), origin_listT)
-      val sort_key = @{term "sort_key (id :: (nat \<times> nat) \<Rightarrow> nat \<times> nat)"}
-      val pattern = sort_key $ origins
-      val lambda_pattern = @{term "sort_key (\<lambda>x::nat \<times> nat. x)"} $ origins
-      val sort_context = ((Comma_Entry_Arithmetic.natural_context ctxt
-        |> Simplifier.add_cong @{thm let_weak_cong}
-        |> Simplifier.add_cong @{thm list.case_cong_weak}
-        |> Simplifier.add_cong @{thm old.prod.case_cong_weak})
-        delsimps @{thms case_prod_beta}) addsimps
-        @{thms part_code less_eq_prod_simp less_prod_simp
-          prod.case list.case list.size append.simps nth_Cons' id_def}
-      val recursive_context = Unsynchronized.ref (NONE: Proof.context option)
-      val quicksort_rule = @{thm sort_key_by_quicksort_code} RS @{thm eq_reflection}
-      fun convert _ cterm =
+      (* Normalize the upper bound, then prove items by zero/Suc. *)
+      val predicate_name =
+        the_default "non-constant" (Comma_Selected_List_Conversion.head_name predicate)
+      val (range_head, range_args) = strip_comb range
+      val (lower, upper) =
+        (case (range_head, range_args) of
+          (Const (name, _), [lo, hi]) =>
+            if name = @{const_name upt} then (lo, hi)
+            else error "B1 indexed certificate expected an upt range"
+        | _ => error "B1 indexed certificate expected a closed upt range")
+      val _ = if lower aconv @{term "0::nat"} andalso
+          fastype_of range = @{typ "nat list"} andalso
+          fastype_of predicate = @{typ "nat => bool"}
+        then () else error "B1 indexed certificate expected a natural zero-based range"
+      val upper_selected = Simplifier.rewrite context (Thm.cterm_of ctxt upper)
+      val scalar_context = Comma_Entry_Arithmetic.natural_context ctxt
+      val upper_scalar = Simplifier.rewrite scalar_context (Thm.rhs_of upper_selected)
+      val upper_equation = Comma_Selected_List_Conversion.validate_equation upper
+        (Thm.transitive upper_selected upper_scalar)
+      val (_, bound) = HOLogic.dest_number (Thm.term_of (Thm.rhs_of upper_equation))
+      val (predicate_label, declared_extent) = indexed_extent_contract predicate upper
+      val _ = if indexed_extent_admitted bound declared_extent then ()
+        else error ("B1 indexed certificate range exceeds its declared extent: " ^
+          "predicate=" ^ predicate_label ^ " bound=" ^ Int.toString bound ^
+          " declared_extent=" ^ Int.toString declared_extent)
+      val natT = @{typ nat}
+      val list_type = @{typ "nat list"}
+      val list_all = Const (@{const_name list_all},
+        fastype_of predicate --> list_type --> @{typ bool}) $ predicate
+      fun prove_item index =
         let
-          val request = Thm.term_of cterm
-        in
-          (case strip_comb request of
-            (Const (name, _), [key, values]) =>
-              if name <> @{const_name sort_key} orelse not (identity_key key) orelse
-                  not (literal_origins values) orelse fastype_of request <> origin_listT
-              then NONE
-              else
-                let
-                  val step = Conv.rewr_conv quicksort_rule cterm
-                  val context = (case !recursive_context of SOME context => context
-                    | NONE => error "B1 origin sorting context is not initialized")
-                  val theorem = Thm.transitive step
-                    (Simplifier.rewrite context (Thm.rhs_of step))
-                  val checked = Comma_Selected_List_Conversion.validate_equation
-                    request theorem
-                  val result = Thm.term_of (Thm.rhs_of checked)
-                  val _ = if literal_origins result andalso
-                      Comma_Selected_List_Conversion.closed result andalso
-                      standalone checked
-                    then () else error "B1 origin quicksort returned a malformed list theorem"
-                in SOME checked end
-          | _ => NONE)
-        end
-      val procedure = Simplifier.make_simproc ctxt
-        {name = "comma_semantic_b1_origin_quicksort",
-         kind = Simplifier.Simproc, lhss = [pattern, lambda_pattern],
-         proc = fn _ => convert, identifier = []}
-      val _ = recursive_context := SOME (Simplifier.add_proc procedure sort_context)
-    in procedure end
+          val item_stage = predicate_name ^ "-item-" ^ Int.toString index
+          val theorem = Comma_Proof_Profile.trace_stage
+            (Comma_Proof_Profile.enabled ()) item_counter
+            (fn current => (current, current + 1)) 256
+            "B1 occurrence indexed list" item_stage
+            (fn () => prove_beta_item ctxt prove_selected
+              (predicate $ Comma_Semantic_B1_CRT_Operation_Conversion.natural_numeral index))
+        in theorem end
+      val prefix = Comma_Selected_List_Conversion.prove_indexed_list_all
+        {ctxt = ctxt, predicate = predicate, bound = bound,
+         prove_item = prove_item,
+         zero_fact = @{thm comma_indexed_all_zero},
+         step_fact = @{thm comma_indexed_all_Suc},
+         successor_equation = successor_equation}
+      val normalized_range = Const (@{const_name upt},
+        natT --> natT --> list_type) $ lower $
+          Comma_Semantic_B1_CRT_Operation_Conversion.natural_numeral bound
+      val application_eq = Conv.arg_conv
+        (Conv.arg_conv (Conv.rewr_conv upper_equation))
+        (Thm.cterm_of ctxt (list_all $ range))
+      val _ = if Thm.term_of (Thm.rhs_of application_eq) aconv
+          list_all $ normalized_range then ()
+        else error "B1 indexed range normalization changed its structure"
+      val proposition_eq = Thm.combination
+        (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop})) application_eq
+      val _ = if Thm.prop_of prefix aconv
+          HOLogic.mk_Trueprop (list_all $ normalized_range) then ()
+        else error "B1 indexed recurrence does not match its normalized bound"
+    in Thm.equal_elim (Thm.symmetric proposition_eq) prefix end
+
   fun check_helper_fixtures ctxt =
     let
       val _ = Comma_Proof_Profile.report "B1 construction helper fixtures start"
-      val pair_listT = origin_listT
-      val duplicate_origins = @{term "[(Suc 0::nat,0::nat), (0,1), (1,0), (2,2)]"}
-      val sort_term = Const (@{const_name sort_key},
-        fastype_of (@{term "id :: (nat \<times> nat) \<Rightarrow> nat \<times> nat"}) -->
-          pair_listT --> pair_listT) $
-        @{term "id :: (nat \<times> nat) \<Rightarrow> nat \<times> nat"} $ duplicate_origins
-      val sort_proc = make_origin_sort_proc ctxt
-      val sort_context = Simplifier.add_proc sort_proc (put_simpset HOL_basic_ss ctxt)
-      val sorted = Simplifier.rewrite sort_context (Thm.cterm_of ctxt sort_term)
-      val expected_sort = @{term "[(0::nat,1::nat), (1,0), (1,0), (2,2)]"}
-      val _ = if Thm.term_of (Thm.rhs_of sorted) aconv expected_sort andalso
-          standalone sorted
-        then () else error "B1 origin quicksort fixture lost order or multiplicity"
-      val maximum = HOLogic.mk_list origin_pairT
-        (replicate origin_list_limit @{term "(0::nat,0::nat)"})
-      val excessive = HOLogic.cons_const origin_pairT $
-        @{term "(0::nat,0::nat)"} $ maximum
-      val malformed = HOLogic.cons_const origin_pairT $
-        @{term "(0::nat,0::nat)"} $ Free ("tail", pair_listT)
-      val _ = if literal_origins maximum andalso not (literal_origins excessive)
-          andalso not (literal_origins malformed)
-        then () else error "B1 origin literal-spine admission failed"
-      val symbolic = Free ("origins", pair_listT)
-      val symbolic_request = Thm.cterm_of ctxt
-        (@{term "sort_key (id :: (nat \<times> nat) \<Rightarrow> nat \<times> nat)"} $ symbolic)
-      val symbolic_result = Simplifier.rewrite sort_context symbolic_request
-      val _ = if Thm.term_of (Thm.rhs_of symbolic_result) aconv
-          Thm.term_of symbolic_request
-        then () else error "B1 origin quicksort eagerly accepted a symbolic list"
-
       val beta_prop = @{term "(\<lambda>x::nat. True \<and> x = 0) 0"}
       fun prove_body body = Goal.prove ctxt [] [] (HOLogic.mk_Trueprop body)
         (fn {context, ...} => simp_tac
@@ -834,22 +820,16 @@ struct
       comma_short_period_def comma_compiled_short_period_facts upt_rec_numeral}
   val occurrence_cache_generic_constants =
     [@{const_name comma_semantic_b1_crt_construction_check},
+     @{const_name comma_semantic_b1_crt_compact_occurrence_check},
      @{const_name comma_semantic_b1_crt_template_mass_certified},
-     @{const_name comma_semantic_b1_crt_used_lift_binding_check},
+     @{const_name comma_semantic_b1_crt_used_lift_bindings_checked},
      @{const_name comma_semantic_b1_crt_template_geometry_certified},
      @{const_name comma_semantic_b1_crt_lift_geometry_certified},
-     @{const_name comma_semantic_b1_crt_constructed_goto_slot_certificate},
-     @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches},
-     @{const_name comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions},
-     @{const_name comma_semantic_b1_crt_lift_slot_valid_from_actions},
-     @{const_name comma_semantic_b1_crt_source_slot_action_row_certified},
-     @{const_name comma_semantic_b1_crt_slot_actions_table},
      @{const_name comma_semantic_b1_crt_partition_cofactor_checked},
      @{const_name comma_semantic_b1_crt_lift_columns_option},
      @{const_name comma_semantic_b1_source_slot_action},
      @{const_name comma_decisive_sector_period},
      @{const_name comma_offset_orbit},
-     @{const_name comma_semantic_b1_crt_occurrence_binding_check},
      @{const_name comma_semantic_b1_terminal_action_result},
      @{const_name comma_crt_equiv_check},
      @{const_name comma_crt_supported},
@@ -869,18 +849,12 @@ struct
      @{term "comma_decisive_sector_period source"},
      @{term "comma_offset_orbit offset"},
      @{term "comma_semantic_b1_crt_column_ids_resolve columns ids values"},
-     @{term "comma_semantic_b1_crt_group_construction_bound columns rebase parent_index parent_cid pieces"},
      @{term "comma_semantic_b1_crt_columns_partition_certified row"},
      @{term "comma_semantic_b1_crt_partition_cofactor_checked levels columns"},
-     @{term "comma_semantic_b1_crt_constructed_source_origins columns lift_column_ids sources occurrence_at refs source"},
-     @{term "comma_semantic_b1_crt_constructed_slot_origins columns lift_column_ids sources occurrence_at refs source slot"},
      @{term "comma_semantic_b1_crt_template_geometry_certified columns templates template_column_ids template_cid"},
      @{term "comma_semantic_b1_crt_lift_geometry_certified columns templates template_column_ids lift_column_ids lift_descriptors lift_cid"},
-     @{term "comma_semantic_b1_crt_constructed_goto_slot_certificate columns templates template_column_ids lift_column_ids occurrence_descriptors lift_descriptors index refs slot"},
-     @{term "comma_semantic_b1_crt_constructed_piece_binding_matches columns lift_column_ids sources occurrence_at refs source parent destination piece"},
-     @{term "comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions columns lift_column_ids sources occurrence_at refs source actions parent destination piece"},
-     @{term "comma_semantic_b1_crt_lift_slot_valid_from_actions sources occurrence_at occurrence_descriptors templates source parent refs descriptors actions slot"},
-     @{term "comma_semantic_b1_crt_source_slot_action_row_certified source period actions"}, @{term "comma_semantic_b1_crt_slot_actions_table sources"},
+     @{term "comma_semantic_b1_crt_compact_occurrence_check templates sources occurrence_at occurrence_descriptors refs descriptors index"},
+     @{term "comma_semantic_b1_crt_lift_local_cover_witness sources occurrence_at occurrence_descriptors templates source parent refs descriptors"},
      @{term "comma_semantic_b1_crt_lift_columns_option templates descriptor"},
      @{term "comma_semantic_b1_crt_lift_ref_slot ref"},
      @{term "comma_semantic_b1_crt_lift_ref_cid ref"},
@@ -920,26 +894,14 @@ struct
   val occurrence_cache_checker_simp_rules =
     @{thms comma_semantic_b1_crt_occurrence_data_checked_def
       comma_semantic_b1_crt_construction_check_def
-      comma_semantic_b1_crt_constructed_occurrence_bound_def
-      comma_semantic_b1_crt_constructed_source_origins_def
-      comma_semantic_b1_crt_constructed_piece_origin_def
+      comma_semantic_b1_crt_compact_occurrence_check_def
       comma_semantic_b1_crt_template_geometry_certified_def
       comma_semantic_b1_crt_lift_geometry_certified_def
-      comma_semantic_b1_crt_used_lift_binding_check_def
+      comma_semantic_b1_crt_used_lift_bindings_checked_def
       comma_semantic_b1_crt_lift_binding_certified_def
-      comma_semantic_b1_crt_constructed_goto_slot_certificate_def
-      comma_semantic_b1_crt_constructed_piece_binding_matches_def
-      comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions_def
-      comma_semantic_b1_crt_lift_slot_valid_from_actions_def
-      comma_semantic_b1_crt_source_slot_action_row_certified_def
-      comma_semantic_b1_crt_slot_actions_table_def
       sort_key_simps insort_key.simps sorted_wrt.simps list.set less_eq_prod_simp
+      insert_iff empty_iff
       comma_semantic_b1_crt_column_ids_resolve_list_all2
-      comma_semantic_b1_crt_group_construction_bound_def
-      comma_semantic_b1_crt_piece_period.simps
-      comma_semantic_b1_crt_piece_slot.simps
-      comma_semantic_b1_crt_piece_cid.simps
-      comma_semantic_b1_crt_piece_parent_column.simps
       comma_semantic_b1_crt_columns_def
       comma_semantic_b1_crt_column_count_def
       comma_semantic_b1_crt_columns_for_length
@@ -949,7 +911,6 @@ struct
       comma_semantic_b1_crt_lift_descriptor_valid_def
       comma_semantic_b1_crt_lift_columns_option_def
       comma_semantic_b1_crt_source_periods_def
-      comma_semantic_b1_crt_occurrence_binding_check_def
       comma_semantic_b1_crt_lift_ref_slot.simps
       comma_semantic_b1_crt_lift_ref_parent.simps
       comma_semantic_b1_crt_lift_ref_child_index.simps

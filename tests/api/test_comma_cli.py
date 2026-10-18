@@ -14,6 +14,7 @@ from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.observation_types import ObservationId
 from number_compiler.api.query_types import CommaTermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
+from number_compiler.sequences.comma import future_authority
 from number_compiler.sequences.comma.power import CommaTerm
 
 
@@ -119,6 +120,49 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
     assert metrics["execution_metrics"]["reporting"]["inspected_inventory_rows"] == 0
     assert payload["info"]["safety.certificate"]["runtime_verified"] is False
     assert payload["info"]["safety.certificate"]["isabelle_instance_checked"] is False
+
+
+def test_registered_global_certificate_admits_snapshot_without_loading_provider(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.sequences.comma import certificates
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("snapshot loaded a provider or computed a term")
+
+    digest = "b" * 64
+    monkeypatch.setattr(
+        certificates, "_registered_global_release_digest", lambda: digest
+    )
+    monkeypatch.setattr(certificates, "_verify", forbidden)
+    monkeypatch.setattr(certificates, "files", forbidden)
+    monkeypatch.setattr(certificates, "sha256", forbidden)
+    monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+
+    assert (
+        main(
+            [
+                "a367620",
+                "--nth",
+                str(certificates.CERTIFIED_MAX_INDEX + 1),
+                "--no-value",
+                "--info",
+                "safety.certificate",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    packet = payload["info"]["safety.certificate"]
+    assert payload["value"] is None
+    assert packet["status"] == "available"
+    assert packet["certificate_sha256"] == digest
+    assert packet["certified_max_index"] is None
+    assert packet["runtime_verified"] is False
+    assert packet["isabelle_instance_checked"] is True
+    assert packet["coverage"] == "all_positive_indices"
 
 
 def test_public_api_requires_prefix_evidence_on_every_value_demand() -> None:
@@ -233,7 +277,11 @@ def test_forged_shared_certificate_marker_cannot_authorize_digits() -> None:
         "comma-prefix-certificate", c.CERTIFICATE_ID, (20, 10, c.CERTIFICATE_SHA256)
     ) as lease:
         lease.put(
-            (c.CERTIFIED_MAX_INDEX, c.FIRST_FORK_INDEX, c.FIRST_FORK_VALUE),
+            (
+                c.CERTIFIED_MAX_INDEX,
+                future_authority.SOURCE20_FIRST_FORK_INDEX,
+                future_authority.SOURCE20_FIRST_FORK_VALUE,
+            ),
             (c.CERTIFICATE_SHA256, "forged"),
         )
     try:
