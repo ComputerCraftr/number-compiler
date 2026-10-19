@@ -8,7 +8,11 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileLease
-from tests.support.tile_kernel import _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 
 @pytest.mark.parametrize(
@@ -24,7 +28,7 @@ def test_scheduler_deep_point_uses_causal_tiles_without_complete_midpoint(
     expected: tuple[int, int, int, int],
 ) -> None:
     ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(BaseBlockEffect(3), (0, 0, 0, 1))
+        make_tile_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1))
     )
     action = adapter.power(primitive, exponent)
 
@@ -56,10 +60,12 @@ def test_scheduler_deep_point_uses_causal_tiles_without_complete_midpoint(
 def test_causal_completed_parent_agrees_with_independent_midpoint_semantics(
     exponent: int,
 ) -> None:
-    from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        COMPONENT_ROLES,
+    )
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
-    runtimes = [_runtime(BaseBlockEffect(3)) for _ in range(2)]
+    runtimes = [make_tile_runtime(BaseBlockEffect(3)) for _ in range(2)]
     sources = []
     leases: list[TileLease | ResultLease] = []
     try:
@@ -67,7 +73,7 @@ def test_causal_completed_parent_agrees_with_independent_midpoint_semantics(
         for index, (_ledger, tiles, adapter, primitive, scheduler) in enumerate(
             runtimes
         ):
-            source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+            source = make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1))
             sources.append(source)
             action = adapter.power(primitive, exponent)
             key = PoweredResultKey(
@@ -90,7 +96,7 @@ def test_causal_completed_parent_agrees_with_independent_midpoint_semantics(
             leases.append(result)
             value = result.result
             channels = tuple(
-                adapter._observe(value.outgoing, name, (left, right))
+                adapter.observe(value.outgoing, name, (left, right))
                 for left in range(adapter.primitive_law(primitive).left_count)
                 for right in range(adapter.primitive_law(primitive).right_count)
                 for name in COMPONENT_ROLES
@@ -125,9 +131,11 @@ def test_scheduler_deep_explicit_edges_preserve_noninitial_consumer(
     )
     from tests.arithmetic.contracts.test_tile_causal_private import _scan
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     symbols = (2, 0, 0, 4)
-    source = _tile(tiles, adapter, primitive, symbols)
+    source = make_tile_from_symbols(tiles, adapter, primitive, symbols)
     action = adapter.power(primitive, exponent)
     wiring = adapter.wiring(action)
     producer, consumer = (0, 0), (0, 1)
@@ -176,7 +184,7 @@ def test_warm_causal_parent_reads_exact_result_without_execution(
         tile_reverse_functions as reverse_ports,
     )
 
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    _ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         BaseBlockEffect(3), (0, 0, 0, 1)
     )
     action = adapter.power(primitive, exponent)
@@ -198,8 +206,8 @@ def test_warm_causal_parent_reads_exact_result_without_execution(
 
         monkeypatch.setattr(CausalTileEngine, "_run", forbidden)
         monkeypatch.setattr(reverse_ports, "reverse_leaf_components", forbidden)
-        monkeypatch.setattr(adapter, "_leaf_components", forbidden)
-        monkeypatch.setattr(adapter, "_parent_components", forbidden)
+        monkeypatch.setattr(adapter, "leaf_components", forbidden)
+        monkeypatch.setattr(adapter, "parent_components", forbidden)
         monkeypatch.setattr(tiles, "leaf", forbidden)
         monkeypatch.setattr(tiles, "join", forbidden)
         assert tuple(application.point(i) for i in range(4)) == expected
@@ -212,7 +220,7 @@ def test_scheduler_deep_width_uses_activity_tasks_without_endpoint(
 ) -> None:
     from tests.arithmetic.contracts.test_tile_causal_private import _scan
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     values = (0, 0, 1, 5)
     expected: tuple[int, ...] = values
     for _ in range(exponent):
@@ -221,7 +229,7 @@ def test_scheduler_deep_width_uses_activity_tasks_without_endpoint(
         )
     action = adapter.power(primitive, exponent)
     with (
-        _tile(tiles, adapter, primitive, values) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, values) as source,
         scheduler.application(
             action,
             source.tile,

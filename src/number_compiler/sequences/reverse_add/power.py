@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from math import ceil, log2
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
@@ -44,6 +44,10 @@ if TYPE_CHECKING:
     from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
     from number_compiler.sequences.reverse_add.boundary_window import (
         ReverseBoundaryWindowObservation,
+    )
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairOutputOccurrence,
+        ReversePairQ19OutputOwner,
     )
     from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
         ReverseAddSpatialBankMorphism,
@@ -121,13 +125,23 @@ class ReverseAddPoweredTerm:
         self._source_construction: OriginalSourceConstruction | None = None
         self._ledger.register_execution_root(self)
 
+    def validate_source_binding(self) -> None:
+        """Reject rebinding before any source-dependent observation or construction."""
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+
+    def completed_q19_occurrence(
+        self,
+    ) -> tuple[ReversePairQ19OutputOwner, ReversePairOutputOccurrence, bool, int]:
+        """Demand the authenticated endpoint through its existing workspace owner."""
+        return self._source_workspace().completed_q19_occurrence()
+
     def _source_workspace(self) -> ReverseSourceImageWorkspace:
         from number_compiler.sequences.reverse_add.source_images import (
             ReverseSourceImageWorkspace,
         )
 
-        if (self.seed, self.generation, self.base) != self._binding:
-            raise ValueError("reverse/add term source/action binding changed")
+        self.validate_source_binding()
         found = self._workspace
         if found is None:
             found = ReverseSourceImageWorkspace(
@@ -143,7 +157,7 @@ class ReverseAddPoweredTerm:
             raise ValueError("reverse/add term workspace binding changed")
         return found
 
-    def _prepare_recursive_source_authority(self) -> None:
+    def prepare_recursive_source_authority(self) -> None:
         if (self.seed, self.generation, self.base) != self._binding:
             raise ValueError("reverse/add term source/action binding changed")
         if self.base == 10:
@@ -179,6 +193,15 @@ class ReverseAddPoweredTerm:
         return 0 if self._workspace is None else self._workspace.operator_nodes
 
     @property
+    def resource_ledger(self) -> ResourceLedger:
+        return self._ledger
+
+    @property
+    def published_workspace(self) -> ReverseSourceImageWorkspace | None:
+        """Return the source image only when a demand has already published it."""
+        return self._workspace
+
+    @property
     def compose_operations(self) -> int:
         return 0 if self._workspace is None else self._workspace.compose_operations
 
@@ -212,7 +235,7 @@ class ReverseAddPoweredTerm:
         position = require_integer(position, "digit coordinate")
         if position < 0:
             raise IndexError(position)
-        self._prepare_recursive_source_authority()
+        self.prepare_recursive_source_authority()
         return self._digit_source_only(position)
 
     @source_reads_only
@@ -227,7 +250,7 @@ class ReverseAddPoweredTerm:
         return self.digit(position)
 
     def width(self) -> int:
-        self._prepare_recursive_source_authority()
+        self.prepare_recursive_source_authority()
         return self._width_source_only()
 
     @source_reads_only
@@ -241,7 +264,7 @@ class ReverseAddPoweredTerm:
 
     def _measured_output_digits(self) -> Iterator[int]:
         def source() -> Iterator[int]:
-            self._prepare_recursive_source_authority()
+            self.prepare_recursive_source_authority()
             yield from self._source_workspace().iter_digits()
 
         return measured_output_stream(self._ledger, "reverse_output_stream", source)
@@ -265,7 +288,7 @@ class ReverseAddPoweredTerm:
             )
 
     def _output_mirror_scratch(self) -> LedgerList[int]:
-        scratch = self._mirror_output_scratch
+        scratch: LedgerList[int] | None = self._mirror_output_scratch
         if scratch is None:
             owner = self._ledger.register(
                 "reverse-output-mirror-scratch", "explicit_lowering"
@@ -493,7 +516,7 @@ class ReverseAddPoweredTerm:
 __all__ = ["ReverseAddPowerMetrics", "ReverseAddPoweredTerm", "pair_field_from_integer"]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     from number_compiler.api.lazy_exports import resolve_export
 
     return resolve_export(

@@ -13,14 +13,14 @@ from number_compiler.hashlife.interfaces.diamond_finite_admission import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
-from tests.support.diamond_continuation_payload import populated
+from tests.support.collatz_diamond_fixtures import collatz_continuation_payload_case
 
 
 @pytest.mark.parametrize("symbol_target", (False, True))
 def test_actual_interface_certificate_and_constant_function_are_valid(
     symbol_target: bool,
 ) -> None:
-    runtime, action, _, _, _, _ = populated()
+    runtime, action, _, _, _, _ = collatz_continuation_payload_case()
     source = StateSort(action, 0)
     target = runtime.higher.expressions.symbol_sort(action) if symbol_target else source
     domain = (
@@ -40,7 +40,7 @@ def test_actual_interface_certificate_and_constant_function_are_valid(
     ("wrong-size", "boolean-size", "unallocated-function", "unowned-certificate"),
 )
 def test_interface_record_cannot_self_certify_its_domain_or_owner(failure: str) -> None:
-    runtime, _, _, _, _, _ = populated()
+    runtime, _, _, _, _, _ = collatz_continuation_payload_case()
     admission = runtime.primitive_continuations.admission
     key, certificate = next(iter(admission.memo.items()))
     if failure == "wrong-size":

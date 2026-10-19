@@ -1,91 +1,8 @@
 theory Double_Reverse_Temporal_Refinement
-  imports Shared_Carry_Dynamics.Temporal_Moment_Algebra
+  imports Double_Reverse_Decimal_Arithmetic
+    Shared_Carry_Dynamics.Temporal_Moment_Algebra
     Shared_Carry_Dynamics.Temporal_Decimal_Carry_Monoid
 begin
-
-text \<open>The exact square normalizer may remove any decimal zero suffix before
-applying T x = 2 * reverse10 x.  The following arithmetic theorem
-proves that contraction normalization preserves both the first endpoint and
-T-squared endpoint.  It is a numeric law only; it does not certify an SLP
-slice, scheduler publication, or global temporal cone.\<close>
-
-function double_reverse_decimal_digits :: "nat \<Rightarrow> nat" where
-  "double_reverse_decimal_digits n =
-    (if n < 10 then 1 else Suc (double_reverse_decimal_digits (n div 10)))"
-  by pat_completeness auto
-termination
-  by (relation "measure id") auto
-
-function double_reverse_reverse10 :: "nat \<Rightarrow> nat" where
-  "double_reverse_reverse10 n =
-    (if n < 10 then n else
-      n mod 10 * 10 ^ (double_reverse_decimal_digits n - 1) +
-        double_reverse_reverse10 (n div 10))"
-  by pat_completeness auto
-termination
-  by (relation "measure id") auto
-
-definition double_reverse_T :: "nat \<Rightarrow> nat" where
-  "double_reverse_T n = 2 * double_reverse_reverse10 n"
-
-definition double_reverse_T_run :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
-  "double_reverse_T_run steps source = (double_reverse_T ^^ steps) source"
-
-lemma double_reverse_reverse10_ignores_trailing_zero:
-  "double_reverse_reverse10 (10*n) = double_reverse_reverse10 n"
-proof (cases n)
-  case 0
-  then show ?thesis by (simp add: double_reverse_reverse10.simps)
-next
-  case (Suc m)
-  then show ?thesis
-    by (simp add: double_reverse_reverse10.simps)
-qed
-
-lemma double_reverse_T_ignores_trailing_zero:
-  "double_reverse_T (10*n) = double_reverse_T n"
-  by (simp add: double_reverse_T_def
-      double_reverse_reverse10_ignores_trailing_zero)
-
-lemma double_reverse_T_ignores_zero_suffix:
-  "double_reverse_T (n * 10^zeros) = double_reverse_T n"
-proof (induction zeros)
-  case 0
-  then show ?case by simp
-next
-  case (Suc zeros)
-  have factor:
-    "n * 10 ^ Suc zeros = 10 * (n * 10 ^ zeros)"
-    by (simp add: power_Suc algebra_simps)
-  have contraction:
-    "double_reverse_T (n * 10 ^ Suc zeros) =
-      double_reverse_T (n * 10 ^ zeros)"
-    unfolding factor
-    by (rule double_reverse_T_ignores_trailing_zero)
-  show ?case using contraction Suc.IH by simp
-qed
-
-theorem double_reverse_T2_ignores_zero_suffix:
-  "double_reverse_T (double_reverse_T (n * 10^zeros)) =
-    double_reverse_T (double_reverse_T n)"
-  by (simp only: double_reverse_T_ignores_zero_suffix)
-
-text \<open>The source radix projection separates decimal reversal from binary
-multiplication. These two residue laws are the 2-adic and 5-adic halves of
-the bounded radix-25 observer. They do not replace decimal reversal by bit
-reversal or publish temporal branch control.\<close>
-
-lemma double_reverse_T_mod_power_two:
-  "double_reverse_T n mod (2^places) =
-    (2 * (double_reverse_reverse10 n mod (2^places))) mod (2^places)"
-  unfolding double_reverse_T_def
-  by (rule mod_mult_right_eq[symmetric])
-
-lemma double_reverse_T_mod_power_five:
-  "double_reverse_T n mod (5^places) =
-    (2 * (double_reverse_reverse10 n mod (5^places))) mod (5^places)"
-  unfolding double_reverse_T_def
-  by (rule mod_mult_right_eq[symmetric])
 
 text \<open>The border phase, source-aligned endpoint moments, and decimal
 threshold carry laws are separated here.  A repeated phase action is not by
@@ -337,6 +254,32 @@ definition double_reverse_mod99_clock_action ::
     (residue * 2 ^ steps *
       10 ^ double_reverse_mod99_clock_exponent width steps skew) mod 99"
 
+definition double_reverse_width_moments ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> increment_moments" where
+  "double_reverse_width_moments steps growth skew =
+    \<lparr>im_span = steps, im_sum = int growth, im_skew = int skew\<rparr>"
+
+lemma double_reverse_width_moments_then:
+  "double_reverse_width_moments (first + second)
+      (first_growth + second_growth)
+      (first_skew + second_skew + second * first_growth) =
+    increment_moments_then
+      (double_reverse_width_moments first first_growth first_skew)
+      (double_reverse_width_moments second second_growth second_skew)"
+  by (simp add: double_reverse_width_moments_def
+      increment_moments_then_def algebra_simps)
+
+lemma double_reverse_mod99_clock_exponent_shared:
+  assumes width: "0 < width"
+  shows "int (double_reverse_mod99_clock_exponent width steps skew) =
+    increment_moments_weighted_exponent (int width)
+      (double_reverse_width_moments steps growth skew)"
+  using width
+  by (cases width)
+    (simp_all add: double_reverse_mod99_clock_exponent_def
+      increment_moments_weighted_exponent_def
+      double_reverse_width_moments_def)
+
 lemma double_reverse_mod99_clock_exponent_compose:
   assumes width: "0 < width"
   shows "double_reverse_mod99_clock_exponent width (first + second)
@@ -345,11 +288,55 @@ lemma double_reverse_mod99_clock_exponent_compose:
     double_reverse_mod99_clock_exponent (width + first_growth)
       second second_skew"
 proof -
-  obtain width' where width_eq: "width = Suc width'"
-    using width by (cases width) auto
-  show ?thesis
-    unfolding double_reverse_mod99_clock_exponent_def width_eq
-    by (simp add: algebra_simps)
+  let ?first = "double_reverse_width_moments first first_growth first_skew"
+  let ?second = "double_reverse_width_moments second second_growth second_skew"
+  have combined:
+    "double_reverse_width_moments (first + second)
+        (first_growth + second_growth)
+        (first_skew + second_skew + second * first_growth) =
+      increment_moments_then ?first ?second"
+    by (rule double_reverse_width_moments_then)
+  have shared:
+    "increment_moments_weighted_exponent (int width)
+        (increment_moments_then ?first ?second) =
+      increment_moments_weighted_exponent (int width) ?first +
+      increment_moments_weighted_exponent (int width + im_sum ?first) ?second"
+    by (rule increment_moments_weighted_exponent_then)
+  have left:
+    "int (double_reverse_mod99_clock_exponent width (first + second)
+        (first_skew + second_skew + second * first_growth)) =
+      increment_moments_weighted_exponent (int width)
+        (increment_moments_then ?first ?second)"
+    using double_reverse_mod99_clock_exponent_shared[OF width,
+        where steps="first + second"
+          and growth="first_growth + second_growth"
+          and skew="first_skew + second_skew + second * first_growth"]
+      combined by simp
+  have width_after: "0 < width + first_growth"
+    using width by simp
+  have first_exponent:
+    "int (double_reverse_mod99_clock_exponent width first first_skew) =
+      increment_moments_weighted_exponent (int width) ?first"
+    using double_reverse_mod99_clock_exponent_shared[OF width,
+        where steps=first and growth=first_growth and skew=first_skew]
+    by simp
+  have second_exponent:
+    "int (double_reverse_mod99_clock_exponent
+        (width + first_growth) second second_skew) =
+      increment_moments_weighted_exponent
+        (int width + im_sum ?first) ?second"
+    using double_reverse_mod99_clock_exponent_shared[OF width_after,
+        where steps=second and growth=second_growth and skew=second_skew]
+    by (simp add: double_reverse_width_moments_def)
+  have integer_equality:
+    "int (double_reverse_mod99_clock_exponent width (first + second)
+        (first_skew + second_skew + second * first_growth)) =
+      int (double_reverse_mod99_clock_exponent width first first_skew) +
+      int (double_reverse_mod99_clock_exponent
+        (width + first_growth) second second_skew)"
+    using left shared first_exponent second_exponent by simp
+  then show ?thesis
+    by (simp only: of_nat_add[symmetric] of_nat_eq_iff)
 qed
 
 theorem double_reverse_mod99_clock_action_compose:
@@ -378,70 +365,9 @@ proof -
           second second_skew"
     using exponent
     by (simp add: power_add algebra_simps)
-  have regroup:
-    "residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew *
-        2 ^ second *
-        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-          second second_skew =
-      (residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew) *
-        (2 ^ second *
-          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-            second second_skew)"
-    by (simp only: mult.assoc)
-  have regroup_residue:
-    "residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
-        2 ^ second *
-        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-          second second_skew =
-      (residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99) *
-        (2 ^ second *
-          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-            second second_skew)"
-    by (simp only: mult.assoc)
-  have modular:
-    "(residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew *
-        2 ^ second *
-        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-          second second_skew) mod 99 =
-      (residue * 2 ^ first *
-        10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
-        2 ^ second *
-        10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-          second second_skew) mod 99"
-  proof -
-    have "(residue * 2 ^ first *
-          10 ^ double_reverse_mod99_clock_exponent width first first_skew *
-          2 ^ second *
-          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-            second second_skew) mod 99 =
-        ((residue * 2 ^ first *
-          10 ^ double_reverse_mod99_clock_exponent width first first_skew) *
-          (2 ^ second *
-            10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-              second second_skew)) mod 99"
-      by (simp only: regroup)
-    also have "... = ((residue * 2 ^ first *
-          10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99) *
-          (2 ^ second *
-            10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-              second second_skew)) mod 99"
-      by (rule mod_mult_left_eq[symmetric])
-    also have "... = (residue * 2 ^ first *
-          10 ^ double_reverse_mod99_clock_exponent width first first_skew mod 99 *
-          2 ^ second *
-          10 ^ double_reverse_mod99_clock_exponent (width + first_growth)
-            second second_skew) mod 99"
-      by (simp only: regroup_residue)
-    finally show ?thesis .
-  qed
   show ?thesis
     unfolding double_reverse_mod99_clock_action_def factor
-    by (rule modular)
+    by (simp only: mult.assoc mod_mult_left_eq)
 qed
 
 text \<open>A pointed output coordinate is expressed from the final word and
@@ -970,11 +896,7 @@ ML \<open>
     double_reverse_final_pair_interval_to_entry
     double_reverse_interval_moments_source_aligned
     double_reverse_endpoint_matrix_refines_source
-    double_reverse_reverse10_ignores_trailing_zero
-    double_reverse_T_ignores_trailing_zero
-    double_reverse_T_ignores_zero_suffix
-    double_reverse_T2_ignores_zero_suffix
-    double_reverse_T_mod_power_two double_reverse_T_mod_power_five
+    double_reverse_decimal_arithmetic_oracle_audit_bundle
     double_reverse_two_pass_cell_refines_kernel
     double_reverse_radius_one_carry_primitive
     double_reverse_pair_band_partition

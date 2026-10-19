@@ -83,7 +83,7 @@ def test_f4_f5_source_authenticated_windows_share_complete_classes() -> None:
         (16, (11, 12, 13, 14), (0xBB497389, 0x333E1D99, 0xD039D2BF, 0x56DBB589)),
         (32, (27, 28, 29, 30), (0x16A5CE8B, 0xCBEBF297, 0x367CF299, 0x8BA54D79)),
     ):
-        for t, mask in zip(levels, masks):
+        for t, mask in zip(levels, masks, strict=True):
             window = demand_dyadic_boolean_counter(t, 32, fermat_width=w)
             assert window.xor_mask == mask
             signed_action = window.signed_class_action
@@ -155,7 +155,7 @@ def test_terminal_demand_consumes_absolute_signed_classes_without_promotion() ->
         classes = demand.observe_fermat_signed_class_windows(32)
         modulus = (1 << (1 << index)) + 1
         assert len(classes) == 4
-        for window, packet in zip(windows, classes):
+        for window, packet in zip(windows, classes, strict=True):
             assert packet == window.absolute_signed_classes
             assert sum((1 << p) * count for p, count in packet) % modulus == (
                 window.signed_fermat_correction

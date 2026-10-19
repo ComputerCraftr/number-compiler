@@ -24,17 +24,14 @@ from number_compiler.arithmetic.fields.event_innovation import (
     event_difference,
     normalize_event_sum,
 )
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.arithmetic.fields.test_centered_carry import (
-    _evaluate,
-    _polynomial,
-    centered_seed,
-)
+from tests.arithmetic.fields.test_centered_carry import centered_seed
+from tests.support.symbolic_innovation import evaluate, polynomial
 
 
 def test_interval_cancellation_is_exact_without_coefficients() -> None:
@@ -59,12 +56,12 @@ def test_event_transport_matches_full_laurent_difference(
         arena.radial(arena.interval(5), RadialMultiplier(2, 3)),
         CylinderChart(slope, offset),
     )
-    values = _evaluate(arena, expression)
+    values = evaluate(arena, expression)
     expected = dict(values)
     for i, value in values.items():
         expected[i + 1] = expected.get(i + 1, 0) - value
     actual = event_difference(arena, expression)
-    assert _evaluate(arena, actual) == {i: v for i, v in expected.items() if v}
+    assert evaluate(arena, actual) == {i: v for i, v in expected.items() if v}
     assert normalize_event_sum(arena, actual) == actual
 
 
@@ -73,7 +70,7 @@ def test_enormous_interval_has_only_two_events() -> None:
     arena = SymbolicInnovationArena(ledger)
     width = 10**200
     result = event_difference(arena, arena.interval(width))
-    assert _evaluate(arena, result) == {0: 1, width: -1}
+    assert evaluate(arena, result) == {0: 1, width: -1}
     assert ledger.counters["event_normalization_contexts"] == 1
     assert ledger.counters["event_normalization_nonzero_terms"] == 2
     report = audit_registered_payloads(ledger)
@@ -89,7 +86,7 @@ def test_shared_dag_weights_combine_before_child_processing() -> None:
     expression = arena.add(arena.add(shared, a), arena.add(shared, b))
     before = arena.node_count
     actual = event_difference(arena, expression)
-    assert _evaluate(arena, actual) == {0: 6, 3: -3, 7: -3}
+    assert evaluate(arena, actual) == {0: 6, 3: -3, 7: -3}
     assert ledger.counters["event_normalization_contexts"] < before
     alternate = arena.linear_combination(((3, a), (3, b)))
     assert event_difference(arena, alternate) == actual
@@ -98,10 +95,10 @@ def test_shared_dag_weights_combine_before_child_processing() -> None:
 def test_event_tail_restores_leading_value_before_the_next_carry_port() -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
     # Delta=(2,1) has two positive carry ports, although H=(2,-1,-1).
-    events = event_difference(arena, _polynomial(arena, [2, 1]))
-    assert _evaluate(arena, events) == {0: 2, 1: -1, 2: -1}
+    events = event_difference(arena, polynomial(arena, [2, 1]))
+    assert evaluate(arena, events) == {0: 2, 1: -1, 2: -1}
     tail = clock_event_tail(arena, events, extent=2, prefix=0, leading=2)
-    assert _evaluate(arena, tail) == {0: 1, 1: -1}
+    assert evaluate(arena, tail) == {0: 1, 1: -1}
     assert clock_event_tail(arena, tail, extent=1, prefix=0, leading=1) == arena.zero
 
 
@@ -122,14 +119,14 @@ def test_neutral_jump_retains_only_terminal_boundary(
 ) -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
     result = neutral_carry_jump(arena, extent=extent, incoming=incoming)
-    assert _evaluate(arena, result) == ({extent: -1} if incoming else {})
+    assert evaluate(arena, result) == ({extent: -1} if incoming else {})
 
 
 def test_same_carry_reset_does_not_erase_tail_or_terminal() -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
     tail = neutral_carry_jump(arena, extent=5, incoming=1)
     result = reset_carry_jump(arena, tail, prefix=7, leading=3, incoming=1)
-    assert _evaluate(arena, result) == {13: -1}
+    assert evaluate(arena, result) == {13: -1}
     with pytest.raises(ValueError, match="nonzero"):
         reset_carry_jump(arena, tail, prefix=7, leading=0, incoming=1)
 
@@ -140,7 +137,7 @@ def test_same_reset_retains_a_later_opposite_reset() -> None:
     # negative reset must still be published, after the prefix translation.
     tail = reset_carry_jump(arena, arena.zero, prefix=4, leading=-2, incoming=1)
     result = reset_carry_jump(arena, tail, prefix=7, leading=3, incoming=1)
-    assert _evaluate(arena, result) == {12: -1}
+    assert evaluate(arena, result) == {12: -1}
     assert result != arena.zero
 
 
@@ -164,8 +161,8 @@ def test_event_reset_uses_the_shared_delta_port(
         arena, arena.zero, prefix=0, leading=-9, incoming=1
     )
     assert seen == [9, -9]
-    assert _evaluate(arena, positive) == {0: 1}
-    assert _evaluate(arena, negative) == {0: -1}
+    assert evaluate(arena, positive) == {0: 1}
+    assert evaluate(arena, negative) == {0: -1}
 
 
 def test_jump_recurrence_matches_both_physical_carry_ports() -> None:
@@ -200,7 +197,7 @@ def test_jump_recurrence_matches_both_physical_carry_ports() -> None:
         for i, value in enumerate(q):
             expected[i] = expected.get(i, 0) + value
             expected[i + 1] = expected.get(i + 1, 0) - value
-        assert _evaluate(arena, jump) == {i: v for i, v in expected.items() if v}
+        assert evaluate(arena, jump) == {i: v for i, v in expected.items() if v}
 
 
 @pytest.mark.parametrize("seed", [0, 1, 9, 18, 196, 292, 909, 1041, 1051, 1593])
@@ -219,7 +216,7 @@ def test_event_successor_equals_centered_successor_on_bounded_sources(
             output.append(digit)
         if c:
             output.append(c)
-        q = _polynomial(arena, carries)
+        q = polynomial(arena, carries)
         beta = reflected_innovation(
             arena, carry_coboundary(arena, q, base=10), extent=m, growth=c
         )
@@ -231,7 +228,7 @@ def test_event_successor_equals_centered_successor_on_bounded_sources(
             extent=m,
             growth=c,
         )
-        assert _evaluate(arena, result) == _evaluate(
+        assert evaluate(arena, result) == evaluate(
             arena, event_difference(arena, expected)
         )
         delta, digits = expected, output
@@ -240,7 +237,7 @@ def test_event_successor_equals_centered_successor_on_bounded_sources(
 def test_no_growth_neutral_field_is_not_temporal_identity() -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
     result = advance_centered_events(arena, arena.zero, arena.zero, extent=3, growth=0)
-    assert _evaluate(arena, result) == {0: 9, 3: -9}
+    assert evaluate(arena, result) == {0: 9, 3: -9}
 
 
 def test_failed_normalization_releases_temporary_work_and_rejects_foreign_inputs() -> (

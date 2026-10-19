@@ -48,9 +48,9 @@ def _row(
     first_projection_publications = metrics.resource_work_counters.get(
         projection_counter, 0
     )
-    before_replay = dict(term._ledger.counters)
+    before_replay = dict(term.resource_ledger.counters)
     assert term.digit(0) == low
-    after_replay = term._ledger.counters
+    after_replay = term.resource_ledger.counters
     return {
         "index": index,
         "seconds": elapsed,

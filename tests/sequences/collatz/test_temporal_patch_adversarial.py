@@ -62,9 +62,9 @@ def test_metrics_audit_does_not_recompose_an_entire_growing_prefix() -> None:
         term = PoweredCollatzTerm(seed, steps)
         expected, _ = _literal(seed, steps)
         assert term.digit(0) == expected & 1
-        collect_ledger_metrics(term._ledger)
+        collect_ledger_metrics(term.resource_ledger)
         audit_bit_work.append(
-            term._ledger.counters.get("dyadic_payload_audit_operand_bits", 0)
+            term.resource_ledger.counters.get("dyadic_payload_audit_operand_bits", 0)
         )
 
     # A bounded independent leaf audit is allowed and charged. Rebuilding one
@@ -77,9 +77,9 @@ def test_cli_diagnostics_snapshot_does_not_trigger_payload_reconstruction() -> N
     seed = (1 << 320) + 931_386_509_544_713_451
     term = PoweredCollatzTerm(seed, 257)
     assert term.digit(0) in (0, 1)
-    before = dict(term._ledger.counters)
-    collect_temporal_diagnostics_snapshot(term._ledger)
-    assert term._ledger.counters == before
+    before = dict(term.resource_ledger.counters)
+    collect_temporal_diagnostics_snapshot(term.resource_ledger)
+    assert term.resource_ledger.counters == before
 
 
 def test_same_low_cylinder_with_different_high_fibers_keeps_source_authority() -> None:

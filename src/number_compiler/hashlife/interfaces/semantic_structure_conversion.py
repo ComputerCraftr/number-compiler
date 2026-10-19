@@ -17,10 +17,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     _union_inputs,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
+    StructureBuilder,
     StructuredNode,
+    StructureRewrite,
     _aliases,
-    _Builder,
-    _Rewrite,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
@@ -28,7 +28,7 @@ from number_compiler.resources.metric_keys import (
 
 
 class StructureConversion:
-    def __init__(self, builder: _Builder) -> None:
+    def __init__(self, builder: StructureBuilder) -> None:
         self.builder = builder
         self.converted: dict[int, int] = {}
         self.choices: dict[tuple[int, int, int], int] = {}
@@ -220,7 +220,7 @@ class StructureConversion:
                 )
             elif leaf.kind == "product":
                 children = tuple(
-                    builder.rewrite(_Rewrite(self.converted[child], mask=valid))
+                    builder.rewrite(StructureRewrite(self.converted[child], mask=valid))
                     for child in leaf.references
                 )
                 result = builder.intern(
@@ -241,7 +241,9 @@ class StructureConversion:
                     for old, new in zip(output.inputs, aliases, strict=True)
                 )
                 body = builder.rewrite(
-                    _Rewrite(self.converted[leaf.references[0]], replacements, valid)
+                    StructureRewrite(
+                        self.converted[leaf.references[0]], replacements, valid
+                    )
                 )
                 result = builder.intern(
                     StructuredNode(

@@ -83,7 +83,7 @@ class _Transaction:
     def intern(self, node: BoundaryExprNode) -> int:
         from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
             FormalPort,
-            _port_order,
+            port_order,
         )
 
         scope = (
@@ -104,7 +104,7 @@ class _Transaction:
                         for child in node.children
                         for port in self.node(child).free_ports
                     },
-                    key=_port_order,
+                    key=port_order,
                 )
             )
         self.arena.ledger.bump(

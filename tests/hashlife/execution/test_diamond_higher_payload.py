@@ -25,7 +25,8 @@ from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadReg
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import StateSort
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
-from tests.support.diamond_higher_context import expr, machine, summary
+from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
+from tests.support.diamond_higher_context import expr, summary
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 
 
 def populated() -> tuple[DiamondRuntime, ActionProgramID]:
-    runtime, atom = machine()
+    runtime, atom = collatz_higher_context_runtime()
     action = runtime.actions.compose(atom, atom)
     cell = runtime.cells.source(0, 2)
     summary(runtime, HigherSummary(action, atom, cell))
@@ -158,7 +159,7 @@ def test_resolved_head_memo_cannot_store_another_scope_sort_or_output_symbol(
         BoundaryExpressionArena,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     left = expr(runtime, HigherInitial(action, 0))
     right = expr(runtime, HigherInitial(action, 1))
     key, value = ResolveExpr(left), right
@@ -186,7 +187,7 @@ def test_open_function_head_normalization_is_audited_without_observing_its_ports
         ResolveExpr,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     parameter = arena.variable(StateSort(action, 0), "parameter")
     incoming = arena.variable(StateSort(action, 0), "incoming")

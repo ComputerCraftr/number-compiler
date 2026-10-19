@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .q19_output import ReversePairQ19OutputOwner
     from .q19_periodic_cone import CertifiedUniformizingCone
     from .q19_uniform_cone import CertifiedUniformCone
-    from .q19_word_summary import _Q19
+    from .q19_word_summary import Q19Summary
     from .radix19_cochain import Radix19CarryBlock
 
 
@@ -46,16 +46,16 @@ def range_summary(
     end: int,
     *,
     reverse: bool = False,
-) -> _Q19:
+) -> Q19Summary:
     """Fold a pair-symbol interval through cached regions, excluding tags."""
-    from .q19_word_summary import _Q19
+    from .q19_word_summary import Q19Summary
 
     return fold_slp_interval(
         owner.arena,
         root,
         begin,
         end,
-        identity=_Q19.identity(),
+        identity=Q19Summary.identity(),
         length=lambda node_id: owner._summaries[node_id].symbols,
         full_value=lambda node_id, backwards: (
             owner._summaries[node_id].reverse
@@ -77,7 +77,7 @@ def digit(
     position: int,
 ) -> int:
     """Read one exact normalized decimal digit from an issued source root."""
-    from .q19_word_summary import _UPPER
+    from .q19_word_summary import Q19_UPPER
 
     owner.validate(occurrence)
     if type(position) is not int or not 0 <= position < occurrence.output_width:
@@ -100,7 +100,72 @@ def digit(
                 )
             )
         value = owner._pair_value_at(occurrence, position)
-        return (value + int(prefix.domain == _UPPER)) % owner.base
+        return (value + int(prefix.domain == Q19_UPPER)) % owner.base
+
+
+def digits_at(
+    owner: ReversePairQ19OutputOwner,
+    occurrence: ReversePairOutputOccurrence,
+    positions: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Read ordered Q19 positions with one issuance check and prefix walk."""
+    from .q19_word_summary import Q19_UPPER, Q19Summary
+
+    owner.validate_issued_occurrence(occurrence)
+    if type(positions) is not tuple or any(
+        type(position) is not int or not 0 <= position < occurrence.output_width
+        for position in positions
+    ):
+        raise ValueError("Q19 digit batch needs an ordered tuple of valid positions")
+    owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BATCHED_DIGIT_REQUESTS)
+    unique_positions = tuple(sorted(set(positions)))
+    if not unique_positions:
+        return ()
+    owner.ledger.bump(
+        _reverse_add_keys.REVERSE_Q19_BATCHED_DIGIT_POSITIONS,
+        len(unique_positions),
+    )
+    root = occurrence.root
+    half = owner._summaries[root].symbols
+    width = occurrence.pair_width
+    prefix = Q19Summary.identity()
+    cursor = 0
+    result: dict[int, int] = {}
+    try:
+        with owner.ledger.reservation(
+            owner._scratch_owner, nodes=16 * (len(owner.arena.nodes) + 1)
+        ):
+            for position in unique_positions:
+                if position == width:
+                    result[position] = 1
+                    cursor = position
+                    continue
+                boundary = min(position, half)
+                if cursor < boundary:
+                    prefix = prefix.then(owner._range_summary(root, cursor, boundary))
+                    owner.ledger.bump(
+                        _reverse_add_keys.REVERSE_Q19_BATCHED_PREFIX_REGION_FOLDS
+                    )
+                if position > half:
+                    lower = max(cursor, half)
+                    if lower < position:
+                        prefix = prefix.then(
+                            owner._range_summary(
+                                root, width - position, width - lower, reverse=True
+                            )
+                        )
+                        owner.ledger.bump(
+                            _reverse_add_keys.REVERSE_Q19_BATCHED_PREFIX_REGION_FOLDS
+                        )
+                value = owner._pair_value_at(occurrence, position)
+                result[position] = (
+                    value + int(prefix.domain == Q19_UPPER)
+                ) % owner.base
+                cursor = position
+    except BaseException:
+        owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BATCHED_FAILED_DIGIT_BATCHES)
+        raise
+    return tuple(result[position] for position in positions)
 
 
 def radix19_cochain(
@@ -260,6 +325,7 @@ __all__ = [
     "authorize_temporal_cell",
     "certify_border_growth",
     "digit",
+    "digits_at",
     "pair_value_at",
     "radix19_cochain",
     "radix19_walsh64_mod5",

@@ -12,7 +12,7 @@ truncated. No source admission is inferred from a matching numeric bound.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import TracebackType
@@ -26,12 +26,14 @@ from number_compiler.arithmetic.fields.event_innovation import (
     _emit,
     _EventWork,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAtom,
     InnovationID,
+    InnovationInterval,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _Atom,
-    _Interval,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -164,7 +166,7 @@ class LiveForcingProjection:
             # An empty edge set can also be a killed Scale node. Only actual
             # leaves emit. The exact node kind is inspected, never atom values.
             node = arena.resolve(state.reference)
-            if not isinstance(node, (_Interval, _Atom)):
+            if not isinstance(node, (InnovationInterval, InnovationAtom)):
                 continue
             q = state.radial.no_growth
             work.ledger.bump(
@@ -216,7 +218,7 @@ class LiveForcingProjection:
     @contextmanager
     def leased_residue_runs(
         self, start: int, stop: int
-    ) -> Iterator[tuple[ResidueRun, ...]]:
+    ) -> Generator[tuple[ResidueRun, ...], None, None]:
         """Pre-admit returned boundaries and retain them for a consumer's scope.
 
         One live packet has at most 2*(growth+1) boundary events. Cancellation
@@ -276,7 +278,7 @@ class LiveForcingProjection:
             initial = 0
             for packet in self.packets():
                 node = arena.resolve(packet.atom)
-                if not isinstance(node, _Interval):
+                if not isinstance(node, InnovationInterval):
                     raise TypeError(
                         "live forcing residue demand has an unresolved atom"
                     )

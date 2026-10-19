@@ -73,7 +73,7 @@ def test_cycleless_first_child_never_constructs_parent_integer(
     children = workspace.action_node(workspace.root_action).children
     assert children is not None
     core = workspace.scheduler._source_image_core()
-    parent = core.view(core._origin(workspace, workspace.root_source))
+    parent = core.view(core.origin(workspace, workspace.root_source))
     child = workspace.first_child_source(workspace.root_action, parent, *children)
     node = workspace.source_node(child)
     assert not node.exact
@@ -118,6 +118,8 @@ def test_public_power_of_two_skips_mixed_and_d8_discovery(
     term = PoweredCollatzTerm(1 << 4096, 1024)
     assert term.materialize(max_bits=4096) == 1 << 3072
     assert (
-        term._ledger.counters.get("collatz_physical_temporal_d8_discovery_symbols", 0)
+        term.resource_ledger.counters.get(
+            "collatz_physical_temporal_d8_discovery_symbols", 0
+        )
         == 0
     )

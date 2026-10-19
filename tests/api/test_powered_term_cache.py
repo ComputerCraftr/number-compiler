@@ -12,6 +12,7 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
 )
 from number_compiler.api.query_types import CollatzTermQuery, ReverseAddTermQuery
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -70,10 +71,10 @@ def test_seeds_powers_and_radices_keep_distinct_reverse_add_owners() -> None:
         compiler.project(ReverseAddTermQuery(step, seed=seed, base=base))
         for _, step, seed, base in requests
     ]
-    owners = []
+    owners: list[ResourceLedger] = []
     for term in terms:
         assert isinstance(term.payload, PoweredReverseAddTermPayload)
-        owners.append(term.payload.term._ledger)
+        owners.append(term.payload.term.resource_ledger)
     assert len({id(owner) for owner in owners}) == len(requests)
     assert compiler.powered_cache_info()["misses"] == len(requests)
 

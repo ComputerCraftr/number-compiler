@@ -12,12 +12,15 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena, _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    BooleanCircuit,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 
 def raw_boolean(
-    circuit: _Circuit,
+    circuit: BooleanCircuit,
     root: int,
     values: dict[PortVariable, int],
 ) -> int:
@@ -41,14 +44,14 @@ def test_threshold_matches_all_small_codes_without_subtraction_or_ite(
 ) -> None:
     bits = BitFunctionArena(ResourceLedger())
     port = FinitePort(PortVariable(0, 0, "input", 0), cardinality)
-    circuit = _Circuit(bits.functions, (port,))
+    circuit = BooleanCircuit(bits.functions, (port,))
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError(
             "admission constructed a numeric subtraction or generic ITE"
         )
 
-    monkeypatch.setattr(_Circuit, "subtract_constant", forbidden)
+    monkeypatch.setattr(BooleanCircuit, "subtract_constant", forbidden)
     monkeypatch.setattr(_Transaction, "choose", forbidden)
     root = circuit.admitted()
     for value in range(1 << port.bits):
@@ -72,7 +75,7 @@ def test_joint_padding_preserves_each_port_domain_and_order(
         FinitePort(PortVariable(i, i % 2, "input", 0), n)
         for i, n in enumerate((3, 5, 8, 1))
     )
-    circuit = _Circuit(bits.functions, ports)
+    circuit = BooleanCircuit(bits.functions, ports)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("joint admission performed ITE composition")
@@ -98,7 +101,7 @@ def test_joint_padding_preserves_each_port_domain_and_order(
 def test_wide_threshold_work_scales_with_encoded_bits(cardinality: int) -> None:
     bits = BitFunctionArena(ResourceLedger())
     port = FinitePort(PortVariable(0, 0, "wide", 0), cardinality)
-    circuit = _Circuit(bits.functions, (port,))
+    circuit = BooleanCircuit(bits.functions, (port,))
     root = circuit.admitted()
     for value in (0, 1, cardinality - 1, cardinality, (1 << port.bits) - 1):
         assert raw_boolean(circuit, root, {port.variable: value}) == int(

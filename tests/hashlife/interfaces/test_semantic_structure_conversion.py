@@ -20,10 +20,7 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
-    MacroComponents,
-    MacroInterface,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.semantic_structure_conversion import (
@@ -33,9 +30,12 @@ from number_compiler.hashlife.interfaces.semantic_structure_publication import (
     publish_structure,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+    MacroComponents,
+    MacroInterface,
     StructureArena,
+    StructureBuilder,
     StructureID,
-    _Builder,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.diamond_quotient import curried_increment
@@ -50,7 +50,7 @@ def converted(
     arena: StructureArena,
     function: SemanticFunctionID,
 ) -> StructureID:
-    builder = _Builder(arena)
+    builder = StructureBuilder(arena)
     root = StructureConversion(builder).convert(function)
     return publish_structure(builder, root)
 

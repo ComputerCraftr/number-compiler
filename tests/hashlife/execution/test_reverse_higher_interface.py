@@ -12,9 +12,9 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
-    _Emit,
-    _Initial,
-    _Step,
+    HigherEmitOperation,
+    HigherInitialOperation,
+    HigherStepOperation,
 )
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
     HigherLocalInterfaceArena,
@@ -38,25 +38,25 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputSource,
     RecursiveOutputTemporal,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
 from number_compiler.sequences.reverse_add.higher_interface import (
     ReverseHigherInterfaceCompilation,
     ReverseHigherInterfaceCompiler,
 )
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.reverse_higher_interface import direct_step
+from tests.support.reverse_higher_runtime import (
+    _fixture,
+    _macro_composer,
+    observed_macro,
+)
 
 
 class _HasBehavior(Protocol):
     behavior: object
-
-
-from tests.support.reverse_higher_interface import _direct_step
-from tests.support.reverse_higher_runtime import (
-    _fixture,
-    _macro_composer,
-    _observed_macro,
-)
 
 
 def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active() -> (
@@ -110,7 +110,7 @@ def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> 
     actions, primitive, semantics, *_ = _fixture()
     action = actions.power(primitive, 3)
     before = semantics.ledger.snapshot()
-    semantics._validate_sort(FieldStateSort(action, 0), readonly=True)
+    semantics.validate_sort(FieldStateSort(action, 0), readonly=True)
     assert semantics.ledger.snapshot() == before
     assert isinstance(semantics.schema, ReverseHigherActionSchema)
     assert action not in semantics.schema._children
@@ -137,7 +137,7 @@ def test_reverse_higher_interface_nonbalanced_and_power_actions_are_exact(
     output = _expression(record.components.output)
     expected: tuple[int, ...] = source
     for _ in range(steps):
-        expected = _direct_step(expected, 10)
+        expected = direct_step(expected, 10)
     observed = tuple(
         runtime.point(action, binding, coordinate) for coordinate in range(len(source))
     )
@@ -293,7 +293,7 @@ def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:
     parent = outputs.branch(left_leaf, right_leaf, first, second, 1)
     left = semantics.evaluate(runtime.initial(primitive, 0))
     right = semantics.evaluate(runtime.initial(primitive, 1))
-    expected = _direct_step((7, 18), 10)
+    expected = direct_step((7, 18), 10)
     assert (
         tuple(
             outputs.observe(parent, coordinate, left, right) for coordinate in range(2)
@@ -422,10 +422,10 @@ def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
         sources,
         binding,
     ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    outputs, _unused_composer_binding, macro, left, right = _observed_macro(
+    outputs, _unused_composer_binding, macro, left, right = observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
-    expected = _direct_step((7, 18, 7, 19, 19, 19, 19, 19), 10)
+    expected = direct_step((7, 18, 7, 19, 19, 19, 19, 19), 10)
     assert (
         tuple(
             outputs.observe(macro.output, coordinate, left, right)
@@ -474,7 +474,7 @@ def test_reverse_macro_keeps_coordinate_magnitudes_outside_local_port_sorts() ->
         macro.extent,
         {ports["left-boundary"]: left, ports["right-boundary"]: right},
     )
-    expected = _direct_step(source, 10)
+    expected = direct_step(source, 10)
     assert (
         extent == max(index for index, value in enumerate(expected) if value != 19) + 1
     )
@@ -495,7 +495,12 @@ def test_higher_operations_validate_scoped_ids_before_warm_cache_probe() -> None
     symbol = semantics.symbol(primitive, 0)
     runtime.step(primitive, 0, state, symbol)
 
-    class PoisonedOperations(dict[_Initial | _Step | _Emit, HigherExpressionID]):
+    class PoisonedOperations(
+        dict[
+            HigherInitialOperation | HigherStepOperation | HigherEmitOperation,
+            HigherExpressionID,
+        ]
+    ):
         def get(self, _key: object, _default: object = None) -> Never:
             raise AssertionError("invalid scoped ID reached the operation cache")
 
@@ -557,7 +562,7 @@ def test_higher_temporal_provider_executes_without_midpoint_tile() -> None:
     composed = actions.compose(primitive, primitive)
     left = semantics.evaluate(runtime.initial(composed, 0))
     right = semantics.evaluate(runtime.initial(composed, 1))
-    expected = _direct_step(_direct_step(source, 10), 10)
+    expected = direct_step(direct_step(source, 10), 10)
     compose_requests = actions.compose_requests
     assert (
         tuple(
@@ -581,7 +586,7 @@ def test_runtime_k_u_carrier_observes_power_without_syntax_replay(
     expected: tuple[int, ...] = source
     expectations: dict[int, tuple[int, ...]] = {}
     for step in range(1, 17):
-        expected = _direct_step(expected, 10)
+        expected = direct_step(expected, 10)
         if step in (4, 8, 16):
             expectations[step] = expected
 

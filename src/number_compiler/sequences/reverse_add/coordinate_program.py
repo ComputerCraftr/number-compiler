@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.canonical_payload import (
     validate_bounded_semantic_key,
@@ -18,6 +19,9 @@ from number_compiler.arithmetic.contracts.canonical_payload import (
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
 from number_compiler.resources.ledger import ResourceLedger
+
+if TYPE_CHECKING:
+    from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +57,39 @@ class ReverseCoordinateProgramMetrics:
     compose_hits: int
     compose_evaluations: int
     executable_compilations: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseCoordinateProgramAuditSnapshot:
+    """Fresh immutable view of the exact backing stores owned by this arena.
+
+    The backing references are included only so the resource auditor can check
+    identity with the ledger registration.  All semantic rows are copied into
+    tuples at snapshot time; a snapshot is never cached or used for execution.
+    """
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    kind: str
+    base: int
+    node_owner: int
+    key_owner: int
+    compose_owner: int
+    node_backing: object
+    key_backing: object
+    compose_backing: object
+    nodes: tuple[ReverseCoordinateProgram, ...]
+    keys: tuple[tuple[ReverseCoordinateProgram, int], ...]
+    compositions: tuple[
+        tuple[
+            tuple[CoordinateOutputMorphismID, CoordinateOutputMorphismID],
+            CoordinateOutputMorphismID,
+        ],
+        ...,
+    ]
+    identity: CoordinateOutputMorphismID
+    primitive: CoordinateOutputMorphismID
+    terminal: CoordinateOutputMorphismID
 
 
 class ReverseCoordinateProgramArena:
@@ -97,9 +134,6 @@ class ReverseCoordinateProgramArena:
         self.identity = self.intern(ReverseCoordinateProgram(base, 0, False))
         self.primitive = self.intern(ReverseCoordinateProgram(base, 1, False))
         self.terminal = self.intern(ReverseCoordinateProgram(base, 0, True))
-        from number_compiler.resources.payload_contracts import (
-            PayloadAuditStoreBinding,
-        )
         from number_compiler.sequences.reverse_add.field_action_payload_audit import (
             audit_reverse_field_action_owner,
         )
@@ -107,18 +141,89 @@ class ReverseCoordinateProgramArena:
         ledger.register_payload_audit_contract(
             self,
             "reverse_add",
-            (
-                PayloadAuditStoreBinding(
-                    self._node_owner, "_nodes", "reverse_output_morphism"
-                ),
-                PayloadAuditStoreBinding(
-                    self._key_owner, "_keys", "reverse_output_interner"
-                ),
-                PayloadAuditStoreBinding(
-                    self._compose_owner, "_compose", "reverse_output_composition"
-                ),
-            ),
+            self.payload_audit_store_bindings(),
             audit_reverse_field_action_owner,
+        )
+
+    def payload_audit_store_bindings(
+        self,
+    ) -> tuple[PayloadAuditStoreBinding, ...]:
+        """Return the exact store bindings used by the resource auditor."""
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+
+        return (
+            PayloadAuditStoreBinding(
+                self._node_owner, "_nodes", "reverse_output_morphism"
+            ),
+            PayloadAuditStoreBinding(
+                self._key_owner, "_keys", "reverse_output_interner"
+            ),
+            PayloadAuditStoreBinding(
+                self._compose_owner, "_compose", "reverse_output_composition"
+            ),
+        )
+
+    def payload_audit_snapshot(self) -> ReverseCoordinateProgramAuditSnapshot:
+        """Capture current store contents and exact backing identities."""
+        return ReverseCoordinateProgramAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            kind=self._KIND,
+            base=self.base,
+            node_owner=self._node_owner,
+            key_owner=self._key_owner,
+            compose_owner=self._compose_owner,
+            node_backing=self._nodes,
+            key_backing=self._keys,
+            compose_backing=self._compose,
+            nodes=tuple(self._nodes),
+            keys=tuple(self._keys.items()),
+            compositions=tuple(self._compose.items()),
+            identity=self.identity,
+            primitive=self.primitive,
+            terminal=self.terminal,
+        )
+
+    def audit_composition_is_exact(
+        self,
+        before: CoordinateOutputMorphismID,
+        after: CoordinateOutputMorphismID,
+        result: CoordinateOutputMorphismID,
+    ) -> bool:
+        """Recompute a cached composition without publishing or mutating."""
+        try:
+            first, second, actual = (
+                self.resolve(before),
+                self.resolve(after),
+                self.resolve(result),
+            )
+        except (TypeError, ValueError, IndexError):
+            return False
+        if not first.executable or not second.executable:
+            return False
+        if first.normalized and (second.pair_steps or second.normalized):
+            return False
+        expected = ReverseCoordinateProgram(
+            self.base,
+            first.pair_steps + second.pair_steps,
+            first.normalized or second.normalized,
+        )
+        return (
+            actual == expected
+            and self.audit_program_is_interned(actual, result.local_id)
+            and self._compose.get((before, after)) == result
+        )
+
+    def audit_program_is_interned(self, program: object, local_id: int) -> bool:
+        """Check exact backing identity for a canonical program row."""
+        return (
+            type(program) is ReverseCoordinateProgram
+            and type(local_id) is int
+            and 0 <= local_id < len(self._nodes)
+            and self._nodes[local_id] is program
+            and self._keys.get(program) == local_id
         )
 
     def _handle(self, local_id: int) -> CoordinateOutputMorphismID:
@@ -146,10 +251,12 @@ class ReverseCoordinateProgramArena:
         return self._handle(local_id)
 
     def atom(self, key: Hashable) -> CoordinateOutputMorphismID:
-        if not isinstance(key, Hashable):
+        try:
+            hash(key)
+        except TypeError as error:
             raise TypeError(
                 "compatibility output atoms require typed immutable semantics"
-            )
+            ) from error
         validate_bounded_semantic_key(key, max_units=256)
         return self.intern(ReverseCoordinateProgram(self.base, 0, False, key))
 

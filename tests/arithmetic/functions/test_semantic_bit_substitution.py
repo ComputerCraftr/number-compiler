@@ -26,7 +26,7 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
-    _Circuit,
+    BooleanCircuit,
     substitute_boolean,
 )
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
@@ -80,23 +80,23 @@ def _composition_ports() -> tuple[BitFunctionArena, FinitePort, FinitePort]:
 
 
 def _fused_source() -> tuple[
-    BitFunctionArena, tuple[FinitePort, ...], _Circuit, int, int, int
+    BitFunctionArena, tuple[FinitePort, ...], BooleanCircuit, int, int, int
 ]:
     arena = BitFunctionArena(ResourceLedger())
     ports = tuple(
         FinitePort(PortVariable(0, 0, name, 0), 2) for name in ("a", "b", "c")
     )
-    source = _Circuit(arena.functions, ports)
+    source = BooleanCircuit(arena.functions, ports)
     a, b, c = (source.tx.bit(ports, port.variable) for port in ports)
     return arena, ports, source, a, b, c
 
 
 def _fused_target(
-    source: _Circuit,
-) -> tuple[FinitePort, FinitePort, _Circuit, int, int, int]:
+    source: BooleanCircuit,
+) -> tuple[FinitePort, FinitePort, BooleanCircuit, int, int, int]:
     x = FinitePort(PortVariable(1, 0, "x", 0), 2)
     y = FinitePort(PortVariable(1, 0, "y", 0), 2)
-    target = _Circuit(source.tx.arena, (x, y), source.tx)
+    target = BooleanCircuit(source.tx.arena, (x, y), source.tx)
     xx, yy = (target.tx.bit(target.inputs, port.variable) for port in (x, y))
     return x, y, target, xx, yy, target.xor(xx, yy)
 
@@ -107,7 +107,7 @@ def test_constant_cofactor_never_visits_the_unselected_subgraph(
     arena = BitFunctionArena(ResourceLedger())
     flag = FinitePort(PortVariable(0, 0, "flag", 0), 2)
     word = FinitePort(PortVariable(1, 0, "word", 0), 1 << 32)
-    c = _Circuit(arena.functions, (flag, word))
+    c = BooleanCircuit(arena.functions, (flag, word))
     tail = c.one
     for bit in reversed(range(32)):
         variable = PortVariable(1, 0, "word", bit)
@@ -132,10 +132,12 @@ def test_multiple_output_bits_share_one_substitution_traversal() -> None:
     arena = BitFunctionArena(ResourceLedger())
     source = FinitePort(PortVariable(0, 0, "source", 0), 2)
     target = FinitePort(PortVariable(1, 0, "target", 0), 2)
-    c = _Circuit(arena.functions, (source,))
+    c = BooleanCircuit(arena.functions, (source,))
     bit = c.tx.bit((source,), source.variable)
     signature = FunctionSignature((source,), AtomSort("word", 1 << 32))
-    function = arena._publish(c, (c.normalized(signature, (bit,) * 32, c.one),))[0]
+    function = arena.publish_circuit(c, (c.normalized(signature, (bit,) * 32, c.one),))[
+        0
+    ]
     replacement = arena.variable((target,), target)
     result = arena.substitute(function, {source.variable: replacement})
     assert arena.ledger.counters["semantic_bit_substitution_shared_hits"] >= 31
@@ -239,7 +241,7 @@ def test_identity_on_unaffected_support_does_not_walk_children(
     arena = BitFunctionArena(ResourceLedger())
     source = FinitePort(PortVariable(0, 0, "source", 0), 1 << 16)
     unrelated = FinitePort(PortVariable(1, 0, "unrelated", 0), 2)
-    c = _Circuit(arena.functions, (source, unrelated))
+    c = BooleanCircuit(arena.functions, (source, unrelated))
     tail = c.one
     for bit in reversed(range(16)):
         tail = c.tx.decision(
@@ -394,12 +396,12 @@ def test_joint_correlated_substitution_avoids_all_intermediate_ite_work() -> Non
     arena = BitFunctionArena(ResourceLedger())
     first = FinitePort(PortVariable(0, 0, "first", 0), 2)
     second = FinitePort(PortVariable(1, 0, "second", 0), 2)
-    source = _Circuit(arena.functions, (first, second))
+    source = BooleanCircuit(arena.functions, (first, second))
     parity = source.xor(
         source.tx.bit(source.inputs, first.variable),
         source.tx.bit(source.inputs, second.variable),
     )
-    xor_function = arena._publish(
+    xor_function = arena.publish_circuit(
         source,
         (
             source.normalized(
@@ -408,7 +410,7 @@ def test_joint_correlated_substitution_avoids_all_intermediate_ite_work() -> Non
         ),
     )[0]
     external = FinitePort(PortVariable(2, 0, "external", 0), 1 << 32)
-    target = _Circuit(arena.functions, (external,))
+    target = BooleanCircuit(arena.functions, (external,))
     conjunction = target.one
     for bit in reversed(range(32)):
         conjunction = target.tx.decision(
@@ -417,7 +419,7 @@ def test_joint_correlated_substitution_avoids_all_intermediate_ite_work() -> Non
             target.zero,
             conjunction,
         )
-    correlated = arena._publish(
+    correlated = arena.publish_circuit(
         target,
         (
             target.normalized(
@@ -470,7 +472,7 @@ def test_whole_composition_probe_precedes_transaction_and_mapping_order_is_canon
             "canonical whole-function cache hit constructed a transaction"
         )
 
-    monkeypatch.setattr(_Circuit, "__init__", forbidden)
+    monkeypatch.setattr(BooleanCircuit, "__init__", forbidden)
     assert (
         arena.substitute(function, dict(reversed(tuple(replacements.items()))))
         == result
@@ -533,7 +535,9 @@ def test_fused_integer_environments_bind_each_original_support_layout() -> None:
     first = source.conjunction(a, source.conjunction(b, c))
     second = source.conjunction(a, c)
     x, y, target, xx, yy, parity = _fused_target(source)
-    replacement = dict(zip((port.variable for port in source_ports), (parity, xx, yy)))
+    replacement = dict(
+        zip((port.variable for port in source_ports), (parity, xx, yy), strict=True)
+    )
     outputs = (
         substitute_boolean_fused(target, first, replacement),
         substitute_boolean_fused(target, second, replacement),
@@ -547,7 +551,7 @@ def test_fused_integer_environments_bind_each_original_support_layout() -> None:
         for key in target._fused_substitutions
     )
     signature = FunctionSignature(target.inputs, AtomSort("two-bits", 4))
-    result = arena._publish(
+    result = arena.publish_circuit(
         target, (target.normalized(signature, outputs, target.one),)
     )[0]
     for vx in range(2):
@@ -581,13 +585,13 @@ def test_fused_projection_cache_preserves_permuted_correlated_inputs() -> None:
     x, y, target, xx, yy, parity = _fused_target(source)
     variables = tuple(port.variable for port in source_ports)
     first = substitute_boolean_fused(
-        target, root, dict(zip(variables, (parity, xx, yy)))
+        target, root, dict(zip(variables, (parity, xx, yy), strict=True))
     )
     second = substitute_boolean_fused(
-        target, root, dict(zip(variables, (parity, yy, xx)))
+        target, root, dict(zip(variables, (parity, yy, xx), strict=True))
     )
     signature = FunctionSignature(target.inputs, AtomSort("two-bits", 4))
-    result = arena._publish(
+    result = arena.publish_circuit(
         target, (target.normalized(signature, (first, second), target.one),)
     )[0]
     for vx in range(2):

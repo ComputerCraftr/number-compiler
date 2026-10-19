@@ -1,10 +1,10 @@
-"""Full guarded-word identities for finite reverse/add border catalogues."""
+"""Full guarded-word identities for finite reverse/add border occurrences."""
 
 from dataclasses import replace
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.hashlife.interfaces.border_macros import (
-    BorderFamilyId,
     BorderMacroIdentity,
     BorderMacroKind,
     BorderMacroPhase,
@@ -12,10 +12,13 @@ from number_compiler.hashlife.interfaces.border_macros import (
 )
 from number_compiler.sequences.reverse_add.border_carry_safety import (
     BilateralCyclePort,
+    BorderTile,
     enumerate_one_digit_cycles,
 )
-from number_compiler.sequences.reverse_add.border_macro_catalogue import (
-    ClockedBorderPhase,
+from number_compiler.sequences.reverse_add.border_occurrences import (
+    ReverseAddBorderPhaseOccurrence,
+    ReverseAddPortSignature,
+    ReverseAddWordSignature,
     _canonical_edge_cycle,
     _edge_signature,
     _find_returns,
@@ -24,16 +27,16 @@ from number_compiler.sequences.reverse_add.border_macro_catalogue import (
 
 def _clocked_cycle(
     ports: tuple[BilateralCyclePort, ...],
-) -> tuple[ClockedBorderPhase, ...]:
+) -> tuple[ReverseAddBorderPhaseOccurrence, ...]:
     owner = object()
-    phases: list[ClockedBorderPhase] = []
+    phases: list[ReverseAddBorderPhaseOccurrence] = []
     width = 5
     for tick, port in enumerate(ports):
         source = BorderSourceCursor(
-            BorderFamilyId.REVERSE_ADD, owner, tick, tick, 1, width % 2
+            FamilyId.REVERSE_ADD, owner, tick, tick, 1, width % 2
         )
         target = BorderSourceCursor(
-            BorderFamilyId.REVERSE_ADD,
+            FamilyId.REVERSE_ADD,
             owner,
             tick + 1,
             tick + 1,
@@ -42,9 +45,9 @@ def _clocked_cycle(
         )
         phase = BorderMacroPhase(
             BorderMacroIdentity(
-                BorderFamilyId.REVERSE_ADD,
+                FamilyId.REVERSE_ADD,
                 BorderMacroKind.EDGE,
-                _edge_signature(port),
+                ReverseAddWordSignature(port.source.k, (_edge_signature(port),)),
             ),
             tick,
             source,
@@ -53,8 +56,10 @@ def _clocked_cycle(
             (port.target.k, port.target.high, port.target.low),
             width,
             width + port.growth,
+            (0, 0),
+            (0, 0),
         )
-        phases.append(ClockedBorderPhase(phase, tick, width, port, 0, 0, 0, 0))
+        phases.append(ReverseAddBorderPhaseOccurrence(phase, port))
         width += port.growth
     return tuple(phases)
 
@@ -90,18 +95,31 @@ def test_cycle_identity_is_rotation_invariant_and_carries_entry_phase() -> None:
 def test_canonical_guard_word_preserves_repeated_states_and_guard_distinctions() -> (
     None
 ):
-    first: tuple[
-        int, tuple[int, int, int], tuple[int, int, int], int, int, tuple[str, ...]
-    ] = (
-        1,
-        (1, 1, 7),
-        (1, 9, 8),
-        0,
-        0,
-        (CarryFn.CONST0.value,),
+    source = BorderTile(1, 1, 7)
+    target = BorderTile(1, 9, 8)
+    return_state = BorderTile(1, 9, 8)
+    returned = BorderTile(1, 1, 7)
+    first = ReverseAddPortSignature(
+        source=source,
+        target=target,
+        growth=0,
+        low_carry=0,
+        admitted_middle=(CarryFn.CONST0,),
     )
-    second = (1, (1, 1, 7), (1, 9, 8), 0, 1, (CarryFn.CONST1.value,))
-    third = (1, (1, 9, 8), (1, 1, 7), 1, 1, (CarryFn.ID.value,))
+    second = ReverseAddPortSignature(
+        source,
+        target,
+        0,
+        1,
+        (CarryFn.CONST1,),
+    )
+    third = ReverseAddPortSignature(
+        return_state,
+        returned,
+        1,
+        1,
+        (CarryFn.ID,),
+    )
     word = (first, second, third)
     canonical, _offset = _canonical_edge_cycle(word)
     for offset in range(len(word)):
@@ -110,7 +128,13 @@ def test_canonical_guard_word_preserves_repeated_states_and_guard_distinctions()
 
     changed_guard = (
         first,
-        (1, (1, 1, 7), (1, 9, 8), 0, 1, (CarryFn.CONST0.value,)),
+        ReverseAddPortSignature(
+            source,
+            target,
+            0,
+            1,
+            (CarryFn.CONST0,),
+        ),
         third,
     )
     changed, _changed_offset = _canonical_edge_cycle(changed_guard)

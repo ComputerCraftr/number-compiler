@@ -129,13 +129,13 @@ def _projection_rows() -> list[dict[str, object]]:
         elapsed = perf_counter() - started
         if low != (expected & 1):
             raise AssertionError((steps, low, expected))
-        first_publications = dict(term._ledger.counters)
+        first_publications = dict(term.resource_ledger.counters)
         metrics = term.metrics()
         behavior = term.behavior_metrics()
         if term.digit(0) != low:
             raise AssertionError(("source-image-replay-mismatch", steps, low))
-        replay_publications = term._ledger.counters
-        audit, audit_seconds, audit_work = explicit_resource_audit(term._ledger)
+        replay_publications = term.resource_ledger.counters
+        audit, audit_seconds, audit_work = explicit_resource_audit(term.resource_ledger)
         diagnostic = metrics.temporal_diagnostics
         if diagnostic.schema_version != metrics.metrics_schema_version:
             raise AssertionError(("temporal-diagnostic-schema-mismatch", steps))
@@ -316,7 +316,7 @@ def _projection_rows() -> list[dict[str, object]]:
     return rows
 
 
-def _source_audit() -> dict[str, bool]:
+def source_audit() -> dict[str, bool]:
     api = source_syntax(ROOT / "src" / "number_compiler" / "api/number_api.py")
     block = source_syntax(
         ROOT / "src" / "number_compiler" / "sequences/collatz/block_power.py"
@@ -498,7 +498,7 @@ def run_probe() -> dict[str, object]:
             None if rejection is None else type(rejection).__name__
         ),
         "execution_rejection_reason": None if rejection is None else str(rejection),
-        "source_audit": _source_audit(),
+        "source_audit": source_audit(),
         "public_radix_exactness": exact,
         "public_radix_exactness_available": rejection is None,
         "source_image_runtime_contract": runtime_image_contract,
@@ -568,7 +568,7 @@ def balanced_scaling(
             collect_ledger_metrics(
                 warm_payload.term.ledger
                 if isinstance(warm_payload, AntihydraTermPayload)
-                else warm_payload.term._ledger
+                else warm_payload.term.resource_ledger
             )
         for trial in range(trials):
             if mode == "cold":
@@ -591,7 +591,7 @@ def balanced_scaling(
             ledger = (
                 payload.term.ledger
                 if isinstance(payload, AntihydraTermPayload)
-                else payload.term._ledger
+                else payload.term.resource_ledger
             )
             before = dict(ledger.counters)
             described = perf_counter()
@@ -700,13 +700,13 @@ def limb_projection(
                 limb_described = perf_counter()
                 limb_term._source_image()
                 limb_constructed = perf_counter()
-                limb_before = dict(limb_term._ledger.counters)
+                limb_before = dict(limb_term.resource_ledger.counters)
                 limb_value = limb_payload.digit(limb_index)
                 limb_observed = perf_counter()
-                limb_cold = dict(limb_term._ledger.counters)
+                limb_cold = dict(limb_term.resource_ledger.counters)
                 limb_warm_value = limb_payload.digit(limb_index)
                 limb_warmed = perf_counter()
-                limb_warm = dict(limb_term._ledger.counters)
+                limb_warm = dict(limb_term.resource_ledger.counters)
 
                 bit_started = perf_counter()
                 bit_term = PoweredCollatzTerm(seed, steps)
@@ -714,7 +714,7 @@ def limb_projection(
                 bit_described = perf_counter()
                 bit_term._source_image()
                 bit_constructed = perf_counter()
-                bit_before = dict(bit_term._ledger.counters)
+                bit_before = dict(bit_term.resource_ledger.counters)
 
                 def bit_assembly(
                     width: int = limb_bits,
@@ -732,10 +732,10 @@ def limb_projection(
 
                 bit_value = bit_assembly()
                 bit_observed = perf_counter()
-                bit_cold = dict(bit_term._ledger.counters)
+                bit_cold = dict(bit_term.resource_ledger.counters)
                 bit_warm_value = bit_assembly()
                 bit_warmed = perf_counter()
-                bit_warm = dict(bit_term._ledger.counters)
+                bit_warm = dict(bit_term.resource_ledger.counters)
                 if (
                     limb_value != expected_limb
                     or bit_value != expected_limb

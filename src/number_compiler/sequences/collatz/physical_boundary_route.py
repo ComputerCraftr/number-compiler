@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
-    _SourceNode,
+)
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnSourceRecord,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
@@ -37,7 +39,7 @@ if TYPE_CHECKING:
 _MAX_BOUNDARY_ROUTE_TAIL = DyadicReturnImageWorkspace.MAX_LEAF_STEPS
 
 
-def _source_modulo(source: _SourceNode, modulus: int) -> int:
+def _source_modulo(source: DyadicReturnSourceRecord, modulus: int) -> int:
     """Read a small exact-source residue without assembling its full value."""
     return (
         source.residue % modulus
@@ -55,9 +57,9 @@ def leading_homogeneous_run(source: int, remaining: int) -> tuple[int, int, int]
     return low, available, normalized
 
 
-def exact_source_bit_length(source: _SourceNode) -> int:
+def exact_source_bit_length(source: DyadicReturnSourceRecord) -> int:
     """Compute an exact cylinder source width without assembling its value."""
-    if type(source) is not _SourceNode or not source.exact:
+    if type(source) is not DyadicReturnSourceRecord or not source.exact:
         raise ValueError("source width requires an exact admitted cylinder")
     return max(
         1,
@@ -67,7 +69,7 @@ def exact_source_bit_length(source: _SourceNode) -> int:
 
 
 def _affine_power_guard(
-    source: _SourceNode,
+    source: DyadicReturnSourceRecord,
     coefficient: int,
     offset: int,
     exponent: int,
@@ -101,7 +103,7 @@ def _affine_power_guard(
 
 
 def _quotient_power_guard(
-    source: _SourceNode,
+    source: DyadicReturnSourceRecord,
     divisor: int,
     base: int,
     exponent: int,
@@ -148,7 +150,7 @@ def _needed_repetitions(width: int, stride: int, terminal_ticks: int) -> int:
 
 
 def _has_useful_boundary_extent(
-    source: _SourceNode,
+    source: DyadicReturnSourceRecord,
     width: int,
     identity: BoundaryActionIdentity,
     *,
@@ -221,7 +223,7 @@ def _has_useful_boundary_extent(
 
 
 def has_admitted_boundary_macro(
-    source: _SourceNode,
+    source: DyadicReturnSourceRecord,
     width: int,
     *,
     include_innovation_tape: bool,
@@ -231,7 +233,7 @@ def has_admitted_boundary_macro(
     scratch: RunArithmeticWorkspace | None = None,
 ) -> bool:
     """Select a guarded macro only when it leaves a bounded exact tail."""
-    if type(source) is not _SourceNode or not source.exact:
+    if type(source) is not DyadicReturnSourceRecord or not source.exact:
         return False
     if type(allow_border_return) is not bool:
         raise TypeError("border-return admission choice must be Boolean")

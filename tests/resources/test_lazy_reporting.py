@@ -108,7 +108,7 @@ def test_radix_registry_audits_actual_projection_and_rejects_hidden_payloads() -
 
     term = PoweredCollatzTerm(27, 4)
     assert collatz_radix_digit(term, 3, 0) == 2
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.resource_audit_complete == 1
     assert (
         report.forbidden_future_payloads
@@ -120,7 +120,7 @@ def test_radix_registry_audits_actual_projection_and_rejects_hidden_payloads() -
     # Registry auditing must traverse the actual projection, not just a handle.
     vars(projection)["digits"] = (1, 2, 0)
     vars(projection)["offset"] = 1 << 100
-    bad = collect_ledger_metrics(term._ledger)
+    bad = collect_ledger_metrics(term.resource_ledger)
     assert bad.forbidden_future_payloads >= 1
     assert bad.retained_unbounded_future_integers == 1
 
@@ -132,7 +132,7 @@ def test_public_powered_metrics_do_not_run_payload_audits() -> None:
 
     term = PoweredCollatzTerm(27, 16)
     assert term.digit(0) in (0, 1)
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
 
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("runtime metrics invoked a deep audit")
@@ -151,7 +151,7 @@ def test_public_powered_metrics_do_not_run_payload_audits() -> None:
         assert report.temporal_diagnostics.resources.accounting_mismatch is None
         term.behavior_metrics()
 
-    assert dict(term._ledger.counters) == before
+    assert dict(term.resource_ledger.counters) == before
     # The detailed collector remains the explicit path for payload auditing.
-    audit = collect_ledger_metrics(term._ledger)
+    audit = collect_ledger_metrics(term.resource_ledger)
     assert audit.resource_audit_complete == 1

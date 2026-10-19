@@ -44,7 +44,7 @@ def valid_source_only_scheduler(
     core = scheduler._source_images
     valid = (
         set(vars(scheduler)) == {"_source_only", "ledger", "_source_images"}
-        and scheduler._source_only
+        and scheduler.is_source_only
         and scheduler.ledger is ledger
         and (
             core is None

@@ -12,7 +12,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
+from devtools.benchmarks.report_schema import sequence
 from devtools.experiments.comma.macro_lifting import check_macro_lifting
+from devtools.report_values import object_list, string_keyed_mapping
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
@@ -23,7 +25,7 @@ from number_compiler.sequences.comma.weighted_return import WeightedBoundaryActi
 TOTAL_STATES = 16 * PERIOD
 
 
-def boundary_state(index: int) -> BoundaryState:
+def boundary_state(index: object) -> BoundaryState:
     if type(index) is not int or not 0 <= index < TOTAL_STATES:
         raise ValueError("boundary quotient index outside finite type")
     side, rest = divmod(index, 8 * PERIOD)
@@ -43,7 +45,7 @@ def generate_shard(start: int, stop: int) -> dict[str, object]:
         or not 0 <= start < stop <= TOTAL_STATES
     ):
         raise ValueError("invalid comma quotient shard")
-    rows = []
+    rows: list[list[object]] = []
     for index in range(start, stop):
         macro = construct_macro(boundary_state(index))
         checked_fragments = check_macro_lifting(macro)
@@ -65,10 +67,12 @@ def summarize_shards(
     exponent_gain: dict[BoundaryState, int] = {}
     max_fragments = 0
     for path in paths:
-        packet = json.loads(path.read_text())
+        raw_packet: object = json.loads(path.read_text())
+        packet = string_keyed_mapping(raw_packet)
+        if packet is None:
+            raise ValueError("unsupported comma audit shard schema")
         if (
-            not isinstance(packet, dict)
-            or set(packet) != {"schema", "start", "stop", "rows"}
+            set(packet) != {"schema", "start", "stop", "rows"}
             or type(packet["schema"]) is not int
             or packet["schema"] != 1
         ):
@@ -81,12 +85,12 @@ def summarize_shards(
         ):
             raise ValueError("invalid comma audit shard bounds")
         rows = packet["rows"]
-        if not isinstance(rows, list) or len(rows) != stop - start:
+        if not object_list(rows) or len(rows) != stop - start:
             raise ValueError("truncated comma audit shard")
-        for expected, row in enumerate(rows, start):
-            if not isinstance(row, list) or len(row) != 4:
+        for expected, row in enumerate(sequence(rows), start):
+            if not object_list(row) or len(row) != 4:
                 raise ValueError("invalid comma audit row")
-            index, children, gain, fragments = row
+            index, children, gain, fragments = sequence(row)
             if type(index) is not int or index != expected:
                 raise ValueError("unordered comma audit shard")
             if (
@@ -96,7 +100,7 @@ def summarize_shards(
                 or fragments <= 0
             ):
                 raise ValueError("invalid comma audit construction counts")
-            if not isinstance(children, list) or len(children) not in (0, 2):
+            if not object_list(children) or len(children) not in (0, 2):
                 raise ValueError("incomplete comma fork alternatives")
             state = boundary_state(index)
             alternatives = tuple(boundary_state(child) for child in children)
@@ -143,7 +147,7 @@ def summarize_shards(
     visited: dict[BoundaryState, int] = {}
     cursor = first
     elapsed_exponents = 0
-    choices = []
+    choices: list[int] = []
     while cursor not in visited:
         visited[cursor] = len(visited)
         children = graph[cursor]

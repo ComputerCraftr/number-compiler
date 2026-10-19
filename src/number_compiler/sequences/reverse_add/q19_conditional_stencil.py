@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import decimal_pair_band
+
 if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.inward_bank_harmonics import (
         InwardBankSelection,
@@ -73,16 +75,7 @@ class ConditionalPairCell:
     @property
     def five_band(self) -> str:
         """Exact normalized pair coefficient domain for this output cell."""
-        value = self.coefficient
-        if value <= 4:
-            return "lt_low"
-        if value <= 8:
-            return "lt_high"
-        if value == 9:
-            return "eq"
-        if value <= 14:
-            return "gt_low"
-        return "gt_high"
+        return decimal_pair_band(self.coefficient).value
 
     @property
     def f5(self) -> int:

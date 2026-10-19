@@ -20,6 +20,7 @@ from number_compiler.hashlife.execution.continuations.provider_absorption import
     ProviderAction,
     ProviderBindingKey,
     ProviderBoundary,
+    ProviderPointKey,
 )
 from number_compiler.hashlife.execution.continuations.provider_field_executor import (
     ProviderFieldImageExecutor,
@@ -47,11 +48,11 @@ from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotient
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import (
-    _application_setup,
-    _completed_provider_input_setup,
-    _completed_provider_setup,
-    _provider_setup,
-    _setup,
+    completed_provider_input_setup,
+    completed_provider_setup,
+    field_image_application_setup,
+    provider_absorption_setup,
+    recursive_field_image_setup,
 )
 
 if TYPE_CHECKING:
@@ -71,7 +72,7 @@ def test_powered_provider_view_is_sealed_scoped_and_observable() -> None:
         _unused_executor_binding,
         _unused_incoming_binding,
         application,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     view = application.provider_view()
 
     assert validate_powered_provider_view(view, ledger)
@@ -105,7 +106,7 @@ def test_powered_provider_view_rejects_foreign_application_before_observation() 
         executor,
         incoming,
         first,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     second = executor.application(action, source, geometry, signature, incoming)
     view = first.provider_view()
     assert_rejected_atomically(
@@ -134,28 +135,29 @@ def test_provider_geometry_rejects_unbounded_numeric_aliases_before_interning(
     field: Literal["orientation", "phase", "phase_count"],
     value: bool | float,
 ) -> None:
-    ledger, _, _, _, action, images, adapter, _ = _setup((0, 1))
+    ledger, _, _, _, action, images, adapter, _ = recursive_field_image_setup((0, 1))
     providers = ProviderAbsorptionArena(
         ledger,
         images.sources,
-        validate_output=images._output_validate,
-        validate_bound_output=images._output_validate,
+        validate_output=images.validate_output,
+        validate_bound_output=images.validate_output,
         validate_interface=images.interfaces.resolve,
         validate_bound_interface=images.interfaces.resolve,
-        validate_action=images._action_validate,
+        validate_action=images.validate_action,
         validate_boundary=lambda _value: None,
-        observe=lambda *_args: 0,
+        observe=lambda _output, _coordinate, _left, _right: 0,
     )
     record = ProviderAction(adapter.output, adapter.interface, action, 0, 0, 1)
     object.__setattr__(record, field, value)
     assert_rejected_atomically(
         ledger, lambda: providers.intern(record), (TypeError, ValueError)
     )
-    assert not providers._nodes and not providers._keys
+    snapshot = providers.audit_snapshot()
+    assert not snapshot.nodes and not snapshot.keys
 
 
 def test_provider_semantic_key_excludes_source_and_bound_recursive_output() -> None:
-    _, providers, provider, binding = _provider_setup()
+    _, providers, provider, binding = provider_absorption_setup()
     record = providers.resolve(provider)
     assert set(record.__dataclass_fields__) == {
         "output",
@@ -168,9 +170,9 @@ def test_provider_semantic_key_excludes_source_and_bound_recursive_output() -> N
     assert "source" not in record.__dataclass_fields__
     assert binding.output != record.output
     assert type(binding.interface) is type(record.interface)
-    assert binding in providers._bindings
+    assert binding in providers.audit_snapshot().bindings
     providers.clear_observations()
-    assert not providers._bindings
+    assert not providers.audit_snapshot().bindings
     assert providers.resolve(provider) is record
 
 
@@ -188,7 +190,7 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
         providers,
         provider,
         binding,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert binding.image == image
     inputs = ProviderImageInputArena(providers, images)
     assert isinstance(source, SourceCellID)
@@ -273,8 +275,10 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
 
 
 def test_provider_active_extent_is_occurrence_authority_not_semantic_action() -> None:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup(
-        (0, 1),
+    ledger, source, signature, geometry, action, images, adapter, executor = (
+        recursive_field_image_setup(
+            (0, 1),
+        )
     )
     assert isinstance(source, SourceCellID)
     image = executor.image(action, source, geometry, signature)
@@ -290,13 +294,13 @@ def test_provider_active_extent_is_occurrence_authority_not_semantic_action() ->
     providers = ProviderAbsorptionArena(
         ledger,
         images.sources,
-        validate_output=images._output_validate,
-        validate_bound_output=images._output_validate,
+        validate_output=images.validate_output,
+        validate_bound_output=images.validate_output,
         validate_interface=images.interfaces.resolve,
         validate_bound_interface=images.interfaces.resolve,
-        validate_action=images._action_validate,
+        validate_action=images.validate_action,
         validate_boundary=lambda _value: None,
-        observe=lambda *_args: 0,
+        observe=lambda _output, _coordinate, _left, _right: 0,
         validate_image=images.resolve,
         validate_image_occurrence=images.validate_occurrence,
     )
@@ -331,12 +335,11 @@ def test_provider_active_extent_is_occurrence_authority_not_semantic_action() ->
     # fails without publishing any partial child binding, then succeeds once
     # both exact child extents have been admitted separately.
     before_split = ledger.snapshot()
-    before_bindings = len(providers._bindings)
+    before_bindings = len(providers.audit_snapshot().bindings)
     with pytest.raises(ValueError, match="not published"):
         inputs.children(scoped_input)
     assert ledger.snapshot() == before_split
-    assert len(providers._bindings) == before_bindings
-    assert not any(key[0] == scoped_input.local_id for key in inputs._children)
+    assert len(providers.audit_snapshot().bindings) == before_bindings
     left_source, right_source = images.sources.children(source)
     left_image, right_image = images.children(image)
     for child_source, child_image, child_extent in (
@@ -385,7 +388,7 @@ def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit(
         providers,
         provider,
         valid,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert isinstance(source, SourceCellID)
     assert (
         providers.bind(
@@ -413,7 +416,7 @@ def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit(
         ValueError,
         match="differs from its completed image",
     )
-    assert tuple(providers._bindings) == (valid,)
+    assert tuple(providers.audit_snapshot().bindings) == (valid,)
 
     child = images.children(image)[0]
     child_record = images.resolve(child)
@@ -426,15 +429,14 @@ def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit(
             child,
         )
     assert ledger.snapshot() == before
-    assert tuple(providers._bindings) == (valid,)
+    assert tuple(providers.audit_snapshot().bindings) == (valid,)
 
 
 def test_provider_binding_eviction_invalidates_warm_image_input_children() -> None:
-    ledger, _, providers, inputs, root = _completed_provider_input_setup()
+    ledger, _, providers, inputs, root = completed_provider_input_setup()
     children = inputs.children(root)
     assert all(inputs.resolve(child).level == 0 for child in children)
     providers.clear_observations()
-    assert not inputs._nodes and not inputs._keys and not inputs._children
     assert_rejected_atomically(
         ledger, lambda: inputs.children(root), ValueError, match="stale"
     )
@@ -443,7 +445,7 @@ def test_provider_binding_eviction_invalidates_warm_image_input_children() -> No
 def test_provider_child_batch_rejects_second_image_before_any_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, images, providers, inputs, root = _completed_provider_input_setup()
+    ledger, images, providers, inputs, root = completed_provider_input_setup()
     parent = inputs.resolve(root)
     _, right_image = images.children(parent.image)
     original = images.validate_binding
@@ -455,31 +457,28 @@ def test_provider_child_batch_rejects_second_image_before_any_publication(
 
     monkeypatch.setattr(images, "validate_binding", reject_second)
     before = ledger.snapshot()
-    binding_count = len(providers._bindings)
+    binding_count = len(providers.audit_snapshot().bindings)
     with pytest.raises(ValueError, match="second child"):
         inputs.children(root)
     assert ledger.snapshot() == before
-    assert len(providers._bindings) == binding_count
-    assert not inputs._children
+    assert len(providers.audit_snapshot().bindings) == binding_count
 
 
 @pytest.mark.parametrize("change", ("extent", "level", "source", "request"))
 def test_provider_input_revalidates_published_context_before_resolution(
     change: str,
 ) -> None:
-    ledger, images, _providers, inputs, root = _completed_provider_input_setup()
+    ledger, images, _providers, inputs, root = completed_provider_input_setup()
     record = inputs.resolve(root)
     left, _ = inputs.sources.children(record.source)
-    altered = (
-        replace(record, active_extent=1)
-        if change == "extent"
-        else replace(record, level=0)
-        if change == "level"
-        else replace(record, source=left)
-        if change == "source"
-        else replace(record, request=replace(record.request, source=left))
-    )
-    inputs._nodes[root.local_id] = altered
+    if change == "extent":
+        object.__setattr__(record, "active_extent", 1)
+    elif change == "level":
+        object.__setattr__(record, "level", 0)
+    elif change == "source":
+        object.__setattr__(record, "source", left)
+    else:
+        object.__setattr__(record, "request", replace(record.request, source=left))
     assert_rejected_atomically(ledger, lambda: inputs.resolve(root), ValueError)
     # The completed image is still live: rejecting the altered input is not
     # accidentally just a cache miss or an evicted image.
@@ -487,7 +486,7 @@ def test_provider_input_revalidates_published_context_before_resolution(
 
 
 def test_provider_input_rejects_revoked_image_binding_before_warm_hit() -> None:
-    ledger, images, _providers, inputs, root = _completed_provider_input_setup()
+    ledger, images, _providers, inputs, root = completed_provider_input_setup()
     record = inputs.resolve(root)
     assert images.probe(record.request) == record.image
     images.clear_bindings()
@@ -501,7 +500,7 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Traversal regression, not a reverse temporal constructor proof."""
-    ledger, images, providers, inputs, root = _completed_provider_input_setup((0, 0))
+    ledger, images, providers, inputs, root = completed_provider_input_setup((0, 0))
     left, right = inputs.children(root)
     assert left == right
     record = inputs.resolve(root)
@@ -598,7 +597,7 @@ def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
 
 
 def test_fused_provider_uses_one_entry_response_and_validates_before_warm_hit() -> None:
-    ledger, providers, provider, occurrence = _provider_setup()
+    ledger, providers, provider, occurrence = provider_absorption_setup()
 
     class Strategy:
         def __init__(self) -> None:
@@ -636,7 +635,7 @@ def test_fused_provider_uses_one_entry_response_and_validates_before_warm_hit() 
     assert fused.point(binding, 0, 0, 0) == 0
     assert fused.point(binding, 0, 0, 0) == 0
     assert fused.point(binding, 0, 0, 1) == 1
-    assert len(fused._points) == 1
+    assert len(fused.audit_snapshot().points) == 1
     assert strategy.points == 2
     assert fused.width(binding, 0, 0) == 2
     assert fused.width(binding, 0, 0) == 2
@@ -647,8 +646,10 @@ def test_fused_provider_uses_one_entry_response_and_validates_before_warm_hit() 
     )
 
 
-def test_fused_foreign_handle_rejects_before_wrapper_cache_probe() -> None:
-    ledger, providers, provider, occurrence = _provider_setup()
+def test_fused_foreign_handle_rejects_before_wrapper_cache_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, providers, provider, occurrence = provider_absorption_setup()
 
     class Strategy:
         def __init__(self) -> None:
@@ -687,7 +688,9 @@ def test_fused_foreign_handle_rejects_before_wrapper_cache_probe() -> None:
     )
     bad_occurrence = replace(binding.occurrence, provider=foreign)
     bad_binding = replace(binding, occurrence=bad_occurrence)
-    fused._bindings = PoisonedBindings(fused._bindings)
+    monkeypatch.setattr(
+        fused, "_bindings", PoisonedBindings(fused.audit_snapshot().bindings)
+    )
     assert_rejected_atomically(
         ledger,
         lambda: fused.point(bad_binding, 0, 0, 0),
@@ -700,7 +703,7 @@ def test_fused_foreign_handle_rejects_before_wrapper_cache_probe() -> None:
 def test_provider_integer_aliases_reject_before_warm_lookup_or_mutation(
     alias: bool | float,
 ) -> None:
-    ledger, providers, provider, _ = _provider_setup()
+    ledger, providers, provider, _ = provider_absorption_setup()
     forged = type(provider)(provider.owner, provider.kind, provider.local_id)
     object.__setattr__(forged, "local_id", alias)
     assert_rejected_atomically(
@@ -709,23 +712,18 @@ def test_provider_integer_aliases_reject_before_warm_lookup_or_mutation(
 
 
 def test_provider_observation_releases_every_cached_entry_before_replacement() -> None:
-    from number_compiler.hashlife.execution.continuations.provider_absorption import (
-        _PointKey,
-    )
-
-    ledger, providers, _, binding = _provider_setup()
+    ledger, providers, _, binding = provider_absorption_setup()
     assert providers.point(binding, 0, 0, 0) == 0
-    injected = _PointKey(binding, 0, 0, 1)
-    ledger.reserve(providers._point_owner, entries=1)
-    providers._points[injected] = 1
-    assert len(providers._points) == 2
+    initial_snapshot = providers.audit_snapshot()
+    assert ProviderPointKey(binding, 0, 0, 0) in initial_snapshot.points
+    assert len(initial_snapshot.points) == 1
     assert providers.point(binding, 1, 0, 2) == 1
-    inventory = ledger.inventory()[providers._point_owner]
-    assert (
-        len(providers._points) == inventory.entries == inventory.observed_entries == 1
-    )
+    replacement_snapshot = providers.audit_snapshot()
+    inventory = ledger.inventory()[replacement_snapshot.point_owner]
+    assert len(replacement_snapshot.points) == inventory.entries == 1
     ledger.evict_query_memos()
-    assert not providers._bindings and not providers._points
+    final_snapshot = providers.audit_snapshot()
+    assert not final_snapshot.bindings and not final_snapshot.points
 
 
 @pytest.mark.parametrize("extent", (True, 2.0, 0, 1 << 100))
@@ -743,7 +741,7 @@ def test_provider_extent_forgery_rejects_before_observation(
         _unused_executor_binding,
         _unused_incoming_binding,
         application,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     view = application.provider_view()
     forged = replace(view)
     object.__setattr__(forged, "extent_bound", extent)

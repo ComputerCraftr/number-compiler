@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.dyadic_return_records import _SourceNode
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnSourceRecord,
+)
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.border_identity import (
@@ -40,8 +42,8 @@ def _physical_trace(source: int, ticks: int) -> tuple[int, ...]:
     return tuple(values)
 
 
-def _source_node(source: int) -> _SourceNode:
-    return _SourceNode(source, 0, 0, None, None, None, 0, True)
+def _source_node(source: int) -> DyadicReturnSourceRecord:
+    return DyadicReturnSourceRecord(source, 0, 0, None, None, None, 0, True)
 
 
 def _normalized_trace(source: int, steps: int) -> tuple[int, ...]:

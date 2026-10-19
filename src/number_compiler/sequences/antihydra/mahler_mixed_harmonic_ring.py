@@ -19,16 +19,21 @@ from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.arithmetic.functions.finite_observer import (
     minimize_finite_orbit,
 )
+from number_compiler.hashlife.interfaces.border_macros import BorderMacroIdentity
+from number_compiler.sequences.antihydra.mahler_border_identity import (
+    MahlerOddMotifSignature,
+    checked_mahler_odd_motif,
+)
 from number_compiler.sequences.antihydra.mahler_harmonic_ring import (
-    _affine_pow,
-    _orbit_at,
-    _phase_histogram,
-    _validate_harmonic_state_budget,
-    _xor_f5_projection,
+    affine_power_modulo,
+    orbit_value_at,
+    phase_histogram,
+    validate_harmonic_state_budget,
+    xor_f5_projection,
 )
 from number_compiler.sequences.antihydra.mahler_odd_macro import MahlerOddToOddAction
 from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
-    _OddEventExtentExceedsBudget,
+    OddEventExtentExceedsBudget,
     summarize_mahler_odd_event,
 )
 from number_compiler.sequences.antihydra.mahler_source_actions import (
@@ -108,7 +113,7 @@ def _discover_prefix_actions(
                 current,
                 max_extent=max_extent - extent,
             )
-        except _OddEventExtentExceedsBudget:
+        except OddEventExtentExceedsBudget:
             break
         exponent = event.exponent
         extent += exponent
@@ -137,7 +142,7 @@ class MahlerMixedQHarmonicSpectrum:
 
     @property
     def xor_f5(self) -> tuple[int, ...]:
-        return _xor_f5_projection(self.xor_phase_counts, self.places)
+        return xor_f5_projection(self.xor_phase_counts, self.places)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +150,7 @@ class MahlerMixedOddHarmonicRing:
     """One exact source-certified motif with a reusable Hensel repeat guard."""
 
     source: int
-    exponents: tuple[int, ...]
+    macro_identity: BorderMacroIdentity
     action: MahlerOddToOddAction
     defect: int
     capacity: int
@@ -155,19 +160,17 @@ class MahlerMixedOddHarmonicRing:
         # promote a guessed harmonic period to a real source certificate.
         if type(self.source) is not int or self.source <= 0 or not self.source & 1:
             raise ValueError("mixed harmonic owner requires a positive odd source")
-        if (
-            type(self.exponents) is not tuple
-            or type(self.action) is not MahlerOddToOddAction
-        ):
+        if type(self.action) is not MahlerOddToOddAction:
             raise TypeError("a mixed ring needs a typed source-issued motif action")
-        if self.action.semantic_id != _compiled_motif(self.exponents).semantic_id:
+        signature = checked_mahler_odd_motif(self.macro_identity)
+        if self.action.semantic_id != _compiled_motif(signature.exponents).semantic_id:
             raise ValueError(
                 "mixed ring action is not the authenticated parity program"
             )
         if type(self.defect) is not int or type(self.capacity) is not int:
             raise TypeError("2-adic defect and repetition count must be exact integers")
         expected, capacity = _source_repetition_certificate(
-            self.source, self.exponents, self.action
+            self.source, signature.exponents, self.action
         )
         if self.defect != expected:
             raise ValueError("mixed ring defect is detached from its source")
@@ -176,11 +179,16 @@ class MahlerMixedOddHarmonicRing:
                 "mixed ring repeat capacity is not a source-cylinder proof"
             )
 
+    @property
+    def exponents(self) -> tuple[int, ...]:
+        """Checked projection of the typed structural motif identity."""
+        return checked_mahler_odd_motif(self.macro_identity).exponents
+
     @classmethod
     def _issue_from_action(
         cls,
         source: int,
-        exponents: tuple[int, ...],
+        signature: MahlerOddMotifSignature,
         action: MahlerOddToOddAction,
     ) -> MahlerMixedOddHarmonicRing:
         """Publish a trusted, already-composed action without rebuilding it.
@@ -188,10 +196,14 @@ class MahlerMixedOddHarmonicRing:
         This is private to the source compiler. Direct construction still
         re-derives and checks the action in ``__post_init__``.
         """
-        defect, capacity = _source_repetition_certificate(source, exponents, action)
+        if type(signature) is not MahlerOddMotifSignature:
+            raise TypeError("Mahler macro issue requires an ordered motif signature")
+        defect, capacity = _source_repetition_certificate(
+            source, signature.exponents, action
+        )
         result = object.__new__(cls)
         object.__setattr__(result, "source", source)
-        object.__setattr__(result, "exponents", exponents)
+        object.__setattr__(result, "macro_identity", signature.identity)
         object.__setattr__(result, "action", action)
         object.__setattr__(result, "defect", defect)
         object.__setattr__(result, "capacity", capacity)
@@ -199,12 +211,12 @@ class MahlerMixedOddHarmonicRing:
 
     @classmethod
     def from_source(
-        cls, source: int, exponents: tuple[int, ...]
+        cls, source: int, signature: MahlerOddMotifSignature
     ) -> MahlerMixedOddHarmonicRing:
-        if type(exponents) is not tuple:
-            raise TypeError("authenticated motif exponents must be a tuple")
-        action = _compiled_motif(exponents)
-        ring = cls._issue_from_action(source, exponents, action)
+        if type(signature) is not MahlerOddMotifSignature:
+            raise TypeError("authenticated Mahler motif must use its typed signature")
+        action = _compiled_motif(signature.exponents)
+        ring = cls._issue_from_action(source, signature, action)
         if ring.capacity < 1:
             raise ArithmeticError(
                 "issued odd-to-odd motif lacks its first repeat cylinder"
@@ -224,7 +236,8 @@ class MahlerMixedOddHarmonicRing:
                 "mixed odd-event discovery has no event within its extent budget"
             )
         exponents, action = prefixes[-1]
-        ring = cls._issue_from_action(source, exponents, action)
+        signature = MahlerOddMotifSignature(exponents)
+        ring = cls._issue_from_action(source, signature, action)
         if ring.capacity < 1:
             raise ArithmeticError(
                 "discovered odd-event word lacks its first repeat cylinder"
@@ -245,7 +258,8 @@ class MahlerMixedOddHarmonicRing:
         )
         best: MahlerMixedOddHarmonicRing | None = None
         for exponents, action in prefixes:
-            ring = cls._issue_from_action(source, exponents, action)
+            signature = MahlerOddMotifSignature(exponents)
+            ring = cls._issue_from_action(source, signature, action)
             if ring.capacity >= min_copies and (
                 best is None
                 or ring.capacity * len(exponents) > best.capacity * len(best.exponents)
@@ -370,7 +384,7 @@ class MahlerMixedOddHarmonicRing:
         inv2: int = pow(1 << self.extent, -1, odd_mod)
         gain: int = self.multiplier * inv2 % odd_mod
         offset: int = self.offset * inv2 % odd_mod
-        a, b = _affine_pow(gain, offset, repetitions, odd_mod)
+        a, b = affine_power_modulo(gain, offset, repetitions, odd_mod)
         odd_residue: int = (a * self.source + b) % odd_mod
         if not bits:
             return odd_residue
@@ -410,7 +424,7 @@ class MahlerMixedOddHarmonicRing:
             or repetitions < 1
         ):
             raise ValueError("q temporal source clock or repetition is unauthenticated")
-        _validate_harmonic_state_budget(max_states)
+        validate_harmonic_state_budget(max_states)
         # This observer composes only residues modulo the bounded radix
         # modulus. The exact source-cylinder guard above authorizes the
         # repeated motif; the coefficient/endpoint extent cap belongs to
@@ -419,23 +433,27 @@ class MahlerMixedOddHarmonicRing:
         total = repetitions * len(self.exponents)
         if walsh64 and total < 64:
             raise ValueError("Walsh64 needs at least 64 source-certified events")
-        modulus = radix**places
-        q0 = pow(2, clock, modulus) * (3 * self.source + 1) % modulus
+        modulus: int = radix**places
+        initial_powtwo: int = int.__pow__(2, clock, modulus)
+        q0: int = initial_powtwo * (3 * self.source + 1) % modulus
         # The modulus may be even: retain 2**clock as a separate state.
-        initial = (q0, pow(2, clock, modulus), 0, 0)
-        state = initial
+        initial: tuple[int, int, int, int] = (q0, initial_powtwo, 0, 0)
+        state: tuple[int, int, int, int] = initial
         seen: dict[tuple[int, int, int, int], int] = {}
         emissions: list[tuple[int, int, int, int]] = []
         successor_states: list[tuple[int, int, int, int]] = []
         # The source-approved motif fixes these coefficients. Precompute each
         # modular gain once per motif phase and radix cell, then reuse it for
         # every state visited by the bounded q orbit.
-        moduli = tuple(radix**j for j in range(1, places + 1))
-        gains = tuple(
-            tuple(pow(3, exponent, m) for m in moduli) for exponent in self.exponents
+        moduli: tuple[int, ...] = tuple(radix**j for j in range(1, places + 1))
+        gains: tuple[tuple[int, ...], ...] = tuple(
+            tuple(int.__pow__(3, exponent, m) for m in moduli)
+            for exponent in self.exponents
         )
-        full_gains = tuple(row[-1] for row in gains)
-        binary_shifts = tuple(pow(2, exponent, modulus) for exponent in self.exponents)
+        full_gains: tuple[int, ...] = tuple(row[-1] for row in gains)
+        binary_shifts: tuple[int, ...] = tuple(
+            int.__pow__(2, exponent, modulus) for exponent in self.exponents
+        )
         cycle_start: int | None = None
         while len(emissions) < max_states:
             if state in seen:
@@ -496,13 +514,13 @@ class MahlerMixedOddHarmonicRing:
             def word(records: tuple[tuple[int, int, int, int], ...]) -> tuple[int, ...]:
                 return tuple((record[kind] >> cell) & 1 for record in records)
 
-            counts = _phase_histogram(word(prefix), word(cycle), total, 2)
+            counts = phase_histogram(word(prefix), word(cycle), total, 2)
             return counts[1]
 
         carries = tuple(series(i, 1) for i in range(places))
         borrows = tuple(series(i, 2) for i in range(places))
         xors = tuple(
-            _phase_histogram(
+            phase_histogram(
                 tuple(((e[1] ^ e[2]) >> i) & 1 for e in prefix),
                 tuple(((e[1] ^ e[2]) >> i) & 1 for e in cycle),
                 total,
@@ -517,8 +535,8 @@ class MahlerMixedOddHarmonicRing:
                     sum(
                         (
                             (
-                                _orbit_at(prefix, cycle, t)[1]
-                                ^ _orbit_at(prefix, cycle, t)[2]
+                                orbit_value_at(prefix, cycle, t)[1]
+                                ^ orbit_value_at(prefix, cycle, t)[2]
                             )
                             >> i
                             & 1
@@ -582,6 +600,7 @@ class MahlerMixedOddHarmonicRing:
             }
         return {
             "motif": self.exponents,
+            "macro_identity": self.macro_identity.packet(),
             "repetitions": repetitions,
             "certified_capacity": self.capacity,
             "source_guard": (powered.source_residue, powered.source_modulus),

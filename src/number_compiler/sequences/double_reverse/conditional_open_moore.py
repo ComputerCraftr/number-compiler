@@ -25,11 +25,14 @@ from number_compiler.arithmetic.functions.partial_count_action import (
     PartialCountAction,
 )
 
-from .open_temporal_ring import OpenRingPorts, OpenRingState
-from .protected_temporal_bank import PERIODIC_CHANNELS, PeriodicBankFrame
-from .temporal_bank_output_morphism import _row_output_label
+from .open_temporal_ring import (
+    MAX_OPEN_MOORE_STATES,
+    OpenRingPorts,
+    OpenRingState,
+)
+from .protected_temporal_bank import BANK_CHANNELS, PeriodicBankFrame, bank_channel_name
+from .temporal_bank_output_morphism import row_output_label
 
-MAX_OPEN_MOORE_STATES = 4096
 MAX_OPEN_MOORE_LETTERS = 4096
 MAX_OPEN_MOORE_TRANSITIONS = 1_048_576
 
@@ -40,7 +43,7 @@ class ConditionalOpenMooreBudgetExceeded(ValueError):
 
 def _counts(frames: tuple[PeriodicBankFrame, ...]) -> tuple[int, ...]:
     return tuple(
-        sum(frame.scalar(channel) for frame in frames) for channel in PERIODIC_CHANNELS
+        sum(frame.scalar(channel) for frame in frames) for channel in BANK_CHANNELS
     )
 
 
@@ -100,7 +103,10 @@ class ConditionalOpenMoore:
         values = action.counts[self.initial_class]
         if target is None or values is None:
             raise ValueError("input program violates a guarded Moore transition")
-        return target, dict(zip(PERIODIC_CHANNELS, values, strict=True))
+        return target, {
+            bank_channel_name(channel): value
+            for channel, value in zip(BANK_CHANNELS, values, strict=True)
+        }
 
 
 def minimize_conditional_open_ring(
@@ -179,7 +185,7 @@ def minimize_conditional_open_ring(
     rows = tuple(transitions)
     outputs = tuple(emissions)
     signature = tuple(
-        tuple(None if output is None else _row_output_label(output) for output in row)
+        tuple(None if output is None else row_output_label(output) for output in row)
         for row in outputs
     )
     classes = partition_by_signature(signature)
@@ -209,7 +215,7 @@ def minimize_conditional_open_ring(
         quotient_rows,
         tuple(quotient_emissions),
         len(allowed),
-        ActionUniverse(class_count, len(PERIODIC_CHANNELS)),
+        ActionUniverse(class_count, len(BANK_CHANNELS)),
     )
 
 

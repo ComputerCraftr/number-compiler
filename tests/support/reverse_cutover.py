@@ -101,6 +101,6 @@ def assert_mirror_scratch_released(term: ReverseAddPoweredTerm) -> None:
     scratch = term._mirror_output_scratch
     assert scratch is not None and not scratch
     account = next(
-        item for item in term._ledger.inventory() if item.owner == scratch.owner
+        item for item in term.resource_ledger.inventory() if item.owner == scratch.owner
     )
     assert account.entries == account.nodes == account.accounting_delta == 0

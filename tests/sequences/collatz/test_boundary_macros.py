@@ -1,18 +1,23 @@
 """Exact guarded boundary actions stay source-bound and demand-aware."""
 
+from collections.abc import Callable
 from copy import copy
 from dataclasses import fields, replace
+from typing import TypeAlias
 
 import pytest
 
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz import border_identity as border_identity_module
 from number_compiler.sequences.collatz import boundary_macros
 from number_compiler.sequences.collatz.border_identity import (
+    BOUNDARY_SELECTOR_IDENTITIES,
     CYCLE_89,
+    CYCLE_26847,
     ENTRY_0563,
     ENTRY_89_AT_NINE,
     ENTRY_421,
@@ -22,18 +27,24 @@ from number_compiler.sequences.collatz.border_identity import (
     PATH_630,
     BoundaryOccurrenceProducerStamp,
     BoundaryPathKind,
+    BoundarySelectorGuard,
     ClosedBorderCycle,
     CycleEntryPhase,
     GuardedBorderPath,
+    MixedParityMotif,
     border_return_path,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
     admit_boundary_macro_plan,
+    boundary_metric_key,
     boundary_metric_suffix,
     select_boundary_macro,
     validate_boundary_macro,
+)
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
@@ -45,6 +56,14 @@ from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
 )
+
+BoundaryTemplateKey: TypeAlias = tuple[boundary_macros.BoundaryTemplateIdentity, int]
+BoundaryTemplateValue: TypeAlias = tuple[
+    boundary_macros.BoundaryTemplateIdentity,
+    int,
+    tuple[DyadicTerminalFieldAction, int, int, int],
+]
+BoundaryTemplateMemo: TypeAlias = OwnedMemo[BoundaryTemplateKey, BoundaryTemplateValue]
 
 
 def _physical(source: int, ticks: int) -> int:
@@ -81,6 +100,7 @@ def test_guarded_macro_is_exact_and_issued_only_by_the_selector() -> None:
 def test_cycle_display_phase_does_not_create_an_unguarded_entry_action() -> None:
     eight_entry = CycleEntryPhase(CYCLE_89, 0)
     assert eight_entry.display_label == "898"
+    assert eight_entry not in BOUNDARY_SELECTOR_IDENTITIES
     assert ENTRY_89_AT_NINE.display_label == "989"
     assert boundary_metric_suffix(ENTRY_89_AT_NINE) == "989"
     assert admit_boundary_macro_plan(18, 100, minimum_repetitions=1) is None
@@ -91,12 +111,75 @@ def test_cycle_display_phase_does_not_create_an_unguarded_entry_action() -> None
         templates.get(eight_entry, 2)
 
 
-def test_cycle_phases_are_unique_and_guarded_path_labels_are_entry_first() -> None:
-    with pytest.raises(ValueError, match="identify every phase uniquely"):
-        ClosedBorderCycle.from_rotation((1, 2, 1, 2))
+def test_mixed_motif_keeps_order_and_rejects_changed_cache_identity() -> None:
+    motif = MixedParityMotif((0, 1))
+    rotated = MixedParityMotif((1, 0))
+    with BoundaryActionTemplateMemo(ResourceLedger()) as templates:
+        action = templates.get(motif, 8)[0]
+        assert templates.get(motif, 8)[0] is action
+        assert templates.get(rotated, 8)[0].offset != action.offset
+        object.__setattr__(motif, "bits", rotated.bits)
+        with pytest.raises(ValueError, match="changed after admission"):
+            templates.get(motif, 8)
+
+
+def test_nine_entry_boundary_metrics_keep_schema_eight_spellings() -> None:
+    assert tuple(
+        boundary_metric_key(ENTRY_89_AT_NINE, metric)
+        for metric in _collatz_keys.BoundaryMacroMetric
+    ) == (
+        "collatz_physical_boundary_989_macro_actions",
+        "collatz_physical_boundary_989_macro_repetitions",
+        "collatz_physical_boundary_989_macro_physical_ticks",
+    )
+    assert tuple(map(boundary_metric_suffix, ENTRY_26847_PHASES)) == (
+        "26847",
+        "26847P1",
+        "26847P2",
+        "26847P3",
+        "26847P4",
+    )
+
+
+def test_repeated_cycle_labels_keep_explicit_phase_and_guarded_ports() -> None:
+    cycle, rotated_entry = ClosedBorderCycle.from_rotation(
+        (2, 1, 2, 1), entry_position=0
+    )
+    assert cycle.ports is cycle.ports
+    first = CycleEntryPhase(cycle, rotated_entry)
+    second = CycleEntryPhase(cycle, 1)
+    assert first.entry_digit == second.entry_digit == 2
+    assert first.phase == 3
+    assert first.phase != second.phase
+    assert first.structural_key() != second.structural_key()
+    with pytest.raises(ValueError, match="exactly one phase"):
+        cycle.phase_for_entry(1)
+
+    eight_entry = CycleEntryPhase(CYCLE_89, 0)
+    assert eight_entry.selector_guard is None
+    assert ENTRY_89_AT_NINE.selector_guard == BoundarySelectorGuard(9, 10, 1)
+    assert ENTRY_89_AT_NINE.display_label == "989"
+
+
+def test_cycle_rotation_moves_complete_guarded_ports_without_reflection() -> None:
+    nine_guard = BoundarySelectorGuard(9, 10, 1)
+    canonical, canonical_entry = ClosedBorderCycle.from_rotation(
+        (8, 9), (None, nine_guard), entry_position=1
+    )
+    rotated, rotated_entry = ClosedBorderCycle.from_rotation((9, 8), (nine_guard, None))
+    misplaced, _ = ClosedBorderCycle.from_rotation((8, 9), (nine_guard, None))
+    assert rotated == canonical
+    assert CycleEntryPhase(rotated, rotated_entry) == CycleEntryPhase(
+        canonical, canonical_entry
+    )
+    assert CycleEntryPhase(rotated, rotated_entry).display_label == "989"
+    assert misplaced != canonical
+    assert ENTRY_89_AT_NINE.cycle == canonical
 
     assert PATH_630.display_label == "6→3→0"
     assert PATH_305.display_label == "3→0*→5"
+    assert PATH_630.selector_guard == BoundarySelectorGuard(6, 20, 1)
+    assert PATH_305.selector_guard == BoundarySelectorGuard(3, 10, 1)
     assert border_return_path(3, 8).display_label == "3→0*→5→6→8"
     assert border_return_path(6, 8).display_label == "6→3→0*→5→6→8"
     assert border_return_path(5, 3).display_label == "5→6→3→0*→5→6→3"
@@ -104,6 +187,106 @@ def test_cycle_phases_are_unique_and_guarded_path_labels_are_entry_first() -> No
 
     with pytest.raises(ValueError, match="exact entry and exit"):
         GuardedBorderPath(BoundaryPathKind.SIX_THREE_ZERO, 6, 3)
+
+
+def test_guarded_cycle_key_fits_a_bounded_source_image_descriptor() -> None:
+    identity = ENTRY_26847_PHASES[0]
+    key = identity.structural_key()
+    assert key == (
+        "collatz-closed-border-cycle-v3",
+        CYCLE_26847.digits,
+        tuple(
+            None if guard is None else guard.wire_value()
+            for guard in CYCLE_26847.selector_guards
+        ),
+        0,
+    )
+    phases: list[int] = []
+    for entry in ENTRY_26847_PHASES:
+        entry_key = entry.structural_key()
+        assert type(entry_key) is tuple and len(entry_key) == 4
+        phase = entry_key[3]
+        assert type(phase) is int
+        phases.append(phase)
+    assert tuple(phases) == tuple(range(len(ENTRY_26847_PHASES)))
+    unguarded_cycle, _ = ClosedBorderCycle.from_rotation(CYCLE_26847.digits)
+    assert unguarded_cycle.structural_key(0) != CYCLE_26847.structural_key(0)
+
+    macro = select_boundary_macro(112, 6, minimum_repetitions=1)
+    assert macro is not None and macro.identity == identity
+    SourceImageCandidate(
+        payload=0,
+        extent=macro.physical_ticks,
+        boundary_ports=(
+            ("collatz-first-boundary-macro-v1", (0, macro.structural_payload())),
+        ),
+    )
+
+
+def test_cycle_and_phase_reject_forged_mutation_before_key_consumption() -> None:
+    nine_guard = BoundarySelectorGuard(9, 10, 1)
+    cycle, _ = ClosedBorderCycle.from_rotation((8, 9), (None, nine_guard))
+    entry = CycleEntryPhase(cycle, 1)
+    cycle_hash = hash(cycle)
+    entry_hash = hash(entry)
+    cycle_keys = {cycle: "canonical"}
+    entry_keys = {entry: "phase-nine"}
+    assert hash(cycle) == cycle_hash
+    assert hash(entry) == entry_hash
+    assert cycle_keys[cycle] == "canonical"
+    assert entry_keys[entry] == "phase-nine"
+
+    object.__setattr__(cycle, "digits", (9, 8))
+    with pytest.raises(ValueError, match="changed after admission"):
+        cycle_keys[cycle]
+    with pytest.raises(ValueError, match="changed after admission"):
+        entry_keys[entry]
+
+    guarded_cycle, _ = ClosedBorderCycle.from_rotation((8, 9), (None, nine_guard))
+    guarded_entry = CycleEntryPhase(guarded_cycle, 1)
+    object.__setattr__(nine_guard, "residue", 8)
+    with pytest.raises(ValueError, match="changed after admission"):
+        _ = guarded_entry.selector_guard
+    with pytest.raises(ValueError, match="changed after admission"):
+        guarded_entry.structural_key()
+
+    phase_cycle, _ = ClosedBorderCycle.from_rotation((1, 2, 1, 2))
+    fresh_entry = CycleEntryPhase(phase_cycle, 1)
+    object.__setattr__(fresh_entry, "phase", 0)
+    with pytest.raises(ValueError, match="changed after admission"):
+        _ = fresh_entry.display_label
+    with pytest.raises(ValueError, match="changed after admission"):
+        hash(fresh_entry)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("modulus", 0), ("residue", 10), ("minimum_source", 0)),
+)
+def test_border_admission_rejects_previously_corrupted_guard(
+    field: str, value: int
+) -> None:
+    guard = BoundarySelectorGuard(9, 10, 1)
+    object.__setattr__(guard, field, value)
+    with pytest.raises(ValueError, match="invalid finite boundary selector guard"):
+        ClosedBorderCycle.from_rotation((8, 9), (None, guard))
+    with pytest.raises(ValueError, match="invalid finite boundary selector guard"):
+        GuardedBorderPath(BoundaryPathKind.THREE_ZERO_FIVE, 3, 5, guard)
+
+
+def test_cycle_cache_key_validation_does_not_recanonicalize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cycle, _ = ClosedBorderCycle.from_rotation((8, 9))
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        raise AssertionError("cycle reuse must not rediscover canonical rotation")
+
+    monkeypatch.setattr(border_identity_module, "canonical_cycle_rotation", forbidden)
+    first_hash = hash(cycle)
+    assert hash(cycle) == first_hash
+    assert cycle == cycle
+    assert len(cycle.ports) == 2
 
 
 @pytest.mark.parametrize(
@@ -277,32 +460,33 @@ def test_template_memo_cleanup_failure_blocks_use_and_can_be_retried(
     ledger = ResourceLedger()
     memo = BoundaryActionTemplateMemo(ledger)
     memo.get(ENTRY_4721, 2)
-    templates = memo._templates
-    assert templates is not None
-    owner = templates.owner
-    original_dispose = templates.dispose
+    owner = next(
+        account.owner
+        for account in ledger.inventory()
+        if account.name.startswith("collatz-boundary-action-templates-")
+    )
+    original_dispose: Callable[[BoundaryTemplateMemo], None] = OwnedMemo[
+        BoundaryTemplateKey, BoundaryTemplateValue
+    ].dispose
     failed = False
 
-    def fail_once(instance: object) -> None:
+    def fail_once(instance: BoundaryTemplateMemo) -> None:
         nonlocal failed
-        if instance is not templates:
-            raise AssertionError("unexpected template memo cleanup")
         if not failed:
             failed = True
             raise RuntimeError("injected template cleanup failure")
-        original_dispose()
+        original_dispose(instance)
 
-    monkeypatch.setattr(type(templates), "dispose", fail_once)
+    monkeypatch.setattr(OwnedMemo, "dispose", fail_once)
     with pytest.raises(RuntimeError, match="injected template cleanup failure"):
         memo.dispose()
 
-    assert memo._closing and not memo._closed
+    assert failed
     assert ledger.inventory_owner(owner).entries > 0
     with pytest.raises(RuntimeError, match="closed"):
         memo.get(ENTRY_4721, 2)
 
     memo.dispose()
-    assert memo._closed and not memo._closing
     disposed = ledger.inventory_owner(owner)
     assert disposed.disposed and disposed.entries == disposed.nodes == 0
 
@@ -315,9 +499,9 @@ def test_foreign_macro_cannot_publish_at_another_root_origin() -> None:
     )
     candidate = SourceImageCandidate(workspace.root_payload, workspace.steps)
     occurrence = (0, 164, source_macro.physical_ticks, source_macro.identity)
-    stamp = BoundaryOccurrenceProducerStamp._issue(165, 7, occurrence, source_macro)
+    stamp = BoundaryOccurrenceProducerStamp.from_selected_macro(165, 7, 7, source_macro)
     with pytest.raises(ValueError, match="outside its demanded root"):
-        workspace._attach_boundary_macro(candidate, occurrence, stamp, source_macro)
+        workspace.attach_boundary_macro(candidate, occurrence, stamp, source_macro)
 
 
 def test_macro_occurrence_retention_is_ledger_owned_and_disposed() -> None:
@@ -330,9 +514,11 @@ def test_macro_occurrence_retention_is_ledger_owned_and_disposed() -> None:
         include_innovation_tape=True,
     )
     assert workspace.first_boundary_macro is not None
-    memo = workspace._boundary_macro_memo
-    assert memo is not None and len(memo) == 1
-    owner = memo.owner
+    owner = next(
+        account.owner
+        for account in ledger.inventory()
+        if account.name.startswith("collatz-boundary-macro-occurrences-")
+    )
     before = ledger.inventory_owner(owner)
     assert before.entries == 1 and before.nodes > 0
 
@@ -341,9 +527,6 @@ def test_macro_occurrence_retention_is_ledger_owned_and_disposed() -> None:
     after = ledger.inventory_owner(owner)
     assert after.disposed
     assert after.entries == 0 and after.nodes == 0
-    assert workspace._boundary_macro_memo is None
-    assert workspace._first_boundary_macro_snapshot is None
-    assert workspace._boundary_route_snapshot is None
 
 
 def test_run_constructor_publishes_only_a_demanded_executed_macro() -> None:
@@ -402,7 +585,7 @@ def test_reentered_chain_keeps_the_first_boundary_source_authoritative() -> None
 def test_selected_macro_stamp_uses_witness_source_after_outer_rebase() -> None:
     macro = select_boundary_macro(164, 7)
     assert macro is not None
-    stamp = BoundaryOccurrenceProducerStamp._issue_selected_macro(
+    stamp = BoundaryOccurrenceProducerStamp.from_selected_macro(
         4348, 128, 111, macro, boundary_offset=17
     )
 
@@ -466,7 +649,7 @@ def test_eight_bit_parity_prefix_does_not_authorize_a_longer_action() -> None:
     assert cylinder.contains(1) and cylinder.contains(257)
     assert not HenselCylinder(9, 1).contains(257)
 
-    endpoints = []
+    endpoints: list[int] = []
     for source in (1, 257):
         value = source
         odd_symbols = 0

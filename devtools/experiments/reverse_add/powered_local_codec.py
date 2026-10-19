@@ -20,7 +20,7 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
     FieldGeometryID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 
 
 @dataclass(frozen=True, slots=True)

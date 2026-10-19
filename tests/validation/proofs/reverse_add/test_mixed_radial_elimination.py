@@ -99,7 +99,7 @@ def test_degree_bound_and_iterative_chain_are_explicit() -> None:
     first = eliminate_pivot(terms[0], terms[1:], work=EliminationWork())
     assert all(
         term.degree <= terms[0].degree + source.degree + 1
-        for term, source in zip(first, terms[1:])
+        for term, source in zip(first, terms[1:], strict=True)
     )
     work = EliminationWork()
     final = eliminate_chain(terms, work=work)

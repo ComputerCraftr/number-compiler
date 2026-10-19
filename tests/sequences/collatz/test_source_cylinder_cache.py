@@ -137,9 +137,9 @@ def test_production_cross_seed_reuse_reduces_observed_source_work() -> None:
         metrics = term.metrics()
         from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete
         assert metrics.resource_accounting_mismatch == 0
-        observations.append(term._ledger.snapshot().counters)
+        observations.append(term.resource_ledger.snapshot().counters)
     cold, warm = observations
     assert cold["collatz_hashlife_max_level"] >= 7
     assert cold["collatz_hashlife_occurrence_publications"] > 1
@@ -166,11 +166,18 @@ def test_transported_checkpoint_reduces_work_on_same_receiving_seed() -> None:
     producer.materialize(max_bits=1000)
     warm = PoweredCollatzTerm(receiving, 1000, shared_cache=True)
     assert warm.materialize(max_bits=1000) == expected
-    assert warm._ledger.counters["collatz_hashlife_occurrence_transported_hits"] > 0
     assert (
-        warm._ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
-        + warm._ledger.counters.get("collatz_temporal_root_checkpoint_d8_steps", 0)
-        < cold._ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
+        warm.resource_ledger.counters["collatz_hashlife_occurrence_transported_hits"]
+        > 0
+    )
+    assert (
+        warm.resource_ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
+        + warm.resource_ledger.counters.get(
+            "collatz_temporal_root_checkpoint_d8_steps", 0
+        )
+        < cold.resource_ledger.counters[
+            "collatz_physical_temporal_d8_discovery_symbols"
+        ]
     )
 
 
@@ -180,7 +187,9 @@ def test_disabled_shared_cache_retains_original_production_route() -> None:
         term.materialize(max_bits=1000)
         == literal_dyadic_orbit(27, 100, COLLATZ_PHYSICAL_LAW)[0]
     )
-    assert not any(key.startswith("collatz_hashlife_") for key in term._ledger.counters)
+    assert not any(
+        key.startswith("collatz_hashlife_") for key in term.resource_ledger.counters
+    )
 
 
 def test_macro_records_are_subject_to_local_resource_admission() -> None:
@@ -595,13 +604,13 @@ def test_public_smaller_high_fiber_uses_admitted_prefix_and_reduces_work() -> No
     expected = literal_dyadic_orbit(receiver, 200, COLLATZ_PHYSICAL_LAW)[0]
     assert warm.materialize(max_bits=1000) == expected
     assert bypass.materialize(max_bits=1000) == expected
-    counters = warm._ledger.counters
+    counters = warm.resource_ledger.counters
     assert counters["collatz_hashlife_max_level"] == 6
     assert counters["collatz_hashlife_occurrence_applied_hits"] == 1
     assert counters["collatz_hashlife_occurrence_applied_parent_hits"] == 1
     assert (
         counters["collatz_physical_temporal_run_actions"]
-        < bypass._ledger.counters["collatz_physical_temporal_run_actions"]
+        < bypass.resource_ledger.counters["collatz_physical_temporal_run_actions"]
     )
     assert warm.metrics().resource_accounting_mismatch == 0
     clear_process_cache()

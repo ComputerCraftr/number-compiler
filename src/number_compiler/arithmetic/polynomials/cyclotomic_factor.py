@@ -148,12 +148,12 @@ def _berlekamp_basis(poly: Sequence[int], prime: int) -> tuple[tuple[int, ...], 
     degree = len(f) - 1
     if degree <= 0:
         return ()
-    columns = []
+    columns: list[tuple[int, ...]] = []
     for j in range(degree):
         columns.append(_poly_power_mod_prime((0, 1), p * j, f, p))
-    matrix = []
+    matrix: list[list[int]] = []
     for i in range(degree):
-        row = []
+        row: list[int] = []
         for j in range(degree):
             value = columns[j][i] if i < len(columns[j]) else 0
             row.append((value - int(i == j)) % p)
@@ -393,7 +393,7 @@ def cyclotomic_factors_mod_prime_power(
         length = max(len(source), len(product_poly))
         src = _pad_polynomial(source, length)
         prod = _pad_polynomial(product_poly, length)
-        error = []
+        error: list[int] = []
         for a, b in zip(src, prod, strict=True):
             delta = a - b
             if delta % modulus:

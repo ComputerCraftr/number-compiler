@@ -7,7 +7,7 @@ import gc
 import weakref
 from collections.abc import Callable, Iterator, Mapping, MutableSequence
 from types import MappingProxyType, SimpleNamespace
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import pytest
 
@@ -17,6 +17,9 @@ from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.sequences.reverse_add.source_images import (
+    ReverseSourceImageAdapter,
+)
 from tests.support.production_ast import ProductionASTGraph
 
 
@@ -117,7 +120,7 @@ def test_execution_root_registry_is_weak_and_factory_writes_are_seen() -> None:
 def test_collatz_source_image_graph_is_collectable_after_term_lifetime() -> None:
     term = PoweredCollatzTerm(27, 4)
     term.digit(0)
-    ledger = term._ledger
+    ledger = term.resource_ledger
     workspace = term._source_image()
     scheduler = workspace.scheduler
     saved = tuple(
@@ -144,11 +147,11 @@ def test_actual_public_graph_is_factory_owned_before_and_after_compilation(
         if kind == "reverse"
         else PoweredCollatzTerm(27, 4)
     )
-    before = audit_execution_ownership(term._ledger)
+    before = audit_execution_ownership(term.resource_ledger)
     assert before.roots >= 1
     assert not before.violations
     term.digit(0)
-    after = audit_execution_ownership(term._ledger)
+    after = audit_execution_ownership(term.resource_ledger)
     assert after.observed_mutable_containers > before.observed_mutable_containers
     assert not after.violations
     # This store is deliberately absent from all ledger payload callbacks.
@@ -158,7 +161,7 @@ def test_actual_public_graph_is_factory_owned_before_and_after_compilation(
         else term._source_image()
     )
     workspace.__setattr__("hidden_late_cache", {"unaccounted": 1})
-    assert audit_execution_ownership(term._ledger).unregistered_containers == 1
+    assert audit_execution_ownership(term.resource_ledger).unregistered_containers == 1
 
 
 def test_reverse_source_workspace_cleans_later_owners_after_failed_dispose(
@@ -170,7 +173,7 @@ def test_reverse_source_workspace_cleans_later_owners_after_failed_dispose(
     adapter_type = type(workspace.adapter)
     original = adapter_type.dispose
 
-    def fail_after_dispose(adapter: Any) -> None:
+    def fail_after_dispose(adapter: ReverseSourceImageAdapter) -> None:
         original(adapter)
         raise RuntimeError("injected adapter close failure")
 
@@ -181,7 +184,7 @@ def test_reverse_source_workspace_cleans_later_owners_after_failed_dispose(
         workspace.actions.node(workspace.root_action)
     assert all(
         account.disposed
-        for account in term._ledger.inventory()
+        for account in term.resource_ledger.inventory()
         if account.name.startswith("reverse-source-")
     )
 
@@ -206,13 +209,11 @@ def _name(expression: ast.expr) -> str:
     return ""
 
 
-def _persistent_store_violations(tree: ast.Module, classes: set[str]) -> list[int]:
-    if not classes:
-        return []
+def _persistent_store_violations_in_classes(
+    classes: Iterator[ast.ClassDef],
+) -> list[int]:
     violations = []
-    for cls in ast.walk(tree):
-        if not isinstance(cls, ast.ClassDef) or cls.name not in classes:
-            continue
+    for cls in classes:
         for method in cls.body:
             if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for decorator in method.decorator_list:
@@ -258,6 +259,16 @@ def _persistent_store_violations(tree: ast.Module, classes: set[str]) -> list[in
     return violations
 
 
+def _persistent_store_violations(tree: ast.Module, classes: set[str]) -> list[int]:
+    if not classes:
+        return []
+    return _persistent_store_violations_in_classes(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name in classes
+    )
+
+
 def test_structural_gate_distinguishes_retained_stores_from_transient_locals() -> None:
     valid_tree = ast.parse(
         "class Owner:\n"
@@ -282,10 +293,12 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories(
     examined = 0
     for source_root in (root, repository_root() / "devtools" / "verification"):
         for path, tree in production_ast_graph.under(source_root).items():
-            classes = set()
+            classes_by_name: dict[str, list[ast.ClassDef]] = {}
+            eligible_names: set[str] = set()
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ClassDef):
                     continue
+                classes_by_name.setdefault(node.name, []).append(node)
                 constructors = [
                     child
                     for child in node.body
@@ -305,9 +318,14 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories(
                     for constructor in constructors
                     for call in ast.walk(constructor)
                 ):
-                    classes.add(node.name)
-            examined += len(classes)
-            rows = _persistent_store_violations(tree, classes)
+                    eligible_names.add(node.name)
+            examined += len(eligible_names)
+            rows = _persistent_store_violations_in_classes(
+                cls
+                for name, class_nodes in classes_by_name.items()
+                if name in eligible_names
+                for cls in class_nodes
+            )
             if rows:
                 violations[str(path.relative_to(repository_root()))] = rows
     assert examined > 0

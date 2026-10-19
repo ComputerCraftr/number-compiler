@@ -47,8 +47,8 @@ def double_reverse_orbit(seed: int, steps: int) -> tuple[int, ...]:
 def iterate_double_reverse(seed: int, steps: int) -> int:
     """Return one finite iterate without retaining the intermediate orbit."""
     last = seed
-    for last in _double_reverse_orbit(seed, steps):
-        pass
+    for value in _double_reverse_orbit(seed, steps):
+        last = value
     return last
 
 

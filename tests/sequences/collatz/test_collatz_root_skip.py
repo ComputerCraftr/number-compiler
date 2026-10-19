@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.tile_causal_entry import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 @pytest.mark.parametrize("valuation", (4, 8, 16))
@@ -21,7 +21,7 @@ from tests.support.tile_kernel import _runtime, _tile
 def test_initial_root_run_uses_only_primitive_observation(
     monkeypatch: pytest.MonkeyPatch, valuation: int, complete_event: bool
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         CollatzPhysicalBlockEffect()
     )
     seed = ((1 << valuation) - 1) // 3
@@ -35,7 +35,7 @@ def test_initial_root_run_uses_only_primitive_observation(
         assert action == primitive, "valuation shortcut replayed a temporal action"
         assert original(self, primitive) is None
 
-    with _tile(tiles, adapter, primitive, digits) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, valuation + int(complete_event))
         key = PoweredResultKey(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
@@ -52,10 +52,12 @@ def test_initial_root_run_uses_only_primitive_observation(
 def test_initial_root_rule_declines_after_the_first_event() -> None:
     from number_compiler.sequences.collatz.tile_root import initial_event_shift
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         CollatzPhysicalBlockEffect()
     )
-    with _tile(tiles, adapter, primitive, (1, 1, 2, 2, 2, 2, 2, 2)) as source:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (1, 1, 2, 2, 2, 2, 2, 2)
+    ) as source:
         action = adapter.power(primitive, 8)
         key = PoweredResultKey(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
@@ -67,8 +69,10 @@ def test_initial_root_rule_declines_after_the_first_event() -> None:
 def test_root_skip_declines_when_primitive_growth_would_leave_the_tile() -> None:
     from number_compiler.sequences.collatz.tile_root import initial_event_shift
 
-    _, tiles, adapter, primitive, scheduler = _runtime(CollatzPhysicalBlockEffect())
-    with _tile(tiles, adapter, primitive, (1, 0, 1, 0)) as source:
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        CollatzPhysicalBlockEffect()
+    )
+    with make_tile_from_symbols(tiles, adapter, primitive, (1, 0, 1, 0)) as source:
         action = adapter.power(primitive, 5)
         key = PoweredResultKey(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
@@ -80,10 +84,12 @@ def test_root_skip_declines_when_primitive_growth_would_leave_the_tile() -> None
 def test_root_shortcut_rejects_numeric_alias_before_summary_work(
     invalid: object,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         CollatzPhysicalBlockEffect()
     )
-    with _tile(tiles, adapter, primitive, (1, 0, 1, 2, 2, 2, 2, 2)) as source:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (1, 0, 1, 2, 2, 2, 2, 2)
+    ) as source:
         action = adapter.power(primitive, 4)
         key = PoweredResultKey(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
@@ -102,5 +108,5 @@ def test_public_collatz_point_and_width_consume_source_root_summary() -> None:
     term = PoweredCollatzTerm(((1 << 32) - 1) // 3, 16)
     assert term.digit(17) == 1
     assert term.width() == 18
-    assert term._ledger.counters["source_image_publications"] > 0
-    assert term._ledger.counters["source_image_projection_publications"] >= 1
+    assert term.resource_ledger.counters["source_image_publications"] > 0
+    assert term.resource_ledger.counters["source_image_projection_publications"] >= 1

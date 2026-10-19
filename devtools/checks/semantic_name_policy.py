@@ -42,11 +42,16 @@ def _constant_string(node: ast.AST) -> tuple[ast.Constant, ...]:
 
 
 def _dispatch_string_literals(
-    node: ast.Compare, semantic_values: Mapping[str, frozenset[str]]
+    node: ast.Compare,
+    semantic_values: Mapping[str, frozenset[str]],
+    typed_dispatch_names: frozenset[str],
 ) -> tuple[ast.Constant, ...]:
     operands = (node.left, *node.comparators)
     if any(_is_semantic_attribute(operand) for operand in operands) or any(
-        isinstance(operand, ast.Name) and operand.id in _SEMANTIC_ARGUMENT_NAMES
+        isinstance(operand, ast.Name)
+        and (
+            operand.id in _SEMANTIC_ARGUMENT_NAMES or operand.id in typed_dispatch_names
+        )
         for operand in operands
     ):
         return _string_constants(node)
@@ -61,20 +66,66 @@ def _dispatch_string_literals(
     return ()
 
 
+def _typed_observer_kind_names(
+    tree: ast.Module,
+) -> Mapping[ast.FunctionDef | ast.AsyncFunctionDef, frozenset[str]]:
+    """Find kind parameters declared as enums on API observer entry points.
+
+    This is intentionally narrower than banning every comparison against a
+    variable named ``kind``: output/resource kinds and ordinary diagnostics
+    remain strings unless the API observer's function signature establishes a
+    typed enum boundary.
+    """
+    names: dict[ast.FunctionDef | ast.AsyncFunctionDef, frozenset[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not (
+            node.name.startswith("observe_")
+        ):
+            continue
+        arguments = (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        )
+        typed_names = frozenset(
+            argument.arg
+            for argument in arguments
+            if argument.arg == "kind"
+            and isinstance(argument.annotation, ast.Name)
+            and argument.annotation.id.endswith("ObservationKind")
+        )
+        if typed_names:
+            names[node] = typed_names
+    return names
+
+
+def _enclosing_function(
+    node: ast.AST, parents: Mapping[ast.AST, ast.AST]
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    current = parents.get(node)
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current
+        current = parents.get(current)
+    return None
+
+
 def _semantic_id_values(
-    api_root: Path, parsed_sources: Mapping[Path, ast.Module]
+    source_root: Path, parsed_sources: Mapping[Path, ast.Module]
 ) -> dict[str, frozenset[str]]:
     """Read canonical family, selector and observation spellings from AST enums."""
     values: dict[str, set[str]] = {name: set() for name in _SEMANTIC_ENUMS}
-    for path, tree in parsed_sources.items():
-        resolved_path = Path(path).resolve()
-        if (
-            resolved_path.parent != api_root
-            or resolved_path.name not in _API_DECLARATION_MODULES
-        ):
+    owners = {
+        "FamilyId": source_root / "arithmetic" / "contracts" / "family_identity.py",
+        "ObservationId": source_root / "api" / "observation_types.py",
+        "SelectorId": source_root / "api" / "observation_types.py",
+    }
+    for identifier, owner in owners.items():
+        tree = parsed_sources.get(owner.resolve())
+        if tree is None:
             continue
         for node in tree.body:
-            if not isinstance(node, ast.ClassDef) or node.name not in _SEMANTIC_ENUMS:
+            if not isinstance(node, ast.ClassDef) or node.name != identifier:
                 continue
             for member in node.body:
                 value = (
@@ -232,7 +283,7 @@ def semantic_name_violations(
     source_root = (root / "src" / "number_compiler").resolve()
     api_root = source_root / "api"
     violations: list[str] = []
-    semantic_id_values = _semantic_id_values(api_root, parsed_sources)
+    semantic_id_values = _semantic_id_values(source_root, parsed_sources)
 
     for original_path, tree in sorted(
         parsed_sources.items(), key=lambda item: Path(item[0]).as_posix()
@@ -243,6 +294,14 @@ def semantic_name_violations(
         relative = path.relative_to(root).as_posix()
         in_api = path.parent == api_root
         canonical_api_module = in_api and path.name in _API_DECLARATION_MODULES
+        typed_dispatch_names: Mapping[
+            ast.FunctionDef | ast.AsyncFunctionDef, frozenset[str]
+        ] = _typed_observer_kind_names(tree) if in_api else {}
+        parents = {
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
+        }
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -283,7 +342,17 @@ def semantic_name_violations(
                         f"{relative}:{literal.lineno}: metric keys must use named constants"
                     )
             elif in_api and isinstance(node, ast.Compare):
-                for literal in _dispatch_string_literals(node, semantic_id_values):
+                function = _enclosing_function(node, parents)
+                typed_names = (
+                    frozenset[str]()
+                    if function is None
+                    else typed_dispatch_names.get(function, frozenset[str]())
+                )
+                for literal in _dispatch_string_literals(
+                    node,
+                    semantic_id_values,
+                    typed_names,
+                ):
                     violations.append(
                         f"{relative}:{literal.lineno}: semantic dispatch must use typed identifiers"
                     )

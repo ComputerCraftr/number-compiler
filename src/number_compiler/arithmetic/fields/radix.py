@@ -18,6 +18,39 @@ def bit_width(value: int) -> int:
     return max(1, value.bit_length())
 
 
+def pair_field_descriptor_bits(first: int, second: int) -> int:
+    """Count two integer fields plus their fixed two-bit descriptor framing."""
+    return bit_width(first) + bit_width(second) + 2
+
+
+def compose_radix_endpoint_rows(
+    earlier: tuple[int, ...],
+    later: tuple[int, ...],
+    *,
+    lower_modulus: int,
+    inlet_residue: int,
+) -> tuple[int, ...]:
+    """Compose admitted digit-indexed endpoints at one exact lower inlet.
+
+    Source issuance, recurrence law and clock adjacency belong to the caller.
+    Every conditional midpoint must inhabit the later action's lower-digit
+    fiber; agreeing only on the selected source row is insufficient.
+    """
+    base = len(later)
+    if base < 2 or len(earlier) != base or lower_modulus < 1:
+        raise ValueError("incompatible radix endpoint row domains")
+    low = inlet_residue % lower_modulus
+    joined: list[int] = []
+    for midpoint in earlier:
+        digit, remainder = divmod(midpoint, lower_modulus)
+        if remainder != low:
+            raise ArithmeticError("conditional lower inlet is not closed")
+        if not 0 <= digit < base:
+            raise ArithmeticError("conditional midpoint digit is outside its radix")
+        joined.append(later[digit])
+    return tuple(joined)
+
+
 def radix_width(
     number: int, base: int, *, charge_bits: Callable[[int], None] | None = None
 ) -> int:
@@ -271,8 +304,10 @@ def value_from_lsd_digits(digits: Sequence[int] | Iterable[int], base: int) -> i
 
 __all__ = [
     "bit_width",
+    "compose_radix_endpoint_rows",
     "digit_threshold_mask",
     "digits_lsd",
+    "pair_field_descriptor_bits",
     "periodic_position_bases",
     "reverse_pair_sums",
     "reverse_radix_integer",

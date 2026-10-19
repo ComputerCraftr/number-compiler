@@ -24,13 +24,13 @@ Descriptor construction alone is not evidence of a cheap observed endpoint.
 from __future__ import annotations
 
 from collections.abc import Iterator, MutableMapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BlockEffect,
     BoundarySide,
     BoundaryState,
+    next_operator_id,
 )
 from number_compiler.arithmetic.contracts.block_power_types import BlockPower
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -44,8 +44,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 )
 from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_width
 from number_compiler.arithmetic.fields.radix import (
-    bit_width,
     digits_lsd,
+    pair_field_descriptor_bits,
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.projection.source_audit import (
@@ -58,6 +58,10 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
+)
+from number_compiler.sequences.collatz.physical_state import (
+    odd_carry_parts,
+    odd_carry_state,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +76,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.collatz.physical_images import (
         CollatzPhysicalImageWorkspace,
+        CollatzTermAuditSnapshot,
     )
+    from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
     from number_compiler.sequences.collatz.temporal_source_morphism import (
         CertifiedCollatzRootMorphism,
     )
@@ -88,20 +94,6 @@ class _ExteriorRadixCoordinate(IndexError):
 
 
 # Odd states encode (previous_bit, carry) in states 2..5.
-def _odd_state(previous: int, carry: int) -> int:
-    previous = require_integer(previous, "previous Collatz bit", 0, 1)
-    carry = require_integer(carry, "Collatz carry", 0, 1)
-    if previous not in (0, 1) or carry not in (0, 1):
-        raise ValueError((previous, carry))
-    return 2 + (previous << 1) + carry
-
-
-def _odd_parts(state: int) -> tuple[int, int]:
-    state = require_integer(state, "Collatz odd state", 2, 5)
-    if not 2 <= state <= 5:
-        raise ValueError(state)
-    value = state - 2
-    return (value >> 1) & 1, value & 1
 
 
 class CollatzPhysicalBlockEffect:
@@ -132,7 +124,7 @@ class CollatzPhysicalBlockEffect:
         self.base = 2
         self.blank = 2
         self.exponent = 1
-        self.node_id = next(_OPERATOR_IDS)
+        self.node_id = next_operator_id()
         # An odd multiplication settles after at most two blank cells; an even
         # shift needs only the immediately higher source symbol.
         self.blank_left_tail = 2
@@ -192,13 +184,13 @@ class CollatzPhysicalBlockEffect:
                 return _EVEN
             # x0=1 selects odd mode.  At the first cell, 1 + 0 + 0 + 1 = 2,
             # so the carry after the cell is one and previous input is one.
-            return _odd_state(1, 1)
+            return odd_carry_state(1, 1)
         if state == _EVEN:
             return _EVEN
-        previous, carry = _odd_parts(state)
+        previous, carry = odd_carry_parts(state)
         current = 0 if symbol == self.blank else symbol
         total = current + previous + carry
-        return _odd_state(current, total >> 1)
+        return odd_carry_state(current, total >> 1)
 
     def emit(self, left: BoundaryState, symbol: int, right: BoundaryState) -> int:
         left = require_integer(left, "Collatz left boundary")
@@ -235,7 +227,7 @@ class CollatzPhysicalBlockEffect:
             # symbol means this and every higher output position is blank.
             return True, 0
 
-        previous, carry = _odd_parts(left)
+        previous, carry = odd_carry_parts(left)
         current = 0 if symbol == self.blank else symbol
         total = current + previous + carry
         if symbol == self.blank and total == 0:
@@ -297,6 +289,11 @@ def power_collatz_physical_effect(
 
 class PoweredCollatzTerm(RadixProjectionSourceAuditor):
     """Exact physical Collatz nth state using only the powered block fast path."""
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Read the resource owner, including for closed-state inspection."""
+        return self._ledger
 
     seed_digits: tuple[int, ...]
 
@@ -413,6 +410,13 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self.compose_operations = 0
         self.syntax_depth_bound = 0
 
+    def audit_snapshot(self) -> CollatzTermAuditSnapshot:
+        from number_compiler.sequences.collatz.physical_images import (
+            CollatzTermAuditSnapshot,
+        )
+
+        return CollatzTermAuditSnapshot(self._ledger, self._workspace)
+
     def radix_projection_audit_source(
         self, ledger: ResourceLedger
     ) -> RadixProjectionAuditSource | None:
@@ -425,6 +429,10 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             self.seed_digits,
             self._radix_projections,
         )
+
+    @property
+    def published_width_summary(self) -> CollatzTapeWidthSummary | None:
+        return None if self._workspace is None else self._workspace.tape_width_summary
 
     def _compile_compatibility_descriptor(self) -> None:
         """Demand the public block descriptor without using it as an executor."""
@@ -478,10 +486,6 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         # counters it reports.
         return 0 if self._power is None else int(self._power.operator_nodes)
 
-    @property
-    def descriptor_bits(self) -> int:
-        return bit_width(self.seed) + bit_width(self.steps) + 2
-
     def _source_image(self) -> CollatzPhysicalImageWorkspace:
         from number_compiler.sequences.collatz.physical_images import (
             COLLATZ_PHYSICAL_LAW,
@@ -505,10 +509,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace.root_source,
                 workspace.root_action,
                 workspace.root_payload,
-                workspace._include_width_spine,
-                workspace._include_joint_cocycle,
-                workspace._include_innovation_tape,
-                workspace._innovation_modulus,
+                *workspace.demand_configuration,
             )
             self._workspace = workspace
         if (
@@ -518,10 +519,13 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             or workspace.steps != self.steps
             or workspace.law != COLLATZ_PHYSICAL_LAW
             or workspace.retain_chronological_support()
-            or workspace._include_width_spine != self._width_spine_demanded
-            or workspace._include_joint_cocycle != self._joint_cocycle_demanded
-            or workspace._include_innovation_tape != self._innovation_tape_demanded
-            or workspace._innovation_modulus != self._innovation_tape_modulus
+            or workspace.demand_configuration
+            != (
+                self._width_spine_demanded,
+                self._joint_cocycle_demanded,
+                self._innovation_tape_demanded,
+                self._innovation_tape_modulus,
+            )
         ):
             raise ValueError("Collatz source image belongs to another term")
         workspace.validate_source(workspace.root_source)
@@ -533,10 +537,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace.root_source,
                 workspace.root_action,
                 workspace.root_payload,
-                workspace._include_width_spine,
-                workspace._include_joint_cocycle,
-                workspace._include_innovation_tape,
-                workspace._innovation_modulus,
+                *workspace.demand_configuration,
             )
             or image.source != workspace.root_source
             or image.action != workspace.root_action
@@ -972,7 +973,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             operator_nodes=self.operator_nodes,
             compose_operations=self.compose_operations,
             syntax_depth_bound=self.syntax_depth_bound,
-            descriptor_bits=self.descriptor_bits,
+            descriptor_bits=pair_field_descriptor_bits(self.seed, self.steps),
         )
 
 
@@ -984,7 +985,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     from number_compiler.api.lazy_exports import resolve_export
 
     return resolve_export(

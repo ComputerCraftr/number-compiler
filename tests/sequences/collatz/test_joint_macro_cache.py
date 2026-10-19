@@ -335,7 +335,7 @@ def test_accumulator_requires_prepared_source_image_and_matches_literal_run() ->
         root.audit_image_binding(
             replace(view.binding, boundary_ports=forged_ports), view.payload, None
         )
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 def test_joint_lookup_descends_when_only_smaller_paired_macro_is_cached() -> None:
@@ -380,7 +380,9 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
     cold.prepare_joint_cocycle()
     cold.accumulator(257)
     assert (
-        cold._ledger.counters.get("collatz_physical_unified_skew_applied_actions", 0)
+        cold.resource_ledger.counters.get(
+            "collatz_physical_unified_skew_applied_actions", 0
+        )
         >= 1
     )
 
@@ -406,21 +408,29 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
     observation = receiving.accumulator(257)
     assert observation.physical_ticks == 48
     assert (
-        receiving._ledger.counters.get(
+        receiving.resource_ledger.counters.get(
             "collatz_physical_temporal_d8_joint_action_builds", 0
         )
         == 0
     )
     assert (
-        receiving._ledger.counters.get("collatz_hashlife_occurrence_process_hits", 0)
+        receiving.resource_ledger.counters.get(
+            "collatz_hashlife_occurrence_process_hits", 0
+        )
         >= 1
     )
     assert (
-        receiving._ledger.counters.get("collatz_hashlife_occurrence_applied_hits", 0)
+        receiving.resource_ledger.counters.get(
+            "collatz_hashlife_occurrence_applied_hits", 0
+        )
         >= 1
     )
-    assert receiving._ledger.counters["collatz_hashlife_joint_process_hits"] >= 1
-    assert receiving._ledger.counters["collatz_hashlife_joint_applied_hits"] >= 1
+    assert (
+        receiving.resource_ledger.counters["collatz_hashlife_joint_process_hits"] >= 1
+    )
+    assert (
+        receiving.resource_ledger.counters["collatz_hashlife_joint_applied_hits"] >= 1
+    )
 
 
 def test_joint_cocycle_cannot_be_retrofitted_after_image_creation() -> None:

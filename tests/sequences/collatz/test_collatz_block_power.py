@@ -46,7 +46,7 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert term.maximum_width == (
         (term.seed + 2).bit_length() + (19 * pairs + 31) // 32 + 2
     )
-    counters = term._ledger.snapshot().counters
+    counters = term.resource_ledger.snapshot().counters
     assert counters["collatz_physical_temporal_run_actions"] > 0
     assert counters.get("collatz_physical_transient_leaf_steps", 0) == 0
     assert counters["source_image_postorder_frames"] > 0
@@ -66,7 +66,7 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert counters["source_image_publications"] > 0
     assert counters["source_image_projection_publications"] > 0
     assert counters.get("higher_concrete_operation_evaluations", 0) == 0
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete
     assert metrics.resource_accounting_mismatch == 0
 
 
@@ -84,7 +84,7 @@ def test_collatz_production_uses_dyadic_source_image_morphism(
     monkeypatch.setattr(CollatzPoweredLocalCodec, "source_action", forbidden)
     term = PoweredCollatzTerm(27, 64)
     assert term.digit(0) == 1
-    counters = term._ledger.snapshot().counters
+    counters = term.resource_ledger.snapshot().counters
     assert counters["collatz_physical_temporal_run_actions"] > 0
     assert counters.get("collatz_physical_macro_bounded_base_steps", 0) == 0
     assert counters["collatz_physical_action_publications"] > 0
@@ -113,7 +113,7 @@ def test_collatz_recursive_images_do_not_use_retired_spatial_or_replay_paths(
     term = PoweredCollatzTerm(27, 16)
     assert term.digit(0) == 1
     assert term.width() == 7
-    counters = term._ledger.snapshot().counters
+    counters = term.resource_ledger.snapshot().counters
     assert counters.get("higher_observation_fallback", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
 
@@ -132,9 +132,9 @@ def test_collatz_width_uses_admitted_affine_width_without_output_numerator(
 
     term = PoweredCollatzTerm(seed, steps)
     assert term.width() == expected.bit_length()
-    assert term._ledger.counters["affine_width_requests"] == 1
+    assert term.resource_ledger.counters["affine_width_requests"] == 1
     assert term.width() == expected.bit_length()
-    assert term._ledger.counters["affine_width_requests"] == 1
+    assert term.resource_ledger.counters["affine_width_requests"] == 1
 
 
 def test_collatz_huge_cycle_width_uses_constant_image_without_huge_denominator(
@@ -147,8 +147,10 @@ def test_collatz_huge_cycle_width_uses_constant_image_without_huge_denominator(
     steps = 10**12
     term = PoweredCollatzTerm(1, steps)
     assert term.width() == (1, 4, 2)[steps % 3].bit_length()
-    assert term._ledger.counters["affine_width_requests"] == 1
-    assert term._ledger.counters.get("collatz_physical_aggregate_demands", 0) == 0
+    assert term.resource_ledger.counters["affine_width_requests"] == 1
+    assert (
+        term.resource_ledger.counters.get("collatz_physical_aggregate_demands", 0) == 0
+    )
     workspace = term._workspace
     assert workspace is not None
     image = workspace.image_node(workspace.root_payload)
@@ -172,8 +174,10 @@ def test_collatz_requested_clock_width_uses_sealed_tape_summary(
     assert summary is not None
     assert summary.physical_ticks == steps
     assert clock.events == summary.odd_steps
-    affine_width_requests = term._ledger.counters.get("affine_width_requests", 0)
-    aggregate_demands = term._ledger.counters.get(
+    affine_width_requests = term.resource_ledger.counters.get(
+        "affine_width_requests", 0
+    )
+    aggregate_demands = term.resource_ledger.counters.get(
         "collatz_physical_aggregate_demands", 0
     )
     if seed == 1:
@@ -191,10 +195,11 @@ def test_collatz_requested_clock_width_uses_sealed_tape_summary(
     assert term.width() == summary.source_width + summary.blank.delta
     assert term.width() == summary.target_width == expected.bit_length()
     assert (
-        term._ledger.counters.get("affine_width_requests", 0) == affine_width_requests
+        term.resource_ledger.counters.get("affine_width_requests", 0)
+        == affine_width_requests
     )
     assert (
-        term._ledger.counters.get("collatz_physical_aggregate_demands", 0)
+        term.resource_ledger.counters.get("collatz_physical_aggregate_demands", 0)
         == aggregate_demands
     )
 
@@ -219,7 +224,7 @@ def test_high_entropy_collatz_point_uses_balanced_source_cylinder() -> None:
     seed = (1 << (steps - 1)) | rng.getrandbits(steps - 1) | 1
     term = PoweredCollatzTerm(seed, steps)
     assert term.digit(0) in (0, 1)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     leaves = (steps + 63) // 64
     assert counters.get("collatz_physical_composite_cutover_chunks", 0) == 0
     assert counters["collatz_physical_balanced_effect_compositions"] <= leaves

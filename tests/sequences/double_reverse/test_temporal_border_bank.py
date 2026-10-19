@@ -216,7 +216,7 @@ def test_term_publishes_temporal_bank_without_endpoint(
         assert metrics["double_reverse_temporal_bank_moore_state_visits"] > 0
         assert metrics["double_reverse_temporal_bank_moore_refinement_sweeps"] >= 6
         assert metrics["double_reverse_temporal_bank_moore_refinement_rounds"] > 0
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 def test_unverified_cylinder_cannot_be_powered() -> None:

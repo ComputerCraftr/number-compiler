@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 MAX_BIRTH_DURATION_BITS = 1_000_000
 
 
-def _validate_birth_duration(physical_steps: int) -> int:
+def validate_birth_duration(physical_steps: int) -> int:
     if type(physical_steps) is not int or physical_steps < 0:
         raise ValueError("physical duration must be a nonnegative integer")
     if physical_steps.bit_length() > MAX_BIRTH_DURATION_BITS:
@@ -55,7 +55,7 @@ class CertifiedBirthClock:
 
     def state(self, physical_steps: int) -> tuple[int, int, int]:
         """Phase, width, and mod-99 residue, without intermediate integers."""
-        physical_steps = _validate_birth_duration(physical_steps)
+        physical_steps = validate_birth_duration(physical_steps)
         phase = self.phase
         width = self.width
         residue = self.residue99

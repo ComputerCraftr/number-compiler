@@ -21,12 +21,17 @@ from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_runtime import build, oracle
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
+from tests.support.diamond_runtime import oracle
 
 
 def test_direct_spatial_compile_cannot_skip_source_and_action_admission() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 2, 1)
-    other, other_action = build(CollatzPhysicalBlockEffect(), (1,), 2, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 2, 1
+    )
+    other, other_action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 2, 1
+    )
     wrong_alphabet = runtime.actions.intern(
         runtime.actions.compiler.atom(BaseBlockEffect(3))
     )
@@ -53,8 +58,10 @@ def test_direct_spatial_compile_cannot_skip_source_and_action_admission() -> Non
 def test_foreign_or_wrong_port_summary_rejects_before_cold_or_warm_kernel_memo() -> (
     None
 ):
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 2, 1)
-    other, _ = build(CollatzPhysicalBlockEffect(), (1,), 2, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 2, 1
+    )
+    other, _ = build_collatz_diamond_runtime(CollatzPhysicalBlockEffect(), (1,), 2, 1)
     state = runtime.boundaries.literal(action, 0, 0)
     foreign = other.kernels.constant(6, 0)
     wrong_port = runtime.kernels.variable(

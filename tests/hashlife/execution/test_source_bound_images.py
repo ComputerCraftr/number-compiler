@@ -1,38 +1,47 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from typing import cast
 
 import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
-    SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+    SourceImageApplyKey,
+    SourceImageRelativeKey,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
     SourceImageProjection,
     SourceImageView,
-    _ApplyKey,
-    _RelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeal,
+    TypedPayloadKey,
     publication_seal,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
+from number_compiler.resources.stores import LedgerDict, LedgerList
 from tests.support.source_bound_images import (
-    _Action,
-    _DecimalAdapter,
-    _runtime,
-    _source_audit,
+    DecimalImageAction,
+    DecimalImageAdapter,
     assert_budget_refusal,
     one_image,
+    source_audit,
+    source_image_runtime,
 )
+
+
+def _assert_source_image_workspace_empty(ledger: ResourceLedger) -> None:
+    entry = next(
+        row for row in ledger.inventory() if row.role == "source_image_workspace"
+    )
+    assert entry.entries == entry.nodes == 0
 
 
 def _publication_snapshot(
@@ -48,7 +57,7 @@ def _publication_snapshot(
     )
 
 
-class _AuditedDecimalAdapter(_DecimalAdapter):
+class _AuditedDecimalAdapter(DecimalImageAdapter):
     def __init__(self, ledger: ResourceLedger, *, reject: bool = False) -> None:
         super().__init__(ledger)
         self.binding_audits = 0
@@ -67,15 +76,15 @@ class _AuditedDecimalAdapter(_DecimalAdapter):
             or binding.family != self.family
             or binding.semantic_version != self.semantic_version
             or type(binding.source) is not int
-            or type(binding.action) is not _Action
+            or type(binding.action) is not DecimalImageAction
             or type(payload) is not int
         ):
             raise ValueError("invalid decimal source image binding")
 
 
 def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> None:
-    ledger, core, adapter = _runtime()
-    action = _Action((1, 2, 3, 4))
+    ledger, core, adapter = source_image_runtime()
+    action = DecimalImageAction((1, 2, 3, 4))
     image = core.apply(adapter, 0, action)
     view = core.view(image)
     assert view.payload == 1234
@@ -89,14 +98,13 @@ def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> No
     assert adapter.primitive_calls == 4
     assert after.entries == before.entries
     assert after.nodes == before.nodes
-    workspace = next(
-        row for row in ledger.inventory() if row.role == "source_image_workspace"
+    _assert_source_image_workspace_empty(ledger)
+    workspace_snapshot = core.audit_snapshot().workspace
+    assert (
+        dict(ledger.iter_containers())[workspace_snapshot.owner]
+        is workspace_snapshot.store_identity
     )
-    assert workspace.entries == workspace.nodes == 0
-    assert dict(ledger.iter_containers())[core._workspace_owner] is (
-        core._workspace._storage
-    )
-    assert ledger.is_factory_container(core._workspace._storage)
+    assert ledger.is_factory_container(workspace_snapshot.store_identity)
     assert not tuple(
         violation
         for violation in audit_execution_ownership(ledger).violations
@@ -106,8 +114,8 @@ def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> No
 
 
 def test_projection_is_demanded_once_and_never_becomes_action_identity() -> None:
-    _, core, adapter = _runtime()
-    image = core.apply(adapter, 7, _Action((8, 9)))
+    _, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 7, DecimalImageAction((8, 9)))
     demand = SourceImageDemand("value")
     first = core.projection(adapter, image, demand)
     second = core.projection(adapter, image, demand)
@@ -117,7 +125,7 @@ def test_projection_is_demanded_once_and_never_becomes_action_identity() -> None
 
 
 def test_projection_cache_distinguishes_boolean_and_integer_parameters() -> None:
-    class TypedProjection(_DecimalAdapter):
+    class TypedProjection(DecimalImageAdapter):
         def project(
             self, image: SourceImageView, demand: SourceImageDemand
         ) -> SourceImageProjection:
@@ -130,7 +138,7 @@ def test_projection_cache_distinguishes_boolean_and_integer_parameters() -> None
     core = SourceBoundSchedulerCore(ledger)
     adapter = TypedProjection(ledger)
     core.register(adapter)
-    image = core.apply(adapter, 7, _Action((8,)))
+    image = core.apply(adapter, 7, DecimalImageAction((8,)))
     boolean = SourceImageDemand("value", (True,))
     integer = SourceImageDemand("value", (1,))
     assert core.projection(adapter, image, boolean).value == 11
@@ -139,7 +147,7 @@ def test_projection_cache_distinguishes_boolean_and_integer_parameters() -> None
     assert adapter.projection_calls == 2
     assert ledger.counters["source_image_projection_publications"] == 2
     assert ledger.counters["source_image_projection_hits"] == 1
-    assert not _source_audit(ledger, core).invalid
+    assert not source_audit(ledger, core).invalid
 
 
 def test_optional_family_binding_audit_runs_once_without_runtime_work() -> None:
@@ -147,13 +155,13 @@ def test_optional_family_binding_audit_runs_once_without_runtime_work() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = _AuditedDecimalAdapter(ledger)
     core.register(adapter)
-    image = core.apply(adapter, 7, _Action((8,)))
+    image = core.apply(adapter, 7, DecimalImageAction((8,)))
     before = ledger.snapshot().counters
 
-    audit = _source_audit(ledger, core)
+    audit = source_audit(ledger, core)
 
     assert audit.valid(image)
-    assert adapter.binding_audits == len(core._nodes)
+    assert adapter.binding_audits == len(core.audit_snapshot().nodes)
     assert ledger.snapshot().counters == before
     core.dispose()
 
@@ -163,11 +171,11 @@ def test_optional_family_binding_audit_rejects_bad_record() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = _AuditedDecimalAdapter(ledger, reject=True)
     core.register(adapter)
-    image = core.apply(adapter, 7, _Action((8,)))
+    image = core.apply(adapter, 7, DecimalImageAction((8,)))
 
-    audit = _source_audit(ledger, core)
+    audit = source_audit(ledger, core)
 
-    assert adapter.binding_audits == len(core._nodes)
+    assert adapter.binding_audits == len(core.audit_snapshot().nodes)
     assert not audit.valid(image)
     assert audit.invalid
     core.dispose()
@@ -189,7 +197,7 @@ def test_typed_demand_hashes_shared_descriptor_dags_without_expansion() -> None:
 
 
 def test_origin_cache_distinguishes_boolean_and_integer_sources() -> None:
-    class TypedSource(_DecimalAdapter):
+    class TypedSource(DecimalImageAdapter):
         def validate_source(self, source: object) -> None:
             if type(source) not in (bool, int):
                 raise ValueError("invalid source")
@@ -201,16 +209,16 @@ def test_origin_cache_distinguishes_boolean_and_integer_sources() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = TypedSource(ledger)
     core.register(adapter)
-    boolean = core._origin(adapter, True)
-    integer = core._origin(adapter, 1)
+    boolean = core.origin(adapter, True)
+    integer = core.origin(adapter, 1)
     assert boolean != integer
     assert core.view(boolean).payload == 11
     assert core.view(integer).payload == 22
-    assert core._origin(adapter, True) == boolean
-    assert core._origin(adapter, 1) == integer
+    assert core.origin(adapter, True) == boolean
+    assert core.origin(adapter, 1) == integer
     assert ledger.counters["source_image_origin_publications"] == 2
     assert ledger.counters["source_image_origin_hits"] == 2
-    assert not _source_audit(ledger, core).invalid
+    assert not source_audit(ledger, core).invalid
 
 
 def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
@@ -253,7 +261,9 @@ def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
 
         def admit_source(self, source: object) -> SourceImageCandidate:
             self.validate_source(source)
-            return SourceImageCandidate(cast(int, source), 0)
+            if type(source) is not int:
+                raise AssertionError("typed action source was not an integer")
+            return SourceImageCandidate(source, 0)
 
         def compose_chronological(
             self,
@@ -295,37 +305,46 @@ def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
     assert core.view(integer).payload == 22
     assert adapter.primitive_calls == 2
     assert ledger.counters["source_image_primitive_applications"] == 2
-    origin = core._origin(adapter, 7)
+    origin = core.origin(adapter, 7)
     with pytest.raises(ValueError, match="application binding was altered"):
-        core._validate_application_binding(
+        core.validate_application_binding(
             adapter,
-            _ApplyKey((adapter.family, adapter.semantic_version), origin, 1),
+            SourceImageApplyKey((adapter.family, adapter.semantic_version), origin, 1),
             boolean,
         )
-    assert not _source_audit(ledger, core).invalid
+    assert not source_audit(ledger, core).invalid
 
 
 def test_active_action_stack_distinguishes_boolean_and_integer_ids() -> None:
-    ledger, core, _ = _runtime()
-    active = core._workspace
+    ledger, core, _ = source_image_runtime()
     boolean = ("test-decimal", "test-decimal-v1", True)
     integer = ("test-decimal", "test-decimal-v1", 1)
-    ledger.reserve(core._workspace_owner, entries=2, nodes=2)
-    active.add_active(boolean)
-    assert active.contains_active(boolean)
-    assert not active.contains_active(integer)
-    active.add_active(integer)
-    assert active.contains_active(integer)
-    active.remove_active(boolean)
-    assert active.contains_active(integer)
-    active.remove_active(integer)
-    assert not active.contains_active(integer)
-    assert len(active) == 0
-    ledger.release(core._workspace_owner, entries=2, nodes=2)
+    workspace = core.audit_snapshot().workspace
+    store = ledger.registered_container(workspace.owner)
+    assert isinstance(store, LedgerDict)
+    boolean_key = (
+        "active",
+        (boolean[0], boolean[1], TypedPayloadKey(boolean[2])),
+    )
+    integer_key = (
+        "active",
+        (integer[0], integer[1], TypedPayloadKey(integer[2])),
+    )
+    ledger.reserve(workspace.owner, entries=2, nodes=2)
+    store[boolean_key] = None
+    assert boolean_key in workspace.entries
+    assert integer_key not in workspace.entries
+    store[integer_key] = None
+    assert integer_key in workspace.entries
+    del store[boolean_key]
+    assert integer_key in workspace.entries
+    del store[integer_key]
+    assert not workspace.entries
+    ledger.release(workspace.owner, entries=2, nodes=2)
 
 
 def test_relative_cache_distinguishes_boolean_and_integer_inputs() -> None:
-    class TypedRelative(_DecimalAdapter):
+    class TypedRelative(DecimalImageAdapter):
         def admitted_input_key(
             self, action: object, source: SourceImageView
         ) -> bool | int:
@@ -344,16 +363,16 @@ def test_relative_cache_distinguishes_boolean_and_integer_inputs() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = TypedRelative(ledger)
     core.register(adapter)
-    action = _Action((8,))
+    action = DecimalImageAction((8,))
     assert core.view(core.apply(adapter, 7, action)).payload == 78
     assert core.view(core.apply(adapter, 8, action)).payload == 88
     assert adapter.primitive_calls == 2
     assert ledger.counters.get("source_image_relative_transfer_hits", 0) == 0
     assert ledger.counters["source_image_relative_transfer_publications"] == 2
-    assert not _source_audit(ledger, core).invalid
+    assert not source_audit(ledger, core).invalid
 
 
-class _TransactionalDecimal(_DecimalAdapter):
+class _TransactionalDecimal(DecimalImageAdapter):
     """Track adapter records that must roll back with failed scheduler commits."""
 
     def __init__(self, ledger: ResourceLedger) -> None:
@@ -361,7 +380,7 @@ class _TransactionalDecimal(_DecimalAdapter):
         self.records: list[str] = []
 
     @contextmanager
-    def composite_transaction(self) -> Iterator[None]:
+    def composite_transaction(self) -> Generator[None, None, None]:
         checkpoint = len(self.records)
         try:
             yield
@@ -393,7 +412,7 @@ def test_primitive_adapter_records_roll_back_when_scheduler_publication_fails(
     core = SourceBoundSchedulerCore(ledger)
     adapter = _TransactionalDecimal(ledger)
     core.register(adapter)
-    core._origin(adapter, 0)
+    core.origin(adapter, 0)
     before = ledger.snapshot()
 
     def reject_publication(*_args: object, **_kwargs: object) -> SourceImageID:
@@ -401,10 +420,10 @@ def test_primitive_adapter_records_roll_back_when_scheduler_publication_fails(
 
     monkeypatch.setattr(core, "_publish_application_result", reject_publication)
     with pytest.raises(RuntimeError, match="injected scheduler publication failure"):
-        core.apply(adapter, 0, _Action((8,)))
+        core.apply(adapter, 0, DecimalImageAction((8,)))
 
     assert adapter.records == []
-    assert core._applications == {}
+    assert not core.audit_snapshot().applications
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
@@ -416,35 +435,28 @@ def test_relative_adapter_records_roll_back_when_scheduler_publication_fails(
     core = SourceBoundSchedulerCore(ledger)
     adapter = _TransactionalDecimal(ledger)
     core.register(adapter)
-    core.apply(adapter, 0, _Action((8,)))
+    core.apply(adapter, 0, DecimalImageAction((8,)))
     records_before = tuple(adapter.records)
-    applications_before = len(core._applications)
-    publish = core._publish_application_result
+    applications_before = len(core.audit_snapshot().applications)
 
     def reject_second_source(
-        key: _ApplyKey,
+        key: SourceImageApplyKey,
         source: object,
         cumulative_action: object,
         candidate: SourceImageCandidate,
         *,
-        relative_key: _RelativeKey | None,
+        relative_key: SourceImageRelativeKey | None,
     ) -> SourceImageID:
         if source == 9:
             raise RuntimeError("injected relative publication failure")
-        return publish(
-            key,
-            source,
-            cumulative_action,
-            candidate,
-            relative_key=relative_key,
-        )
+        raise AssertionError("unexpected source in the injected publication test")
 
     monkeypatch.setattr(core, "_publish_application_result", reject_second_source)
     with pytest.raises(RuntimeError, match="injected relative publication failure"):
-        core.apply(adapter, 9, _Action((8,)))
+        core.apply(adapter, 9, DecimalImageAction((8,)))
 
     assert tuple(adapter.records) == records_before
-    assert len(core._applications) == applications_before
+    assert len(core.audit_snapshot().applications) == applications_before
     assert ledger.counters.get("source_image_relative_transfer_hits", 0) == 0
 
 
@@ -452,7 +464,7 @@ def test_relative_adapter_records_roll_back_when_scheduler_publication_fails(
 def test_complete_image_constructor_precedes_child_traversal(
     demanded_first: bool,
 ) -> None:
-    class CompleteAdapter(_DecimalAdapter):
+    class CompleteAdapter(DecimalImageAdapter):
         def apply_composite(
             self,
             action: object,
@@ -460,7 +472,7 @@ def test_complete_image_constructor_precedes_child_traversal(
             demand: SourceImageDemand | None,
         ) -> SourceImageCandidate:
             assert demand is None or demand.name == "last-digit"
-            assert action == _Action((8, 9))
+            assert action == DecimalImageAction((8, 9))
             assert source.payload == 7
             return SourceImageCandidate(789, 1, (1, 0), radix=10)
 
@@ -475,7 +487,7 @@ def test_complete_image_constructor_precedes_child_traversal(
     core = SourceBoundSchedulerCore(ledger)
     adapter = CompleteAdapter(ledger)
     core.register(adapter)
-    action, demand = _Action((8, 9)), SourceImageDemand("last-digit")
+    action, demand = DecimalImageAction((8, 9)), SourceImageDemand("last-digit")
     if demanded_first:
         image = core.apply_demanded(adapter, 7, action, demand)
         repeated = core.apply(adapter, 7, action)
@@ -485,7 +497,7 @@ def test_complete_image_constructor_precedes_child_traversal(
     assert repeated == image
     assert ledger.counters["source_image_application_hits"] == 1
     assert core.view(image).payload == 789
-    assert len(core._nodes) == 2  # Original source and final image only.
+    assert len(core.audit_snapshot().nodes) == 2  # Origin and final image only.
     assert adapter.projection_calls == 0
     assert core.projection(adapter, repeated, SourceImageDemand("value")).value == 789
     assert core.first_failure(adapter, repeated) is None
@@ -495,8 +507,8 @@ def test_complete_image_constructor_precedes_child_traversal(
 
 
 def test_powered_repetition_reuses_relative_transfer_not_cumulative_endpoint() -> None:
-    ledger, core, adapter = _runtime()
-    action = _Action((1,) * 32)
+    ledger, core, adapter = source_image_runtime()
+    action = DecimalImageAction((1,) * 32)
     image = core.apply(adapter, 0, action)
     assert core.view(image).payload == int("1" * 32)
     assert adapter.primitive_calls == 1
@@ -507,35 +519,44 @@ def test_powered_repetition_reuses_relative_transfer_not_cumulative_endpoint() -
 def test_payload_audit_rejects_redirected_or_orphaned_memo_publications(
     damage: str,
 ) -> None:
-    ledger, core, adapter = _runtime()
-    core.apply(adapter, 0, _Action((1, 2, 3, 4)))
-    core.apply(adapter, 9, _Action((5,)))
-    assert not _source_audit(ledger, core).invalid
+    ledger, core, adapter = source_image_runtime()
+    core.apply(adapter, 0, DecimalImageAction((1, 2, 3, 4)))
+    core.apply(adapter, 9, DecimalImageAction((5,)))
+    assert not source_audit(ledger, core).invalid
+    snapshot = core.audit_snapshot()
     if damage == "origin":
-        first, second = tuple(core._origins.items())
-        core._origins[first[0]] = second[1]
+        first, second = tuple(snapshot.origins.items())
+        store = ledger.registered_container(snapshot.origin_owner)
+        assert isinstance(store, LedgerDict)
+        store[first[0]] = second[1]
     elif damage == "application":
-        first_application, second_application = tuple(core._applications.items())[:2]
-        core._applications[first_application[0]] = second_application[1]
+        first_application, second_application = tuple(snapshot.applications.items())[:2]
+        store = ledger.registered_container(snapshot.application_owner)
+        assert isinstance(store, LedgerDict)
+        store[first_application[0]] = second_application[1]
     elif damage == "relative":
-        first_relative, second_relative = tuple(core._relative.items())[:2]
-        core._relative[first_relative[0]] = second_relative[1]
+        first_relative, second_relative = tuple(snapshot.relative.items())[:2]
+        store = ledger.registered_container(snapshot.relative_owner)
+        assert isinstance(store, LedgerDict)
+        store[first_relative[0]] = second_relative[1]
     else:
-        core._applications.pop(next(iter(core._applications)))
-    assert _source_audit(ledger, core).invalid
+        store = ledger.registered_container(snapshot.application_owner)
+        assert isinstance(store, LedgerDict)
+        store.pop(next(iter(snapshot.applications)))
+    assert source_audit(ledger, core).invalid
 
 
 @pytest.mark.parametrize("replacement", (9, False))
 def test_origin_provenance_rejects_reflected_typed_key_change(
     replacement: object,
 ) -> None:
-    ledger, core, adapter = _runtime()
-    core.apply(adapter, 0, _Action((1,)))
-    assert not _source_audit(ledger, core).invalid
-    origin_key = next(iter(core._origins))
+    ledger, core, adapter = source_image_runtime()
+    core.apply(adapter, 0, DecimalImageAction((1,)))
+    assert not source_audit(ledger, core).invalid
+    origin_key = next(iter(core.audit_snapshot().origins))
     typed_source = origin_key[1]
     object.__setattr__(typed_source, "value", replacement)
-    assert _source_audit(ledger, core).invalid
+    assert source_audit(ledger, core).invalid
 
 
 def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
@@ -547,10 +568,13 @@ def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
         record.failure_prefix,
         record.publication_provenance,
     )
-    core._nodes[image.local_id] = replace(record, publication_snapshot=forged)
-    assert _source_audit(ledger, core).invalid
+    snapshot = core.audit_snapshot()
+    store = ledger.registered_container(snapshot.node_owner)
+    assert isinstance(store, LedgerList)
+    store[image.local_id] = replace(record, publication_snapshot=forged)
+    assert source_audit(ledger, core).invalid
     core.clear()
-    assert not _source_audit(ledger, core).valid(image)
+    assert not source_audit(ledger, core).valid(image)
 
 
 def test_payload_audit_passes_failure_prefix_to_family_binding_auditor() -> None:
@@ -563,26 +587,32 @@ def test_payload_audit_passes_failure_prefix_to_family_binding_auditor() -> None
         failure_prefix,
         record.publication_provenance,
     )
-    core._nodes[image.local_id] = replace(
+    snapshot = core.audit_snapshot()
+    store = ledger.registered_container(snapshot.node_owner)
+    assert isinstance(store, LedgerList)
+    store[image.local_id] = replace(
         record,
         failure_prefix=failure_prefix,
         publication_snapshot=seal,
     )
-    audit = _source_audit(ledger, core)
-    assert (core._node_owner, id(core._nodes[image.local_id])) in audit.invalid
+    audit = source_audit(ledger, core)
+    assert (snapshot.node_owner, id(store[image.local_id])) in audit.invalid
 
 
 def test_foreign_adapter_image_and_forged_binding_are_rejected() -> None:
-    _, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    ledger, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     other_ledger = ResourceLedger()
-    other = _DecimalAdapter(other_ledger)
+    other = DecimalImageAdapter(other_ledger)
     other_core = SourceBoundSchedulerCore(other_ledger)
     other_core.register(other)
     with pytest.raises(ValueError, match="different arena"):
         other_core.view(image)
     record = core.resolve(image)
-    core._nodes[image.local_id] = replace(
+    snapshot = core.audit_snapshot()
+    store = ledger.registered_container(snapshot.node_owner)
+    assert isinstance(store, LedgerList)
+    store[image.local_id] = replace(
         record,
         binding=replace(record.binding, family="forged-family"),
     )
@@ -592,7 +622,7 @@ def test_foreign_adapter_image_and_forged_binding_are_rejected() -> None:
 
 @pytest.mark.parametrize("field", ("extent", "boundary_ports", "action", "payload"))
 def test_same_family_image_record_mutation_is_rejected(field: str) -> None:
-    _, core, adapter, image, record = one_image()
+    ledger, core, adapter, image, record = one_image()
     if field == "payload":
         poisoned = replace(record, payload=99)
     elif field == "extent":
@@ -603,9 +633,12 @@ def test_same_family_image_record_mutation_is_rejected(field: str) -> None:
         )
     else:
         poisoned = replace(
-            record, binding=replace(record.binding, action=_Action((9,)))
+            record, binding=replace(record.binding, action=DecimalImageAction((9,)))
         )
-    core._nodes[image.local_id] = poisoned
+    snapshot = core.audit_snapshot()
+    store = ledger.registered_container(snapshot.node_owner)
+    assert isinstance(store, LedgerList)
+    store[image.local_id] = poisoned
     with pytest.raises(ValueError, match="publication record was altered"):
         core.projection(adapter, image, SourceImageDemand("value"))
 
@@ -614,7 +647,10 @@ def test_record_cannot_replace_its_data_and_self_carried_seal() -> None:
     ledger, core, _unused_adapter_binding, image, record = one_image()
     binding = replace(record.binding, extent=999)
     forged_seal = publication_seal((binding, record.payload, None), ledger)
-    core._nodes[image.local_id] = replace(
+    snapshot = core.audit_snapshot()
+    store = ledger.registered_container(snapshot.node_owner)
+    assert isinstance(store, LedgerList)
+    store[image.local_id] = replace(
         record, binding=binding, publication_snapshot=forged_seal
     )
     with pytest.raises(ValueError, match="publication record was altered"):
@@ -622,15 +658,18 @@ def test_record_cannot_replace_its_data_and_self_carried_seal() -> None:
 
 
 def test_projection_cannot_replace_its_value_and_self_carried_seal() -> None:
-    ledger, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    ledger, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     demand = SourceImageDemand("value")
     core.projection(adapter, image, demand)
     key = image, demand
-    record = core._projections[key]
+    snapshot = core.audit_snapshot()
+    record = snapshot.projections[key]
     projection = replace(record.projection, value=999)
     forged_seal = publication_seal((image, demand, projection), ledger)
-    core._projections[key] = replace(
+    store = ledger.registered_container(snapshot.projection_owner)
+    assert isinstance(store, LedgerDict)
+    store[key] = replace(
         record, projection=projection, publication_snapshot=forged_seal
     )
     with pytest.raises(ValueError, match="projection record was altered"):
@@ -640,19 +679,23 @@ def test_projection_cannot_replace_its_value_and_self_carried_seal() -> None:
 def test_failure_descent_requires_a_recorded_minimum_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, core, adapter = _runtime()
-    failed = core.apply(adapter, 0, _Action((1, 2, 3)))
+    _, core, adapter = source_image_runtime()
+    failed = core.apply(adapter, 0, DecimalImageAction((1, 2, 3)))
     assert core.first_failure(adapter, failed) == (2, 123)
-    healthy = core.apply(adapter, 0, _Action((4,)))
+    healthy = core.apply(adapter, 0, DecimalImageAction((4,)))
     assert core.first_failure(adapter, healthy) is None
-    monkeypatch.setattr(adapter, "first_failure", lambda _image: (0, 4))
+
+    def fabricated_failure(_image: SourceImageView) -> tuple[int, int]:
+        return (0, 4)
+
+    monkeypatch.setattr(adapter, "first_failure", fabricated_failure)
     with pytest.raises(ValueError, match="fabricated failure"):
         core.first_failure(adapter, healthy)
 
 
 def test_in_place_frozen_binding_mutation_is_detected_on_warm_projection() -> None:
-    _, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    _, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     demand = SourceImageDemand("value")
     core.projection(adapter, image, demand)
     object.__setattr__(core.resolve(image).binding, "extent", 999)
@@ -661,8 +704,8 @@ def test_in_place_frozen_binding_mutation_is_detected_on_warm_projection() -> No
 
 
 def test_in_place_frozen_projection_mutation_is_detected() -> None:
-    _, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    _, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     demand = SourceImageDemand("value")
     projected = core.projection(adapter, image, demand)
     object.__setattr__(projected, "value", 999)
@@ -671,7 +714,7 @@ def test_in_place_frozen_projection_mutation_is_detected() -> None:
 
 
 def test_warm_projection_rechecks_adapter_authority_before_cache_hit() -> None:
-    class RevocableAdapter(_DecimalAdapter):
+    class RevocableAdapter(DecimalImageAdapter):
         def __init__(self, ledger: ResourceLedger) -> None:
             super().__init__(ledger)
             self.revoked = False
@@ -685,7 +728,7 @@ def test_warm_projection_rechecks_adapter_authority_before_cache_hit() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = RevocableAdapter(ledger)
     core.register(adapter)
-    image = core.apply(adapter, 0, _Action((1,)))
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     demand = SourceImageDemand("value")
     assert core.projection(adapter, image, demand).value == 1
     assert adapter.projection_calls == 1
@@ -696,8 +739,8 @@ def test_warm_projection_rechecks_adapter_authority_before_cache_hit() -> None:
 
 
 def test_first_failure_survives_a_later_successful_primitive() -> None:
-    _, core, adapter = _runtime()
-    failed = core.apply(adapter, 0, _Action((1, 2, 3, 4)))
+    _, core, adapter = source_image_runtime()
+    failed = core.apply(adapter, 0, DecimalImageAction((1, 2, 3, 4)))
     assert core.view(failed).payload == 1234
     assert core.first_failure(adapter, failed) == (2, 1234)
 
@@ -705,30 +748,28 @@ def test_first_failure_survives_a_later_successful_primitive() -> None:
 def test_indirect_action_cycle_is_rejected_and_workspace_is_released(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, core, adapter = _runtime()
-    first, second = _Action((1, 2)), _Action((3, 4))
+    ledger, core, adapter = source_image_runtime()
+    first, second = DecimalImageAction((1, 2)), DecimalImageAction((3, 4))
 
-    def cyclic(action: object) -> tuple[_Action, _Action] | None:
+    def cyclic(action: object) -> tuple[DecimalImageAction, DecimalImageAction] | None:
         if action == first:
-            return second, _Action(())
+            return second, DecimalImageAction(())
         if action == second:
-            return first, _Action(())
+            return first, DecimalImageAction(())
         return None
 
     monkeypatch.setattr(adapter, "action_children", cyclic)
 
-    def cyclic_compose(before: object, _after: object) -> _Action:
-        assert isinstance(before, _Action)
+    def cyclic_compose(before: object, _after: object) -> DecimalImageAction:
+        assert isinstance(before, DecimalImageAction)
         return first if before == second else second
 
     monkeypatch.setattr(adapter, "compose_actions", cyclic_compose)
     with pytest.raises(ValueError, match="cycle"):
         core.apply(adapter, 0, first)
-    workspace = next(
-        row for row in ledger.inventory() if row.role == "source_image_workspace"
-    )
-    assert workspace.entries == workspace.nodes == 0
-    assert not core._workspace.frames and not core._workspace.values
+    _assert_source_image_workspace_empty(ledger)
+    workspace_snapshot = core.audit_snapshot().workspace
+    assert not workspace_snapshot.frames and not workspace_snapshot.values
     assert not tuple(
         violation
         for violation in audit_execution_ownership(ledger).violations
@@ -737,18 +778,18 @@ def test_indirect_action_cycle_is_rejected_and_workspace_is_released(
 
 
 def test_mutable_hash_objects_are_not_admitted_as_semantic_keys() -> None:
-    _, core, adapter = _runtime()
+    _, core, adapter = source_image_runtime()
 
     class MutableHash:
         def __hash__(self) -> int:
             return 1
 
     with pytest.raises(TypeError, match="structural immutable"):
-        core.apply(adapter, MutableHash(), _Action((1,)))
+        core.apply(adapter, MutableHash(), DecimalImageAction((1,)))
 
 
 def test_cyclic_or_large_inline_descriptors_must_be_interned() -> None:
-    _, core, adapter = _runtime()
+    _, core, adapter = source_image_runtime()
 
     @dataclass(frozen=True, slots=True)
     class Cyclic:
@@ -757,31 +798,33 @@ def test_cyclic_or_large_inline_descriptors_must_be_interned() -> None:
     cyclic = Cyclic()
     object.__setattr__(cyclic, "child", cyclic)
     with pytest.raises(ValueError, match="reference cycle"):
-        core.apply(adapter, cyclic, _Action((1,)))
+        core.apply(adapter, cyclic, DecimalImageAction((1,)))
     with pytest.raises(ValueError, match="intern it in an arena"):
-        core.apply(adapter, tuple(range(128)), _Action((1,)))
+        core.apply(adapter, tuple(range(128)), DecimalImageAction((1,)))
 
 
 def test_budget_refusal_does_not_publish_an_orphan_image() -> None:
     # Adapter registration consumes one entry.  The origin needs two more
     # entries atomically (node and binding), so this request must fail cleanly.
-    ledger, core, adapter = _runtime(max_nodes=8, max_entries=2)
+    ledger, core, adapter = source_image_runtime(max_nodes=8, max_entries=2)
     assert_budget_refusal(ledger, core, adapter)
-    assert len(core._nodes) == len(core._origins) == 0
+    snapshot = core.audit_snapshot()
+    assert len(snapshot.nodes) == len(snapshot.origins) == 0
 
 
 def test_workspace_budget_refusal_releases_its_factory_store() -> None:
-    ledger, core, adapter = _runtime()
-    core._origin(adapter, 0)
+    ledger, core, adapter = source_image_runtime()
+    core.origin(adapter, 0)
     ledger.max_cache_entries = ledger.entries
     assert_budget_refusal(ledger, core, adapter)
-    assert not core._workspace.running and not core._workspace
-    assert not core._workspace.frames and not core._workspace.values
+    workspace = core.audit_snapshot().workspace
+    assert not workspace.running and not workspace.entries
+    assert not workspace.frames and not workspace.values
 
 
 def test_handle_subclasses_cannot_alias_the_image_sort() -> None:
-    _, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    _, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
 
     @dataclass(frozen=True, slots=True)
     class ForgedImage(SourceImageID):
@@ -793,8 +836,8 @@ def test_handle_subclasses_cannot_alias_the_image_sort() -> None:
 
 
 def test_clear_invalidates_handles_and_dispose_releases_adapter() -> None:
-    ledger, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1, 2)))
+    ledger, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1, 2)))
     core.projection(adapter, image, SourceImageDemand("value"))
     seal_row = next(
         row for row in ledger.inventory() if row.role == "source_image_publication_seal"
@@ -818,11 +861,11 @@ def test_clear_invalidates_handles_and_dispose_releases_adapter() -> None:
             "source_image_workspace",
         }
     )
-    second = core.apply(adapter, 3, _Action((4,)))
+    second = core.apply(adapter, 3, DecimalImageAction((4,)))
     assert core.view(second).payload == 34
     core.dispose()
     with pytest.raises(ValueError, match="disposed"):
-        core.apply(adapter, 0, _Action((1,)))
+        core.apply(adapter, 0, DecimalImageAction((1,)))
     adapter_row = next(
         row for row in ledger.inventory() if row.role == "source_image_adapter"
     )
@@ -830,13 +873,12 @@ def test_clear_invalidates_handles_and_dispose_releases_adapter() -> None:
 
 
 def test_payload_audit_rejects_malformed_registered_adapter_without_callbacks() -> None:
-    ledger, core, adapter = _runtime()
-    core.apply(adapter, 0, _Action((1,)))
-    key = next(iter(core._adapters))
-    core._adapters[key] = cast(SourceBoundImageAdapter, object())
+    ledger, core, adapter = source_image_runtime()
+    core.apply(adapter, 0, DecimalImageAction((1,)))
+    object.__setattr__(adapter, "validate_payload", None)
     before = ledger.snapshot()
     try:
-        assert _source_audit(ledger, core).invalid
+        assert source_audit(ledger, core).invalid
         assert ledger.snapshot() == before
     finally:
         core.dispose()

@@ -43,7 +43,7 @@ def test_nonbinary_public_point_queries_never_lower_binary_endpoints(
                     payload.digit(1 << 100)
             metrics = payload.term.metrics()
             assert metrics.explicitly_materialized_endpoints == 0
-            audit = collect_ledger_metrics(payload.term._ledger)
+            audit = collect_ledger_metrics(payload.term.resource_ledger)
             assert audit.forbidden_future_payloads == 0
             assert audit.resource_audit_complete == 1
             assert metrics.resource_accounting_mismatch == 0
@@ -54,7 +54,7 @@ def test_radix_microblocks_are_one_capped_index_owned_leaf_cache() -> None:
     term = PoweredCollatzTerm(140137, 11)
     expected = _collatz(term.seed, term.steps)
     digits = digits_lsd(expected, 3)
-    projection = RadixProjection(3, term.width(), term._ledger)
+    projection = RadixProjection(3, term.width(), term.resource_ledger)
     assert projection._microblocks is term._microblocks
     assert tuple(projection.digit(term, i) for i in range(len(digits))) == tuple(digits)
     cache = term._microblocks
@@ -66,7 +66,7 @@ def test_radix_microblocks_are_one_capped_index_owned_leaf_cache() -> None:
         for name in ("_point", "_range", "_evaluate", "_programs", "_ranges")
     )
     term.metrics()
-    audit = collect_ledger_metrics(term._ledger)
+    audit = collect_ledger_metrics(term.resource_ledger)
     assert audit.resource_audit_complete == 1
     assert audit.forbidden_future_payloads == 0
 
@@ -78,12 +78,12 @@ def test_radix_registry_reuses_projection_and_microblocks_without_replay_state()
     expected = _collatz(term.seed, term.steps) % 3
     assert collatz_radix_digit(term, 3, 0) == expected
     projection = term._radix_projections[3]
-    entries = term._ledger.snapshot().entries
+    entries = term.resource_ledger.snapshot().entries
     assert collatz_radix_digit(term, 3, 0) == expected
     assert term._radix_projections[3] is projection
     assert projection._microblocks is term._microblocks
-    assert term._ledger.snapshot().entries == entries
-    term._ledger.evict_query_memos()
+    assert term.resource_ledger.snapshot().entries == entries
+    term.resource_ledger.evict_query_memos()
     assert not projection._fused_actions
     assert collatz_radix_digit(term, 3, 0) == expected
     assert term.metrics().retained_cache_accounting_delta == 0
@@ -95,10 +95,10 @@ def test_wide_radix_point_fails_before_registry_growth_but_explicit_digits_work(
     from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 
     term = PoweredCollatzTerm(27, 1)
-    entries = term._ledger.snapshot().entries
+    entries = term.resource_ledger.snapshot().entries
     with pytest.raises(UnsupportedInterfaceError, match="2\\*\\*63"):
         collatz_radix_digit(term, (1 << 63) + 1, 0)
-    assert term._ledger.snapshot().entries == entries
+    assert term.resource_ledger.snapshot().entries == entries
     assert term._radix_projections == {}
     assert tuple(PoweredCollatzTermPayload(term, 1 << 100).digits()) == (82,)
 
@@ -108,14 +108,14 @@ def test_radix_block_arithmetic_tracks_exact_operand_width() -> None:
     seed, steps = (1 << 70) + 0x12345, 11
     expected = _collatz(seed, steps)
     term = PoweredCollatzTerm(seed, steps)
-    projection = RadixProjection(radix, term.width(), term._ledger)
+    projection = RadixProjection(radix, term.width(), term.resource_ledger)
     digits = digits_lsd(expected, radix)
     assert tuple(
         projection.digit(term, index) for index in range(len(digits))
     ) == tuple(digits)
     with pytest.raises(IndexError):
         projection.digit(term, len(digits))
-    assert term._ledger.counters["collatz_image_projection_operand_bits"] > 64
+    assert term.resource_ledger.counters["collatz_image_projection_operand_bits"] > 64
     assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
 
 

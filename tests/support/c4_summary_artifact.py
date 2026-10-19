@@ -14,7 +14,7 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
-from tests.support.diamond_query import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +34,9 @@ class C4FourthInput:
 
 
 def fresh_c4_fourth_input() -> C4FourthInput:
-    application = build(PhysicalCollatzFourBlockEffect(), (0, 1) * 8, 16, 1)
+    application = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1) * 8, 16, 1
+    )
     runtime, primitive = application.runtime, application.root
     runtime.kernel(primitive)
     pair = runtime.actions.compose(primitive, primitive)

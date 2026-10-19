@@ -137,7 +137,7 @@ def width(
     if not 0 <= stop <= root.width:
         raise ValueError("tile width limit lies outside the source")
     if not stop:
-        self._validate_execution_key(
+        self.validate_execution_key(
             self._key(action, source, ports, wiring, boundaries, fusion)
         )
         return 0
@@ -246,7 +246,7 @@ def width(
                 boundaries,
             )
             right_limit = remaining - half
-            if self._prefix_active(
+            if self.prefix_active(
                 action_now,
                 node.right,
                 right_context.ports,
@@ -271,7 +271,7 @@ def width(
             lease.close()
 
 
-def _prefix_active(
+def prefix_active(
     self: TileScheduler,
     action: FieldCellActionID,
     source: TileID,
@@ -356,7 +356,7 @@ def _admitted_midpoint(
     before_key = scheduler._key(
         children[0], key.input, producer.ports, producer.wiring, producer.boundaries
     )
-    midpoint = scheduler._lookup_execution_key(before_key)
+    midpoint = scheduler.lookup_execution_key(before_key)
     if midpoint is None:
         return None
     scheduler.ledger.bump(_shared_keys.TILE_SCHEDULER_MIDPOINT_HITS)
@@ -373,7 +373,7 @@ def _admitted_midpoint(
 def _probe_demand(
     scheduler: TileScheduler, key: PoweredResultKey, held_count: int, counter: str
 ) -> ResultLease | None:
-    result = scheduler._lookup_execution_key(key)
+    result = scheduler.lookup_execution_key(key)
     scheduler._workspace_peak(held_count + 1)
     scheduler.ledger.bump(counter)
     return result

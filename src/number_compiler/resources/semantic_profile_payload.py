@@ -441,11 +441,11 @@ def _table_cofactor(
             variable,
             tuple(
                 node.low if node.variable == variable else index
-                for index, node in zip(current, nodes)
+                for index, node in zip(current, nodes, strict=True)
             ),
             tuple(
                 node.high if node.variable == variable else index
-                for index, node in zip(current, nodes)
+                for index, node in zip(current, nodes, strict=True)
             ),
         )
     values: list[int] = []

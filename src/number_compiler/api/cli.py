@@ -8,13 +8,11 @@ import sys
 from number_compiler.api import cli_render as _rendering
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.cli_types import QueryRequest
-from number_compiler.api.family_registry import (
-    family_listing,
-    resolve_verification_adapter,
-)
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.observation_types import OutputFormat, SelectorId
 from number_compiler.api.output_schema import UnresolvedErrorPacket, query_result
+from number_compiler.api.registry_adapters import resolve_verification_adapter
+from number_compiler.api.registry_cli import family_listing
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
@@ -84,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 if request.presentation.format is OutputFormat.SYMBOLIC
-                else _rendering._render_value(
+                else _rendering.render_value(
                     context.term,
                     output_base=request.presentation.output_base,
                     max_bits=request.presentation.max_output_bits,

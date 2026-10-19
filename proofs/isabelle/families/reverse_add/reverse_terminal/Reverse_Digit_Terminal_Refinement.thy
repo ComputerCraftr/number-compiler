@@ -46,7 +46,7 @@ lemma digit_terminal_scan_admitted:
   using assms
   by (induct ss arbitrary: c)
     (auto simp: digit_terminal_active_def digit_terminal_advance_def
-      digit_terminal_emit_def carry_out_def carry_from_domain)
+      digit_terminal_emit_def carry_out_def carry_apply_decimal_threshold)
 
 lemma digit_terminal_scan_blanks:
   assumes "dt_blank_seen l"
@@ -72,7 +72,7 @@ lemma digit_terminal_scan_padded:
   using assms
   by (induct ss arbitrary: c)
     (auto simp: digit_terminal_active_def digit_terminal_advance_def
-      digit_terminal_emit_def carry_out_def carry_from_domain digit_terminal_scan_blanks)
+      digit_terminal_emit_def carry_out_def carry_apply_decimal_threshold digit_terminal_scan_blanks)
 
 lemma strip_blank_tail_extra:
   "strip_blank_tail (xs@[19]) = strip_blank_tail xs"
@@ -88,45 +88,14 @@ preserves the incoming carry; the first coefficient below 9 resets it to
 False, and the first coefficient above 9 resets it to True.  If every
 coefficient is 9, the incoming carry is preserved.\<close>
 
-fun digit_terminal_first_reset_carry :: "bool \<Rightarrow> nat list \<Rightarrow> bool" where
-  "digit_terminal_first_reset_carry c [] = c"
-| "digit_terminal_first_reset_carry c (s # ss) =
-    (if s=9 then digit_terminal_first_reset_carry c ss else 10 \<le> s)"
+definition digit_terminal_first_reset_carry :: "bool \<Rightarrow> nat list \<Rightarrow> bool" where
+  "digit_terminal_first_reset_carry c ss =
+    (case first_reset ss of None \<Rightarrow> c | Some b \<Rightarrow> b)"
 
 lemma digit_terminal_first_reset_reverse_carry:
   "digit_terminal_first_reset_carry c ss = carry_out c (rev ss)"
-proof (induct ss arbitrary: c)
-  case Nil
-  then show ?case by (simp add: carry_out_def)
-next
-  case (Cons s ss)
-  show ?case
-  proof (cases "s=9")
-    case True
-    have step: "carry_out c (rev (s # ss)) = carry_out c (rev ss)"
-      using True by (simp add: carry_out_append carry_out_def domain_def)
-    show ?thesis using Cons.hyps[of c] step True by simp
-  next
-    case non_neutral: False
-    show ?thesis
-    proof (cases "s<9")
-      case below: True
-      have reset: "carry_out c (rev (s # ss)) = False"
-        using below by (simp add: carry_out_append carry_out_def domain_def)
-      show ?thesis
-        using reset below non_neutral
-        by (simp add: digit_terminal_first_reset_carry.simps; arith)
-    next
-      case not_below: False
-      have above: "9<s" using not_below non_neutral by arith
-      have reset: "carry_out c (rev (s # ss)) = True"
-        using above by (simp add: carry_out_append carry_out_def domain_def)
-      show ?thesis
-        using reset above non_neutral
-        by (simp add: digit_terminal_first_reset_carry.simps; arith)
-    qed
-  qed
-qed
+  by (simp add: digit_terminal_first_reset_carry_def
+      carry_out_reverse_first_reset)
 
 theorem digit_terminal_symmetric_first_reset_carry:
   assumes symmetric: "rev ss = ss"
@@ -137,7 +106,7 @@ lemma digit_terminal_first_reset_after_nines:
   assumes "d \<noteq> 9"
   shows "digit_terminal_first_reset_carry c (replicate k 9 @ d # tail) =
     (10 \<le> d)"
-  using assms by (induct k) simp_all
+  using assms by (induct k) (simp_all add: digit_terminal_first_reset_carry_def)
 
 theorem digit_terminal_symmetric_reset_witness:
   assumes symmetric: "rev ss = ss"
@@ -166,7 +135,12 @@ qed
 lemma digit_terminal_first_reset_all_nines:
   assumes all_neutral: "\<forall>s\<in>set ss. s=9"
   shows "digit_terminal_first_reset_carry c ss = c"
-  using all_neutral by (induct ss) auto
+proof -
+  have none: "first_reset ss = None"
+    using all_neutral by (simp add: first_reset_none_iff)
+  show ?thesis using none
+    by (simp add: digit_terminal_first_reset_carry_def)
+qed
 
 theorem digit_terminal_refines_digits:
   assumes "\<forall>s\<in>set ss. s<19"
@@ -197,7 +171,7 @@ fun streamed_digits :: "bool \<Rightarrow> nat list \<Rightarrow> nat list" wher
 lemma streamed_digits_fold:
   "streamed_digits c ss = emit c ss @ (if carry_out c ss then [1] else [])"
   by (induct ss arbitrary: c)
-    (simp_all add: carry_out_def carry_from_domain)
+    (simp_all add: carry_out_def carry_apply_decimal_threshold)
 
 theorem streamed_digits_refines_terminal:
   assumes "\<forall>s\<in>set ss. s<19"

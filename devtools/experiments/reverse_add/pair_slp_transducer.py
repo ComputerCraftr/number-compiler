@@ -14,7 +14,7 @@ No production code imports this module.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TypeVar
@@ -233,7 +233,7 @@ class PairSLPTransducer:
         return len(self._arena.nodes)
 
     @contextmanager
-    def _work(self, counter: str) -> Iterator[None]:
+    def _work(self, counter: str) -> Generator[None, None, None]:
         self.ledger.reserve(self._work_owner, entries=1, nodes=1)
         self.ledger.bump(counter)
         try:

@@ -276,16 +276,15 @@ def test_certificate_checks_arithmetic_and_source_coverage() -> None:
     with pytest.raises(ValueError, match="schema"):
         verify({"nonhalting_certified": True, "safe_steps": 1000000})
     with pytest.raises(ValueError, match="both next"):
-        verify(
-            {
-                "schema": "antihydra-affine-charts-v1",
-                "source": "blank",
-                "machine_sha256": MACHINE_SHA256,
-                "bits": 1,
-                "initial": 0,
-                "charts": [{"residue": 0, "inequalities": [], "branches": []}],
-            }
-        )
+        malformed_certificate: dict[str, object] = {
+            "schema": "antihydra-affine-charts-v1",
+            "source": "blank",
+            "machine_sha256": MACHINE_SHA256,
+            "bits": 1,
+            "initial": 0,
+            "charts": [{"residue": 0, "inequalities": [], "branches": []}],
+        }
+        verify(malformed_certificate)
 
 
 def test_refinement_rejects_other_source_failures() -> None:

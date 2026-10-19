@@ -9,7 +9,7 @@ which implements the output-complete two-sided bimachine equations.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import cast
 
@@ -34,7 +34,7 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     FieldAtomSort,
     HigherExpressionID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
@@ -54,6 +54,15 @@ class ReverseHigherInterfaceCompilation:
     left: HigherExpressionID
     symbol: HigherExpressionID
     right: HigherExpressionID
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseHigherInterfaceCompilerAuditSnapshot:
+    """Published cache identities used by recursive source-payload audits."""
+
+    ledger: ResourceLedger
+    cache_owner: int
+    cache: Mapping[FieldCellActionID, ReverseHigherInterfaceCompilation]
 
 
 class ReverseHigherInterfaceCompiler:
@@ -104,6 +113,12 @@ class ReverseHigherInterfaceCompiler:
         count = len(self._cache)
         self._cache.clear()
         self.ledger.release(self._cache_owner, entries=count)
+
+    def audit_snapshot(self) -> ReverseHigherInterfaceCompilerAuditSnapshot:
+        """Expose the exact registered compilation cache without rebuilding it."""
+        return ReverseHigherInterfaceCompilerAuditSnapshot(
+            self.ledger, self._cache_owner, self._cache
+        )
 
     def _bounded_constant(
         self,

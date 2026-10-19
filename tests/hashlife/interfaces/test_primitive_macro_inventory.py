@@ -16,7 +16,7 @@ from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerDict
-from tests.support.diamond_higher_context import machine
+from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -24,16 +24,18 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
         PrimitiveMacroArena,
+    )
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        LocalInterfaceID,
     )
 
 
 def setup() -> tuple[
     DiamondRuntime, PrimitiveMacroArena, ActionProgramID, CellID, LocalInterfaceID
 ]:
-    runtime, action = machine((1, 0, 1), 4)
+    runtime, action = collatz_higher_context_runtime((1, 0, 1), 4)
     runtime.kernel(action)
     kernel = runtime.primitive_ids[action]
     source = runtime.cells.source(0, 2)

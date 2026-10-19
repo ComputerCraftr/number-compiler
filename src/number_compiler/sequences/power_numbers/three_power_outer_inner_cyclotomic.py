@@ -179,7 +179,7 @@ def _source_phase_counts(
     capacities = [0] * period
     head: list[int | None] = [None, None]
     weighted_known_mod = 0
-    gaps = []
+    gaps: list[tuple[int, int]] = []
     for block in source.blocks:
         start, end = block.start, block.start + block.width
         if block.source_value is None:
@@ -232,7 +232,7 @@ class FermatOuterInnerPhaseConstraint:
     cylinder_owner: FermatTwoSidedSourceCylinder = field(repr=False, compare=False)
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
             self.clock,
             self.fold_width,
@@ -245,8 +245,8 @@ class FermatOuterInnerPhaseConstraint:
             self.required_unknown_residue9900,
             self.unknown_blocks,
             self.forced_single_block,
-            self.source_owner._payload(),
-            self.cylinder_owner._payload(),
+            self.source_owner.issuer_payload(),
+            self.cylinder_owner.structural_payload(),
         )
 
     @property
@@ -255,7 +255,9 @@ class FermatOuterInnerPhaseConstraint:
             self.source_owner.producer_verified
             and self.cylinder_owner.producer_verified
             and self.cylinder_owner.source is self.source_owner
-            and harmonic_verified(self, self._payload(), issuer=_OUTER_INNER_ISSUER)
+            and harmonic_verified(
+                self, self.structural_payload(), issuer=_OUTER_INNER_ISSUER
+            )
         )
 
     @property
@@ -317,7 +319,7 @@ class FermatOuterInnerPhaseConstraint:
                 and (integer >> b.start) & ((1 << b.width) - 1) != b.source_value
             ):
                 raise ArithmeticError("source differs from certified island")
-        if self.cylinder_owner._admitted(integer) is None:
+        if self.cylinder_owner.admitted_edges(integer) is None:
             raise ArithmeticError(
                 "source violates the full issued CRT/high/carry cylinder"
             )
@@ -404,7 +406,7 @@ def demand_outer_inner_phase_constraint(
         source,
         cylinder,
     )
-    issue_harmonic(result, result._payload(), issuer=_OUTER_INNER_ISSUER)
+    issue_harmonic(result, result.structural_payload(), issuer=_OUTER_INNER_ISSUER)
     return result
 
 

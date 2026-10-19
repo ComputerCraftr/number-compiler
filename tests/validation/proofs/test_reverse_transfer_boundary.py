@@ -70,7 +70,7 @@ def test_production_disjoint_summaries_alias_different_carry_histories() -> None
     value = 196
     for generation in range(8):
         digits = tuple(map(int, reversed(str(value))))
-        pair = tuple(a + b for a, b in zip(digits, reversed(digits)))
+        pair = tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
         if generation == 7:
             histories[2] = carry_history(pair[:2])
             histories[6] = carry_history(pair[4:6])
@@ -262,7 +262,9 @@ def test_source_role_cannot_admit_a_quarantined_proof_record() -> None:
 
 def test_diamond_summary_ids_are_checked_against_their_actual_state_arena() -> None:
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        LocalInterfaceID,
+    )
     from number_compiler.hashlife.observation.hashlife_projection import (
         HashLifeBlockIndex,
     )
@@ -326,7 +328,7 @@ def test_public_reverse_point_and_width_cannot_use_oracle_packing_or_output_tape
         assert term.digit(position) == int(digits[-1 - position])
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
+    assert collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads == 0
 
 
 def test_production_workspace_never_memoizes_a_complete_future_carry_row() -> None:

@@ -122,7 +122,7 @@ def test_late_source_bit_arguments_are_cofactored_in_external_variable_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.arithmetic.functions.finite_function_types import BOOL
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+    from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 
     arena = BitFunctionArena(ResourceLedger())
     left = FinitePort(PortVariable(0, 0, "a", 0), 6)
@@ -131,7 +131,7 @@ def test_late_source_bit_arguments_are_cofactored_in_external_variable_order(
     a = arena.variable(ports, left, AtomSort("a-value", 6))
     b = arena.variable(ports, right, AtomSort("b-value", 3))
     zero = arena.constant(FunctionSignature(ports, AtomSort("b-value", 3)), 0)
-    circuit = _Circuit(arena.functions, ports)
+    circuit = BooleanCircuit(arena.functions, ports)
     aa, av = circuit.imported(arena.resolve(a))
     bb, bv = circuit.imported(arena.resolve(b))
     a_is_one = circuit.conjunction(
@@ -140,7 +140,7 @@ def test_late_source_bit_arguments_are_cofactored_in_external_variable_order(
     b_is_two = circuit.conjunction(circuit.negate(bb[0]), bb[1])
     predicate = circuit.negate(circuit.conjunction(a_is_one, b_is_two))
     signature = FunctionSignature(ports, BOOL)
-    function = arena._publish(
+    function = arena.publish_circuit(
         circuit,
         (circuit.normalized(signature, (predicate,), circuit.conjunction(av, bv)),),
     )[0]
@@ -160,8 +160,8 @@ def test_late_source_bit_arguments_are_cofactored_in_external_variable_order(
 
     # Keep the strict padding contract: an everywhere-true extension has the
     # same legal values but is not a normalized result on undeclared codes.
-    bad_circuit = _Circuit(arena.functions, ports)
-    bad = arena._publish(
+    bad_circuit = BooleanCircuit(arena.functions, ports)
+    bad = arena.publish_circuit(
         bad_circuit,
         (bad_circuit.normalized(signature, (bad_circuit.one,), bad_circuit.one),),
     )[0]

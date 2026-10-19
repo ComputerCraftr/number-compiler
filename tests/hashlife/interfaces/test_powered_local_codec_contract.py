@@ -14,7 +14,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     TransferSummaryID,
 )
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 
 
 def test_powered_local_effect_accepts_only_exact_runtime_handle_sorts() -> None:

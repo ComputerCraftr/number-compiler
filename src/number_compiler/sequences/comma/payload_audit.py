@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Hashable
 from typing import TYPE_CHECKING
 
-from number_compiler.hashlife.execution.source_bound_images import SourceImageBinding
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageBinding
 from number_compiler.resources.metric_keys import comma as _comma_keys
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.comma.image_adapter import _CommaImageAdapter
+    from number_compiler.sequences.comma.image_adapter import CommaImageAdapter
     from number_compiler.sequences.comma.power import CommaTerm
 
 from typing import cast
@@ -28,7 +28,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
     source-image auditor.  This owner checks the family-specific records and
     leaves per-image arithmetic binding to ``audit_image_binding``.
     """
-    from number_compiler.hashlife.execution.source_bound_images import SourceImageID
+    from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
     from number_compiler.resources.stores import LedgerDict
     from number_compiler.sequences.comma.action_arena import (
         CommaActionID,
@@ -40,9 +40,9 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
         AffineWeight,
         BoundaryState,
         MacroTemplate,
-        _boundary_state_signature,
         _validate_macro_component_header,
         _validate_macro_component_read,
+        boundary_state_signature,
     )
     from number_compiler.sequences.comma.image_adapter import (
         SOURCE,
@@ -169,7 +169,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 state = node.boundary_source
                 if type(state) is not BoundaryState:
                     raise ValueError("comma boundary action has another source sort")
-                _boundary_state_signature(state)
+                boundary_state_signature(state)
                 valid_node = (
                     type(node.steps) is int
                     and node.steps >= 0
@@ -187,7 +187,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 state = node.boundary_source
                 if type(state) is not BoundaryState:
                     raise ValueError("receiver-bound action has another source sort")
-                _boundary_state_signature(state)
+                boundary_state_signature(state)
                 valid_node = (
                     type(node.steps) is int
                     and node.steps >= 0
@@ -206,8 +206,8 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     or type(target) is not BoundaryState
                 ):
                     raise ValueError("global return has another boundary state sort")
-                _boundary_state_signature(state)
-                _boundary_state_signature(target)
+                boundary_state_signature(state)
+                boundary_state_signature(target)
                 valid_node = node.steps == 0 and _valid_artifact_digest(
                     node.future_digest
                 )
@@ -244,7 +244,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             if type(node) is _Action and node.kind == "boundary-prefix":
                 state = node.boundary_source
                 if state is not None:
-                    _boundary_state_signature(state)
+                    boundary_state_signature(state)
             if (
                 type(node) is not _Action
                 or local_id not in canonical
@@ -269,7 +269,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             elif node.kind == "boundary-prefix":
                 state = node.boundary_source
                 if state is not None:
-                    _boundary_state_signature(state)
+                    boundary_state_signature(state)
                 if (
                     state is None
                     or state not in arena._boundary_templates._data
@@ -331,7 +331,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 or template.source is not template_state
             ):
                 raise ValueError("comma boundary template has another shape")
-            _boundary_state_signature(template_state)
+            boundary_state_signature(template_state)
             template_seal = seals[template_state]
             charge_boundary_audit_component()
             if (
@@ -406,13 +406,15 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
         len(expected_nodes) != len(arena._boundary_nodes)
         or any(
             actual is not expected
-            for actual, expected in zip(arena._boundary_nodes._data, expected_nodes)
+            for actual, expected in zip(
+                arena._boundary_nodes._data, expected_nodes, strict=True
+            )
         )
         or len(expected_seal_nodes) != len(arena._boundary_seal_nodes)
         or any(
             actual is not expected
             for actual, expected in zip(
-                arena._boundary_seal_nodes._data, expected_seal_nodes
+                arena._boundary_seal_nodes._data, expected_seal_nodes, strict=True
             )
         )
     ):
@@ -422,7 +424,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
 
     occurrence_valid = len(term._occurrences) == len(term._occurrence_seals)
     for occurrence, occurrence_seal in zip(
-        term._occurrences._data, term._occurrence_seals._data
+        term._occurrences._data, term._occurrence_seals._data, strict=False
     ):
         if (
             type(occurrence) is not _Occurrence
@@ -458,7 +460,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     or occurrence.absolute_index - cursor.transitions < 1
                 ):
                     raise ValueError("invalid occurrence cursor")
-                _boundary_state_signature(cursor.state)
+                boundary_state_signature(cursor.state)
             except (AttributeError, TypeError, ValueError):
                 occurrence_valid = False
                 reject(term._occurrence_owner, occurrence)
@@ -480,16 +482,14 @@ __all__ = ["audit_comma_term"]
 
 
 def audit_comma_image_binding(
-    adapter: _CommaImageAdapter,
+    adapter: CommaImageAdapter,
     binding: SourceImageBinding,
     payload: object,
     failure_prefix: Hashable | None,
 ) -> tuple[Hashable, ...] | None:
     """Validate one image's family binding without querying or charging it."""
-    from number_compiler.hashlife.execution.source_bound_images import (
-        SourceImageID,
-        _ImageRecord,
-    )
+    from number_compiler.hashlife.execution.source_bound_images import SourceImageRecord
+    from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
     from number_compiler.sequences.comma.action_arena import CommaActionID, _Action
     from number_compiler.sequences.comma.image_adapter import (
         SOURCE,
@@ -545,7 +545,7 @@ def audit_comma_image_binding(
         from number_compiler.sequences.comma.boundary_quotient import (
             PERIOD,
             BoundaryState,
-            _boundary_state_signature,
+            boundary_state_signature,
         )
 
         cursor = payload.boundary_cursor
@@ -559,7 +559,7 @@ def audit_comma_image_binding(
             or payload.absolute_index - cursor.transitions < 1
         ):
             raise ValueError("comma image has an invalid boundary cursor shape")
-        _boundary_state_signature(cursor.state)
+        boundary_state_signature(cursor.state)
 
     action = binding.action
     action.validate(
@@ -614,7 +614,7 @@ def audit_comma_image_binding(
         source.validate(core.owner, core._KIND, size=len(core._nodes))
         parent = core._nodes._data[source.local_id]
         if (
-            type(parent) is not _ImageRecord
+            type(parent) is not SourceImageRecord
             or parent.binding.family != adapter.family
             or parent.binding.semantic_version != adapter.semantic_version
             or type(parent.payload) is not CommaImagePayload
@@ -656,7 +656,7 @@ def audit_comma_image_binding(
         from number_compiler.sequences.comma.boundary_quotient import (
             PERIOD,
             BoundaryState,
-            _boundary_state_signature,
+            boundary_state_signature,
         )
 
         state = node.boundary_source
@@ -668,7 +668,7 @@ def audit_comma_image_binding(
             or current_cursor.state != state
         ):
             raise ValueError("comma receiver prefix lost its cursor authority")
-        _boundary_state_signature(state)
+        boundary_state_signature(state)
         if prior is None:
             if (
                 current_cursor.exponent % PERIOD != state.exponent_residue

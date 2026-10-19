@@ -30,7 +30,7 @@ def capability_table() -> str:
 
 
 def check_cli_docs(root: Path) -> list[str]:
-    errors = []
+    errors: list[str] = []
     guide = root / "docs/cli.md"
     if guide.exists():
         text = guide.read_text()

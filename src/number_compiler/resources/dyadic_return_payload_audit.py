@@ -40,13 +40,14 @@ def audit_dyadic_return_payloads(
         DyadicReturnLaw,
         DyadicReturnSourceID,
         DyadicReturnSupportID,
-        _ActionNode,
-        _identity_transfer,
-        _ImageNode,
-        _low_bits,
-        _SourceNode,
-        _SupportNode,
     )
+    from number_compiler.hashlife.execution.dyadic_return_records import (
+        DyadicReturnActionRecord,
+        DyadicReturnImageRecord,
+        DyadicReturnSourceRecord,
+        DyadicReturnSupportRecord,
+    )
+    from number_compiler.hashlife.execution.dyadic_return_transport import low_bits
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.resources.tile_scheduler_inventory_support import (
         valid_source_only_scheduler,
@@ -81,31 +82,31 @@ def audit_dyadic_return_payloads(
             def action_node(
                 identity: DyadicReturnActionID,
                 workspace: DyadicReturnImageWorkspace = root,
-            ) -> _ActionNode:
+            ) -> DyadicReturnActionRecord:
                 return DyadicReturnImageWorkspace.action_node(workspace, identity)
 
             def source_node(
                 identity: DyadicReturnSourceID,
                 workspace: DyadicReturnImageWorkspace = root,
-            ) -> _SourceNode:
+            ) -> DyadicReturnSourceRecord:
                 return DyadicReturnImageWorkspace.source_node(workspace, identity)
 
             def support_node(
                 identity: DyadicReturnSupportID,
                 workspace: DyadicReturnImageWorkspace = root,
-            ) -> _SupportNode:
+            ) -> DyadicReturnSupportRecord:
                 return DyadicReturnImageWorkspace.support_node(workspace, identity)
 
             def image_node(
                 identity: DyadicReturnImageID,
                 workspace: DyadicReturnImageWorkspace = root,
-            ) -> _ImageNode:
+            ) -> DyadicReturnImageRecord:
                 return DyadicReturnImageWorkspace.image_node(workspace, identity)
 
             def transfer_matches(
                 retained: SkewTransfer[int],
                 reconstructed: SkewTransfer[int],
-                admitted: _SourceNode,
+                admitted: DyadicReturnSourceRecord,
                 workspace: DyadicReturnImageWorkspace = root,
             ) -> bool:
                 """Compare full affine laws or an authenticated Collatz singleton."""
@@ -268,9 +269,9 @@ def audit_dyadic_return_payloads(
                 section_valid = True
                 for index, support_record in enumerate(workspace.support):
                     support_id = DyadicReturnSupportID(
-                        workspace.owner, workspace._SUPPORT_KIND, index
+                        workspace.owner, workspace.SUPPORT_KIND, index
                     )
-                    bound = type(support_record) is _SupportNode
+                    bound = type(support_record) is DyadicReturnSupportRecord
                     if bound:
                         bound &= (
                             support_node(support_id) is support_record
@@ -313,7 +314,7 @@ def audit_dyadic_return_payloads(
                             section_valid = False
                             continue
                         state = support_record.residue
-                        transfer = _identity_transfer()
+                        transfer = SkewTransfer(1, 0, 1)
                         odd_steps = delta = minimum = 0
                         branch_word = 0
                         for offset in range(support_record.width):
@@ -403,7 +404,7 @@ def audit_dyadic_return_payloads(
                                 and support_record.width
                                 == cycle.cycles * length + cycle.remainder
                                 and support_record.residue
-                                == _low_bits(
+                                == low_bits(
                                     law_cycle.states[cycle.cycle_phase],
                                     support_record.width,
                                 )
@@ -501,7 +502,7 @@ def audit_dyadic_return_payloads(
                             bound &= (
                                 numerator % left.transfer.lower == 0
                                 and right.residue
-                                == _low_bits(
+                                == low_bits(
                                     numerator // left.transfer.lower, right.width
                                 )
                                 and support_record.width == left.width + right.width
@@ -514,7 +515,7 @@ def audit_dyadic_return_payloads(
                                 and support_record.delta == left.delta + right.delta
                                 and support_record.minimum
                                 == min(left.minimum, left.delta + right.minimum)
-                                and _low_bits(support_record.residue, left.width)
+                                and low_bits(support_record.residue, left.width)
                                 == left.residue
                             )
                             expected_cycle = (
@@ -559,10 +560,10 @@ def audit_dyadic_return_payloads(
                 section_valid = True
                 for index, image_record in enumerate(workspace.images):
                     image_id = DyadicReturnImageID(
-                        workspace.owner, workspace._IMAGE_KIND, index
+                        workspace.owner, workspace.IMAGE_KIND, index
                     )
                     bound = (
-                        type(image_record) is _ImageNode
+                        type(image_record) is DyadicReturnImageRecord
                         and type(image_record.summary) is DyadicImageSummary
                     )
                     if bound:
@@ -595,7 +596,7 @@ def audit_dyadic_return_payloads(
                         if summary.support is None:
                             bound &= (
                                 summary.width == 0
-                                and summary.transfer == _identity_transfer()
+                                and summary.transfer == SkewTransfer(1, 0, 1)
                                 and summary.cycle is None
                                 and summary.delta
                                 == summary.minimum
@@ -815,7 +816,7 @@ def audit_dyadic_return_payloads(
                 root_approved.update((id(image_id), id(support_id)))
 
             root_precision = root.steps
-            root_residue = _low_bits(root.seed, root_precision)
+            root_residue = low_bits(root.seed, root_precision)
             root_lift = (
                 0
                 if root_precision and root.seed.bit_length() <= root_precision
@@ -826,11 +827,11 @@ def audit_dyadic_return_payloads(
             root_source = source_node(root.root_source)
             root_image = image_node(root.root_payload)
             valid &= (
-                root.identity == DyadicReturnActionID(root.owner, root._ACTION_KIND, 0)
-                and action_node(root.identity) == _ActionNode(0, None)
+                root.identity == DyadicReturnActionID(root.owner, root.ACTION_KIND, 0)
+                and action_node(root.identity) == DyadicReturnActionRecord(0, None)
                 and action_node(root.root_action).width == root.steps
                 and root_source
-                == _SourceNode(
+                == DyadicReturnSourceRecord(
                     root_residue,
                     root.steps,
                     root_lift,

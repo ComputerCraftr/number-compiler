@@ -9,6 +9,8 @@ import json
 import sys
 from pathlib import Path
 
+from devtools.benchmarks.report_schema import sequence
+from devtools.report_values import object_list, string_keyed_mapping
 from devtools.verification.fermat_integral_ideal_reference import (
     FermatIntegralIdealWitness,
 )
@@ -28,9 +30,15 @@ def _decode_int(value: object) -> int:
 
 
 def _parse_vector(value: object, *, maximum: int) -> tuple[int, ...]:
-    if type(value) is not list or len(value) > maximum:
+    if not object_list(value) or len(value) > maximum:
         raise ValueError("invalid bounded proof vector")
-    return tuple(_decode_int(item) for item in value)
+    return tuple(_decode_int(item) for item in sequence(value))
+
+
+def _signed_digit(value: object) -> int:
+    if type(value) is not int or value not in (-1, 0, 1):
+        raise ValueError("invalid signed output vector")
+    return value
 
 
 def verify(path: str | Path) -> dict[str, object]:
@@ -39,8 +47,11 @@ def verify(path: str | Path) -> dict[str, object]:
         payload = certificate_file.read(MAX_CERTIFICATE_BYTES + 1)
     if len(payload) > MAX_CERTIFICATE_BYTES:
         raise ValueError("certificate exceeds the file-size budget")
-    data = json.loads(payload)
-    if type(data) is not dict or data.get("scheme") != "fermat-integral-ideal-v1":
+    raw_data: object = json.loads(payload)
+    data = string_keyed_mapping(raw_data)
+    if data is None:
+        raise ValueError("unsupported certificate scheme")
+    if data.get("scheme") != "fermat-integral-ideal-v1":
         raise ValueError("unsupported certificate scheme")
     index, level, claimed_width = (
         data.get("index"),
@@ -54,14 +65,11 @@ def verify(path: str | Path) -> dict[str, object]:
     width = 1 << index
     if type(claimed_width) is not int or claimed_width != width:
         raise ValueError("claimed source width does not match the Fermat index")
-    digits_raw = data.get("signed_digits")
-    if (
-        type(digits_raw) is not list
-        or len(digits_raw) != width
-        or any(
-            type(digit) is not int or digit not in (-1, 0, 1) for digit in digits_raw
-        )
-    ):
+    raw_digits = data.get("signed_digits")
+    if not object_list(raw_digits):
+        raise ValueError("invalid signed output vector")
+    digits_raw = sequence(raw_digits)
+    if len(digits_raw) != width:
         raise ValueError("invalid signed output vector")
     derivation = data.get("derivation")
     if type(derivation) is not str:
@@ -71,7 +79,7 @@ def verify(path: str | Path) -> dict[str, object]:
         level,
         _parse_vector(data.get("folded_hex"), maximum=width),
         _parse_vector(data.get("carry_hex"), maximum=width + 1),
-        tuple(digits_raw),
+        tuple(_signed_digit(digit) for digit in digits_raw),
         derivation=derivation,
     )
     status = witness.terminal_result()

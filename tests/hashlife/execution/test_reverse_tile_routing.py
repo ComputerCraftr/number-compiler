@@ -17,15 +17,17 @@ from number_compiler.hashlife.execution.continuations.higher_bimachine import (
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.reverse_cutover import (
     assert_completed_child_work,
     assert_q19_output_authority,
 )
-from tests.support.reverse_higher_interface import _direct_step
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.reverse_higher_interface import direct_step
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 @pytest.mark.validation  # Six temporal scales and all output coordinates.
@@ -33,11 +35,13 @@ def test_tile_scheduler_fuses_t1_through_t32_without_higher_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = (7, 18, 7, 19, 19, 19, 19, 19)
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
     expected: tuple[int, ...] = source
     expectations: dict[int, tuple[int, ...]] = {}
     for step in range(1, 33):
-        expected = _direct_step(expected, 10)
+        expected = direct_step(expected, 10)
         if step in (1, 2, 4, 8, 16, 32):
             expectations[step] = expected
 
@@ -47,7 +51,7 @@ def test_tile_scheduler_fuses_t1_through_t32_without_higher_runtime(
     monkeypatch.setattr(HigherSemanticArena, "evaluate", forbidden)
     monkeypatch.setattr(HigherBimachineRuntime, "point", forbidden)
     monkeypatch.setattr(HigherBimachineRuntime, "point_structural", forbidden)
-    with _tile(tiles, adapter, primitive, source) as binding:
+    with make_tile_from_symbols(tiles, adapter, primitive, source) as binding:
         for steps, expected_word in expectations.items():
             action = adapter.power(primitive, steps)
             with scheduler.application(
@@ -89,7 +93,7 @@ def test_public_reverse_digits_use_canonical_reachable_images(
         poison.setattr(temporal, "complete_temporal", forbidden)
         assert tuple(term.digit(i) for i in range(len(expected))) == expected
         assert term.width() == len(expected)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["source_image_publications"] > 0
     assert counters["source_image_projection_publications"] > 0
     if generation == 1:
@@ -123,9 +127,11 @@ def test_reverse_tile_ids_reject_integer_aliases_before_mutation(
     sort: str,
     alias: object,
 ) -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(10))
-    with _tile(tiles, adapter, primitive, (7,)) as binding:
-        interface = adapter._compile_interface(
+    ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
+    with make_tile_from_symbols(tiles, adapter, primitive, (7,)) as binding:
+        interface = adapter.compile_interface(
             primitive, binding.tile, adapter.wiring(primitive)
         )
         if sort == "tile":

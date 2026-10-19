@@ -63,7 +63,6 @@ if TYPE_CHECKING:
         NormalizePrimitiveLambda,
     )
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
         CompileStructuredExpression,
         StructuredExpressionTask,
@@ -72,7 +71,10 @@ if TYPE_CHECKING:
         PrimitiveMacroKey,
         PrimitiveMacroObservation,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        LocalInterfaceID,
+        StructureID,
+    )
 
 
 @dataclass(frozen=True)

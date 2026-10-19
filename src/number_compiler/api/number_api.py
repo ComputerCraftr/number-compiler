@@ -14,7 +14,6 @@ from number_compiler.api.elementary_payloads import (
     MersenneTermPayload,
     ScalarTermPayload,
 )
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.query_types import TermQuery
 from number_compiler.api.reverse_payloads import (
     DoubleReverseTermPayload,
@@ -22,6 +21,7 @@ from number_compiler.api.reverse_payloads import (
 )
 from number_compiler.api.symbolic_terms import SymbolicExpression, initialize_projected
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.symbolic_extent import (
@@ -47,14 +47,12 @@ if TYPE_CHECKING:
     )
 
 
-NumberFamily = FamilyId
-
 _PoweredOwner = TypeVar("_PoweredOwner")
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectionMetrics:
-    family: NumberFamily
+    family: FamilyId
     index: int
     construction_steps: int
     projection_work: int
@@ -172,7 +170,7 @@ class PoweredCollatzTermPayload:
         def projected() -> Iterator[int]:
             # Explicit full-output lowering happens once, on first demand.
             # It must not become one source-image reconstruction per digit.
-            ledger = self.term._ledger
+            ledger = self.term.resource_ledger
             ledger.bump(_api_metrics.COLLATZ_RADIX_CONVERSION_REQUESTS)
             try:
                 value = self.materialize(max_bits=self.term.maximum_width)
@@ -189,7 +187,7 @@ class PoweredCollatzTermPayload:
                 yield int(digit)
 
         return measured_output_stream(
-            self.term._ledger, "collatz_output_stream", projected
+            self.term.resource_ledger, "collatz_output_stream", projected
         )
 
     @source_reads_only
@@ -270,7 +268,7 @@ class AntihydraTermPayload:
             "first_failure_index": result.first_failure_index,
             "source_binding": result.source_binding,
             "total_arithmetic": True,
-            "physical_roof_evaluated": self.term._physical is not None,
+            "physical_roof_evaluated": self.term.physical_run_published,
         }
 
     def physical_run(self) -> Run:
@@ -295,7 +293,7 @@ TermPayload = (
 
 @dataclass(frozen=True, slots=True, init=False)
 class ProjectedNumberTerm:
-    family: NumberFamily
+    family: FamilyId
     index: int
     parameter: int | None
     source_radix: int | None
@@ -305,7 +303,7 @@ class ProjectedNumberTerm:
 
     def __init__(
         self,
-        family: NumberFamily,
+        family: FamilyId,
         index: int,
         parameter: int | None,
         source_radix: int | None,
@@ -319,7 +317,11 @@ class ProjectedNumberTerm:
 
     @property
     def symbolic(self) -> str:
-        return self._symbolic.render()
+        return self.symbolic_expression.render()
+
+    @property
+    def symbolic_expression(self) -> SymbolicExpression:
+        return self._symbolic
 
     @property
     def estimated_bit_length(self) -> Extent:
@@ -353,7 +355,7 @@ class ProjectedNumberTerm:
             index = require_integer(index, "digit coordinate")
             if index < 0:
                 raise IndexError(index)
-            self.payload.term._prepare_recursive_source_authority()
+            self.payload.term.prepare_recursive_source_authority()
         return self._digit_source_only(index)
 
     @source_reads_only
@@ -476,7 +478,7 @@ class NumberCompiler:
 
     def project(self, query: TermQuery) -> ProjectedNumberTerm:
         """Project one already-validated, family-specific execution query."""
-        from number_compiler.api.family_registry import resolve_projection_adapter
+        from number_compiler.api.registry_adapters import resolve_projection_adapter
 
         adapter = resolve_projection_adapter(query)
         return adapter(self, query)
@@ -569,7 +571,6 @@ __all__ = [
     "FormulaTermPayload",
     "MersenneTermPayload",
     "NumberCompiler",
-    "NumberFamily",
     "PoweredCollatzTermPayload",
     "PoweredReverseAddTermPayload",
     "ProjectedNumberTerm",

@@ -3,9 +3,9 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     MAX_PRIMITIVE_IDENTITY_UNITS,
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger

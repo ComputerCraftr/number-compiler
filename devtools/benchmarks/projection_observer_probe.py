@@ -142,7 +142,7 @@ def main() -> None:
                 "initial_class": p.initial_class,
                 "generic_ll_iterations": e - 2,
             }
-            for e, p in zip((3, 5, 7, 11, 13), mersenne)
+            for e, p in zip((3, 5, 7, 11, 13), mersenne, strict=True)
         ],
         "digit_observer_short_circuit": {
             "F5": {
@@ -256,7 +256,7 @@ def main() -> None:
         "| exponent | residues | observer classes | observer bits | initial class |",
         "|---:|---:|---:|---:|---:|",
     ]
-    for e, mersenne_observer in zip((3, 5, 7, 11, 13), mersenne):
+    for e, mersenne_observer in zip((3, 5, 7, 11, 13), mersenne, strict=True):
         lines.append(
             f"| {e} | {mersenne_observer.source_states:,} | {mersenne_observer.observer_classes:,} | {mersenne_observer.observer_bits} | {mersenne_observer.initial_class} |"
         )

@@ -27,7 +27,8 @@ from number_compiler.sequences.collatz.tile_family_hooks import (
     collatz_compatibility_tile_hooks,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_runtime import build, oracle
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
+from tests.support.diamond_runtime import oracle
 
 
 def test_complete_fixed_kernel_matches_all_old_bimachine_states_transitions_and_outputs() -> (
@@ -72,7 +73,9 @@ def test_kernel_audit_rejects_duck_typed_unadmitted_boundary_effect() -> None:
         DiamondPayloadRegistry,
     )
 
-    runtime, action = build(PhysicalCollatzFourBlockEffect(), (1,), 16, 4)
+    runtime, action = build_collatz_diamond_runtime(
+        PhysicalCollatzFourBlockEffect(), (1,), 16, 4
+    )
     pending = [action]
     kernel = None
     while pending:
@@ -139,7 +142,7 @@ def test_fixed_kernel_projection_lowers_before_tile_execution(
     monkeypatch.setattr(PhysicalCollatzFourBlockEffect, "advance", forbidden)
     monkeypatch.setattr(PhysicalCollatzFourBlockEffect, "emit", forbidden)
     assert [application.direct_powered_point(i) for i in range(8)] == expected[:8]
-    report = collect_ledger_metrics(application._ledger)
+    report = collect_ledger_metrics(application.resource_ledger)
     assert report.proof_machine_applications == 0
 
 
@@ -164,7 +167,9 @@ def test_forged_fixed_kernel_rejects_before_index_ledger_mutation() -> None:
 def test_macro_physical_compiler_consumes_binary_dag_and_certifies_halo_and_cycle() -> (
     None
 ):
-    runtime, _ = build(CollatzPhysicalBlockEffect(), (1,), 16, 1)
+    runtime, _ = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 16, 1
+    )
     root = compile_physical_diamond(
         runtime.actions.compiler, runtime.actions, 10**12 + 2
     )

@@ -10,11 +10,13 @@ from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_query import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 
 
 def test_reachable_codec_namespace_cannot_capture_next_binder() -> None:
-    app = build(PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1)
+    app = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
+    )
     runtime, primitive = app.runtime, app.root
     pair = runtime.actions.compose(primitive, primitive)
     compiler = runtime.semantic_compiler
@@ -38,7 +40,9 @@ def test_reachable_codec_namespace_cannot_capture_next_binder() -> None:
 
 
 def test_profile_choice_is_explicit_and_foreign_rejects_before_warm_admission() -> None:
-    app = build(PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1)
+    app = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
+    )
     runtime, primitive = app.runtime, app.root
     compiler = runtime.semantic_compiler
     pair = runtime.actions.compose(primitive, primitive)
@@ -49,7 +53,9 @@ def test_profile_choice_is_explicit_and_foreign_rejects_before_warm_admission() 
     compiler._admit(variable, (variable,), structured=True, profile=profile)
     compiler._admit(variable, (variable,), structured=True)
     assert {key.profile for key in compiler.admissions} == {None, profile}
-    other = build(PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1)
+    other = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
+    )
     foreign = other.runtime.semantic_compiler.source_initial_profile(
         other.runtime.actions.compose(other.root, other.root)
     )

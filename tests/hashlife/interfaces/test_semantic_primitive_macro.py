@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from tests.support.semantic_oracles import macro_oracle as oracle
 
 if TYPE_CHECKING:
@@ -30,9 +32,11 @@ from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
 from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
     PrimitiveMacroArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -126,7 +130,7 @@ def observe(
             COMPONENT_ROLES,
             (
                 arena.bits.evaluate(function, values)
-                for function in arena._components(quotient)
+                for function in arena.interface_components(quotient)
             ),
             strict=True,
         )
@@ -303,9 +307,11 @@ def test_complete_nonpower_boundary_admission_is_shared_by_every_channel() -> No
 def test_primitive_macro_uses_one_shared_scheduler_and_semantic_arena(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientID
     from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
         PrimitiveMacroKey,
+    )
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        DiamondQuotientID,
     )
 
     runtime, arena, kernel = setup(primitive(), (0, 1, 3, 0))

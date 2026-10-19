@@ -54,7 +54,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputBranch,
     RecursiveOutputLeaf,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.coordinate_program import (
     ReverseCoordinateProgramArena,

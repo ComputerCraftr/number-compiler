@@ -23,7 +23,7 @@ def test_diamond_nodes_have_disjoint_roles_and_interner_slots_are_not_nodes() ->
         ledger.reserve(owner, entries=count, nodes=count)
         records.extend(ArenaToken(role) for _ in range(count))
     owner = ledger.register("image interner", "image_action")
-    interner: LedgerDict[object, object]
+    interner: LedgerDict[int, int]
     interner = ledger.make_dict(owner, nodes_per_entry=0)
     ledger.reserve(owner, entries=3)
     interner.update({0: 0, 1: 1, 2: 2})
@@ -91,15 +91,15 @@ def test_runtime_image_publication_is_accounted_and_reused() -> None:
     cold = term.metrics()
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    counters = dict(term._ledger.counters)
+    counters = dict(term.resource_ledger.counters)
     assert_collatz_source_publications(counters)
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     assert cold.resource_accounting_mismatch == 0
     assert cold.whole_word_sweeps == cold.whole_word_symbol_visits == 0
     assert cold.proof_machine_applications == 0
 
     assert term.digit(0) == 1
-    warm = term._ledger.counters
+    warm = term.resource_ledger.counters
     assert_source_image_replay_stable(counters, warm)
 
 

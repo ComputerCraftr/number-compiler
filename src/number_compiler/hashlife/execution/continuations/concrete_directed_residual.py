@@ -41,8 +41,8 @@ def validate_residual(
 ) -> None:
     """Validate a residual completely before an interner lookup."""
     scheduler.adapter.validate_action(record.action)
-    scheduler._validate_side(record.side)
-    scheduler._validate_atom(record.anchor_after)
+    scheduler.validate_side(record.side)
+    scheduler.validate_atom(record.anchor_after)
     if record.constant_result is not None:
         children = directed_children(scheduler, record.action, record.side)
         if children is None:

@@ -12,10 +12,20 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
 from number_compiler.hashlife.execution.tile_causal_observation import causal_width
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.resources.causal_types import (
+    CausalChildStates,
+    CausalState,
+)
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.tile_kernel import _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 
 class _InterfaceEngine:
@@ -35,7 +45,11 @@ class _InterfaceEngine:
         self.child_calls = 0
 
     def interface(
-        self, action: object, tile: TileID, left: object, right: object
+        self,
+        action: FieldCellActionID,
+        tile: TileID,
+        left: CausalState,
+        right: CausalState,
     ) -> CausalInterfacePayload:
         self.interface_calls += 1
         node = self.tiles.resolve(tile)
@@ -48,8 +62,12 @@ class _InterfaceEngine:
         )
 
     def child_states(
-        self, action: object, parent: object, left: object, right: object
-    ) -> tuple[tuple[object, object], tuple[object, object]]:
+        self,
+        action: FieldCellActionID,
+        parent: TileID,
+        left: CausalState,
+        right: CausalState,
+    ) -> CausalChildStates:
         self.child_calls += 1
         return ((left, right), (left, right))
 
@@ -64,10 +82,10 @@ def _activity_fixture() -> tuple[
     TileArena, FieldCellActionID, TileLease, _InterfaceEngine
 ]:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler = _runtime(effect)
+    ledger, tiles, adapter, action, _scheduler = make_tile_runtime(effect)
     blank = effect.blank
-    source = _tile(tiles, adapter, action, (blank, blank, 1, blank))
-    interface = adapter._compile_interface(
+    source = make_tile_from_symbols(tiles, adapter, action, (blank, blank, 1, blank))
+    interface = adapter.compile_interface(
         action,
         source.tile,
         adapter.wiring(action),
@@ -119,10 +137,10 @@ def test_causal_width_rejects_invalid_limits_before_tasks(
     bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
+    ledger, tiles, adapter, action, _scheduler, source = make_tile_runtime_source(
         effect, (effect.blank,)
     )
-    interface = adapter._compile_interface(
+    interface = adapter.compile_interface(
         action,
         source.tile,
         adapter.wiring(action),
@@ -141,8 +159,10 @@ def test_causal_width_rejects_invalid_limits_before_tasks(
 
 def test_causal_width_rejects_wrong_interface_level() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler, source = _runtime_source(effect, (1,))
-    interface = adapter._compile_interface(
+    ledger, tiles, adapter, action, _scheduler, source = make_tile_runtime_source(
+        effect, (1,)
+    )
+    interface = adapter.compile_interface(
         action,
         source.tile,
         adapter.wiring(action),

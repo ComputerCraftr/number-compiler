@@ -10,9 +10,11 @@ particular, a supplied beta or growth bit is not a checked clock extraction.
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.metric_keys import (

@@ -65,7 +65,7 @@ def _install_test_only_global_registry(
 ) -> str:
     """Exercise the global consumer with explicitly synthetic admission."""
     parsed = future_provider.parse_future_candidate(record, charge_work=_no_work)
-    admission = future_authority._KernelInstanceAdmission(
+    admission = future_authority.KernelInstanceAdmission(
         artifact_sha256=parsed.artifact_sha256,
         instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
         theorem_id=future_authority.GLOBAL_RELEASE_THEOREM_ID,

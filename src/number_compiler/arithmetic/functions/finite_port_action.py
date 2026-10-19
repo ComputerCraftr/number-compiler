@@ -116,6 +116,15 @@ class _Decision:
 
 
 @dataclass(frozen=True, slots=True)
+class PortDecision:
+    """Authenticated finite-port node with scoped child references."""
+
+    variable: PortVariable | None
+    low: TransferSummaryID
+    high: TransferSummaryID
+
+
+@dataclass(frozen=True, slots=True)
 class PortComponent:
     variable: PortVariable
     function: TransferSummaryID
@@ -200,6 +209,16 @@ class FinitePortActionArena:
         if handle.local_id >= len(self._nodes):
             raise ValueError("invalid finite-port transfer handle")
         return handle.local_id
+
+    def node(self, handle: TransferSummaryID) -> PortDecision:
+        """Resolve one node after authenticating its arena-scoped handle."""
+        index = self._resolve(handle)
+        record = self._nodes[index]
+        return PortDecision(
+            record.variable,
+            self._handle(record.low),
+            self._handle(record.high),
+        )
 
     def constant(self, value: bool) -> TransferSummaryID:
         if type(value) is not bool:

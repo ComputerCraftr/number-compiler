@@ -106,7 +106,7 @@ def test_primitive_functions_exhaust_every_admitted_state_and_symbol(
         range(primitive.right_count),
     ):
         environment = dict(
-            zip((p.variable for p in record.ports), (left, symbol, right))
+            zip((p.variable for p in record.ports), (left, symbol, right), strict=True)
         )
         expected = (
             primitive.advance(BoundarySide.LEFT, left, symbol),
@@ -114,7 +114,9 @@ def test_primitive_functions_exhaust_every_admitted_state_and_symbol(
             primitive.emit(left, symbol, right),
         )
         for function, value in zip(
-            (record.advance_left, record.advance_right, record.emit), expected
+            (record.advance_left, record.advance_right, record.emit),
+            expected,
+            strict=True,
         ):
             terminal = compiled.functions.evaluate(function, environment)
             assert terminal.kind == "atom" and terminal.value == value
@@ -126,7 +128,7 @@ def test_primitive_functions_exhaust_every_admitted_state_and_symbol(
             continue
         values = [0, 0, 0]
         values[index] = port.cardinality
-        environment = dict(zip((p.variable for p in record.ports), values))
+        environment = dict(zip((p.variable for p in record.ports), values, strict=True))
         for function in (record.advance_left, record.advance_right, record.emit):
             assert compiled.functions.evaluate(function, environment).kind == "invalid"
 
@@ -388,6 +390,9 @@ def _assert_failed_construction_work(
     before_work: tuple[int, int, int, int],
 ) -> None:
     after_work = _construction_work_snapshot(compiled)
-    assert all(after >= prior for after, prior in zip(after_work[:2], before_work[:2]))
+    assert all(
+        after >= prior
+        for after, prior in zip(after_work[:2], before_work[:2], strict=True)
+    )
     assert after_work[2] > before_work[2]
     assert after_work[3] > before_work[3]

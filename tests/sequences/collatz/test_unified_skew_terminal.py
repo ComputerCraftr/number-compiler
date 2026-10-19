@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import patch
 
@@ -41,7 +41,7 @@ def required_quadratic_clock(chain: UnifiedSkewChain) -> SkewQuadraticClock:
 
 
 @contextmanager
-def source_assertions(source: int) -> Iterator[None]:
+def source_assertions(source: int) -> Generator[None, None, None]:
     try:
         yield
     except AssertionError as error:

@@ -28,22 +28,39 @@ def _bounded_longrepr(value: object, limit: int) -> tuple[str, bool]:
     if len(encoded) <= limit:
         return text, False
     suffix = b"\n...[longrepr truncated]"
+    if limit < len(suffix):
+        return suffix[:limit].decode("ascii"), True
     prefix = encoded[: limit - len(suffix)].decode("utf-8", errors="ignore")
     return prefix + suffix.decode("ascii"), True
 
 
 class PhaseTiming:
-    def __init__(self, path: Path, profile_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        path: Path,
+        profile_path: Path | None = None,
+        *,
+        record_safety_limit: int = _RECORD_SAFETY_LIMIT,
+        byte_limit: int = _BYTE_LIMIT,
+        failure_text_limit: int = _FAILURE_TEXT_LIMIT,
+    ) -> None:
+        for name, value in (
+            ("record safety limit", record_safety_limit),
+            ("byte limit", byte_limit),
+            ("failure text limit", failure_text_limit),
+        ):
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive exact integer")
         self.stream: TextIO = path.open("x", encoding="utf-8")
         self.records = 0
         self.bytes = 0
         self.truncated = False
         self.closed = False
         self.collection_started = 0.0
-        self.record_safety_limit = _RECORD_SAFETY_LIMIT
+        self.record_safety_limit = record_safety_limit
         self.record_limit = self.record_safety_limit
-        self.byte_limit = _BYTE_LIMIT
-        self.failure_text_limit = _FAILURE_TEXT_LIMIT
+        self.byte_limit = byte_limit
+        self.failure_text_limit = failure_text_limit
         self.profile_path = profile_path
         self.profiler = None if profile_path is None else cProfile.Profile()
         if self.profiler is not None:

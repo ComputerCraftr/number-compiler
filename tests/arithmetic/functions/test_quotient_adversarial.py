@@ -29,9 +29,11 @@ from number_compiler.hashlife.actions.diamond_actions import (
     ImageCellArena,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
+    DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     DiamondKey,
-    DiamondQuotientArena,
     MacroComponents,
     MacroInterface,
 )
@@ -47,7 +49,7 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import (
         PortSignatureID,
     )
-    from number_compiler.hashlife.interfaces.diamond_quotient import (
+    from number_compiler.hashlife.interfaces.semantic_structures import (
         LocalInterfaceID,
         QuotientRecord,
     )

@@ -30,9 +30,9 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.polynomials.primary_jet import (
     PrimaryJetBlock,
-    _poly_add,
-    _poly_mul,
+    primary_jet_add,
     primary_jet_from_digits,
+    primary_jet_multiply,
 )
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
 
@@ -73,14 +73,14 @@ class WireResponse:
 
     @property
     def linear(self) -> Jet:
-        return _poly_add(self.rows[0].jet, self.rows[1].jet, 2)
+        return primary_jet_add(self.rows[0].jet, self.rows[1].jet, 2)
 
     @classmethod
     def from_affine(cls, fn: CarryFn, constant: Jet, linear: Jet) -> WireResponse:
         return cls(
             (
                 JetPortRow(apply_carry_fn(fn, 0), constant),
-                JetPortRow(apply_carry_fn(fn, 1), _poly_add(constant, linear, 2)),
+                JetPortRow(apply_carry_fn(fn, 1), primary_jet_add(constant, linear, 2)),
             )
         )
 
@@ -157,9 +157,9 @@ def binary_jet(value: int, modulus: int = 32) -> Jet:
 
 def binary_output_response(value: int, modulus: int = 2) -> tuple[Jet, Jet, Jet]:
     """All three unshifted multiply/add output jets, from source plus forcing."""
-    transported = _poly_mul(Y, binary_jet(value, modulus), modulus)
+    transported = primary_jet_multiply(Y, binary_jet(value, modulus), modulus)
     rows = tuple(
-        _poly_add(transported, binary_carry_birth(value, modulus, c), modulus)
+        primary_jet_add(transported, binary_carry_birth(value, modulus, c), modulus)
         for c in range(3)
     )
     return rows[0], rows[1], rows[2]

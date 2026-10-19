@@ -6,7 +6,7 @@ from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 
 
-def _direct_step(word: tuple[int, ...], base: int) -> tuple[int, ...]:
+def direct_step(word: tuple[int, ...], base: int) -> tuple[int, ...]:
     effect = BaseBlockEffect(base)
     left = []
     state = effect.initial(BoundarySide.LEFT)

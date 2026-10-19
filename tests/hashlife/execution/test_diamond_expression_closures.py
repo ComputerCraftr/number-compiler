@@ -10,13 +10,14 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_higher_context import expr, machine, scalar
+from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
+from tests.support.diamond_higher_context import expr, scalar
 
 
 def test_closure_alpha_identity_and_unused_arguments_reduce_before_call_interning() -> (
     None
 ):
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     sort = arena.state_sort(action, 0)
     first, unused = (
@@ -43,7 +44,7 @@ def test_closure_alpha_identity_and_unused_arguments_reduce_before_call_internin
 
 
 def test_call_and_outer_substitution_never_expand_a_program_body() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     sort = arena.state_sort(action, 0)
     formal, actual, replacement = (
@@ -63,7 +64,7 @@ def test_call_and_outer_substitution_never_expand_a_program_body() -> None:
 
 
 def test_outer_lambda_cannot_capture_an_opaque_programs_formal_port() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     formal = arena.variable(arena.state_sort(action, 0), "original-formal")
     symbol = arena.symbol(action, 1)
@@ -83,7 +84,7 @@ def test_outer_lambda_cannot_capture_an_opaque_programs_formal_port() -> None:
 
 
 def test_all_arguments_are_validated_even_when_program_ignores_them() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     formal = arena.variable(arena.state_sort(action, 0), "unused")
     initial = expr(runtime, HigherInitial(action, 0))
@@ -97,7 +98,7 @@ def test_all_arguments_are_validated_even_when_program_ignores_them() -> None:
 
 
 def test_undeclared_free_port_cannot_be_hidden_in_a_closure() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     allowed, hidden = (
         arena.variable(arena.state_sort(action, 0), name)
@@ -109,7 +110,7 @@ def test_undeclared_free_port_cannot_be_hidden_in_a_closure() -> None:
 
 
 def test_closure_repeated_scalar_observation_has_no_output_response_index() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_higher_context_runtime()
     arena = runtime.higher.expressions
     formal = arena.variable(arena.state_sort(action, 0), "state")
     program = arena.closures.intern(

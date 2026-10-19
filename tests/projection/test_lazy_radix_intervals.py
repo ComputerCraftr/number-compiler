@@ -41,10 +41,10 @@ def test_collective_radices_share_one_accounted_exact_cache() -> None:
     assert len(cache) <= cache.MAX_ENTRIES
     assert cache.payload_bytes <= cache.MAX_PAYLOAD_BYTES
     assert {key.radix for key in cache.blocks} <= {2, 3, 5, 6, 12}
-    assert term._ledger.counters.get("radix_microblock_source_bits", 0) == 0
-    assert term._ledger.counters.get("radix_microblock_source_fills", 0) == 0
+    assert term.resource_ledger.counters.get("radix_microblock_source_bits", 0) == 0
+    assert term.resource_ledger.counters.get("radix_microblock_source_fills", 0) == 0
     assert not {key for key in cache.blocks if key.kind == "binary"}
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 def test_scalar_radix_observation_does_not_compute_the_complete_width(
@@ -72,7 +72,7 @@ def test_huge_exterior_coordinate_never_constructs_the_radix_power() -> None:
     # The low-level modular projection has historically zero-padded exterior
     # coordinates; the admitted public point wrapper turns that into IndexError.
     assert term.radix_digit(3, 10**100) == 0
-    assert term._ledger.counters["collatz_radix_exterior_shortcuts"] == 1
+    assert term.resource_ledger.counters["collatz_radix_exterior_shortcuts"] == 1
 
 
 def test_scalar_points_never_construct_the_complete_affine_numerator(

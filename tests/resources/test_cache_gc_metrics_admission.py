@@ -9,13 +9,13 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_admission import admit_run_actions
 from number_compiler.resources.cache_gc_metrics import record_execution_cache_event
-from tests.support.tile_kernel import _runtime
+from tests.support.tile_kernel import make_tile_runtime
 
 
 def test_admitted_cache_event_does_not_reenter_action_cocycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     source = tiles.leaf(adapter.alphabet(action), 0)
     tasks = scheduler._causal_tasks
     run = tasks.begin_run()
@@ -42,17 +42,17 @@ def test_admitted_cache_event_does_not_reenter_action_cocycle(
 
 
 def test_foreign_admission_is_rejected_before_metric_mutation() -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     source = tiles.leaf(adapter.alphabet(action), 0)
-    other_ledger, _other_tiles, other_adapter, other_action, other_scheduler = _runtime(
-        BaseBlockEffect(3)
+    other_ledger, _other_tiles, other_adapter, other_action, other_scheduler = (
+        make_tile_runtime(BaseBlockEffect(3))
     )
     tasks = other_scheduler._causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(other_adapter, tasks, other_ledger, other_action)
     before = ledger.snapshot()
     try:
-        with pytest.raises(ValueError, match="outside this run's admitted DAG"):
+        with pytest.raises(ValueError, match="belongs to another authority"):
             record_execution_cache_event(
                 scheduler.results,
                 "result",

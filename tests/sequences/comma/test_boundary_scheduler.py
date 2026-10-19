@@ -9,7 +9,9 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.comma import action_arena, certificates

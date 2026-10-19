@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Never, cast
+from typing import Never, TypeGuard
 
 import pytest
 
@@ -22,14 +22,18 @@ from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceE
 from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
 )
+from number_compiler.hashlife.execution.causal_frames import (
+    ReverseInterfaceFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.execution.tile_fused_kernel import LeafProductKey
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
 )
 from number_compiler.hashlife.observation.tile_projection import (
@@ -48,13 +52,35 @@ from number_compiler.hashlife.tiles.tile_results import (
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
+from number_compiler.resources.causal_types import CausalPrefix
 from number_compiler.resources.field_image_payload_audit import (
     audit_field_image_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
+
+
+def _native_dict(value: object) -> TypeGuard[dict[object, object]]:
+    return isinstance(value, dict)
+
+
+def _inject_malformed_mapping_value(
+    mapping: object, key: object, value: object
+) -> None:
+    """Corrupt a test mapping only after validating its native backing store."""
+    if type(mapping) is not LedgerDict:
+        raise TypeError("forensic mapping injection requires a ledger dictionary")
+    backing_value: object = object.__getattribute__(mapping, "_data")
+    if not _native_dict(backing_value):
+        raise TypeError("forensic mapping injection requires native dict storage")
+    ledger_value: object = object.__getattribute__(mapping, "ledger")
+    if type(ledger_value) is not ResourceLedger:
+        raise TypeError("forensic mapping injection requires its resource ledger")
+    dict.__setitem__(backing_value, key, value)
+    ledger_value.note_store_mutation()
 
 
 def _runtime(
@@ -99,7 +125,7 @@ def test_tile_runtime_inventory_approves_real_action_and_demand_pin() -> None:
     ledger, _, scheduler, projection = _runtime()
     try:
         projection.point(0)
-        assert scheduler._pins
+        assert scheduler.audit_snapshot().pins
         _assert_payload_clean(ledger)
     finally:
         projection.close()
@@ -128,14 +154,14 @@ def test_leaf_inventory_rejects_orphan_reverse_admission_without_executing(
             raise AssertionError("inventory executed a semantic function")
 
         monkeypatch.setattr(reverse_ports, "reverse_leaf_components", forbidden)
-        monkeypatch.setattr(adapter, "_leaf_components", forbidden)
+        monkeypatch.setattr(adapter, "leaf_components", forbidden)
         monkeypatch.setattr(adapter.bits, "evaluate", forbidden)
         before = ledger.snapshot()
         audit = audit_field_image_payloads(ledger)
         assert (adapter._leaf_owner, id(interface)) in audit.invalid
         assert ledger.snapshot() == before
     finally:
-        adapter._leaf_records.update(removed)
+        adapter._leaf_records.update(removed.items())
         projection.close()
 
 
@@ -243,32 +269,38 @@ def test_warm_action_validation_rejects_mutated_shared_growth_certificate() -> N
     action = adapter.power(projection._application.action, 2)
     certificate = DECIMAL_REVERSE_GROWTH_CERTIFICATE
     try:
-        for name, invalid in (
+        invalid_cases: tuple[tuple[str, object], ...] = (
             ("version", "forged-growth-law"),
             ("base", 10.0),
             ("base", True),
             ("maximum_consecutive_growth", 3.0),
-        ):
-            original = getattr(certificate, name)
-            object.__setattr__(certificate, name, invalid)
+        )
+        for field_name, invalid_value in invalid_cases:
+            original: object = getattr(certificate, field_name)
+            object.__setattr__(certificate, field_name, invalid_value)
             try:
                 with pytest.raises(ValueError, match="growth certificate"):
                     adapter.validate_action(action)
             finally:
-                object.__setattr__(certificate, name, original)
+                object.__setattr__(certificate, field_name, original)
     finally:
         projection.close()
 
 
 def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -> None:
     ledger, _adapter, scheduler, projection = _runtime(3)
-    application = projection._application
+    application = projection._open()
+    assert len(application.ports) == 2
     engine = CausalTileEngine(scheduler)
     try:
         engine._run(
-            CausalFrame(
-                "reverse_interface",
-                (application.action, application.source, *application.ports),
+            ReverseInterfaceFrame(
+                (
+                    application.action,
+                    application.source,
+                    application.ports[0],
+                    application.ports[1],
+                )
             ),
             tile_result=False,
         )
@@ -358,15 +390,18 @@ def test_tile_runtime_inventory_rejects_bool_application_pin_alias() -> None:
     ledger, _, scheduler, projection = _runtime()
     try:
         projection.point(0)
-        binding, lease = next(iter(scheduler._pins.items()))
+        snapshot = scheduler.audit_snapshot()
+        pin_store = snapshot.pin_store
+        assert pin_store is not None and snapshot.pin_owner is not None
+        binding, lease = next(iter(snapshot.pins.items()))
         application, key = binding
-        scheduler._pins.pop(binding)
+        pin_store.pop(binding)
         forged = (False, key)
-        scheduler._pins[forged] = lease
+        pin_store[forged] = lease
         audit = audit_field_image_payloads(ledger)
-        assert (scheduler._pin_owner, id(forged)) in audit.invalid
-        scheduler._pins.pop(forged)
-        scheduler._pins[(application, key)] = lease
+        assert (snapshot.pin_owner, id(forged)) in audit.invalid
+        pin_store.pop(forged)
+        pin_store[(application, key)] = lease
     finally:
         projection.close()
 
@@ -375,11 +410,13 @@ def test_tile_runtime_inventory_rejects_closed_retained_result_lease() -> None:
     ledger, _, scheduler, projection = _runtime()
     try:
         projection.point(0)
-        binding, lease = next(iter(scheduler._pins.items()))
+        snapshot = scheduler.audit_snapshot()
+        assert snapshot.pin_owner is not None
+        binding, lease = next(iter(snapshot.pins.items()))
         assert type(lease) is ResultLease
         object.__setattr__(lease, "_closed", True)
         audit = audit_field_image_payloads(ledger)
-        assert (scheduler._pin_owner, id(binding)) in audit.invalid
+        assert (snapshot.pin_owner, id(binding)) in audit.invalid
         object.__setattr__(lease, "_closed", False)
     finally:
         projection.close()
@@ -410,7 +447,7 @@ def test_result_admission_rejects_action_with_another_tile_alphabet_before_warm_
                 wrong_tile.tile,
                 projection._application.wiring,
             )
-            results = adapter._require_results()
+            results = adapter.require_results()
             before = ledger.snapshot()
             with pytest.raises(ValueError, match="tile alphabet differs"):
                 results.publish_interface(
@@ -450,11 +487,11 @@ def test_fused_memo_rejects_unsupported_primitive_action_before_warm_lookup() ->
         with pytest.raises(
             UnsupportedInterfaceError, match="no bounded fused primitive-pair"
         ):
-            adapter._require_results().lookup_fused_interface(key)
+            adapter.require_results().lookup_fused_interface(key)
         with pytest.raises(
             UnsupportedInterfaceError, match="no bounded fused primitive-pair"
         ):
-            adapter._require_results().publish_fused_interface(key, result)
+            adapter.require_results().publish_fused_interface(key, result)
         after = ledger.snapshot()
         assert (
             after.entries,
@@ -505,7 +542,7 @@ def test_completed_result_rejects_output_with_another_tile_alphabet() -> None:
         )
         before = ledger.snapshot()
         with pytest.raises(ValueError, match="tile alphabet differs"):
-            adapter._require_results().publish(key, wrong)
+            adapter.require_results().publish(key, wrong)
         after = ledger.snapshot()
         assert (
             after.entries,
@@ -556,7 +593,11 @@ def test_primitive_action_warm_interner_rejects_integer_alias_or_stale_id(
         action = projection._application.action
         kernel = adapter._action(action).kernel
         record = adapter._action(action)
-        adapter._action_keys[("power", kernel, 1, record.cocycle)] = cast(int, forged)
+        _inject_malformed_mapping_value(
+            adapter._action_keys,
+            ("power", kernel, 1, record.cocycle),
+            forged,
+        )
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises((TypeError, ValueError)):
             adapter.admit(BaseBlockEffect(2))
@@ -575,7 +616,7 @@ def test_temporal_action_warm_interner_rejects_wrong_record_or_integer_alias(
         composed = adapter.compose(primitive, primitive)
         key = primitive, primitive
         assert adapter._compositions[key] == composed.local_id
-        adapter._compositions[key] = cast(int, forged)
+        _inject_malformed_mapping_value(adapter._compositions, key, forged)
         assert_rejected_atomically(
             ledger,
             lambda: adapter.compose(primitive, primitive),
@@ -607,19 +648,20 @@ def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> 
 
 def test_tile_runtime_inventory_validates_retained_causal_task_payloads() -> None:
     ledger, _, scheduler, projection = _runtime()
-    tasks = scheduler._causal_tasks
+    tasks = scheduler.audit_causal_owners().tasks
     action = projection._open().action
-    memo_key = ("advance_symbol", (action, 0, 0, 0))
-    active_key = ("advance_symbol", (action, 1, 0, 0))
+    prefix = CausalPrefix(action, 0, 0, 0)
+    memo_key = ("advance_symbol", (prefix,))
+    active_key = ("advance_symbol", (prefix, True))
     try:
         tasks.begin(memo_key)
-        tasks.finish(memo_key, 0)
+        tasks.finish(memo_key, prefix)
         tasks.begin(active_key)
         before = ledger.snapshot()
         assert not audit_field_image_payloads(ledger).invalid
         assert ledger.snapshot() == before
 
-        tasks.memo[memo_key] = object()
+        _inject_malformed_mapping_value(tasks.memo, memo_key, object())
         forged_memo = ledger.snapshot()
         assert (
             tasks.memo_owner,
@@ -628,7 +670,7 @@ def test_tile_runtime_inventory_validates_retained_causal_task_payloads() -> Non
         assert ledger.snapshot() == forged_memo
 
         tasks.memo[memo_key] = 0
-        tasks.active[active_key] = cast(bool, 1)
+        _inject_malformed_mapping_value(tasks.active, active_key, 1)
         forged_active = ledger.snapshot()
         assert (
             tasks.active_owner,

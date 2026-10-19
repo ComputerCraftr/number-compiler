@@ -22,7 +22,10 @@ from math import lcm
 from typing import TYPE_CHECKING, Final, Protocol
 from weakref import ReferenceType, ref
 
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+    require_integer,
+)
 from number_compiler.arithmetic.fields.boolean_counter import (
     MAX_BOOLEAN_BLOCK_BITS,
     BinaryBooleanCarryAction,
@@ -46,7 +49,7 @@ _COMPLETE_UNIT_ISSUER = object()
 
 
 class _CounterRecord(Protocol):
-    def _snapshot(self) -> tuple[object, ...]: ...
+    def structural_snapshot(self) -> tuple[object, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +61,9 @@ class _CounterProvenance:
 
 def _seal_counter(record: _CounterRecord, kind: object) -> None:
     object.__setattr__(
-        record, "_issuer", _CounterProvenance(kind, ref(record), record._snapshot())
+        record,
+        "_issuer",
+        _CounterProvenance(kind, ref(record), record.structural_snapshot()),
     )
 
 
@@ -69,7 +74,7 @@ def _counter_verified(record: _CounterRecord, issuer: object, kind: object) -> b
         or issuer.record() is not record
     ):
         return False
-    pending = [(issuer.snapshot, record._snapshot())]
+    pending = [(issuer.snapshot, record.structural_snapshot())]
     while pending:
         expected, actual = pending.pop()
         if len(expected) != len(actual):
@@ -77,7 +82,7 @@ def _counter_verified(record: _CounterRecord, issuer: object, kind: object) -> b
         for old, new in zip(expected, actual, strict=True):
             if type(old) is not type(new):
                 return False
-            if isinstance(old, tuple) and isinstance(new, tuple):
+            if is_object_tuple(old) and is_object_tuple(new):
                 pending.append((old, new))
             elif type(old) in (int, bool, str, type(None)):
                 if old != new:
@@ -189,7 +194,7 @@ class BoundedCompleteUnitCertificate:
     terminal_residue: int
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def structural_snapshot(self) -> tuple[object, ...]:
         return (
             self.index,
             self.level,
@@ -481,7 +486,7 @@ class DyadicBooleanCounterWindow:
     fold_action: BinaryCounterFoldAction
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def structural_snapshot(self) -> tuple[object, ...]:
         return (
             self.level,
             self.start,
@@ -855,10 +860,10 @@ class BoundedFermatCounterCertificate:
     terminal_unit_residue: int
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def structural_snapshot(self) -> tuple[object, ...]:
         return (
             self.index,
-            tuple((window, window._snapshot()) for window in self.windows),
+            tuple((window, window.structural_snapshot()) for window in self.windows),
             self.terminal_unit_residue,
         )
 

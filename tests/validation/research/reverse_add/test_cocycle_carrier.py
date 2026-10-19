@@ -116,8 +116,8 @@ def test_source_only_d4_squares_use_returned_cocycle_grammar(
             block.action.apply(
                 power._pad(source.f5, len(expected[count])),
                 shift=carrier.planes.shift,
-                add=carrier._add,
-                scale=carrier._scale,
+                add=carrier.add_planes,
+                scale=carrier.scale_plane,
             )
             == block.output.f5
         )
@@ -169,8 +169,8 @@ def test_cocycle_planes_agree_with_independent_successors(seed: int) -> None:
                 actions.f5.apply(
                     source_f5,
                     shift=carrier.planes.shift,
-                    add=carrier._factored._add,
-                    scale=carrier._factored._scale,
+                    add=carrier._factored.add_planes,
+                    scale=carrier._factored.scale_plane,
                 )
                 == cell.f5
             )

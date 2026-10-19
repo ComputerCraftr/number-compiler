@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from devtools.verification.lazy_collatz import (
+from devtools.verification.collatz_carry_ranges import (
     CarryRangeSummary,
     CarryRangeTransfer,
+)
+from devtools.verification.lazy_collatz import (
     CollatzLazyView,
     LazyCollatzApplication,
     _SummaryKey,
@@ -52,28 +54,28 @@ def _microblock_program(term: PoweredCollatzTerm) -> ActionProgramID:
 
 def test_exact_microblock_payload_under_an_unrelated_role_is_rejected() -> None:
     term = PoweredCollatzTerm(0x91AD, 3)
-    owner = term._ledger.register("forged-microblock-query", "query_memo")
+    owner = term.resource_ledger.register("forged-microblock-query", "query_memo")
     storage: LedgerDict[object, object]
-    storage = term._ledger.make_dict(owner)
-    term._ledger.reserve(owner, entries=1)
+    storage = term.resource_ledger.make_dict(owner)
+    term.resource_ledger.reserve(owner, entries=1)
     storage[MicroblockKey(_microblock_program(term), 3, 0, 0, "binary")] = (
         ExactMicroblock(5, 3)
     )
-    assert_forbidden(term._ledger)
+    assert_forbidden(term.resource_ledger)
 
 
 def test_spoofed_exact_microblock_role_without_cache_owner_is_rejected() -> None:
     term = PoweredCollatzTerm(0x91AD, 3)
-    owner = term._ledger.register(
+    owner = term.resource_ledger.register(
         "forged-microblock-owner", "exact_microblock", ResourceScope.INDEX_OWNED
     )
     storage: LedgerDict[object, object]
-    storage = term._ledger.make_dict(owner)
-    term._ledger.reserve(owner, entries=1)
+    storage = term.resource_ledger.make_dict(owner)
+    term.resource_ledger.reserve(owner, entries=1)
     storage[MicroblockKey(_microblock_program(term), 3, 0, 0, "binary")] = (
         ExactMicroblock(1, 1)
     )
-    assert_forbidden(term._ledger)
+    assert_forbidden(term.resource_ledger)
 
 
 def test_owned_capped_microblocks_remain_allowed() -> None:
@@ -84,7 +86,7 @@ def test_owned_capped_microblocks_remain_allowed() -> None:
     cache = term._microblocks
     assert len(cache) <= cache.MAX_ENTRIES
     assert cache.payload_bytes <= cache.MAX_PAYLOAD_BYTES
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.forbidden_future_payloads == 0
     assert report.representation_boundary_complete == 1
     assert report.resource_audit_complete == 1

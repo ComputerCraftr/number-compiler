@@ -16,7 +16,7 @@ from number_compiler.sequences.collatz.innovation_carry_cocycle import (
 from number_compiler.sequences.collatz.innovation_input_tape import (
     NormalizedParityProgram,
     ParityFactor,
-    _boundary_macro_specs,
+    boundary_macro_specs,
 )
 from number_compiler.sequences.collatz.innovation_tape_contract import (
     SIGNED_INNOVATION_TAPE_TAG,
@@ -624,7 +624,7 @@ def boundary_macro_factors(macro: object) -> tuple[ParityFactor, ...]:
         specs = tuple(((bit,), length) for bit, length in macro.parts)
     elif type(macro) is CollatzBoundaryMacro:
         validate_boundary_macro(macro)
-        specs = _boundary_macro_specs(macro)
+        specs = boundary_macro_specs(macro)
     else:
         raise TypeError("boundary parity grammar needs an exact macro")
     result = tuple(ParityFactor(motif, repetitions) for motif, repetitions in specs)

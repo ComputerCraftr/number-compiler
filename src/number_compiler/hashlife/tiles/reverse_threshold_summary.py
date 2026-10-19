@@ -44,13 +44,16 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class _SummaryFrame:
+class ReverseThresholdFrame:
     """One charged iterative visit in the scheduler's existing frame store."""
 
     args: tuple[TileID]
     ready: bool = False
     known_missing: bool = False
     saved: tuple[()] = ()
+
+    def payload_reference_count(self) -> int:
+        return len(self.args) + len(self.saved)
 
 
 class _UnsupportedReverseShape(ValueError):
@@ -134,17 +137,17 @@ def reverse_threshold_summary(
     tasks = results._causal_tasks
     if tasks is None:
         raise ValueError("reverse summaries require the scheduler workspace")
-    frames = tasks.frames
+    frames = tasks.summary_frames
     initial_depth = len(frames)
     # The public root probe above authenticated the request and proved this
     # exact key absent.  A child has lower level and cannot publish its parent,
     # so the fact stays valid until this synchronous frame publishes the root.
-    frames.append(_SummaryFrame((tile,), known_missing=True))
+    frames.append(ReverseThresholdFrame((tile,), known_missing=True))
     spec = RadixSpec(base)
     try:
         while len(frames) > initial_depth:
             frame = frames.pop()
-            if type(frame) is not _SummaryFrame:
+            if type(frame) is not ReverseThresholdFrame:
                 raise TypeError("reverse summary workspace contains another task sort")
             current, ready = frame.args[0], frame.ready
             node = results.tiles.resolve(current)
@@ -167,9 +170,9 @@ def reverse_threshold_summary(
                 if not ready:
                     frames.extend(
                         (
-                            _SummaryFrame((current,), True, True),
-                            _SummaryFrame((node.right,)),
-                            _SummaryFrame((node.left,)),
+                            ReverseThresholdFrame((current,), True, True),
+                            ReverseThresholdFrame((node.right,)),
+                            ReverseThresholdFrame((node.left,)),
                         )
                     )
                     continue
@@ -226,7 +229,7 @@ def observe_current_growth(
     boundaries: BoundaryTileOperands,
 ) -> int | None:
     """Admit only one current reverse step with canonical exterior context."""
-    record = adapter._action(action)
+    record = adapter.action_record(action)
     if record.children is not None:
         return None
     kernel = adapter.kernels.kernel(record.kernel)
@@ -238,7 +241,7 @@ def observe_current_growth(
         or boundaries != BoundaryTileOperands()
     ):
         return None
-    results = adapter._require_results()
+    results = adapter.require_results()
     _validate_key(results, ReverseThresholdSummaryKey(source, kernel.base))
     if results.tiles.resolve(source).first_active is None:
         return None

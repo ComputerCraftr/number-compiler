@@ -320,17 +320,6 @@ def _multipoint_evaluate_progression_monic_tree(
     return memo[root_state]
 
 
-def _build_rising_factorial_poly(
-    width: int,
-    modulus: int,
-    counter: _PolyCounter,
-) -> tuple[int, ...]:
-    """Lower the canonical rising-factorial morphism only on demand."""
-    arena = ProgressionProductArena()
-    morphism = ProgressionProductMorphism(modulus, 0, -1, int(width))
-    return _progression_product_polynomial(morphism, modulus, counter, arena)
-
-
 @dataclass(frozen=True, slots=True)
 class MultipointEngineCase:
     modulus: int

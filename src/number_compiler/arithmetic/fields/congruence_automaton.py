@@ -49,10 +49,12 @@ class FactoredAffineMorphism:
         object.__setattr__(
             self,
             "multipliers",
-            tuple(int(a) % m for a, m in zip(self.multipliers, mods)),
+            tuple(int(a) % m for a, m in zip(self.multipliers, mods, strict=True)),
         )
         object.__setattr__(
-            self, "offsets", tuple(int(c) % m for c, m in zip(self.offsets, mods))
+            self,
+            "offsets",
+            tuple(int(c) % m for c, m in zip(self.offsets, mods, strict=True)),
         )
         if self.symbols < 0 or self.compositions < 0:
             raise ValueError((self.symbols, self.compositions))
@@ -90,10 +92,10 @@ class FactoredAffineMorphism:
             raise ValueError("incompatible factored modulus carriers")
 
         def multiply(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[int, ...]:
-            return tuple((x * y) % m for x, y, m in zip(a, b, self.moduli))
+            return tuple((x * y) % m for x, y, m in zip(a, b, self.moduli, strict=True))
 
         def add(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[int, ...]:
-            return tuple((x + y) % m for x, y, m in zip(a, b, self.moduli))
+            return tuple((x + y) % m for x, y, m in zip(a, b, self.moduli, strict=True))
 
         cocycle = self.cocycle.then(other.cocycle, multiply=multiply, add=add)
         return FactoredAffineMorphism(
@@ -141,7 +143,11 @@ class FactoredAffineMorphism:
             tuple(
                 (a * int(r) + c) % m
                 for r, a, c, m in zip(
-                    state.residues, self.multipliers, self.offsets, self.moduli
+                    state.residues,
+                    self.multipliers,
+                    self.offsets,
+                    self.moduli,
+                    strict=True,
                 )
             )
         )
@@ -154,7 +160,7 @@ class FactoredAffineMorphism:
     def description_bits(self) -> int:
         return sum(
             bit_width(m) + bit_width(a) + bit_width(c)
-            for m, a, c in zip(self.moduli, self.multipliers, self.offsets)
+            for m, a, c in zip(self.moduli, self.multipliers, self.offsets, strict=True)
         )
 
 
@@ -190,13 +196,16 @@ class MixedRadixEncoding:
     def __post_init__(self) -> None:
         if not self.digits or len(self.digits) != len(self.bases):
             raise ValueError((len(self.digits), len(self.bases)))
-        if any(b < 2 or not 0 <= d < b for d, b in zip(self.digits, self.bases)):
+        if any(
+            b < 2 or not 0 <= d < b
+            for d, b in zip(self.digits, self.bases, strict=True)
+        ):
             raise ValueError(self)
 
     @property
     def value(self) -> int:
         out = 0
-        for digit, base in reversed(tuple(zip(self.digits, self.bases))):
+        for digit, base in reversed(tuple(zip(self.digits, self.bases, strict=True))):
             out = int(base) * out + int(digit)
         return out
 

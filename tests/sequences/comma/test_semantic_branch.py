@@ -10,6 +10,7 @@ import pytest
 from number_compiler.sequences.comma import future_authority, future_provider
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
+    boundary_source_index,
     construct_macro,
 )
 from number_compiler.sequences.comma.future_authority import (
@@ -58,9 +59,9 @@ def _candidate_for_prefix(
         child_classes = (child_classes[1], child_classes[0])
 
     source_classes = bytearray(future_provider.SOURCE_COUNT)
-    source_classes[future_provider._source_index(prefix.source.state)] = 2
-    source_classes[future_provider._source_index(children[0].state)] = n_class
-    source_classes[future_provider._source_index(children[1].state)] = z_class
+    source_classes[boundary_source_index(prefix.source.state)] = 2
+    source_classes[boundary_source_index(children[0].state)] = n_class
+    source_classes[boundary_source_index(children[1].state)] = z_class
     finite_slot = 1 - selected_slot
     class_ranks: list[int | None] = [None, None, None]
     class_ranks[child_classes[finite_slot]] = 0
@@ -87,7 +88,7 @@ def _admitted_provider(
     charge_work: Callable[[int], None],
 ) -> future_provider.SemanticFutureProvider:
     parsed = future_provider.parse_future_candidate(record, charge_work=charge_work)
-    admission = future_authority._KernelInstanceAdmission(
+    admission = future_authority.KernelInstanceAdmission(
         artifact_sha256=parsed.artifact_sha256,
         instance_id=FINITE_TEST_FIXTURE_SESSION_ID,
         theorem_id=FINITE_TEST_FIXTURE_THEOREM_ID,

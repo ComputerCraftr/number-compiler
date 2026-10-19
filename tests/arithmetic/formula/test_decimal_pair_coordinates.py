@@ -238,10 +238,14 @@ def test_a_local_chamber_does_not_replace_the_full_spatial_cylinder() -> None:
     new_pairs = []
     for seed in seeds:
         digits = tuple(map(int, str(seed)))
-        old_pairs.append(tuple(a + b for a, b in zip(digits, reversed(digits))))
+        old_pairs.append(
+            tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
+        )
         target = seed + int(str(seed)[::-1])
         digits = tuple(map(int, str(target)))
-        new_pairs.append(tuple(a + b for a, b in zip(digits, reversed(digits))))
+        new_pairs.append(
+            tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
+        )
     assert old_pairs == [(2, 2, 2), (2, 18, 2)]
     assert old_pairs[0][0] == old_pairs[1][0]
     assert new_pairs == [(4, 4, 4), (5, 16, 5)]

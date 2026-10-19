@@ -103,7 +103,7 @@ def test_semantic_keys_cannot_hide_mutable_or_executable_behavior(bad: object) -
 def test_factory_checks_capacity_at_every_retained_insertion() -> None:
     ledger = ResourceLedger(max_cache_entries=2)
     owner = ledger.register("memo", "query_memo")
-    cache: LedgerDict[object, object]
+    cache: LedgerDict[int, int]
     cache = ledger.make_dict(owner)
     writes: tuple[Callable[[], object], ...] = (
         lambda: cache.__setitem__(0, 1),

@@ -5,9 +5,11 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.fields.radial_innovation import (
+    SymbolicRadialInnovation,
+)
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    SymbolicRadialInnovation,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads

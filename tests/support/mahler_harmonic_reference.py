@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
+from number_compiler.sequences.antihydra.mahler_border_identity import (
+    MahlerOddMotifSignature,
+)
+from number_compiler.sequences.antihydra.mahler_odd_macro import MahlerOddToOddAction
+
 
 def source_for_motif(word: tuple[int, ...], copies: int, *, extra_bits: int = 8) -> int:
     """Build an exact low-cylinder source for an admitted odd motif."""
-    from number_compiler.sequences.antihydra.mahler_mixed_harmonic_ring import (
-        _compiled_motif,
+    motif = MahlerOddMotifSignature(word)
+    bits = tuple(
+        bit for exponent in motif.exponents for bit in (1, *((0,) * (exponent - 1)))
     )
-
-    action = _compiled_motif(word)
+    action = MahlerOddToOddAction.from_bits(bits)
     modulus = 1 << (action.extent * copies + extra_bits)
     source = (
         action.joint.innovation

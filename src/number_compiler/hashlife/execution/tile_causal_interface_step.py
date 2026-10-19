@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    AdvanceSymbolFrame,
+    AnchorFrame,
+    CausalTaskFrame,
+    ChildStatesFrame,
+    ExactReverseOutputFrame,
+    InterfaceEmitFrame,
+    InterfaceFrame,
+    ResidualFrame,
+    ReverseInterfaceFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
+    CausalLeafInterface,
     _attach_bound_reverse_output,
     combine_causal_interfaces,
     interface_payload_from_causal,
@@ -20,8 +33,6 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    CausalPrefix,
     result_payload,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
@@ -34,6 +45,7 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
+    PoweredResultKey,
     ReverseBoundOutputKey,
 )
 from number_compiler.hashlife.tiles.tile_reverse_bound_output_memo import (
@@ -41,20 +53,27 @@ from number_compiler.hashlife.tiles.tile_reverse_bound_output_memo import (
     publish_reverse_bound_output_leaf,
     publish_reverse_bound_output_parent,
 )
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalPrefix,
+    CausalTaskValue,
+    pop_causal_state,
+    pop_child_states,
+    pop_interface_payload,
+    pop_leaf_interface,
+    pop_reverse_bound_output,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
-
-@dataclass(frozen=True, slots=True)
-class _LeafInterface:
-    symbol: int
-    payload: CausalInterfacePayload
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 
 
 def _publish_interface(
-    engine: Any,
+    engine: CausalTileEngine,
     key: CausalInterfaceKey,
     payload: CausalInterfacePayload,
 ) -> CausalInterfacePayload:
@@ -65,9 +84,9 @@ def _publish_interface(
 
 
 def _primitive_parent_payload(
-    engine: Any,
-    action: Any,
-    tile: Any,
+    engine: CausalTileEngine,
+    action: FieldCellActionID,
+    tile: TileID,
     left: int,
     right: int,
 ) -> CausalInterfacePayload | None:
@@ -106,17 +125,18 @@ def _primitive_parent_payload(
         engine._wiring(action),
         occurrence,
         physical_support=support,
+        action_admission=engine.action_admission,
     )
 
 
 def _leaf(
-    engine: Any,
-    action: Any,
+    engine: CausalTileEngine,
+    action: FieldCellActionID,
     left: int,
     symbol: int,
     right: int,
     require_output: bool,
-) -> _LeafInterface:
+) -> CausalLeafInterface:
     wiring = engine._wiring(action)
     output, interface, occurrence = engine.adapter.leaf_interface_symbol(
         action,
@@ -126,10 +146,10 @@ def _leaf(
     )
     action_weight = engine._cocycle(action)
     outgoing = (
-        engine.adapter._observe(interface, "boundary_left", (left, right)),
-        engine.adapter._observe(interface, "boundary_right", (left, right)),
+        engine.adapter.observe(interface, "boundary_left", (left, right)),
+        engine.adapter.observe(interface, "boundary_right", (left, right)),
     )
-    active = bool(engine.adapter._observe(interface, "activity", (left, right)))
+    active = bool(engine.adapter.observe(interface, "activity", (left, right)))
     law = engine._law(action)
     support = None
     hooks = engine.adapter.family_hooks
@@ -153,17 +173,17 @@ def _leaf(
     )
     if require_output and bound_reverse_output is not None:
         payload = _attach_bound_reverse_output(payload, bound_reverse_output)
-    return _LeafInterface(output, payload)
+    return CausalLeafInterface(output, payload)
 
 
 def interface_step(
-    engine: Any,
-    frame: CausalFrame,
-    frames: Any,
-    values: CausalResults,
+    engine: CausalTileEngine,
+    frame: CausalTaskFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
 ) -> bool:
     """Execute one recognized interface task; return false for other ops."""
-    if frame.op == "exact_reverse_output":
+    if isinstance(frame, ExactReverseOutputFrame):
         (tile,) = frame.args
         summary_key = ReverseBoundOutputKey(tile)
         if frame.stage == 0:
@@ -194,17 +214,13 @@ def interface_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame("exact_reverse_output", (node.right,)),
-                    CausalFrame("exact_reverse_output", (node.left,)),
+                    ExactReverseOutputFrame((node.right,)),
+                    ExactReverseOutputFrame((node.left,)),
                 )
             )
         else:
-            right_output, left_output = values.pop(), values.pop()
-            if (
-                type(left_output) is not ReverseBoundOutput
-                or type(right_output) is not ReverseBoundOutput
-            ):
-                raise TypeError("exact reverse output children have another sort")
+            right_output = pop_reverse_bound_output(values)
+            left_output = pop_reverse_bound_output(values)
             values.append(
                 publish_reverse_bound_output_parent(
                     engine.scheduler.results,
@@ -214,7 +230,7 @@ def interface_step(
                 )
             )
         return True
-    if frame.op == "child_states":
+    if isinstance(frame, ChildStatesFrame):
         action, parent, left, right = frame.args
         node = engine.tiles.resolve(parent)
         if not node.level or node.left is None or node.right is None:
@@ -225,8 +241,7 @@ def interface_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "advance",
+                    AdvanceFrame(
                         (
                             action,
                             1,
@@ -234,8 +249,7 @@ def interface_step(
                             BoundaryTileView(node.right, 0, child_width, 1),
                         ),
                     ),
-                    CausalFrame(
-                        "advance",
+                    AdvanceFrame(
                         (
                             action,
                             0,
@@ -246,29 +260,32 @@ def interface_step(
                 )
             )
         else:
-            right_mid, left_mid = values.pop(), values.pop()
+            right_mid = pop_causal_state(values)
+            left_mid = pop_causal_state(values)
             values.append(((left, right_mid), (left_mid, right)))
         return True
-    if frame.op in ("interface", "reverse_interface"):
-        require_output = frame.op == "reverse_interface"
+    if isinstance(frame, (InterfaceFrame, ReverseInterfaceFrame)):
+        require_output = isinstance(frame, ReverseInterfaceFrame)
         action, tile, left, right = frame.args
         node = engine.tiles.resolve(tile)
         observation_key: CausalInterfaceKey | None = None
         midpoint_missed = False
         if frame.stage == 20:
-            bound_output = values.pop()
-            observation_key, payload = frame.saved
-            if type(bound_output) is not ReverseBoundOutput:
-                raise TypeError("exact producer returned another output summary")
-            if type(observation_key) is not CausalInterfaceKey:
+            bound_output = pop_reverse_bound_output(values)
+            match frame.saved:
+                case (saved_observation_key, saved_payload):
+                    pass
+                case _:
+                    raise RuntimeError("reverse interface lost its pending output")
+            if type(saved_observation_key) is not CausalInterfaceKey:
                 raise TypeError("exact producer summary lost its request")
-            if type(payload) is not CausalInterfacePayload:
+            if type(saved_payload) is not CausalInterfacePayload:
                 raise TypeError("exact producer summary lost its interface")
             values.append(
                 _publish_interface(
                     engine,
-                    observation_key,
-                    _attach_bound_reverse_output(payload, bound_output),
+                    saved_observation_key,
+                    _attach_bound_reverse_output(saved_payload, bound_output),
                 )
             )
             engine.ledger.bump(_execution_keys.REVERSE_EXACT_OUTPUT_SUMMARY_EVALUATIONS)
@@ -281,7 +298,24 @@ def interface_step(
             children = engine._children(action)
             if children is None:
                 raise AssertionError("cached interface midpoint lost its temporal edge")
-            observation_key = frame.saved[-1]
+            match frame.saved:
+                case (single_saved_key,):
+                    if (
+                        single_saved_key is not None
+                        and type(single_saved_key) is not CausalInterfaceKey
+                    ):
+                        raise RuntimeError("cached interface midpoint lost its request")
+                    observation_key = single_saved_key
+                    pass
+                case (_saved_parent, shifted_saved_key):
+                    if (
+                        shifted_saved_key is not None
+                        and type(shifted_saved_key) is not CausalInterfaceKey
+                    ):
+                        raise RuntimeError("cached interface midpoint lost its request")
+                    observation_key = shifted_saved_key
+                case _:
+                    raise RuntimeError("cached interface midpoint lost its request")
             if cached_midpoint_interface_step(
                 engine,
                 frame,
@@ -297,6 +331,7 @@ def interface_step(
                 return True
             midpoint_missed = True
         if frame.stage == 0 and not midpoint_missed:
+            key: PoweredResultKey | None
             if engine._children(action) is None:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError("primitive causal interface requires finite ports")
@@ -306,7 +341,7 @@ def interface_step(
                     tile,
                     PrimitiveCausalPorts(left, right),
                     engine._wiring(action),
-                    action_admission=engine._action_admission_token,
+                    action_admission=engine.action_admission,
                 )
             else:
                 key = engine._composite_key(action, tile, left, right)
@@ -316,7 +351,7 @@ def interface_step(
                     else lookup_causal_result(
                         engine.scheduler.results,
                         key,
-                        action_admission=engine._action_admission_token,
+                        action_admission=engine.action_admission,
                     )
                 )
             observation_key = (
@@ -369,7 +404,7 @@ def interface_step(
                     frames.extend(
                         (
                             frame,
-                            CausalFrame("exact_reverse_output", (causal.output,)),
+                            ExactReverseOutputFrame((causal.output,)),
                         )
                     )
                     return True
@@ -410,12 +445,16 @@ def interface_step(
             if engine._children(action) is None and not require_output:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError("primitive causal interface requires finite ports")
-                payload = _primitive_parent_payload(engine, action, tile, left, right)
-                if payload is not None:
+                primitive_parent_payload = _primitive_parent_payload(
+                    engine, action, tile, left, right
+                )
+                if primitive_parent_payload is not None:
                     values.append(
-                        payload
+                        primitive_parent_payload
                         if observation_key is None
-                        else _publish_interface(engine, observation_key, payload)
+                        else _publish_interface(
+                            engine, observation_key, primitive_parent_payload
+                        )
                     )
                     engine.ledger.bump(
                         _execution_keys.TILE_CAUSAL_INTERFACE_PRIMITIVE_PARENT_SHORTCUTS
@@ -430,15 +469,18 @@ def interface_step(
                 frames.extend(
                     (
                         frame,
-                        CausalFrame(
-                            "interface_emit",
+                        InterfaceEmitFrame(
                             (action, left, node.symbol, right, require_output),
                         ),
                     )
                 )
             else:
-                leaf = values.pop()
-                observation_key = frame.saved[0]
+                leaf = pop_leaf_interface(values)
+                match frame.saved:
+                    case (observation_key,):
+                        pass
+                    case _:
+                        raise RuntimeError("causal interface leaf lost its request")
                 values.append(
                     leaf.payload
                     if observation_key is None
@@ -452,15 +494,18 @@ def interface_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "child_states",
+                    ChildStatesFrame(
                         (action, tile, left, right),
                     ),
                 )
             )
         elif frame.stage == 1:
-            left_context, right_context = values.pop()
-            observation_key = frame.saved[0]
+            left_context, right_context = pop_child_states(values)
+            match frame.saved:
+                case (initial_saved_key,):
+                    observation_key = initial_saved_key
+                case _:
+                    raise RuntimeError("causal interface lost its observation key")
             frame.stage, frame.saved = (
                 2,
                 (
@@ -469,31 +514,48 @@ def interface_step(
                     right_context,
                 ),
             )
-            frames.extend(
-                (
-                    frame,
-                    CausalFrame(
-                        frame.op,
-                        (action, node.left, *left_context),
-                    ),
-                )
+            child = (
+                ReverseInterfaceFrame((action, node.left, *left_context))
+                if require_output
+                else InterfaceFrame((action, node.left, *left_context))
             )
+            frames.extend((frame, child))
         elif frame.stage == 2:
-            left_payload = values.pop()
-            observation_key, left_context, right_context = frame.saved
+            left_payload = pop_interface_payload(values)
+            match frame.saved:
+                case (child_saved_key, child_saved_left, child_saved_right):
+                    if (
+                        child_saved_key is not None
+                        and type(child_saved_key) is not CausalInterfaceKey
+                    ):
+                        raise RuntimeError("causal interface lost its observation key")
+                    observation_key = child_saved_key
+                    left_context = child_saved_left
+                    right_context = child_saved_right
+                case _:
+                    raise RuntimeError("causal interface lost its child contexts")
             frame.stage, frame.saved = 3, (observation_key, left_payload)
-            frames.extend(
-                (
-                    frame,
-                    CausalFrame(
-                        frame.op,
-                        (action, node.right, *right_context),
-                    ),
-                )
+            child = (
+                ReverseInterfaceFrame((action, node.right, *right_context))
+                if require_output
+                else InterfaceFrame((action, node.right, *right_context))
             )
+            frames.extend((frame, child))
         else:
-            right_payload = values.pop()
-            observation_key, left_payload = frame.saved
+            right_payload = pop_interface_payload(values)
+            match frame.saved:
+                case (final_saved_key, final_saved_payload):
+                    if (
+                        final_saved_key is not None
+                        and type(final_saved_key) is not CausalInterfaceKey
+                    ):
+                        raise RuntimeError("causal interface lost its observation key")
+                    if type(final_saved_payload) is not CausalInterfacePayload:
+                        raise RuntimeError("causal interface lost its left child")
+                    observation_key = final_saved_key
+                    left_payload = final_saved_payload
+                case _:
+                    raise RuntimeError("causal interface lost its left child")
             payload = combine_causal_interfaces(
                 engine.scheduler.results,
                 action,
@@ -508,13 +570,15 @@ def interface_step(
                 else _publish_interface(engine, observation_key, payload)
             )
         return True
-    if frame.op != "interface_emit":
+    if not isinstance(frame, InterfaceEmitFrame):
         return False
     action, left, symbol, right, require_output = frame.args
     if type(require_output) is not bool:
         raise TypeError("interface output demand requires an exact Boolean")
     children = engine._children(action)
     if children is None:
+        if type(left) is not int or type(right) is not int:
+            raise TypeError("primitive interface emission requires finite ports")
         values.append(_leaf(engine, action, left, symbol, right, require_output))
         return True
     before, after = children
@@ -524,7 +588,12 @@ def interface_step(
         case _:
             raise ValueError("composite interface emission requires causal prefixes")
     if frame.stage == 4:
-        second, first = values.pop(), frame.saved[0]
+        second = pop_leaf_interface(values)
+        match frame.saved:
+            case (CausalLeafInterface() as first,):
+                pass
+            case _:
+                raise RuntimeError("interface emission lost its first temporal result")
         from number_compiler.hashlife.execution.tile_physical_support import (
             temporal_physical_support,
         )
@@ -551,7 +620,7 @@ def interface_step(
                 second.payload.bound_reverse_output,
             )
         values.append(
-            _LeafInterface(
+            CausalLeafInterface(
                 second.symbol,
                 second_payload,
             )
@@ -561,46 +630,53 @@ def interface_step(
         frames.extend(
             (
                 frame,
-                CausalFrame("anchor", (before, 1, right)),
-                CausalFrame("anchor", (before, 0, left)),
+                AnchorFrame((before, 1, right)),
+                AnchorFrame((before, 0, left)),
             )
         )
     elif frame.stage == 1:
-        right_anchor, left_anchor = values.pop(), values.pop()
+        right_anchor = pop_causal_state(values)
+        left_anchor = pop_causal_state(values)
         frame.stage, frame.saved = 2, (left_anchor, right_anchor)
         frames.extend(
             (
                 frame,
-                CausalFrame("advance_symbol", (before, 1, right_anchor, symbol)),
-                CausalFrame("advance_symbol", (before, 0, left_anchor, symbol)),
-                CausalFrame(
-                    "interface_emit",
+                AdvanceSymbolFrame((before, 1, right_anchor, symbol)),
+                AdvanceSymbolFrame((before, 0, left_anchor, symbol)),
+                InterfaceEmitFrame(
                     (before, left_anchor, symbol, right_anchor, require_output),
                 ),
             )
         )
     elif frame.stage == 2:
-        right_argument, left_argument, first = values.pop(), values.pop(), values.pop()
+        right_argument = pop_causal_state(values)
+        left_argument = pop_causal_state(values)
+        first = pop_leaf_interface(values)
         frame.stage, frame.saved = 3, (first,)
         frames.extend(
             (
                 frame,
-                CausalFrame("residual", (action, 1, right, left_argument)),
-                CausalFrame("residual", (action, 0, left, right_argument)),
+                ResidualFrame((action, 1, right, left_argument)),
+                ResidualFrame((action, 0, left, right_argument)),
             )
         )
     else:
-        second_right, second_left = values.pop(), values.pop()
+        second_right = pop_causal_state(values)
+        second_left = pop_causal_state(values)
         frame.stage = 4
+        match frame.saved:
+            case (CausalLeafInterface() as first,):
+                first_symbol = first.symbol
+            case _:
+                raise RuntimeError("interface emission lost its first result")
         frames.extend(
             (
                 frame,
-                CausalFrame(
-                    "interface_emit",
+                InterfaceEmitFrame(
                     (
                         after,
                         second_left,
-                        frame.saved[0].symbol,
+                        first_symbol,
                         second_right,
                         require_output,
                     ),

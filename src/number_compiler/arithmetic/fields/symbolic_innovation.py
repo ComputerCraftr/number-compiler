@@ -17,19 +17,32 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
-from typing import TypeAlias
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAdd,
+    InnovationAtom,
+    InnovationCharted,
+    InnovationID,
+    InnovationInterval,
+    InnovationNode,
+    InnovationRadial,
+    InnovationScale,
+    InnovationZero,
+    RadialMultiplier,
     ReverseAddCyclotomicInnovationBlock,
+    SymbolicRadialInnovation,
 )
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
+)
+from number_compiler.resources.field_image_audit_contracts import (
+    SymbolicInnovationAuditSnapshot,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -69,8 +82,14 @@ def _validate_bounded_primitive_identity(identity: SemanticIdentity) -> None:
         if object_id in seen:
             continue
         seen.add(object_id)
-        if type(value) is tuple:
-            pending.extend((child, depth + 1) for child in value)
+        if is_object_tuple(value):
+            if type(value) is not tuple:
+                raise TypeError(
+                    "primitive innovation identity has a nonsemantic payload"
+                )
+            for child_index in range(len(value)):
+                child: object = value[child_index]
+                pending.append((child, depth + 1))
         elif type(value) is SemanticIdentity:
             identities.append(value)
             pending.append((value.behavior, depth + 1))
@@ -82,115 +101,28 @@ def _validate_bounded_primitive_identity(identity: SemanticIdentity) -> None:
         value.validate()
 
 
-@dataclass(frozen=True, slots=True)
-class InnovationID(ArenaHandle):
-    """Scoped arithmetic identity; source authority is deliberately absent."""
-
-    seal: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class RadialMultiplier:
-    """The unexpanded multiplier ``2**no_growth * (1+z)**growth``."""
-
-    no_growth: int = 0
-    growth: int = 0
-
-    def __post_init__(self) -> None:
-        if type(self.no_growth) is not int or type(self.growth) is not int:
-            raise TypeError("radial exponents must be exact integers")
-        if self.no_growth < 0 or self.growth < 0:
-            raise ValueError("radial exponents must be nonnegative")
-
-    @property
-    def is_identity(self) -> bool:
-        return self.no_growth == self.growth == 0
-
-    def then(self, after: RadialMultiplier) -> RadialMultiplier:
-        if type(after) is not RadialMultiplier:
-            raise TypeError("radial composition requires a radial multiplier")
-        self.__post_init__()
-        after.__post_init__()
-        return RadialMultiplier(
-            self.no_growth + after.no_growth,
-            self.growth + after.growth,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class _Zero:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class _Atom:
-    semantic: SemanticIdentity
-
-
-@dataclass(frozen=True, slots=True)
-class _Interval:
-    """The exact window ``E_m = 1 + z + ... + z**(m-1)``."""
-
-    length: int
-
-
-@dataclass(frozen=True, slots=True)
-class _Radial:
-    multiplier: RadialMultiplier
-    child: InnovationID
-
-
-@dataclass(frozen=True, slots=True)
-class _Charted:
-    chart: CylinderChart
-    child: InnovationID
-
-
-@dataclass(frozen=True, slots=True)
-class _Scale:
-    coefficient: int
-    child: InnovationID
-
-
-@dataclass(frozen=True, slots=True)
-class _Add:
-    left: InnovationID
-    right: InnovationID
-
-
-_Node: TypeAlias = _Zero | _Atom | _Interval | _Radial | _Charted | _Scale | _Add
-
-
 def _integer_limb_units(*values: int) -> int:
     """Return 64-bit ledger units for retained exact-integer metadata."""
     retained_bits = sum(max(1, abs(value).bit_length()) for value in values)
     return max(1, (retained_bits + 63) // 64)
 
 
-def _node_units(node: _Node) -> int:
+def _node_units(node: InnovationNode) -> int:
     """Ledger units retained by one node, including wide integer metadata."""
-    if isinstance(node, _Interval):
+    if isinstance(node, InnovationInterval):
         return _integer_limb_units(node.length)
-    if isinstance(node, _Radial):
+    if isinstance(node, InnovationRadial):
         return _integer_limb_units(node.multiplier.no_growth, node.multiplier.growth)
-    if isinstance(node, _Charted):
+    if isinstance(node, InnovationCharted):
         return _integer_limb_units(
             node.chart.slope,
             node.chart.offset,
             node.chart.extent_scale,
             node.chart.growth_scale,
         )
-    if isinstance(node, _Scale):
+    if isinstance(node, InnovationScale):
         return _integer_limb_units(node.coefficient)
     return 1
-
-
-@dataclass(frozen=True, slots=True)
-class SymbolicRadialInnovation:
-    """One source-free affine arithmetic component ``(M, B)``."""
-
-    multiplier: RadialMultiplier
-    innovation: InnovationID
 
 
 class SymbolicInnovationArena:
@@ -226,8 +158,11 @@ class SymbolicInnovationArena:
         self._f5_compositions: (
             OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID] | None
         ) = None
-        self._nodes: LedgerList[_Node] = ledger.make_list(self._node_owner)
-        self._keys: LedgerDict[_Node, InnovationID] = ledger.make_dict(self._key_owner)
+        self._f5_composition_owner: int | None = None
+        self._nodes: LedgerList[InnovationNode] = ledger.make_list(self._node_owner)
+        self._keys: LedgerDict[InnovationNode, InnovationID] = ledger.make_dict(
+            self._key_owner
+        )
         ledger.register_container(
             self._node_owner,
             self._nodes,
@@ -242,7 +177,7 @@ class SymbolicInnovationArena:
         )
         self.zero = self._handle(0)
         try:
-            self.zero = self._intern(_Zero())
+            self.zero = self._intern(InnovationZero())
         except BaseException:
             self.close()
             raise
@@ -251,14 +186,57 @@ class SymbolicInnovationArena:
         if self._closed:
             raise ValueError("disposed symbolic innovation arena")
 
-    def _f5_composition_cache(
+    def f5_composition_cache(
         self,
         minimum_nodes: int = 1,
     ) -> OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID]:
-        """Lazy arithmetic-demand memo; it carries no source-image authority."""
-        from number_compiler.arithmetic.fields.f5_innovation import composition_cache
+        """Return the arena-owned memo sized for retained exponent metadata.
 
-        return composition_cache(self, minimum_nodes)
+        The cache belongs to this arena because its keys and values are local
+        innovation handles. Resizing evicts only cached arithmetic results; the
+        canonical DAG and its issued handles remain intact.
+        """
+        self._check_open()
+        if type(minimum_nodes) is not int or minimum_nodes < 1:
+            raise ValueError("F5 memo metadata capacity must be positive")
+        memo: (
+            OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID] | None
+        ) = self._f5_compositions
+        if memo is not None and memo.nodes_per_entry < minimum_nodes:
+            memo.dispose()
+            self._f5_compositions = memo = None
+            self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_MEMO_RESIZES)
+        if memo is None:
+            owner = self.ledger.register(
+                f"innovation-F5-{id(self.owner):x}-{self.ledger.owner_count}",
+                "query_memo",
+            )
+            memo = OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID](
+                self.ledger,
+                owner,
+                nodes_per_entry=minimum_nodes,
+                evictable=True,
+            )
+            self._f5_composition_owner = owner
+            self._f5_compositions = memo
+        return memo
+
+    def audit_snapshot(self) -> SymbolicInnovationAuditSnapshot:
+        """Expose exact store identities for explicit resource audits."""
+        nodes: Sequence[InnovationNode] = self._nodes
+        keys: Mapping[InnovationNode, InnovationID] = self._keys
+        return SymbolicInnovationAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._closed,
+            self._node_owner,
+            nodes,
+            self._key_owner,
+            keys,
+            self._projection,
+            self._f5_composition_owner,
+            self._f5_compositions,
+        )
 
     @staticmethod
     def bind_chart(chart: CylinderChart, *, extent: int, growth: int) -> CylinderChart:
@@ -279,7 +257,7 @@ class SymbolicInnovationArena:
             )
         return CylinderChart(chart.slope, chart.offset)
 
-    def _intern(self, node: _Node) -> InnovationID:
+    def _intern(self, node: InnovationNode) -> InnovationID:
         self._check_open()
         found = self._keys.get(node)
         if found is not None:
@@ -291,7 +269,7 @@ class SymbolicInnovationArena:
         )
         self._nodes.append(node)
         self._keys[node] = self._copy_ref(result)
-        if isinstance(node, _Interval):
+        if isinstance(node, InnovationInterval):
             self.ledger.bump(
                 _fields_keys.SYMBOLIC_INNOVATION_INTERVAL_RETAINED_BITS,
                 max(1, node.length.bit_length()),
@@ -312,7 +290,12 @@ class SymbolicInnovationArena:
             reference.owner, reference.kind, reference.local_id, reference.seal
         )
 
-    def resolve(self, reference: InnovationID) -> _Node:
+    def copy_reference(self, reference: InnovationID) -> InnovationID:
+        """Copy one handle after authenticating it against this live arena."""
+        self.resolve(reference)
+        return self._copy_ref(reference)
+
+    def resolve(self, reference: InnovationID) -> InnovationNode:
         self._check_open()
         if type(reference) is not InnovationID:
             raise TypeError("expected a symbolic innovation ID")
@@ -323,7 +306,7 @@ class SymbolicInnovationArena:
         interned = self._keys.get(node)
         if interned is None or interned != reference:
             raise ValueError("symbolic innovation node no longer matches its interner")
-        if isinstance(node, _Atom):
+        if isinstance(node, InnovationAtom):
             node.semantic.validate()
         return node
 
@@ -334,7 +317,7 @@ class SymbolicInnovationArena:
         _validate_bounded_primitive_identity(semantic)
         retained = deepcopy(semantic)
         _validate_bounded_primitive_identity(retained)
-        return self._intern(_Atom(retained))
+        return self._intern(InnovationAtom(retained))
 
     def interval(self, length: int) -> InnovationID:
         """Intern ``E_length = sum(z**i for i in range(length))`` unexpanded.
@@ -350,7 +333,7 @@ class SymbolicInnovationArena:
             raise ValueError("innovation interval length must be nonnegative")
         if length == 0:
             return self._copy_ref(self.zero)
-        return self._intern(_Interval(length))
+        return self._intern(InnovationInterval(length))
 
     def close(self) -> None:
         """Release retained DAG stores and invalidate every issued handle."""
@@ -363,8 +346,9 @@ class SymbolicInnovationArena:
         if self._f5_compositions is not None:
             self._f5_compositions.dispose()
             self._f5_compositions = None
+            self._f5_composition_owner = None
         self._keys.clear()
-        self._nodes._rollback_unpublished(0)
+        self._nodes.rollback_unpublished(0)
         self.ledger.release(self._key_owner, entries=keys)
         self.ledger.release(self._node_owner, entries=entries, nodes=nodes)
         self.ledger.mark_disposed(self._key_owner)
@@ -382,9 +366,9 @@ class SymbolicInnovationArena:
                 raise TypeError("innovation coefficients must be exact integers")
             node = self.resolve(reference)
             self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_NORMALIZATION_VISITS)
-            if coefficient == 0 or isinstance(node, _Zero):
+            if coefficient == 0 or isinstance(node, InnovationZero):
                 continue
-            if isinstance(node, _Scale):
+            if isinstance(node, InnovationScale):
                 coefficient *= node.coefficient
                 reference = node.child
             coefficients[reference] = coefficients.get(reference, 0) + coefficient
@@ -411,25 +395,27 @@ class SymbolicInnovationArena:
 
     def _scale(self, reference: InnovationID, coefficient: int) -> InnovationID:
         node = self.resolve(reference)
-        if coefficient == 0 or isinstance(node, _Zero):
+        if coefficient == 0 or isinstance(node, InnovationZero):
             return self.zero
-        while isinstance(node, _Scale):
+        while isinstance(node, InnovationScale):
             coefficient *= node.coefficient
             reference = node.child
             node = self.resolve(reference)
         if coefficient == 1:
             return reference
-        return self._intern(_Scale(coefficient, self._copy_ref(reference)))
+        return self._intern(InnovationScale(coefficient, self._copy_ref(reference)))
 
     def _add_node(self, first: InnovationID, second: InnovationID) -> InnovationID:
         first_node, second_node = self.resolve(first), self.resolve(second)
-        if isinstance(first_node, _Zero):
+        if isinstance(first_node, InnovationZero):
             return second
-        if isinstance(second_node, _Zero):
+        if isinstance(second_node, InnovationZero):
             return first
         if second.local_id < first.local_id:
             first, second = second, first
-        return self._intern(_Add(self._copy_ref(first), self._copy_ref(second)))
+        return self._intern(
+            InnovationAdd(self._copy_ref(first), self._copy_ref(second))
+        )
 
     def add(self, first: InnovationID, second: InnovationID) -> InnovationID:
         return self.linear_combination(((1, first), (1, second)))
@@ -445,28 +431,33 @@ class SymbolicInnovationArena:
             raise TypeError("innovation scaling requires a radial multiplier")
         multiplier = RadialMultiplier(multiplier.no_growth, multiplier.growth)
         node = self.resolve(reference)
-        if isinstance(node, _Zero) or multiplier.is_identity:
+        if isinstance(node, InnovationZero) or multiplier.is_identity:
             return reference
-        if isinstance(node, _Radial):
+        if isinstance(node, InnovationRadial):
             return self._intern(
-                _Radial(node.multiplier.then(multiplier), self._copy_ref(node.child))
+                InnovationRadial(
+                    node.multiplier.then(multiplier), self._copy_ref(node.child)
+                )
             )
-        return self._intern(_Radial(multiplier, self._copy_ref(reference)))
+        return self._intern(InnovationRadial(multiplier, self._copy_ref(reference)))
 
     def chart(self, reference: InnovationID, chart: CylinderChart) -> InnovationID:
         """Apply a closed translation/reflection and its radial transport law."""
         chart = self._closed_chart(chart)
-        if isinstance(self.resolve(reference), _Zero) or chart == CylinderChart():
+        if (
+            isinstance(self.resolve(reference), InnovationZero)
+            or chart == CylinderChart()
+        ):
             return reference
         radial = RadialMultiplier()
         while True:
             node = self.resolve(reference)
-            if isinstance(node, _Charted):
+            if isinstance(node, InnovationCharted):
                 # chart(P, A), then chart(_, B), is P(A(B(i))).
                 chart = chart.then(node.chart)
                 reference = node.child
                 continue
-            if isinstance(node, _Radial):
+            if isinstance(node, InnovationRadial):
                 # R_d H^r = H^r R_(d-r); positive translations commute.
                 if chart.slope == -1 and node.multiplier.growth:
                     chart = CylinderChart(-1, chart.offset - node.multiplier.growth)
@@ -477,7 +468,7 @@ class SymbolicInnovationArena:
         result = (
             reference
             if chart == CylinderChart()
-            else self._intern(_Charted(chart, self._copy_ref(reference)))
+            else self._intern(InnovationCharted(chart, self._copy_ref(reference)))
         )
         return self.radial(result, radial)
 
@@ -628,14 +619,14 @@ class SymbolicInnovationArena:
         # Each entry is explicitly reserved and released; the dictionary is not
         # published as retained arena state.
         summaries: dict[
-            InnovationID, tuple[bool, int, int, bool, bool, bool, _Node]
+            InnovationID, tuple[bool, int, int, bool, bool, bool, InnovationNode]
         ] = {}
         summary_nodes = 0
 
         def retain_summary(
             reference: InnovationID,
-            summary: tuple[bool, int, int, bool, bool, bool, _Node],
-        ) -> tuple[bool, int, int, bool, bool, bool, _Node]:
+            summary: tuple[bool, int, int, bool, bool, bool, InnovationNode],
+        ) -> tuple[bool, int, int, bool, bool, bool, InnovationNode]:
             nonlocal summary_nodes
             existing = summaries.get(reference)
             if existing is not None:
@@ -679,12 +670,12 @@ class SymbolicInnovationArena:
 
         def suffix_summary(
             reference: InnovationID,
-        ) -> tuple[bool, int, int, bool, bool, bool, _Node]:
+        ) -> tuple[bool, int, int, bool, bool, bool, InnovationNode]:
             """Compute each unary suffix once, stopping immediately on zero."""
             found = summaries.get(reference)
             if found is not None:
                 return found
-            chain: list[tuple[InnovationID, _Node]] = []
+            chain: list[tuple[InnovationID, InnovationNode]] = []
             chain_nodes = 0
             current = reference
             prefix_no_growth = 0
@@ -704,7 +695,7 @@ class SymbolicInnovationArena:
                         self.ledger.release(memo.owner, entries=1, nodes=1)
                         raise
                     chain_nodes += 1
-                    if isinstance(node, _Radial):
+                    if isinstance(node, InnovationRadial):
                         prefix_no_growth, prefix_growth = add_metadata(
                             prefix_no_growth,
                             prefix_growth,
@@ -740,7 +731,7 @@ class SymbolicInnovationArena:
                             )
                         current = node.child
                         continue
-                    if isinstance(node, (_Charted, _Scale)):
+                    if isinstance(node, (InnovationCharted, InnovationScale)):
                         current = node.child
                         continue
                     retain_summary(current, (False, 0, 0, False, False, False, node))
@@ -749,13 +740,15 @@ class SymbolicInnovationArena:
                 for item_reference, node in reversed(chain):
                     if summaries.get(item_reference) is not None:
                         continue
-                    if not isinstance(node, (_Radial, _Charted, _Scale)):
+                    if not isinstance(
+                        node, (InnovationRadial, InnovationCharted, InnovationScale)
+                    ):
                         continue
                     child = summaries[node.child]
                     dead, no_growth, growth, wide_radial, wide_chart, wide_scale, _ = (
                         child
                     )
-                    if isinstance(node, _Radial):
+                    if isinstance(node, InnovationRadial):
                         no_growth, growth = add_metadata(
                             node.multiplier.no_growth,
                             node.multiplier.growth,
@@ -772,7 +765,7 @@ class SymbolicInnovationArena:
                             node.multiplier.no_growth.bit_length() > 64
                             or node.multiplier.growth.bit_length() > 64
                         )
-                    elif isinstance(node, _Charted):
+                    elif isinstance(node, InnovationCharted):
                         wide_chart = wide_chart or node.chart.offset.bit_length() > 64
                     else:
                         wide_scale = (
@@ -797,12 +790,12 @@ class SymbolicInnovationArena:
                         memo.owner, entries=chain_nodes, nodes=chain_nodes
                     )
 
-        pending: list[tuple[InnovationID, bool, _Node | None]] = []
+        pending: list[tuple[InnovationID, bool, InnovationNode | None]] = []
         active_frames = 0
         try:
 
             def push_frame(
-                reference: InnovationID, expanded: bool, node: _Node | None
+                reference: InnovationID, expanded: bool, node: InnovationNode | None
             ) -> None:
                 self.ledger.reserve(memo.owner, entries=1, nodes=1)
                 try:
@@ -852,21 +845,29 @@ class SymbolicInnovationArena:
                         raise ValueError("cyclotomic projection chart is too wide")
                     if wide_scale:
                         raise ValueError("cyclotomic projection scale is too wide")
-                if isinstance(node, _Radial) and (
+                if isinstance(node, InnovationRadial) and (
                     node.multiplier.no_growth.bit_length() > 64
                     or node.multiplier.growth.bit_length() > 64
                 ):
                     raise ValueError(
                         "cyclotomic projection radial exponent is too wide"
                     )
-                if isinstance(node, _Charted) and node.chart.offset.bit_length() > 64:
+                if (
+                    isinstance(node, InnovationCharted)
+                    and node.chart.offset.bit_length() > 64
+                ):
                     raise ValueError("cyclotomic projection chart is too wide")
-                if isinstance(node, _Scale) and abs(node.coefficient).bit_length() > 64:
+                if (
+                    isinstance(node, InnovationScale)
+                    and abs(node.coefficient).bit_length() > 64
+                ):
                     raise ValueError("cyclotomic projection scale is too wide")
                 children: tuple[InnovationID, ...]
-                if isinstance(node, (_Radial, _Charted, _Scale)):
+                if isinstance(
+                    node, (InnovationRadial, InnovationCharted, InnovationScale)
+                ):
                     children = (node.child,)
-                elif isinstance(node, _Add):
+                elif isinstance(node, InnovationAdd):
                     children = (node.left, node.right)
                 else:
                     children = ()
@@ -879,9 +880,9 @@ class SymbolicInnovationArena:
                     active_frames = 0
                     continue
                 self.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PROJECTION_VISITS)
-                if isinstance(node, _Zero):
+                if isinstance(node, InnovationZero):
                     result = ring.zero
-                elif isinstance(node, _Atom):
+                elif isinstance(node, InnovationAtom):
                     try:
                         supplied = atoms[node.semantic]
                     except KeyError as error:
@@ -900,7 +901,7 @@ class SymbolicInnovationArena:
                             "primitive residue exceeds its local word bound"
                         )
                     result = tuple(int(value) % ring.modulus for value in supplied)
-                elif isinstance(node, _Interval):
+                elif isinstance(node, InnovationInterval):
                     # In the whole 2-power quotient, z**degree = -1, so
                     # z**order = 1 and every complete order-sized window
                     # cancels.  Only one bounded remainder contributes.
@@ -919,7 +920,7 @@ class SymbolicInnovationArena:
                         % ring.modulus
                         for index in range(degree)
                     )
-                elif isinstance(node, _Radial):
+                elif isinstance(node, InnovationRadial):
                     radial = power_two_cyclotomic_radial_quotient(
                         order // 2,
                         node.multiplier.no_growth,
@@ -928,7 +929,7 @@ class SymbolicInnovationArena:
                     )
                     child = memo[node.child]
                     result = ring.multiply(child, radial.multiplier_residue())
-                elif isinstance(node, _Charted):
+                elif isinstance(node, InnovationCharted):
                     source = memo[node.child]
                     result = ring.zero
                     for index, coefficient in enumerate(source):
@@ -942,7 +943,7 @@ class SymbolicInnovationArena:
                             else _negative_z_power(ring, exponent)
                         )
                         result = ring.add(result, ring.scale(z_power, coefficient))
-                elif isinstance(node, _Scale):
+                elif isinstance(node, InnovationScale):
                     result = ring.scale(memo[node.child], node.coefficient)
                 else:
                     result = ring.add(memo[node.left], memo[node.right])
@@ -987,8 +988,5 @@ __all__ = [
     "MAX_CYCLOTOMIC_PROJECTION_BITS",
     "MAX_CYCLOTOMIC_PROJECTION_ORDER",
     "MAX_PRIMITIVE_IDENTITY_UNITS",
-    "InnovationID",
-    "RadialMultiplier",
     "SymbolicInnovationArena",
-    "SymbolicRadialInnovation",
 ]

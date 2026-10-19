@@ -29,12 +29,12 @@ from number_compiler.hashlife.tiles.tile_result_types import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
 from tests.support.tile_results import (
-    _ChangingAlphabetAuthority,
-    _incoming_setup,
-    _published_setup,
+    ChangingAlphabetAuthority,
     _setup,
     assert_result_stores_unchanged,
     assert_valid_tile_payloads,
+    incoming_setup,
+    published_setup,
 )
 
 
@@ -42,7 +42,7 @@ def test_boundary_operands_are_indexed_and_outgoing_tiles_are_leased() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
     ledger, _, tiles, results, input_lease, output_lease, key, result, incoming = (
-        _incoming_setup()
+        incoming_setup()
     )
     outgoing = tiles.join(output_lease.tile, output_lease.tile)
     boundary_key = replace(
@@ -147,7 +147,7 @@ def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> 
         _unused_result_binding,
         held,
         before,
-    ) = _published_setup()
+    ) = published_setup()
     foreign = TileID(ArenaToken("foreign-boundary"), "canonical-tile", 0)
     bad_values = (
         BoundaryTileOperands(BoundaryTileView(foreign, 0, 1), None),
@@ -446,12 +446,12 @@ def test_fusion_validates_each_child_input_and_output_alphabet() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
     ledger, actions, tiles, results, source, old_output, old_key, old_result = _setup(
-        authority_type=_ChangingAlphabetAuthority,
+        authority_type=ChangingAlphabetAuthority,
     )
     source_alphabet = tiles.resolve(source.tile).alphabet
     mid_alphabet = tiles.intern_alphabet(TileAlphabet(4, 3, 3, 2, "middle", "v1"))
     final_alphabet = tiles.intern_alphabet(TileAlphabet(5, 4, 4, 3, "final", "v1"))
-    assert isinstance(actions, _ChangingAlphabetAuthority)
+    assert isinstance(actions, ChangingAlphabetAuthority)
     actions.tiles, actions.domains = (
         tiles,
         (source_alphabet, mid_alphabet, final_alphabet),

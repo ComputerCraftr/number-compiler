@@ -18,6 +18,8 @@ from number_compiler.hashlife.execution.dyadic_return_transport import (
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -274,18 +276,20 @@ def test_unmatched_sources_keep_exact_branches_and_ledger(
 def test_collatz_cycle_shortcut_cannot_leak_to_a_different_high_fiber() -> None:
     # The low precision residue 1 can mean the cycle state 1 or a very large
     # source. Only the exact singleton may use the absorbing cycle descriptor.
-    from number_compiler.hashlife.execution.dyadic_return_records import _SourceNode
+    from number_compiler.hashlife.execution.dyadic_return_records import (
+        DyadicReturnSourceRecord,
+    )
     from number_compiler.hashlife.execution.dyadic_return_reuse import (
         admitted_input_key,
     )
 
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 1, 4, COLLATZ_PHYSICAL_LAW)
     core = workspace.scheduler._source_image_core()
-    small = core.view(core._origin(workspace, workspace.root_source))
+    small = core.view(core.origin(workspace, workspace.root_source))
     large_id = workspace._append_source(
-        _SourceNode(1, 4, 100, None, None, None, 0, True)
+        DyadicReturnSourceRecord(1, 4, 100, None, None, None, 0, True)
     )
-    large = core.view(core._origin(workspace, large_id))
+    large = core.view(core.origin(workspace, large_id))
     assert admitted_input_key(
         workspace, workspace.root_action, small
     ) != admitted_input_key(workspace, workspace.root_action, large)
@@ -303,7 +307,7 @@ def test_reuse_rejects_foreign_and_stale_sources() -> None:
     with pytest.raises(ValueError):
         a.admitted_input_key(a.root_action, foreign)
     own_core = a.scheduler._source_image_core()
-    own = own_core.view(own_core._origin(a, a.root_source))
+    own = own_core.view(own_core.origin(a, a.root_source))
     action = a.root_action
     a.dispose()
     with pytest.raises(ValueError):
@@ -392,5 +396,5 @@ def _origin_fixture(
 ) -> tuple[DyadicReturnImageWorkspace, SourceBoundSchedulerCore, SourceImageView]:
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), source, steps, law)
     core = workspace.scheduler._source_image_core()
-    view = core.view(core._origin(workspace, workspace.root_source))
+    view = core.view(core.origin(workspace, workspace.root_source))
     return workspace, core, view

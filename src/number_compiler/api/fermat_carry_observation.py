@@ -14,7 +14,7 @@ def fermat_carry_packet(index: int) -> dict[str, object]:
     """Observe the terminal tripling source through fixed bounded radix windows."""
     require_integer(index, "Fermat carry source index", 0, 16)
     level = (1 << index) - 1
-    windows = []
+    windows: list[dict[str, object]] = []
     for base, position in ((2, 63), (5, 6), (7, 5), (10, 8), (10, 2)):
         program = OrderedTriplingCarry.at_dyadic_phase(base, position, level, 4)
         windows.append(

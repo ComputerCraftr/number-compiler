@@ -9,7 +9,7 @@ from pathlib import Path
 from devtools.paths import isabelle_root
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.tile_kernel import _runtime
+from tests.support.tile_kernel import make_tile_runtime
 
 
 def _proof_rows(name: str) -> list[list[int | bool]]:
@@ -41,16 +41,16 @@ def test_proved_publisher_matches_every_compiled_port_binding() -> None:
     uses_right = _proof_rows("compiled_uses_right")
     local_output = _proof_rows("compiled_local_output")
     effect = CollatzPhysicalBlockEffect()
-    _ledger, tiles, adapter, action, _scheduler = _runtime(effect)
+    _ledger, tiles, adapter, action, _scheduler = make_tile_runtime(effect)
     kernel = adapter.primitive_law(action)
     assert kernel.behavior is not None
     alphabet = adapter.alphabet(action)
     for symbol in range(3):
         with tiles.leaf(alphabet, symbol) as source:
-            interface = adapter._compile_interface(
+            interface = adapter.compile_interface(
                 action, source.tile, adapter.wiring(action)
             )
-        publisher = adapter._components(interface)[2]
+        publisher = adapter.interface_components(interface)[2]
         for left in range(6):
             assert effect.output_consumer(left, symbol) == (
                 uses_right[symbol][left],

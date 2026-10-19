@@ -93,9 +93,9 @@ def attribute_growth(
             "skew_pair_domain",
         )
     }
-    previous_reached = (
-        e.reachable((*previous.outputs, previous.admitted)) if previous else set()
-    )
+    previous_reached: set[int] = set()
+    if previous is not None:
+        previous_reached = e.reachable((*previous.outputs, previous.admitted))
     slots = {e.nodes[i].data[0] for i in reached if e.nodes[i].kind == "variable"}
     result: dict[str, object] = {
         "reachable_by_kind": dict(

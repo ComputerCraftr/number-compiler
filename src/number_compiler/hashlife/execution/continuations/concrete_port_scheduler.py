@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 from typing import Protocol, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
@@ -48,6 +48,9 @@ from number_compiler.hashlife.observation.concrete_port_queries import (
     active_width,
     observe_point,
     range_cells,
+)
+from number_compiler.resources.field_image_audit_contracts import (
+    ConcretePortSchedulerAuditSnapshot,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -121,7 +124,7 @@ class ConcretePortScheduler:
             self.ledger,
             prefix + "-provider-layers",
             adapter.validate_action,
-            lambda atom: self._validate_atom(cast(PortAtom, atom)),
+            self.validate_atom,
         )
         self._virtual_owner = self.ledger.register(
             prefix + "-virtual", "transfer_summary"
@@ -199,6 +202,46 @@ class ConcretePortScheduler:
         self._next_port = 0
         self._next_residual = 0
         self._next_virtual = 0
+
+    def audit_snapshot(self) -> ConcretePortSchedulerAuditSnapshot:
+        """Return read-only views of the exact scheduler stores for audits."""
+        ports: Mapping[int, _ComposedPort] = self._ports
+        port_keys: Mapping[_ComposedPort, int] = self._port_keys
+        residuals: Mapping[int, _Residual] = self._residuals
+        residual_keys: Mapping[_Residual, int] = self._residual_keys
+        memo: Mapping[tuple[object, ...], PortAtom] = self._memo
+        virtual: Mapping[int, _VirtualInterface] = self._virtual
+        virtual_keys: Mapping[_VirtualInterface, int] = self._virtual_keys
+        virtual_bindings: Mapping[_VirtualBinding, VirtualInterfaceID] = (
+            self._virtual_bindings
+        )
+        return ConcretePortSchedulerAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._PORT_KIND,
+            self._RESIDUAL_KIND,
+            self._VIRTUAL_KIND,
+            self._next_port,
+            self._next_residual,
+            self._next_virtual,
+            self._port_owner,
+            ports,
+            self._port_key_owner,
+            port_keys,
+            self._residual_owner,
+            residuals,
+            self._residual_key_owner,
+            residual_keys,
+            self._memo_owner,
+            memo,
+            self._virtual_owner,
+            virtual,
+            self._virtual_key_owner,
+            virtual_keys,
+            self._virtual_binding_owner,
+            virtual_bindings,
+            self.layers.audit_snapshot(),
+        )
 
     def clear(self) -> None:
         self.layers.clear()
@@ -313,13 +356,13 @@ class ConcretePortScheduler:
         if type(binding) is not _VirtualBinding:
             raise TypeError("expected one virtual interface binding")
         self.adapter.validate_action(binding.parent)
-        self._validate_side(binding.side)
+        self.validate_side(binding.side)
         if type(binding.cell) is not SourceCellID:
             raise TypeError("virtual interface requires a scoped source cell")
         self.sources.resolve(binding.cell)
         self.layers.validate_optional(binding.layer)
-        self._validate_atom(binding.anchor)
-        self._validate_atom(binding.argument)
+        self.validate_atom(binding.anchor)
+        self.validate_atom(binding.argument)
         if type(binding.reverse) is not bool:
             raise TypeError("virtual interface direction must be Boolean")
 
@@ -343,8 +386,8 @@ class ConcretePortScheduler:
 
     def _intern_port(self, record: _ComposedPort) -> PortStateID:
         self.adapter.validate_action(record.action)
-        self._validate_side(record.side)
-        self._validate_atom(record.anchor)
+        self.validate_side(record.side)
+        self.validate_atom(record.anchor)
         self.resolve_residual(record.residual)
         found = self._port_keys.get(record)
         if found is not None:
@@ -363,7 +406,7 @@ class ConcretePortScheduler:
     def _intern_residual(self, record: _Residual) -> ResidualBindingID:
         return intern_residual(self, record)
 
-    def _validate_atom(self, state: PortAtom) -> None:
+    def validate_atom(self, state: object) -> None:
         if type(state) is int:
             return
         if type(state) is PortStateID:
@@ -377,7 +420,7 @@ class ConcretePortScheduler:
             return
         raise TypeError("concrete port is neither an exact scalar nor scoped state")
 
-    def _validate_side(self, side: object) -> int:
+    def validate_side(self, side: object) -> int:
         if type(side) is not int:
             raise TypeError("concrete port side must be an exact integer")
         if side not in (0, 1):
@@ -414,7 +457,7 @@ class ConcretePortScheduler:
 
     def initial(self, action: FieldCellActionID, side: int) -> PortAtom:
         self.adapter.validate_action(action)
-        side = self._validate_side(side)
+        side = self.validate_side(side)
         return self._run(("INIT", action, side))
 
     @staticmethod
@@ -439,7 +482,7 @@ class ConcretePortScheduler:
         reverse: bool = False,
     ) -> PortAtom:
         self.adapter.validate_action(action)
-        side = self._validate_side(side)
+        side = self.validate_side(side)
         self._validate_action_state(action, side, state)
         if type(cell) is not SourceCellID:
             raise TypeError("concrete advance requires a scoped source cell")

@@ -13,6 +13,9 @@ from pathlib import Path
 from time import perf_counter
 
 from devtools.checks.package_contracts import DEVELOPER_ROOTS
+from devtools.report_values import string_keyed_mapping
+from number_compiler.api.family_registry import family_spec
+from number_compiler.arithmetic.contracts.family_identity import family_id
 
 
 def _report_stage(stage: str) -> None:
@@ -51,7 +54,9 @@ def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
     return members
 
 
-def verify_wheel(wheel: Path) -> dict[str, object]:
+def verify_wheel(
+    wheel: Path, *, python_executable: Path | None = None
+) -> dict[str, object]:
     """Check package contents, resource admission, public imports, and the CLI."""
     wheel = wheel.resolve(strict=True)
     from devtools.paths import repository_root
@@ -80,7 +85,7 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
         venv = work / "environment"
         _report_stage("venv-create:start")
         subprocess.run(
-            [sys.executable, "-m", "venv", str(venv)],
+            [str(python_executable or sys.executable), "-m", "venv", str(venv)],
             check=True,
             env=environment,
             capture_output=True,
@@ -162,12 +167,12 @@ from unittest.mock import patch
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveTemporalCutover,
 )
-from number_compiler.sequences.reverse_add.recursive_adapters import _ReverseRecursiveFieldAdapter
-leaf_compile = _ReverseRecursiveFieldAdapter._compile
+from number_compiler.sequences.reverse_add.recursive_adapters import ReverseRecursiveFieldAdapter
+leaf_compile = ReverseRecursiveFieldAdapter._compile
 def require_completed_children(self, action, source):
     assert self.sources.resolve(source).level == 0, 'parent recompiled original source'
     return leaf_compile(self, action, source)
-with patch.object(_ReverseRecursiveFieldAdapter, '_compile', require_completed_children):
+with patch.object(ReverseRecursiveFieldAdapter, '_compile', require_completed_children):
     with patch.object(ReverseRecursiveTemporalCutover, 'digit_image', side_effect=AssertionError('terminal image rebuilt')):
         reverse = api.ReverseAddPoweredTerm(196, 20)
         assert ''.join(map(str, reversed(reverse.digits()))) == '70446464506'
@@ -334,7 +339,7 @@ finally:
     AntihydraArithmeticImageWorkspace.complete_composite_candidate = original_candidate
     AntihydraArithmeticImageWorkspace._run_candidate = original_run
 api.NumberCompiler.clear_shared_cache()
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed', 'antihydra_digit_parent_reuse': 'passed'}))
+print(json.dumps({'python_version': list(sys.version_info[:3]), 'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed', 'antihydra_digit_parent_reuse': 'passed'}))
 """,
             ],
             cwd=work,
@@ -367,8 +372,8 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             capture_output=True,
             text=True,
         )
-        result: object = json.loads(cli.stdout)
-        if not isinstance(result, dict) or result.get("value") != "2":
+        result = string_keyed_mapping(json.loads(cli.stdout))
+        if result is None or result.get("value") != "2":
             raise ValueError("installed CLI returned another prime result")
         _report_stage("installed-cli-contracts:mersenne-factor")
         factor_cli = subprocess.run(
@@ -394,16 +399,22 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             capture_output=True,
             text=True,
         )
-        factor: object = json.loads(factor_cli.stdout)
-        info = factor.get("info") if isinstance(factor, dict) else None
+        factor = string_keyed_mapping(json.loads(factor_cli.stdout))
+        info = string_keyed_mapping(factor.get("info")) if factor is not None else None
         primality = (
-            info.get("number-theory.primality") if isinstance(info, dict) else None
+            string_keyed_mapping(info.get("number-theory.primality"))
+            if info is not None
+            else None
         )
-        witness = info.get("number-theory.factor") if isinstance(info, dict) else None
+        witness = (
+            string_keyed_mapping(info.get("number-theory.factor"))
+            if info is not None
+            else None
+        )
         if (
-            not isinstance(primality, dict)
+            primality is None
             or primality.get("status") != "composite"
-            or not isinstance(witness, dict)
+            or witness is None
             or witness.get("factor_witness") != 23
         ):
             raise ValueError("installed CLI did not print the checked M11 factor")
@@ -546,6 +557,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             ("collatz", 2, 2, ("--seed", "11")),
             ("antihydra", 16, 4, ()),
             ("fermat", 2, 3, ()),
+            ("mersenne", 31, 16, ()),
         ):
             commands.append(
                 (
@@ -595,10 +607,13 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             if "temporal.matrix" in arguments:
                 matrix = json.loads(observed.stderr)["temporal.matrix"]
                 ticks = int(arguments[arguments.index("--temporal-matrix-steps") + 1])
+                capability = family_spec(family_id(arguments[0])).matrix
+                assert capability is not None
                 if (
                     matrix["status"] != "available"
                     or matrix["matrix_kind"] != "source-transfer"
-                    or matrix["requested_physical_ticks"] != ticks
+                    or matrix["horizon"]
+                    != {"ticks": ticks, "unit": capability.clock.value}
                     or matrix["execution_authority"] is not False
                 ):
                     raise ValueError(
@@ -688,8 +703,15 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wheel", type=Path)
+    parser.add_argument("--python-executable", type=Path)
     args = parser.parse_args()
-    print(json.dumps(verify_wheel(args.wheel), indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            verify_wheel(args.wheel, python_executable=args.python_executable),
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 

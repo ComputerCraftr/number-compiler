@@ -213,7 +213,7 @@ class RadixCarryAction:
             or self.incoming_max != other.incoming_max
         ):
             raise ValueError("incompatible carry-action domains")
-        out = []
+        out: list[int] = []
         for incoming in range(self.incoming_min, self.incoming_max + 1):
             middle = self.apply(incoming)
             if not other.incoming_min <= middle <= other.incoming_max:
@@ -612,7 +612,7 @@ def normalization_digits_lsf(
     if normalization.exceptional_minus_one:
         return (-1,) + (0,) * (block.length - 1)
     payload = normalization.residue
-    out_digits = []
+    out_digits: list[int] = []
     for _ in range(block.length):
         payload, digit = divmod(payload, block.base)
         out_digits.append(digit)

@@ -430,6 +430,11 @@ class CertifiedDiagonalComparison:
     second_inlets: tuple[SourceGrowthInlet, ...]
     _registry_key: int = field(default=-1, init=False, repr=False, compare=False)
 
+    @property
+    def registry_key(self) -> int:
+        """Return the issuer slot; ownership is checked by the registry."""
+        return self._registry_key
+
     def _snapshot(self) -> tuple[object, ...]:
         return (
             self.certificate,
@@ -441,12 +446,20 @@ class CertifiedDiagonalComparison:
             _inlets_snapshot(self.second_inlets),
         )
 
+    def publication_snapshot(self) -> tuple[object, ...]:
+        """Return structural fields for the owning issuer's binding check."""
+        return self._snapshot()
+
     def _validate(self) -> None:
         from .q19_border_control import CertifiedBorderGrowth
 
         if type(self.certificate) is not CertifiedBorderGrowth:
             raise ValueError("diagonal comparison has no issued source certificate")
         self.certificate.owner._issuance_registry.validate_diagonal_comparison(self)
+
+    def validate_source_authority(self) -> None:
+        """Validate the complete source-bound issuance chain for this comparison."""
+        self._validate()
 
     def terminal(self) -> DirectedGrowthMask:
         self._validate()

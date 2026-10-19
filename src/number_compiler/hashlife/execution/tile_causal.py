@@ -3,12 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    AdvanceSymbolFrame,
+    AnchorFrame,
+    CausalTaskFrame,
+    ChildStatesFrame,
+    EmitFrame,
+    ExactReverseOutputFrame,
+    InterfaceEmitFrame,
+    InterfaceFrame,
+    MemoDoneFrame,
+    OutputBoundaryFrame,
+    OutputChunkListFrame,
+    OutputFrame,
+    PointFrame,
+    PromoteMidpointFrame,
+    ResidualFrame,
+    ReverseBoundaryFrame,
+    ReverseInterfaceFrame,
+    ScanChunksFrame,
+    SourceRootMatchFrame,
+)
 from number_compiler.hashlife.execution.reverse_active_transfer import (
     consume_reverse_bound_output,
 )
@@ -19,12 +40,16 @@ from number_compiler.hashlife.execution.tile_causal_admission import (
     admitted_kernel,
     admitted_wiring,
 )
-from number_compiler.hashlife.execution.tile_causal_api import CausalTileAPI
+from number_compiler.hashlife.execution.tile_causal_api import (
+    CausalRunResult,
+    CausalTileAPI,
+)
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_boundary_step import (
     boundary_step,
     probe_boundary_result,
 )
+from number_compiler.hashlife.execution.tile_causal_emit import emit_step
 from number_compiler.hashlife.execution.tile_causal_interface_step import interface_step
 from number_compiler.hashlife.execution.tile_causal_midpoint import cached_midpoint_step
 from number_compiler.hashlife.execution.tile_causal_pair_transfer import (
@@ -36,15 +61,7 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
     lookup_causal_result,
-    primitive_causal_semantics,
     probe_causal_result,
-    publish_causal_completed,
-)
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame as _Frame,
-)
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalPrefix as _Prefix,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     append_prefix,
@@ -54,14 +71,12 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     primitive_advance,
     publish_composite_output,
     retain_completed,
-    temporal_payload,
 )
 from number_compiler.hashlife.execution.tile_reverse_boundary import (
     reverse_boundary_step,
     supports_reverse_boundary,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import (
-    BoundaryTileOperands,
     BoundaryTileView,
 )
 from number_compiler.hashlife.tiles.tile_region_memo import normalize_cached_region
@@ -69,6 +84,26 @@ from number_compiler.hashlife.tiles.tile_result_leases import tile_lease_was_rel
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.causal_types import (
+    CausalPrefix as _Prefix,
+)
+from number_compiler.resources.causal_types import (
+    CausalState,
+    CausalTaskValue,
+)
+from number_compiler.resources.causal_types import (
+    pop_boundary_view as _pop_boundary_view,
+)
+from number_compiler.resources.causal_types import (
+    pop_causal_state as _pop_causal_state,
+)
+from number_compiler.resources.causal_types import (
+    pop_completed_output as _pop_completed_output,
+)
+from number_compiler.resources.causal_types import (
+    pop_reverse_bound_output as _pop_reverse_bound_output,
+)
+from number_compiler.resources.causal_workspace import CausalActionAdmission
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -99,10 +134,15 @@ class CausalTileEngine(CausalTileAPI):
         self._result_leases: list[ResultLease] = []
         self._application: int | None = None
         self._hold_workspace = False
-        self._action_admission_token: object | None = None
+        self._action_admission_token: CausalActionAdmission | None = None
         self._running = False
         self._workspace_memo = scheduler._causal_tasks.memo
         self._workspace_active = scheduler._causal_tasks.active
+
+    @property
+    def action_admission(self) -> CausalActionAdmission | None:
+        """Expose the current run lease to checked causal helper operations."""
+        return self._action_admission_token
 
     def _children(
         self,
@@ -139,7 +179,7 @@ class CausalTileEngine(CausalTileAPI):
             action,
         )
 
-    def _admit_run_actions(self, action: FieldCellActionID) -> object:
+    def _admit_run_actions(self, action: FieldCellActionID) -> CausalActionAdmission:
         return admit_run_actions(
             self.adapter, self.scheduler._causal_tasks, self.ledger, action
         )
@@ -174,7 +214,11 @@ class CausalTileEngine(CausalTileAPI):
         return lease.tile
 
     def _composite_key(
-        self, action: FieldCellActionID, tile: TileID, left: object, right: object
+        self,
+        action: FieldCellActionID,
+        tile: TileID,
+        left: CausalState,
+        right: CausalState,
     ) -> PoweredResultKey | None:
         return composite_result_key(
             self.adapter,
@@ -253,35 +297,27 @@ class CausalTileEngine(CausalTileAPI):
 
     def _run(
         self,
-        root: _Frame,
+        root: CausalTaskFrame,
         *,
         tile_result: bool,
         return_result: bool = False,
-    ) -> Any:
+    ) -> CausalRunResult:
         if self._running:
             raise RuntimeError("causal tile engine cannot reenter an active run")
         frames = self.scheduler._causal_tasks.frames
         values = self.scheduler._causal_tasks.values
         memo = self._workspace_memo
         active = self._workspace_active
-        primary = {
-            "advance",
-            "anchor",
-            "emit",
-            "residual",
-            "output",
-            "output_boundary",
-            "interface",
-            "reverse_interface",
-            "reverse_boundary",
-            "interface_emit",
-            "child_states",
-        }
         run_token = self.scheduler._causal_tasks.begin_run()
         self._running = True
         try:
-            if root.op != "exact_reverse_output":
-                self._action_admission_token = self._admit_run_actions(root.args[0])
+            match root:
+                case ExactReverseOutputFrame():
+                    pass
+                case MemoDoneFrame() | SourceRootMatchFrame():
+                    raise TypeError("causal recurrence root is an internal task")
+                case _:
+                    self._action_admission_token = self._admit_run_actions(root.args[0])
             frames.append(root)
             while frames:
                 peak = len(frames) + len(values) + len(memo) + len(active)
@@ -294,10 +330,10 @@ class CausalTileEngine(CausalTileAPI):
                         peak - old,
                     )
                 frame = frames.pop()
-                op, a = frame.op, frame.args
+                op = frame.op
                 self.ledger.bump(_execution_keys.TILE_CAUSAL_FRAMES)
-                if op == "memo_done":
-                    key = a[0]
+                if isinstance(frame, MemoDoneFrame):
+                    (key,) = frame.args
                     if key not in active or not values:
                         raise AssertionError(
                             "causal memo completion lost its dependency"
@@ -307,9 +343,33 @@ class CausalTileEngine(CausalTileAPI):
                     values.append(value)
                     self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_PUBLICATIONS)
                     continue
-                if op in primary and frame.stage == 0 and not frame.memoized:
-                    if op == "output_boundary":
-                        action, side, view, anchor, argument = a
+                if (
+                    isinstance(
+                        frame,
+                        (
+                            AdvanceFrame,
+                            AnchorFrame,
+                            EmitFrame,
+                            ResidualFrame,
+                            OutputFrame,
+                            OutputBoundaryFrame,
+                            InterfaceFrame,
+                            ReverseInterfaceFrame,
+                            InterfaceEmitFrame,
+                            ChildStatesFrame,
+                        ),
+                    )
+                    and frame.stage == 0
+                    and not frame.memoized
+                ):
+                    if isinstance(frame, OutputBoundaryFrame):
+                        (
+                            boundary_action,
+                            boundary_side,
+                            boundary_view,
+                            boundary_anchor,
+                            boundary_argument,
+                        ) = frame.args
                         dependencies = (
                             self.scheduler._causal_dependencies
                             if self._application is not None
@@ -317,315 +377,209 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         normalized, lease = normalize_cached_region(
                             self.scheduler.results,
-                            view,
+                            boundary_view,
                             dependencies=dependencies,
                             application=self._application,
                         )
                         self._leases.append(lease)
-                        a = (action, side, normalized, anchor, argument)
-                        frame.args = a
-                    elif op == "advance":
-                        action, side, state, view = a
-                        if type(view) is BoundaryTileView:
-                            view.__post_init__()
-                        if type(view) is BoundaryTileView and view.relative_origin:
-                            view = BoundaryTileView(
-                                view.tile,
+                        frame.args = (
+                            boundary_action,
+                            boundary_side,
+                            normalized,
+                            boundary_anchor,
+                            boundary_argument,
+                        )
+                    elif isinstance(frame, AdvanceFrame):
+                        advance_action, advance_side, advance_state, advance_view = (
+                            frame.args
+                        )
+                        if type(advance_view) is not BoundaryTileView:
+                            raise TypeError("advance frame requires a boundary view")
+                        advance_view.__post_init__()
+                        if advance_view.relative_origin:
+                            advance_view = BoundaryTileView(
+                                advance_view.tile,
                                 0,
-                                view.relative_extent,
-                                view.orientation,
-                                view.source_offset,
+                                advance_view.relative_extent,
+                                advance_view.orientation,
+                                advance_view.source_offset,
                             )
-                            a = (action, side, state, view)
-                            frame.args = a
-                    key = (op, a)
+                            frame.args = (
+                                advance_action,
+                                advance_side,
+                                advance_state,
+                                advance_view,
+                            )
+                    memo_key = (frame.op, frame.args)
                     counter = "tile_causal_" + (
-                        "boundary_output" if op == "output_boundary" else op
+                        "boundary_output"
+                        if isinstance(frame, OutputBoundaryFrame)
+                        else op
                     )
                     self.ledger.bump(counter + "_requests")
-                    if op == "output_boundary":
+                    if isinstance(frame, OutputBoundaryFrame):
                         self.ledger.bump(
-                            counter + "_requested_extent", a[2].relative_extent
+                            counter + "_requested_extent",
+                            frame.args[2].relative_extent,
                         )
-                    found = memo.get(key)
+                    found = memo.get(memo_key)
                     if found is not None:
                         values.append(found)
                         self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_HITS)
                         self.ledger.bump(counter + "_hits")
-                        if op == "output_boundary":
+                        if isinstance(frame, OutputBoundaryFrame):
                             self.ledger.bump(
-                                counter + "_cached_extent", a[2].relative_extent
+                                counter + "_cached_extent",
+                                frame.args[2].relative_extent,
                             )
                         continue
-                    if op == "output_boundary":
+                    if isinstance(frame, OutputBoundaryFrame):
                         boundary = probe_boundary_result(self, frame)
                         if boundary is not None:
                             values.append(boundary)
                             self.ledger.bump(counter + "_hits")
                             self.ledger.bump(
-                                counter + "_cached_extent", a[2].relative_extent
+                                counter + "_cached_extent",
+                                frame.args[2].relative_extent,
                             )
                             continue
-                    if key in active:
+                    if memo_key in active:
                         raise ValueError("causal task dependency contains a cycle")
                     self.ledger.bump(counter + "_evaluations")
                     try:
-                        self.scheduler._causal_tasks.begin(key)
+                        self.scheduler._causal_tasks.begin(memo_key)
                     except BaseException:
                         self.ledger.bump(counter + "_failures")
                         raise
                     frame.memoized = True
-                    frames.extend((_Frame("memo_done", (key,)), frame))
+                    frames.extend((MemoDoneFrame((memo_key,)), frame))
                     self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_EVALUATIONS)
                     continue
-                if interface_step(self, frame, frames, values):
+                if isinstance(
+                    frame,
+                    (
+                        InterfaceFrame,
+                        ReverseInterfaceFrame,
+                        InterfaceEmitFrame,
+                        ChildStatesFrame,
+                        ExactReverseOutputFrame,
+                    ),
+                ) and interface_step(self, frame, frames, values):
                     continue
-                if reverse_boundary_step(self, frame, frames, values):
+                if isinstance(frame, ReverseBoundaryFrame) and reverse_boundary_step(
+                    self, frame, frames, values
+                ):
                     continue
-                if promotion_step(self, frame, frames, values):
+                if isinstance(frame, PromoteMidpointFrame) and promotion_step(
+                    self, frame, frames, values
+                ):
                     continue
-                if point_step(self, frame, frames, values):
+                if isinstance(frame, PointFrame) and point_step(
+                    self, frame, frames, values
+                ):
                     continue
-                if op == "advance":
-                    action, side, state, view = a
-                    if self._children(action) is None:
+                if isinstance(frame, AdvanceFrame):
+                    advance_action, advance_side, advance_state, advance_view = (
+                        frame.args
+                    )
+                    if self._children(advance_action) is None:
+                        if type(advance_state) is not int:
+                            raise TypeError("primitive advance requires a finite state")
                         values.append(
                             primitive_advance(
                                 self.adapter,
-                                action,
-                                side,
-                                state,
-                                view,
+                                advance_action,
+                                advance_side,
+                                advance_state,
+                                advance_view,
                                 action_admission=self._action_admission_token,
                             )
                         )
                     else:
                         if (
-                            not isinstance(state, _Prefix)
-                            or state.action != action
-                            or state.side != side
+                            not isinstance(advance_state, _Prefix)
+                            or advance_state.action != advance_action
+                            or advance_state.side != advance_side
                         ):
                             raise ValueError(
                                 "composite transfer requires its exact causal prefix"
                             )
-                        values.append(self._append_prefix(state, view))
+                        values.append(self._append_prefix(advance_state, advance_view))
                     continue
-                if op == "emit":
-                    action, left, symbol, right = a
-                    children = self._children(action)
-                    if children is None:
-                        alphabet = self.adapter.alphabet(action)
-                        source = self.tiles.leaf(alphabet, symbol)
-                        self._leases.append(source)
-                        wiring = self._wiring(action)
-                        key, completed = probe_causal_result(
-                            self.scheduler.results,
-                            action,
-                            source.tile,
-                            PrimitiveCausalPorts(left, right),
-                            wiring,
-                            action_admission=self._action_admission_token,
-                        )
-                        if completed is not None:
-                            payload = retain_completed(self, key, completed)
-                            self.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_HITS)
-                            values.append(payload)
-                            continue
-                        output_symbol = self._law(action).emit(
-                            left,
-                            symbol,
-                            right,
-                        )
-                        output = self.tiles.leaf(alphabet, output_symbol)
-                        self._leases.append(output)
-                        interface = self.adapter.leaf_interface(
-                            action,
-                            source.tile,
-                            wiring,
-                        )
-                        occurrence = self.adapter.leaf_observation(
-                            action,
-                            source.tile,
-                            interface,
-                            (left, right),
-                        )
-                        semantics = primitive_causal_semantics(
-                            self.scheduler.results,
-                            action,
-                            source.tile,
-                            output.tile,
-                            PrimitiveCausalPorts(left, right),
-                            wiring,
-                            occurrence,
-                        )
-                        from number_compiler.hashlife.execution.tile_physical_support import (
-                            primitive_physical_support,
-                        )
-
-                        support = primitive_physical_support(
-                            self.scheduler,
-                            action,
-                            source.tile,
-                            (left, right),
-                        )
-                        if support is not None:
-                            semantics = replace(
-                                semantics,
-                                physical_support=support,
-                            )
-                        forward = BoundaryTileView(output.tile, 0, 1)
-                        backward = BoundaryTileView(output.tile, 0, 1, 1)
-                        payload = CausalCompletedOutput(
-                            output.tile,
-                            replace(
-                                semantics,
-                                outgoing_boundaries=BoundaryTileOperands(
-                                    forward, backward
-                                ),
-                            ),
-                            (left, right),
-                        )
-                        completed = publish_causal_completed(
-                            self.scheduler.results,
-                            key,
-                            payload,
-                        )
-                        payload = retain_completed(self, key, completed)
-                        values.append(payload)
-                        self.ledger.bump(_execution_keys.TILE_CAUSAL_PRIMITIVE_EMITS)
-                        continue
-                    before, after = children
-                    if frame.stage == 4:
-                        second = values.pop()
-                        first = frame.saved[0]
-                        values.append(
-                            temporal_payload(
-                                self.adapter,
-                                before,
-                                after,
-                                first,
-                                second,
-                                left.explicit_edge or right.explicit_edge,
-                            )
-                        )
-                        continue
-                    if frame.stage == 0:
-                        match (left, right):
-                            case (_Prefix(), _Prefix()):
-                                pass
-                            case _:
-                                raise ValueError(
-                                    "composite emission requires two causal prefixes"
-                                )
-                        frame.stage = 1
-                        frames.extend(
-                            (
-                                frame,
-                                _Frame("anchor", (before, 1, right)),
-                                _Frame("anchor", (before, 0, left)),
-                            )
-                        )
-                        continue
-                    if frame.stage == 1:
-                        right_anchor, left_anchor = values.pop(), values.pop()
-                        frame.stage, frame.saved = 2, (left_anchor, right_anchor)
-                        frames.extend(
-                            (
-                                frame,
-                                _Frame(
-                                    "advance_symbol", (before, 1, right_anchor, symbol)
-                                ),
-                                _Frame(
-                                    "advance_symbol", (before, 0, left_anchor, symbol)
-                                ),
-                                _Frame(
-                                    "emit", (before, left_anchor, symbol, right_anchor)
-                                ),
-                            )
-                        )
-                        continue
-                    if frame.stage == 2:
-                        right_argument, left_argument, first = (
-                            values.pop(),
-                            values.pop(),
-                            values.pop(),
-                        )
-                        frame.stage, frame.saved = 3, (first,)
-                        frames.extend(
-                            (
-                                frame,
-                                _Frame("residual", (action, 1, right, left_argument)),
-                                _Frame("residual", (action, 0, left, right_argument)),
-                            )
-                        )
-                        continue
-                    second_right, second_left = values.pop(), values.pop()
-                    first = frame.saved[0]
-                    frame.stage = 4
-                    frame.saved = (first,)
-                    frames.extend(
-                        (
-                            frame,
-                            _Frame(
-                                "emit",
-                                (
-                                    after,
-                                    second_left,
-                                    self.tiles.resolve(first.output).symbol,
-                                    second_right,
-                                ),
-                            ),
-                        )
-                    )
+                if isinstance(frame, EmitFrame):
+                    emit_step(self, frame, frames, values)
                     continue
-                if op == "advance_symbol":
-                    action, side, state, symbol = a
-                    if type(side) is not int or side not in (0, 1):
+                if isinstance(frame, AdvanceSymbolFrame):
+                    symbol_action, symbol_side, symbol_state, symbol = frame.args
+                    if type(symbol_side) is not int or symbol_side not in (0, 1):
                         raise ValueError("symbol advance requires an exact direction")
-                    if self._children(action) is None:
+                    if self._children(symbol_action) is None:
+                        if type(symbol_state) is not int:
+                            raise TypeError(
+                                "primitive symbol advance requires a finite state"
+                            )
                         # A primitive transition observes only the finite literal.
                         # Publishing a tile and a directed-transfer cache entry
                         # for it duplicates the admitted kernel's transition law.
                         values.append(
-                            self._law(action).advance(BoundarySide(side), state, symbol)
+                            self._law(symbol_action).advance(
+                                BoundarySide(symbol_side), symbol_state, symbol
+                            )
                         )
                         self.ledger.bump(
                             _execution_keys.TILE_CAUSAL_DIRECT_SYMBOL_TRANSFERS
                         )
                     else:
+                        if (
+                            not isinstance(symbol_state, _Prefix)
+                            or symbol_state.action != symbol_action
+                            or symbol_state.side != symbol_side
+                        ):
+                            raise ValueError(
+                                "composite symbol advance requires its exact causal prefix"
+                            )
                         with self.tiles.leaf(
-                            self.adapter.alphabet(action), symbol
+                            self.adapter.alphabet(symbol_action), symbol
                         ) as leaf:
                             values.append(
                                 self._append_prefix(
-                                    state,
+                                    symbol_state,
                                     BoundaryTileView(leaf.tile, 0, 1),
                                 )
                             )
                     continue
-                if op == "anchor":
-                    action, side, state = a
-                    if (
-                        self._children(state.action) is None
-                    ):  # pragma: no cover - defensive
+                if isinstance(frame, AnchorFrame):
+                    anchor_action, anchor_side, anchor_state = frame.args
+                    if not isinstance(anchor_state, _Prefix):
+                        raise TypeError("anchor task requires a causal prefix")
+                    if self._children(anchor_state.action) is None:
                         raise ValueError("causal prefix belongs to a primitive action")
-                    if state.view is None:
-                        values.append(self._initial(action, side, state.producer_seed))
+                    if anchor_state.view is None:
+                        values.append(
+                            self._initial(
+                                anchor_action, anchor_side, anchor_state.producer_seed
+                            )
+                        )
                     else:
                         frames.append(
-                            _Frame(
-                                "advance",
+                            AdvanceFrame(
                                 (
-                                    action,
-                                    side,
-                                    self._initial(action, side, state.producer_seed),
-                                    state.view,
-                                ),
+                                    anchor_action,
+                                    anchor_side,
+                                    self._initial(
+                                        anchor_action,
+                                        anchor_side,
+                                        anchor_state.producer_seed,
+                                    ),
+                                    anchor_state.view,
+                                )
                             )
                         )
                     continue
-                if op == "residual":
-                    composite, side, prefix, argument = a
+                if isinstance(frame, ResidualFrame):
+                    composite, side, prefix, argument = frame.args
+                    if not isinstance(prefix, _Prefix):
+                        raise TypeError("residual task requires a causal prefix")
                     children = self._children(composite)
                     if children is None:
                         raise TypeError("residual requires a composite action")
@@ -640,8 +594,7 @@ class CausalTileEngine(CausalTileAPI):
                         frames.extend(
                             (
                                 frame,
-                                _Frame(
-                                    "advance",
+                                AdvanceFrame(
                                     (
                                         after,
                                         side,
@@ -653,11 +606,17 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         continue
                     if frame.stage == -1:
-                        consumer_state = values.pop()
+                        consumer_state = _pop_causal_state(values)
                         frame.stage = 0
                         frame.saved = (consumer_state,)
                     elif frame.saved:
-                        consumer_state = frame.saved[0]
+                        match frame.saved:
+                            case (saved_state,):
+                                consumer_state = saved_state
+                            case _:
+                                raise AssertionError(
+                                    "causal residual lost its consumer state"
+                                )
                     if prefix.view is None:
                         values.append(consumer_state)
                         continue
@@ -672,8 +631,7 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         if blank is not None:
                             frames.append(
-                                _Frame(
-                                    "advance",
+                                AdvanceFrame(
                                     (
                                         after,
                                         side,
@@ -703,8 +661,7 @@ class CausalTileEngine(CausalTileAPI):
                             frames.extend(
                                 (
                                     frame,
-                                    _Frame(
-                                        "reverse_boundary",
+                                    ReverseBoundaryFrame(
                                         (
                                             before,
                                             side,
@@ -723,8 +680,7 @@ class CausalTileEngine(CausalTileAPI):
                         frames.extend(
                             (
                                 frame,
-                                _Frame(
-                                    "output_boundary",
+                                OutputBoundaryFrame(
                                     (
                                         before,
                                         side,
@@ -740,8 +696,8 @@ class CausalTileEngine(CausalTileAPI):
                             )
                         )
                         continue
-                    produced = values.pop()
                     if frame.stage == 2:
+                        produced = _pop_reverse_bound_output(values)
                         if type(consumer_state) is not int:
                             raise TypeError(
                                 "reverse output transfer requires a finite consumer"
@@ -759,58 +715,67 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         values.append(consumed)
                         continue
+                    produced_view = _pop_boundary_view(values)
                     frames.append(
-                        _Frame(
-                            "advance",
+                        AdvanceFrame(
                             (
                                 after,
                                 side,
                                 consumer_state,
-                                produced,
+                                produced_view,
                             ),
                         )
                     )
                     continue
-                if boundary_step(self, frame, frames, values):
+                if isinstance(
+                    frame, (ScanChunksFrame, OutputChunkListFrame, OutputBoundaryFrame)
+                ) and boundary_step(self, frame, frames, values):
                     continue
-                if op == "output":
-                    action, tile, left, right = a
-                    children = self._children(action)
+                if isinstance(frame, OutputFrame):
+                    output_action, output_tile, output_left, output_right = frame.args
+                    children = self._children(output_action)
                     if (
                         frame.stage == 0
                         and children is None
-                        and type(left) is int
-                        and type(right) is int
+                        and type(output_left) is int
+                        and type(output_right) is int
                     ):
-                        wiring = self._wiring(action)
-                        key, completed = probe_causal_result(
+                        wiring = self._wiring(output_action)
+                        result_key, completed = probe_causal_result(
                             self.scheduler.results,
-                            action,
-                            tile,
-                            PrimitiveCausalPorts(left, right),
+                            output_action,
+                            output_tile,
+                            PrimitiveCausalPorts(output_left, output_right),
                             wiring,
                             action_admission=self._action_admission_token,
                         )
                         if completed is None:
-                            completed = self.scheduler._complete_direct(key)
+                            completed = self.scheduler._complete_direct(result_key)
                             self.ledger.bump(
                                 _execution_keys.TILE_CAUSAL_RESULT_EVALUATIONS
                             )
                         else:
                             self.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_HITS)
-                        payload = retain_completed(self, key, completed)
+                        payload = retain_completed(self, result_key, completed)
                         values.append(payload)
                         continue
                     if frame.stage == 0 and children is not None:
-                        key = self._composite_key(action, tile, left, right)
-                        if key is not None:
+                        composite_result_key = self._composite_key(
+                            output_action,
+                            output_tile,
+                            output_left,
+                            output_right,
+                        )
+                        if composite_result_key is not None:
                             completed = lookup_causal_result(
                                 self.scheduler.results,
-                                key,
+                                composite_result_key,
                                 action_admission=self._action_admission_token,
                             )
                             if completed is not None:
-                                payload = retain_completed(self, key, completed)
+                                payload = retain_completed(
+                                    self, composite_result_key, completed
+                                )
                                 self.ledger.bump(
                                     _execution_keys.TILE_CAUSAL_RESULT_HITS
                                 )
@@ -821,14 +786,14 @@ class CausalTileEngine(CausalTileAPI):
                         frame,
                         frames,
                         values,
-                        action,
-                        tile,
-                        left,
-                        right,
+                        output_action,
+                        output_tile,
+                        output_left,
+                        output_right,
                         children,
                     ):
                         continue
-                    node = self.tiles.resolve(tile)
+                    node = self.tiles.resolve(output_tile)
                     if not node.level:
                         if node.symbol is None:
                             raise ValueError("malformed tile leaf")
@@ -837,20 +802,25 @@ class CausalTileEngine(CausalTileAPI):
                             frames.extend(
                                 (
                                     frame,
-                                    _Frame("emit", (action, left, node.symbol, right)),
+                                    EmitFrame(
+                                        (
+                                            output_action,
+                                            output_left,
+                                            node.symbol,
+                                            output_right,
+                                        )
+                                    ),
                                 )
                             )
                             continue
-                        payload = values.pop()
-                        match payload:
-                            case CausalCompletedOutput():
-                                pass
-                            case _:
-                                raise AssertionError(
-                                    "causal leaf emission returned another result sort"
-                                )
+                        payload = _pop_completed_output(values)
                         payload = publish_composite_output(
-                            self, action, tile, left, right, payload
+                            self,
+                            output_action,
+                            output_tile,
+                            output_left,
+                            output_right,
+                            payload,
                         )
                         values.append(payload)
                         continue
@@ -860,12 +830,11 @@ class CausalTileEngine(CausalTileAPI):
                         frames.extend(
                             (
                                 frame,
-                                _Frame(
-                                    "advance",
+                                AdvanceFrame(
                                     (
-                                        action,
+                                        output_action,
                                         1,
-                                        right,
+                                        output_right,
                                         BoundaryTileView(
                                             node.right,
                                             0,
@@ -874,12 +843,11 @@ class CausalTileEngine(CausalTileAPI):
                                         ),
                                     ),
                                 ),
-                                _Frame(
-                                    "advance",
+                                AdvanceFrame(
                                     (
-                                        action,
+                                        output_action,
                                         0,
-                                        left,
+                                        output_left,
                                         BoundaryTileView(
                                             node.left,
                                             0,
@@ -891,31 +859,55 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         continue
                     if frame.stage == 1:
-                        right_mid, left_mid = values.pop(), values.pop()
+                        right_mid = _pop_causal_state(values)
+                        left_mid = _pop_causal_state(values)
                         frame.stage, frame.saved = 2, (left_mid, right_mid)
                         frames.extend(
                             (
                                 frame,
-                                _Frame("output", (action, node.left, left, right_mid)),
+                                OutputFrame(
+                                    (output_action, node.left, output_left, right_mid)
+                                ),
                             )
                         )
                         continue
                     if frame.stage == 2:
-                        left_out = values.pop()
-                        left_mid, right_mid = frame.saved
+                        left_out = _pop_completed_output(values)
+                        match frame.saved:
+                            case (left_mid, right_mid):
+                                pass
+                            case _:
+                                raise AssertionError(
+                                    "causal parent lost its midpoint states"
+                                )
                         frame.stage, frame.saved = 3, (left_out, left_mid, right_mid)
                         frames.extend(
                             (
                                 frame,
-                                _Frame("output", (action, node.right, left_mid, right)),
+                                OutputFrame(
+                                    (output_action, node.right, left_mid, output_right)
+                                ),
                             )
                         )
                         continue
-                    right_out = values.pop()
-                    left_out = frame.saved[0]
-                    payload = combine_spatial_outputs(self, action, left_out, right_out)
+                    right_out = _pop_completed_output(values)
+                    match frame.saved:
+                        case (left_out, _left_mid, _right_mid):
+                            pass
+                        case _:
+                            raise AssertionError(
+                                "causal parent lost its completed left child"
+                            )
+                    payload = combine_spatial_outputs(
+                        self, output_action, left_out, right_out
+                    )
                     payload = publish_composite_output(
-                        self, action, tile, left, right, payload
+                        self,
+                        output_action,
+                        output_tile,
+                        output_left,
+                        output_right,
+                        payload,
                     )
                     values.append(payload)
                     continue
@@ -927,7 +919,7 @@ class CausalTileEngine(CausalTileAPI):
                 self.scheduler._causal_tasks.validate_admitted_actions(
                     token, self.adapter
                 )
-            result = values.pop()
+            result: CausalTaskValue = values.pop()
             if not tile_result:
                 return result
             match result:
@@ -938,19 +930,27 @@ class CausalTileEngine(CausalTileAPI):
                         "causal output did not return a completed tile"
                     )
             if return_result:
-                action, tile, left, right = root.args
-                key = self._composite_key(action, tile, left, right)
-                completed = None if key is None else self.scheduler.results.lookup(key)
+                if not isinstance(root, OutputFrame):
+                    raise TypeError("leased result return requires an output request")
+                root_action, root_tile, root_left, root_right = root.args
+                root_result_key = self._composite_key(
+                    root_action, root_tile, root_left, root_right
+                )
+                completed = (
+                    None
+                    if root_result_key is None
+                    else self.scheduler.results.lookup(root_result_key)
+                )
                 if completed is None:
                     raise AssertionError("bound causal output was not published")
                 return completed
             return self.tiles.retain(result.output)
         except BaseException:
             for failed_op, _failed_args in active:
-                prefix = (
+                failed_prefix = (
                     "boundary_output" if failed_op == "output_boundary" else failed_op
                 )
-                self.ledger.bump("tile_causal_" + prefix + "_failures")
+                self.ledger.bump("tile_causal_" + failed_prefix + "_failures")
             raise
         finally:
             try:

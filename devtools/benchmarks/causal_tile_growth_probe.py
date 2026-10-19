@@ -8,9 +8,21 @@ import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from time import perf_counter
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
+    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
+    from number_compiler.hashlife.tiles.tile_ports import BoundPorts, ResultWiring
+    from number_compiler.hashlife.tiles.tiles import TileArena
+    from number_compiler.resources.ledger import ResourceLedger
+
 
 WORK_FIELDS = (
     "future_behavior_requests",
@@ -220,13 +232,21 @@ def _pair_from_integer(value: int, base: int) -> tuple[int, ...]:
     return tuple(digit + digits[-1 - index] for index, digit in enumerate(digits))
 
 
-def _power_of_two_at_least(value: int) -> int:
+def power_of_two_at_least(value: int) -> int:
     if type(value) is not int or value < 1:
         raise ValueError("causal probe width requires a positive exact integer")
     return 1 << (value - 1).bit_length()
 
 
-def _runtime(base: int) -> tuple[Any, Any, Any, Any, Any]:
+def _runtime(
+    base: int,
+) -> tuple[
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    FieldCellActionID,
+    TileScheduler,
+]:
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.arithmetic.functions.semantic_functions import (
         SemanticFunctionArena,
@@ -260,15 +280,17 @@ def _runtime(base: int) -> tuple[Any, Any, Any, Any, Any]:
     return ledger, tiles, adapter, action, TileScheduler(tiles, results, adapter)
 
 
-def _wiring_key(wiring: Any) -> tuple[int, int, int]:
+def _wiring_key(wiring: ResultWiring) -> tuple[int, int, int]:
     return wiring.signature.local_id, wiring.orientation, wiring.phase
 
 
-def _bound_semantics(bound: Any) -> tuple[tuple[int, ...], tuple[int, int, int]]:
+def _bound_semantics(bound: BoundPorts) -> tuple[tuple[int, ...], tuple[int, int, int]]:
     return bound.ports, _wiring_key(bound.wiring)
 
 
-def _interval_diagnostics(scheduler: Any, application: int) -> _IntervalDiagnostics:
+def _interval_diagnostics(
+    scheduler: TileScheduler, application: int
+) -> _IntervalDiagnostics:
     """Compare semantic contracts with exact spatial interval bindings.
 
     This reads IDs, action edges, ports, and relative intervals only. It never
@@ -279,7 +301,7 @@ def _interval_diagnostics(scheduler: Any, application: int) -> _IntervalDiagnost
     spatial: set[tuple[object, ...]] = set()
     intervals: dict[tuple[int, int], list[tuple[int, int]]] = {}
 
-    def add_view(view: Any) -> None:
+    def add_view(view: BoundaryTileView | None) -> None:
         if view is None:
             return
         identity = view.tile.local_id, view.orientation
@@ -844,7 +866,7 @@ def run_probe(
     )
     growing_requests = []
     for steps in temporal:
-        width = _power_of_two_at_least(3 + steps)
+        width = power_of_two_at_least(3 + steps)
         growing_requests.append(("growing-196", steps, width, 0))
     growing_rows = _cold_rows(growing_requests)
     reports = {

@@ -18,9 +18,11 @@ from number_compiler.arithmetic.fields.centered_carry import (
     carry_coboundary,
 )
 from number_compiler.arithmetic.fields.event_innovation import normalize_event_sum
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.metric_keys import (

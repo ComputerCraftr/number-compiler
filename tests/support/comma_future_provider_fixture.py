@@ -29,9 +29,9 @@ def candidate_record() -> dict[str, object]:
 
 def fixture_admission(
     record: Mapping[str, object], charge_work: Callable[[int], None]
-) -> tuple[str, future_authority._KernelInstanceAdmission]:
+) -> tuple[str, future_authority.KernelInstanceAdmission]:
     parsed = future_provider.parse_future_candidate(record, charge_work=charge_work)
-    admission = future_authority._KernelInstanceAdmission(
+    admission = future_authority.KernelInstanceAdmission(
         artifact_sha256=parsed.artifact_sha256,
         instance_id=future_authority.FINITE_TEST_FIXTURE_SESSION_ID,
         theorem_id=future_authority.FINITE_TEST_FIXTURE_THEOREM_ID,

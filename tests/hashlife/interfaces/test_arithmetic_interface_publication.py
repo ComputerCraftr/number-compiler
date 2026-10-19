@@ -14,6 +14,8 @@ from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
     MacroComponents,
     QuotientRecord,
@@ -22,7 +24,7 @@ from number_compiler.hashlife.observation.tile_projection import build_tile_proj
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import (
     LedgerDict,
-    _TrackedDict,
+    TrackedDict,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
@@ -91,10 +93,10 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
         key_store = cast(LedgerDict[QuotientRecord, object], arena._keys)._data
         target = node_store if store_kind == "node" else key_store
         failed = False
-        setitem = _TrackedDict.__setitem__
+        setitem = TrackedDict.__setitem__
 
         def fail_setitem(
-            store: _TrackedDict[object, object], key: object, value: object
+            store: TrackedDict[object, object], key: object, value: object
         ) -> None:
             nonlocal failed
             if not failed and store is target:
@@ -104,7 +106,7 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
                 raise MemoryError("injected quotient publication failure")
             setitem(store, key, value)
 
-        monkeypatch.setattr(_TrackedDict, "__setitem__", fail_setitem)
+        monkeypatch.setattr(TrackedDict, "__setitem__", fail_setitem)
 
         with pytest.raises(MemoryError, match="injected quotient publication"):
             arena.intern(signature, components)

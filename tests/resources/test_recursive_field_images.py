@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldGeometryID
-from number_compiler.hashlife.execution.field_executor import FieldImageAdapter
 from number_compiler.hashlife.execution.field_images import SourceBindingID
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.recursive_field_images import _application_setup
+from tests.support.recursive_field_images import field_image_application_setup
 
 if TYPE_CHECKING:
     import number_compiler.hashlife.actions.field_actions
@@ -48,12 +47,12 @@ from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
 from tests.support.recursive_field_images import (
-    _Adapter,
-    _PortID,
-    _provider_setup,
-    _SecondDomainArena,
-    _setup,
-    _transfer_setup,
+    FieldTransferPortID,
+    RecursiveImageTestAdapter,
+    SecondDomainArena,
+    field_transfer_setup,
+    provider_absorption_setup,
+    recursive_field_image_setup,
 )
 
 
@@ -85,7 +84,9 @@ def _probe(
 def test_application_observes_parent_before_realizing_images(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, root, signature, geometry, action, images, adapter, executor = _setup()
+    ledger, root, signature, geometry, action, images, adapter, executor = (
+        recursive_field_image_setup()
+    )
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
     adapter.observe_parent_point = lambda *args: ParentObservation(1)
     adapter.observe_parent_width = lambda *args: ParentObservation(7, True)
@@ -114,7 +115,9 @@ def test_application_observes_parent_before_realizing_images(
 def test_parent_observation_metrics_follow_the_observer_memo_probe() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, root, signature, geometry, action, _, adapter, executor = _setup()
+    ledger, root, signature, geometry, action, _, adapter, executor = (
+        recursive_field_image_setup()
+    )
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
     memo: dict[int, int] = {}
 
@@ -158,7 +161,7 @@ def test_image_arena_rejects_owner_and_sort_aliases_atomically(
     value: Literal[""] | bool | float,
     error: type[Exception],
 ) -> None:
-    ledger, _, signature, _, _, images, _, _ = _setup()
+    ledger, _, signature, _, _, images, _, _ = recursive_field_image_setup()
     arguments: dict[str, object] = {
         "action_owner": ArenaToken("other-field-actions"),
         "output_owner": ArenaToken("other-field-outputs"),
@@ -184,7 +187,7 @@ def test_image_arena_rejects_owner_and_sort_aliases_atomically(
 
 
 def test_image_arena_rejects_partial_authority_before_registration() -> None:
-    ledger, _, _signature, _, _, images, adapter, _ = _setup()
+    ledger, _, _signature, _, _, images, adapter, _ = recursive_field_image_setup()
     assert_rejected_atomically(
         ledger,
         lambda: RecursiveFieldImageArena(
@@ -206,7 +209,9 @@ def test_image_arena_rejects_partial_authority_before_registration() -> None:
 
 
 def test_parent_request_is_probed_before_descendants_and_warm_hit_skips_work() -> None:
-    ledger, source, signature, geometry, action, _, adapter, executor = _setup()
+    ledger, source, signature, geometry, action, _, adapter, executor = (
+        recursive_field_image_setup()
+    )
     first = executor.image(action, source, geometry, signature)
     calls = adapter.leaf_calls, adapter.join_calls
     before_visits = ledger.counters.get("source_leaf_visits", 0)
@@ -226,7 +231,9 @@ def test_phase_is_bounded_by_finite_port_admission_but_coordinates_stay_exact() 
 
 
 def test_query_eviction_preserves_canonical_field_image_ids() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     image, record = _completed_image(executor, action, source, geometry, signature)
 
     ledger.evict_query_memos()
@@ -240,7 +247,7 @@ def test_query_eviction_preserves_canonical_field_image_ids() -> None:
 
 def test_nonleaf_image_cannot_relabel_a_complete_word_as_an_opaque_leaf() -> None:
     _, source, signature, geometry, action, _unused_images_binding, _, executor = (
-        _setup()
+        recursive_field_image_setup()
     )
     _unused_image_binding, record = _completed_image(
         executor, action, source, geometry, signature
@@ -259,8 +266,10 @@ def test_nonleaf_image_cannot_relabel_a_complete_word_as_an_opaque_leaf() -> Non
 
 
 def test_non_power_of_two_forest_publishes_balanced_recursive_image() -> None:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup(
-        (0, 1, 0, 1, 0, 1),
+    ledger, source, signature, geometry, action, images, adapter, executor = (
+        recursive_field_image_setup(
+            (0, 1, 0, 1, 0, 1),
+        )
     )
     assert type(source) is SourceForestID
     image, record = _completed_image(executor, action, source, geometry, signature)
@@ -289,8 +298,10 @@ def test_non_power_of_two_forest_publishes_balanced_recursive_image() -> None:
 def test_warm_forest_parent_hits_before_children_and_composition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, source, signature, geometry, action, _, adapter, executor = _setup(
-        (0, 1, 0, 1, 0, 1),
+    ledger, source, signature, geometry, action, _, adapter, executor = (
+        recursive_field_image_setup(
+            (0, 1, 0, 1, 0, 1),
+        )
     )
     first = executor.image(action, source, geometry, signature)
     calls = adapter.leaf_calls, adapter.join_calls, adapter.forest_calls
@@ -319,7 +330,7 @@ def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None
         _unused_executor_binding,
         _unused_incoming_binding,
         application,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     assert images.retained_images == images.retained_bindings == 0
     assert validate_field_image_application(application, ledger)
     assert application.point(0) == 0
@@ -339,7 +350,7 @@ def test_image_application_rejects_foreign_port_before_warm_image_probe() -> Non
         _unused_executor_binding,
         _unused_incoming_binding,
         application,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     assert application.point(0) == 0
     requests = ledger.counters.get("field_image_binding_requests", 0)
     object.__setattr__(
@@ -360,7 +371,9 @@ def test_image_application_rejects_foreign_port_before_warm_image_probe() -> Non
 
 
 def test_equal_complete_leaf_behavior_shares_one_recursive_image() -> None:
-    _, source, signature, geometry, action, images, _, executor = _setup()
+    _, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     left, right = images.sources.children(source)
 
@@ -372,7 +385,9 @@ def test_equal_complete_leaf_behavior_shares_one_recursive_image() -> None:
 
 
 def test_field_image_metrics_match_the_owned_arena_and_interface_population() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
@@ -409,17 +424,17 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
     monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
     if kind == "image":
-        ledger, _, _, _, _, image_arena, _, _ = _setup()
+        ledger, _, _, _, _, image_arena, _, _ = recursive_field_image_setup()
         arena: object = image_arena
         probe = _probe(image_arena.resolve, image_arena._handle(image_arena._next_id))
     elif kind == "provider":
-        ledger, provider_arena, _, _ = _provider_setup()
+        ledger, provider_arena, _, _ = provider_absorption_setup()
         arena = provider_arena
         probe = _probe(
             provider_arena.resolve, provider_arena._handle(provider_arena._next_id)
         )
     elif kind == "transfer":
-        ledger, _, _, _, _, _, _, transfer_arena, _ = _transfer_setup()
+        ledger, _, _, _, _, _, _, transfer_arena, _ = field_transfer_setup()
         arena = transfer_arena
         probe = _probe(
             transfer_arena.resolve, transfer_arena._handle(transfer_arena._next_id)
@@ -451,7 +466,9 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
 def test_field_image_semantic_key_excludes_source_action_and_proof_occurrences() -> (
     None
 ):
-    _, source, signature, geometry, action, images, _, executor = _setup()
+    _, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     semantic = next(iter(images._keys))
     names = set(semantic.__dataclass_fields__)
@@ -482,7 +499,9 @@ def test_field_image_semantic_key_excludes_source_action_and_proof_occurrences()
 def test_payload_audit_reconstructs_image_interner_keys_instead_of_trusting_them() -> (
     None
 ):
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     from number_compiler.resources.field_image_payload_audit import (
         audit_field_image_payloads,
@@ -500,7 +519,9 @@ def test_payload_audit_reconstructs_image_interner_keys_instead_of_trusting_them
 
 
 def test_payload_audit_rejects_forward_references_in_source_cell_dag() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     from number_compiler.resources.field_image_payload_audit import (
         audit_field_image_payloads,
@@ -518,7 +539,9 @@ def test_payload_audit_rejects_forward_references_in_source_cell_dag() -> None:
 
 @pytest.mark.parametrize("alias", (True, 0.0, 1.0))
 def test_wrong_sort_action_rejects_before_binding_mutation(alias: bool | float) -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     forged = FieldCellActionID(action.owner, action.kind, action.local_id)
     object.__setattr__(forged, "local_id", alias)
     assert_rejected_atomically(
@@ -530,13 +553,15 @@ def test_wrong_sort_action_rejects_before_binding_mutation(alias: bool | float) 
 
 
 def test_foreign_image_action_rejects_before_adapter_and_binding_probe() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     request_count = ledger.counters.get("field_image_binding_requests", 0)
 
     def poison(_value: object) -> Never:
         raise AssertionError("foreign image action reached family validation")
 
-    assert isinstance(executor.adapter, _Adapter)
+    assert type(executor.adapter) is RecursiveImageTestAdapter
     images._action_validate = poison
     foreign = FieldCellActionID(
         ArenaToken("foreign-image-actions"),
@@ -560,7 +585,9 @@ def test_foreign_image_action_rejects_before_adapter_and_binding_probe() -> None
 
 
 def test_republication_with_different_complete_behavior_is_rejected() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     image = executor.image(action, source, geometry, signature)
 
     key = ImageRequestKey(action, source, geometry, signature)
@@ -579,7 +606,9 @@ def test_republication_with_different_complete_behavior_is_rejected() -> None:
 
 
 def test_foreign_child_image_rejects_before_binding_lookup_or_mutation() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     _unused_image_binding, original = _completed_image(
         executor, action, source, geometry, signature
     )
@@ -608,13 +637,15 @@ def test_foreign_child_image_rejects_before_binding_lookup_or_mutation() -> None
 
 
 def test_indirect_temporal_witness_cycle_rejects_without_publication() -> None:
-    ledger, source, signature, geometry, action, images, adapter, _ = _setup()
+    ledger, source, signature, geometry, action, images, adapter, _ = (
+        recursive_field_image_setup()
+    )
     left, _ = images.sources.children(source)
     leaf_geometry = images.geometries.child(geometry, 0)
     other = FieldCellActionID(action.owner, action.kind, 1)
     root_action = action
 
-    class CyclicAdapter(_Adapter):
+    class CyclicAdapter(RecursiveImageTestAdapter):
         def validate_action(
             self,
             action: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
@@ -644,7 +675,7 @@ def test_indirect_temporal_witness_cycle_rejects_without_publication() -> None:
         images.sources,
     )
     cyclic_adapter.signature_id = signature
-    cyclic_authority = _SecondDomainArena(
+    cyclic_authority = SecondDomainArena(
         ledger,
         action.owner,
         adapter.output.owner,
@@ -684,9 +715,11 @@ def test_indirect_temporal_witness_cycle_rejects_without_publication() -> None:
 
 
 def test_image_adapter_candidate_requires_the_exact_complete_record_type() -> None:
-    ledger, source, signature, geometry, action, images, adapter, _ = _setup()
+    ledger, source, signature, geometry, action, images, adapter, _ = (
+        recursive_field_image_setup()
+    )
 
-    class DuckAdapter(_Adapter):
+    class DuckAdapter(RecursiveImageTestAdapter):
         def leaf(
             self,
             action: number_compiler.hashlife.actions.field_actions.FieldCellActionID,
@@ -716,7 +749,9 @@ def test_image_adapter_candidate_requires_the_exact_complete_record_type() -> No
 
 
 def test_query_eviction_releases_bindings_but_keeps_semantic_images_strong() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     first = executor.image(action, source, geometry, signature)
     retained = images.retained_images
     ledger.evict_query_memos()
@@ -749,7 +784,7 @@ def test_recursive_image_callbacks_cannot_hide_future_words_or_affine_b() -> Non
         audit_callback_future_payloads,
     )
 
-    ledger, _, _, _, _, images, _, _ = _setup()
+    ledger, _, _, _, _, images, _, _ = recursive_field_image_setup()
     whole_word = (1 << 255) + 1
     affine_b = (1 << 192) + 3
 
@@ -764,7 +799,9 @@ def test_recursive_image_callbacks_cannot_hide_future_words_or_affine_b() -> Non
 def test_image_integer_aliases_and_foreign_sorts_reject_without_mutation(
     alias: bool | float,
 ) -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     valid = executor.image(action, source, geometry, signature)
     before = ledger.snapshot()
     forged = FieldImageID(valid.owner, valid.kind, valid.local_id)
@@ -791,7 +828,7 @@ def test_foreign_request_ids_reject_before_adapter_or_warm_cache_lookup() -> Non
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
     executor.transfer(action, source, geometry, signature)
     request_count = ledger.counters.get("field_transfer_binding_requests", 0)
 
@@ -813,7 +850,7 @@ def test_foreign_request_ids_reject_before_adapter_or_warm_cache_lookup() -> Non
             source,
             geometry,
             signature,
-            _PortID(adapter.port_owner, "test-boundary", 0),
+            FieldTransferPortID(adapter.port_owner, "test-boundary", 0),
         )
     assert ledger.counters.get("field_transfer_binding_requests", 0) == request_count
     assert ledger.snapshot() == before
@@ -831,8 +868,8 @@ def test_foreign_source_rejects_before_other_request_range_lookups() -> None:
         _,
         transfers,
         executor,
-    ) = _transfer_setup()
-    _, foreign_source, _, _, _, _, _, _ = _setup()
+    ) = field_transfer_setup()
+    _, foreign_source, _, _, _, _, _, _ = recursive_field_image_setup()
 
     def poison(_value: object) -> Never:
         raise AssertionError("foreign source triggered action range validation")
@@ -878,7 +915,7 @@ def test_field_image_summary_rejects_numeric_aliases(
 
 
 def _completed_image(
-    executor: RecursiveFieldImageExecutor[FieldImageAdapter],
+    executor: RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
     action: FieldCellActionID,
     source: SourceBindingID,
     geometry: FieldGeometryID,

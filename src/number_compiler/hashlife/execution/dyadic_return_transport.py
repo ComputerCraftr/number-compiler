@@ -16,17 +16,19 @@ from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnLaw,
     DyadicReturnSupportID,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_images import (
         DyadicReturnImageWorkspace,
-        _SourceNode,
+    )
+    from number_compiler.hashlife.execution.dyadic_return_records import (
+        DyadicReturnSourceRecord,
     )
 
 
-def _low_bits(value: int, width: int) -> int:
+def low_bits(value: int, width: int) -> int:
     """Return a low-bit slice without allocating a redundant wide mask."""
     if width == 0 or value == 0:
         return 0
@@ -35,7 +37,9 @@ def _low_bits(value: int, width: int) -> int:
     return value & ((1 << width) - 1)
 
 
-def source_value(workspace: DyadicReturnImageWorkspace, source: _SourceNode) -> int:
+def source_value(
+    workspace: DyadicReturnImageWorkspace, source: DyadicReturnSourceRecord
+) -> int:
     if source.lift == 0:
         return source.residue
     return source.residue + (1 << source.precision) * source.lift
@@ -88,7 +92,7 @@ def transport_low(
         if transfer.offset % transfer.lower:
             raise ArithmeticError("dyadic return residue transport was not integral")
         value = transfer.offset // transfer.lower
-        workspace._bump(
+        workspace.bump_metric(
             "transport_operand_bits",
             max(
                 1,
@@ -98,7 +102,7 @@ def transport_low(
                 value.bit_length(),
             ),
         )
-        return _low_bits(value, after_width)
+        return low_bits(value, after_width)
     denominator_bits = transfer.lower.bit_length() - 1
     modulus_bits = denominator_bits + after_width
     if modulus_bits == 0:
@@ -120,17 +124,17 @@ def transport_low(
                 raise ArithmeticError(
                     "dyadic return residue transport was not integral"
                 )
-            workspace._bump("transport_short_numerator_demands")
-            workspace._bump("transport_operand_bits", max(1, numerator_bound))
-            return _low_bits(value, after_width)
+            workspace.bump_metric("transport_short_numerator_demands")
+            workspace.bump_metric("transport_operand_bits", max(1, numerator_bound))
+            return low_bits(value, after_width)
     modulus = 1 << modulus_bits
-    reduced_source = _low_bits(source_residue, modulus_bits)
-    reduced_upper = _low_bits(transfer.upper, modulus_bits)
+    reduced_source = low_bits(source_residue, modulus_bits)
+    reduced_upper = low_bits(transfer.upper, modulus_bits)
     reduced_offset = transfer.offset % modulus
     residue_numerator = (reduced_upper * reduced_source + reduced_offset) % modulus
     if residue_numerator % transfer.lower:
         raise ArithmeticError("dyadic return residue transport was not integral")
-    workspace._bump(
+    workspace.bump_metric(
         "transport_operand_bits",
         max(
             1,
@@ -141,7 +145,7 @@ def transport_low(
             transfer.lower.bit_length(),
         ),
     )
-    return _low_bits(residue_numerator // transfer.lower, after_width)
+    return low_bits(residue_numerator // transfer.lower, after_width)
 
 
 def _balanced_residue_build(
@@ -151,7 +155,7 @@ def _balanced_residue_build(
     *,
     retain: bool,
     keep_memo: bool = False,
-) -> tuple[_SupportNode, DyadicReturnSupportID | None]:
+) -> tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None]:
     """Construct one balanced effect using a charged postorder work stack."""
     workspace._validate_law()
     if (
@@ -163,18 +167,22 @@ def _balanced_residue_build(
     ):
         raise ValueError("balanced effect requires one exact dyadic source cylinder")
     stack = workspace.balanced_stack
-    if workspace._closed or stack or (workspace.macros and not keep_memo):
+    if workspace.closed or stack or (workspace.macros and not keep_memo):
         raise RuntimeError("nested or disposed balanced dyadic construction")
     # This is an exact semantic cache for this one construction, never an
     # occurrence cache.  It is bounded independently of the represented
     # extent and released before publication.  Equal low cylinders at a
     # fixed span have identical complete effects under the pinned law.
-    memo: dict[tuple[int, int], tuple[_SupportNode, DyadicReturnSupportID | None]] = {}
+    memo: dict[
+        tuple[int, int], tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None]
+    ] = {}
     MAX_MEMO = 64
 
-    def remember(result: tuple[_SupportNode, DyadicReturnSupportID | None]) -> None:
+    def remember(
+        result: tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None],
+    ) -> None:
         key = (result[0].width, result[0].residue)
-        workspace._bump(
+        workspace.bump_metric(
             "balanced_effect_memo_lookup_operand_bits",
             key[0].bit_length() + key[1].bit_length(),
         )
@@ -182,13 +190,13 @@ def _balanced_residue_build(
             return
         if len(memo) >= MAX_MEMO:
             evicted = next(iter(memo))
-            workspace._bump(
+            workspace.bump_metric(
                 "balanced_effect_memo_lookup_operand_bits",
                 evicted[0].bit_length() + evicted[1].bit_length(),
             )
             memo.pop(evicted)
             workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
-            workspace._bump("balanced_effect_memo_evictions")
+            workspace.bump_metric("balanced_effect_memo_evictions")
         try:
             workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
         except BlockContextBudgetExceeded:
@@ -201,8 +209,8 @@ def _balanced_residue_build(
             workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
             raise
         transfer = result[0].transfer
-        workspace._bump("balanced_effect_memo_publications")
-        workspace._bump(
+        workspace.bump_metric("balanced_effect_memo_publications")
+        workspace.bump_metric(
             "balanced_effect_memo_operand_bits",
             sum(
                 abs(value).bit_length()
@@ -220,7 +228,7 @@ def _balanced_residue_build(
     def push(
         span: int,
         source: int,
-        left: tuple[_SupportNode, DyadicReturnSupportID | None] | None,
+        left: tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None] | None,
     ) -> None:
         workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
         try:
@@ -228,7 +236,7 @@ def _balanced_residue_build(
         except BaseException:
             workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
             raise
-        workspace._bump("balanced_stack_frames")
+        workspace.bump_metric("balanced_stack_frames")
         left_bits = (
             0
             if left is None
@@ -244,7 +252,7 @@ def _balanced_residue_build(
                 )
             )
         )
-        workspace._bump(
+        workspace.bump_metric(
             "balanced_stack_operand_bits",
             source.bit_length() + span.bit_length() + left_bits,
         )
@@ -253,30 +261,32 @@ def _balanced_residue_build(
     try:
         while True:
             cached = memo.get((span, source))
-            workspace._bump("balanced_effect_memo_lookups")
-            workspace._bump(
+            workspace.bump_metric("balanced_effect_memo_lookups")
+            workspace.bump_metric(
                 "balanced_effect_memo_lookup_operand_bits",
                 span.bit_length() + source.bit_length(),
             )
             if cached is not None:
                 current_result = cached
-                workspace._bump("balanced_effect_memo_hits")
-                workspace._bump("reused_temporal_extent", span)
+                workspace.bump_metric("balanced_effect_memo_hits")
+                workspace.bump_metric("reused_temporal_extent", span)
             elif span <= workspace.MAX_LEAF_STEPS:
-                workspace._bump("balanced_effect_memo_misses")
+                workspace.bump_metric("balanced_effect_memo_misses")
                 if retain:
-                    identity = residue_macro(workspace, span, source, _keep_memo=True)
+                    identity = residue_macro(workspace, span, source, retain_cache=True)
                     current_result = (
                         workspace.support_node(identity),
                         identity,
                     )
                 else:
                     current_result = (
-                        _residue_effect(workspace, span, source, keep_memo=True),
+                        finite_residue_effect(
+                            workspace, span, source, retain_cache=True
+                        ),
                         None,
                     )
             else:
-                workspace._bump("balanced_effect_memo_misses")
+                workspace.bump_metric("balanced_effect_memo_misses")
                 push(span, source, None)
                 span, source = _first_half_residue(span, source)
                 continue
@@ -324,7 +334,7 @@ def _balanced_residue_build(
                     right_node.delta,
                     right_node.minimum,
                 )
-                node = _SupportNode(
+                node = DyadicReturnSupportRecord(
                     parent_span,
                     parent_source,
                     transfer,
@@ -342,16 +352,18 @@ def _balanced_residue_build(
                 else:
                     node_id = None
                     suffix = "balanced_effect"
-                workspace._bump(f"{suffix}_compositions")
-                workspace._bump(f"{suffix}_composed_extent", parent_span)
-                workspace._bump(f"{suffix}_composition_operand_bits", operand_bits)
+                workspace.bump_metric(f"{suffix}_compositions")
+                workspace.bump_metric(f"{suffix}_composed_extent", parent_span)
+                workspace.bump_metric(
+                    f"{suffix}_composition_operand_bits", operand_bits
+                )
                 result = (node, node_id)
                 remember(result)
             else:
                 return result
     finally:
         if not keep_memo:
-            _clear_finite_memo(workspace)
+            clear_finite_support_cache(workspace)
         pending = len(stack)
         if pending:
             stack.clear()
@@ -371,12 +383,12 @@ def balanced_residue_effect(
     width: int,
     residue: int,
     *,
-    _keep_memo: bool = False,
-) -> _SupportNode:
+    retain_cache: bool = False,
+) -> DyadicReturnSupportRecord:
     """Build an exact effect with logarithmic charged transient stack depth."""
-    workspace._bump("balanced_effect_requests")
+    workspace.bump_metric("balanced_effect_requests")
     node, identity = _balanced_residue_build(
-        workspace, width, residue, retain=False, keep_memo=_keep_memo
+        workspace, width, residue, retain=False, keep_memo=retain_cache
     )
     assert identity is None
     return node
@@ -387,25 +399,25 @@ def balanced_residue_macro(
     width: int,
     residue: int,
     *,
-    _keep_memo: bool = False,
+    retain_cache: bool = False,
 ) -> DyadicReturnSupportID:
     """Publish exact chronological support through the same balanced worklist."""
-    workspace._bump("balanced_macro_requests")
+    workspace.bump_metric("balanced_macro_requests")
     _node, identity = _balanced_residue_build(
-        workspace, width, residue, retain=True, keep_memo=_keep_memo
+        workspace, width, residue, retain=True, keep_memo=retain_cache
     )
     assert identity is not None
     return identity
 
 
-def _residue_effect(
+def _build_residue_effect(
     workspace: DyadicReturnImageWorkspace,
     width: int,
     residue: int,
     *,
     macro: bool = False,
     keep_memo: bool = False,
-) -> _SupportNode:
+) -> DyadicReturnSupportRecord:
     """Compose a bounded leaf from exact finite cylinders under its pinned law.
 
     Only four-bit cold atoms classify branches. Eight-bit atoms are their
@@ -422,7 +434,7 @@ def _residue_effect(
     ):
         raise ValueError("macro requires a bounded exact dyadic source cylinder")
 
-    def bounded_base(span: int, source: int) -> _SupportNode:
+    def bounded_base(span: int, source: int) -> DyadicReturnSupportRecord:
         """Construct at most four exact source branches before any squaring.
 
         The low ``span`` source bits determine every branch. This fixed base
@@ -448,13 +460,13 @@ def _residue_effect(
             branch_word |= bit << index
             delta += workspace.law.weights[bit]
             minimum = min(minimum, delta)
-            workspace._bump("finite_block_cold_steps")
+            workspace.bump_metric("finite_block_cold_steps")
             if macro:
-                workspace._bump("macro_generator_admissions")
-            workspace._bump(
+                workspace.bump_metric("macro_generator_admissions")
+            workspace.bump_metric(
                 "macro_bounded_base_steps" if macro else "transient_leaf_steps"
             )
-            workspace._bump(
+            workspace.bump_metric(
                 "macro_bounded_base_operand_bits"
                 if macro
                 else "transient_leaf_operand_bits",
@@ -471,10 +483,10 @@ def _residue_effect(
                     )
                 ),
             )
-        workspace._bump("finite_block_cold_atoms")
+        workspace.bump_metric("finite_block_cold_atoms")
         if macro:
-            workspace._bump("macro_bounded_base_calls")
-        return _SupportNode(
+            workspace.bump_metric("macro_bounded_base_calls")
+        return DyadicReturnSupportRecord(
             span,
             source,
             SkewTransfer(upper, offset, lower),
@@ -488,27 +500,27 @@ def _residue_effect(
     def key(span: int, source: int) -> tuple[object, ...]:
         return (workspace.owner, workspace._law_snapshot, span, source)
 
-    def lookup(span: int, source: int) -> _SupportNode | None:
+    def lookup(span: int, source: int) -> DyadicReturnSupportRecord | None:
         if span > 8:
             return None
-        workspace._bump("finite_block_lookups")
-        workspace._bump(
+        workspace.bump_metric("finite_block_lookups")
+        workspace.bump_metric(
             "finite_block_lookup_operand_bits", span.bit_length() + source.bit_length()
         )
         cached = workspace.macros.get(key(span, source))
-        workspace._bump(
+        workspace.bump_metric(
             "finite_block_hits" if cached is not None else "finite_block_misses"
         )
         return cached
 
-    def remember(node: _SupportNode) -> None:
+    def remember(node: DyadicReturnSupportRecord) -> None:
         if node.width > 8:
             return
         if len(workspace.macros) >= 256:
             evicted = next(iter(workspace.macros))
             workspace.macros.pop(evicted)
             workspace.ledger.release(workspace.macro_owner, entries=1, nodes=1)
-            workspace._bump("finite_block_evictions")
+            workspace.bump_metric("finite_block_evictions")
         try:
             workspace.ledger.reserve(workspace.macro_owner, entries=1, nodes=1)
         except BlockContextBudgetExceeded:
@@ -518,8 +530,8 @@ def _residue_effect(
         except BaseException:
             workspace.ledger.release(workspace.macro_owner, entries=1, nodes=1)
             raise
-        workspace._bump("finite_block_publications")
-        workspace._bump(
+        workspace.bump_metric("finite_block_publications")
+        workspace.bump_metric(
             "finite_block_retained_operand_bits",
             sum(
                 max(1, abs(value).bit_length())
@@ -538,14 +550,17 @@ def _residue_effect(
         )
 
     def compose(
-        left: _SupportNode, right: _SupportNode, span: int, source: int
-    ) -> _SupportNode:
+        left: DyadicReturnSupportRecord,
+        right: DyadicReturnSupportRecord,
+        span: int,
+        source: int,
+    ) -> DyadicReturnSupportRecord:
         assert left.branch_word is not None and right.branch_word is not None
         transfer = left.transfer.then(right.transfer, multiply=mul, add=add)
         safety_delta, safety_minimum = compose_prefix_safety_values(
             left.delta, left.minimum, right.delta, right.minimum
         )
-        result = _SupportNode(
+        result = DyadicReturnSupportRecord(
             span,
             source,
             transfer,
@@ -555,11 +570,13 @@ def _residue_effect(
             left.branch_word | (right.branch_word << left.width),
             None,
         )
-        workspace._bump("macro_compositions" if macro else "finite_block_compositions")
-        workspace._bump(
+        workspace.bump_metric(
+            "macro_compositions" if macro else "finite_block_compositions"
+        )
+        workspace.bump_metric(
             "macro_composed_extent" if macro else "finite_block_composed_extent", span
         )
-        workspace._bump(
+        workspace.bump_metric(
             "macro_composition_operand_bits"
             if macro
             else "finite_block_composition_operand_bits",
@@ -577,7 +594,7 @@ def _residue_effect(
         )
         return result
 
-    def push(span: int, source: int, left: _SupportNode | None) -> None:
+    def push(span: int, source: int, left: DyadicReturnSupportRecord | None) -> None:
         workspace.ledger.reserve(workspace.macro_stack_owner, entries=1, nodes=1)
         try:
             workspace.macro_stack.append((span, source, left))
@@ -585,21 +602,21 @@ def _residue_effect(
             workspace.ledger.release(workspace.macro_stack_owner, entries=1, nodes=1)
             raise
 
-    if workspace._closed:
+    if workspace.closed:
         raise ValueError("disposed dyadic macro workspace")
     if workspace.macro_stack or (workspace.macros and not keep_memo):
         raise RuntimeError("nested or unfinished dyadic macro construction")
     if macro:
-        workspace._bump("macro_requests")
+        workspace.bump_metric("macro_requests")
 
-    def atom(span: int, source: int) -> _SupportNode:
+    def atom(span: int, source: int) -> DyadicReturnSupportRecord:
         cached = lookup(span, source)
         if cached is not None:
             return cached
         if span <= 4:
             result = bounded_base(span, source)
         else:
-            left_source = _low_bits(source, 4)
+            left_source = low_bits(source, 4)
             left = lookup(4, left_source)
             if left is None:
                 left = bounded_base(4, left_source)
@@ -620,7 +637,7 @@ def _residue_effect(
         # prerequisite under a budget that only admits the outer work stack.
         try:
             first_width = min(8, width)
-            result = atom(first_width, _low_bits(residue, first_width))
+            result = atom(first_width, low_bits(residue, first_width))
             while result.width < width:
                 span = min(8, width - result.width)
                 source = transport_low(workspace, result.transfer, residue, span)
@@ -629,7 +646,7 @@ def _residue_effect(
             return result
         finally:
             if not keep_memo:
-                _clear_finite_memo(workspace)
+                clear_finite_support_cache(workspace)
 
     span, source = width, residue
     try:
@@ -637,7 +654,7 @@ def _residue_effect(
             cached = lookup(span, source)
             if cached is not None:
                 if macro:
-                    workspace._bump("macro_hits")
+                    workspace.bump_metric("macro_hits")
                 result = cached
             elif span <= 4:
                 result = bounded_base(span, source)
@@ -667,13 +684,30 @@ def _residue_effect(
             workspace.macro_stack_owner, entries=remaining, nodes=remaining
         )
         if not keep_memo:
-            _clear_finite_memo(workspace)
+            clear_finite_support_cache(workspace)
 
 
-def _clear_finite_memo(workspace: DyadicReturnImageWorkspace) -> None:
+def clear_finite_support_cache(workspace: DyadicReturnImageWorkspace) -> None:
+    """Release construction-local residue atoms and their exact ledger charge."""
     count = len(workspace.macros)
     workspace.macros.clear()
     workspace.ledger.release(workspace.macro_owner, entries=count, nodes=count)
+
+
+def finite_residue_effect(
+    workspace: DyadicReturnImageWorkspace,
+    width: int,
+    residue: int,
+    *,
+    retain_cache: bool = False,
+) -> DyadicReturnSupportRecord:
+    """Compute one exact finite-cylinder action, optionally retaining its memo."""
+    return _build_residue_effect(
+        workspace,
+        width,
+        residue,
+        keep_memo=retain_cache,
+    )
 
 
 def residue_macro(
@@ -681,15 +715,15 @@ def residue_macro(
     width: int,
     residue: int,
     *,
-    _keep_memo: bool = False,
+    retain_cache: bool = False,
 ) -> DyadicReturnSupportID:
     """Publish bounded chronological support from the shared finite algebra."""
-    result = _residue_effect(
-        workspace, width, residue, macro=True, keep_memo=_keep_memo
+    result = _build_residue_effect(
+        workspace, width, residue, macro=True, keep_memo=retain_cache
     )
     return workspace._append_support(result)
 
 
 def _first_half_residue(span: int, source: int) -> tuple[int, int]:
     half = 1 << ((span - 1).bit_length() - 1)
-    return half, _low_bits(source, half)
+    return half, low_bits(source, half)

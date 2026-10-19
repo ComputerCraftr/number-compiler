@@ -8,9 +8,10 @@ mathematical family request.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import ClassVar, TypeAlias
+from typing import ClassVar, TypeAlias, TypeGuard
 
-from number_compiler.api.observation_types import FamilyId, SelectorId
+from number_compiler.api.observation_types import SelectorId
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 
 
@@ -246,6 +247,22 @@ class AntihydraVerifyQuery:
 
 ExecutionQuery: TypeAlias = TermQuery | CollatzEventQuery | AntihydraVerifyQuery
 
+_TERM_QUERY_TYPES = (
+    ReverseAddTermQuery,
+    DoubleReverseTermQuery,
+    CollatzTermQuery,
+    AntihydraTermQuery,
+    CommaTermQuery,
+    PrimeTermQuery,
+    FermatTermQuery,
+    MersenneTermQuery,
+)
+
+
+def is_term_query(query: ExecutionQuery) -> TypeGuard[TermQuery]:
+    """Narrow an execution request to a concrete ordinary-term query."""
+    return type(query) in _TERM_QUERY_TYPES
+
 
 __all__ = [
     "AntihydraTermQuery",
@@ -261,5 +278,6 @@ __all__ = [
     "QueryOptionError",
     "ReverseAddTermQuery",
     "TermQuery",
+    "is_term_query",
     "require_query_integer",
 ]

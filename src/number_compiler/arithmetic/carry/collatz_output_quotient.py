@@ -122,9 +122,9 @@ def _directional_domain_tables() -> tuple[
     tuple[tuple[tuple[int, ...], ...], ...],
 ]:
     """Compile the six exact one-sided domain quotients once."""
-    left_classes = []
-    right_classes = []
-    pairings = []
+    left_classes: list[tuple[int, ...]] = []
+    right_classes: list[tuple[int, ...]] = []
+    pairings: list[tuple[tuple[int, ...], ...]] = []
     for shift in range(6):
         left_actions, left = _DYADIC_CARRY_PARTITIONS[6 - shift]
         right_actions, right = _DYADIC_CARRY_PARTITIONS[shift]
@@ -151,8 +151,7 @@ def _directional_domain_tables() -> tuple[
 ) = _directional_domain_tables()
 
 RADIX64_DIRECTIONAL_DOMAIN_COUNTS = tuple(
-    (len(table), len(table[0]))
-    for shift, table in enumerate(RADIX64_DIRECTIONAL_DOMAIN_TABLES)
+    (len(table), len(table[0])) for table in RADIX64_DIRECTIONAL_DOMAIN_TABLES
 )
 RADIX64_DIRECTIONAL_VALUE_COUNTS = tuple(
     left * right for left, right in RADIX64_DIRECTIONAL_DOMAIN_COUNTS

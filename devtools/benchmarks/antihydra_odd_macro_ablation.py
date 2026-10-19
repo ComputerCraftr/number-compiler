@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import statistics
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, nullcontext
 from importlib import import_module
 from typing import Literal, TypedDict
@@ -22,8 +22,8 @@ from devtools.benchmarks.public_query_comparison import (
     named_counter_lane,
     run_jsonl_report,
 )
-from number_compiler.api.family_registry import option_argv
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.registry_cli import option_argv
 
 Consumer = Literal["antihydra", "mahler"]
 Mode = Literal["enabled", "odd_macro_disabled", "prefilter_disabled"]
@@ -65,7 +65,7 @@ def _no_odd_macro(*_args: object, **_kwargs: object) -> None:
 
 
 @contextmanager
-def _odd_macro_disabled() -> Iterator[None]:
+def _odd_macro_disabled() -> Generator[None, None, None]:
     """Keep the scheduler and exact fallback, disabling only the macro owner."""
     module = import_module("number_compiler.sequences.antihydra.arithmetic_images")
     workspace_type = module.AntihydraArithmeticImageWorkspace

@@ -16,7 +16,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FinitePort,
     FunctionSignature,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import MacroComponents
+from number_compiler.hashlife.interfaces.semantic_structures import MacroComponents
 from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
     compose_reverse_sectors,
 )

@@ -5,7 +5,7 @@ from types import ModuleType
 
 
 def module_sources(*modules: ModuleType) -> tuple[str, ...]:
-    paths = []
+    paths: list[Path] = []
     for module in modules:
         assert module.__file__ is not None
         paths.append(Path(module.__file__))

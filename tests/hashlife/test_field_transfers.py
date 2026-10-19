@@ -10,7 +10,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.recursive_field_images import _PortID, _transfer_setup
+from tests.support.recursive_field_images import (
+    FieldTransferPortID,
+    field_transfer_setup,
+)
 
 
 def test_point_and_width_use_parent_transfer_without_exact_future_images() -> None:
@@ -24,8 +27,8 @@ def test_point_and_width_use_parent_transfer_without_exact_future_images() -> No
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
-    incoming = _PortID(adapter.port_owner, "test-boundary", 0)
+    ) = field_transfer_setup()
+    incoming = FieldTransferPortID(adapter.port_owner, "test-boundary", 0)
     application = executor.application(action, source, geometry, signature, incoming)
     assert application.point(0) == 0
     assert application.active_width() == 1
@@ -50,7 +53,7 @@ def test_cold_transfer_point_cannot_publish_exact_images(
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("point path attempted to construct an exact field image")
@@ -62,7 +65,7 @@ def test_cold_transfer_point_cannot_publish_exact_images(
         source,
         geometry,
         signature,
-        _PortID(adapter.port_owner, "test-boundary", 0),
+        FieldTransferPortID(adapter.port_owner, "test-boundary", 0),
     )
     assert application.point(0) == 0
     assert transfers.retained_transfers == 1
@@ -80,20 +83,20 @@ def test_concrete_port_values_share_one_parametric_parent_transfer() -> None:
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
     zero = executor.application(
         action,
         source,
         geometry,
         signature,
-        _PortID(adapter.port_owner, "test-boundary", 0),
+        FieldTransferPortID(adapter.port_owner, "test-boundary", 0),
     )
     one = executor.application(
         action,
         source,
         geometry,
         signature,
-        _PortID(adapter.port_owner, "test-boundary", 1),
+        FieldTransferPortID(adapter.port_owner, "test-boundary", 1),
     )
     assert zero.point(0) == 0
     assert one.point(0) == 1
@@ -115,7 +118,7 @@ def test_eviction_drops_transfer_bindings_but_preserves_canonical_ids() -> None:
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
     first = executor.transfer(action, source, geometry, signature)
     ledger.evict_query_memos()
     assert transfers.resolve(first).extent_bound == 2
@@ -140,7 +143,7 @@ def test_transfer_integer_aliases_reject_before_lookup_or_mutation(
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
     valid = executor.transfer(action, source, geometry, signature)
     forged = type(valid)(valid.owner, valid.kind, valid.local_id)
     object.__setattr__(forged, "local_id", alias)
@@ -168,16 +171,16 @@ def test_field_transfer_observation_rechecks_handle_before_transfer_lookup(
         adapter,
         transfers,
         executor,
-    ) = _transfer_setup()
+    ) = field_transfer_setup()
     application = executor.application(
         action,
         source,
         geometry,
         signature,
-        _PortID(adapter.port_owner, "test-boundary", 0),
+        FieldTransferPortID(adapter.port_owner, "test-boundary", 0),
     )
     transfer = application._transfer()
-    malformed = _PortID(adapter.port_owner, "test-boundary", 0)
+    malformed = FieldTransferPortID(adapter.port_owner, "test-boundary", 0)
     object.__setattr__(malformed, "local_id", False)
 
     def poison(_reference: object) -> Never:

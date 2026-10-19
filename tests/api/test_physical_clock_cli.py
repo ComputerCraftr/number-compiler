@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from fractions import Fraction
-from typing import Never
+from typing import Never, Protocol, runtime_checkable
 
 import pytest
 
@@ -33,6 +33,18 @@ def _reference(seed: int, ticks: int) -> tuple[int, int]:
         else:
             value //= 2
     return value, odd
+
+
+@runtime_checkable
+class _TabulatedMethod(Protocol):
+    def __call__(
+        self,
+        adapter: PrimitiveTileKernelAdapter,
+        ports: tuple[FinitePort, ...],
+        output: AtomSort,
+        active: tuple[FinitePort, ...],
+        table: tuple[int, ...],
+    ) -> FactoredFunctionID: ...
 
 
 @pytest.mark.parametrize(
@@ -147,7 +159,9 @@ def test_clock_budget_is_checked_before_execution(
 def test_cli_physical_output_cannot_rebuild_joint_table(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    original = PrimitiveTileKernelAdapter._tabulated
+    original_value: object = PrimitiveTileKernelAdapter.tabulated
+    assert isinstance(original_value, _TabulatedMethod)
+    original = original_value
 
     def reject_joint(
         self: PrimitiveTileKernelAdapter,
@@ -160,7 +174,7 @@ def test_cli_physical_output_cannot_rebuild_joint_table(
             raise AssertionError("CLI rebuilt the joint physical output table")
         return original(self, ports, output, active, table)
 
-    monkeypatch.setattr(PrimitiveTileKernelAdapter, "_tabulated", reject_joint)
+    monkeypatch.setattr(PrimitiveTileKernelAdapter, "tabulated", reject_joint)
     assert (
         main(
             [
@@ -235,7 +249,9 @@ def test_width_tape_clock_reuses_the_admitted_run(
     for _ in range(ticks):
         current = 3 * current + 1 if current & 1 else current // 2
         widths.append(current.bit_length())
-    before = term._ledger.counters.get("collatz_physical_tape_width_compositions", 0)
+    before = term.resource_ledger.counters.get(
+        "collatz_physical_tape_width_compositions", 0
+    )
     packet = observe_physical_clock(
         seed,
         ticks,
@@ -255,7 +271,7 @@ def test_width_tape_clock_reuses_the_admitted_run(
         "maximum": max(widths) - widths[0],
     }
     assert (
-        term._ledger.counters.get("collatz_physical_tape_width_compositions", 0)
+        term.resource_ledger.counters.get("collatz_physical_tape_width_compositions", 0)
         == before
     )
     assert "work_counters" not in packet
@@ -296,9 +312,9 @@ def test_clock_width_payload_is_independent_of_work_counters(
     term.s_arithmetic_clock()
     before = observe_physical_clock(27, 64, max_ticks=1000, max_digits=1000, _term=term)
     assert before["width_tape"] is not None
-    for counter in tuple(term._ledger.counters):
+    for counter in tuple(term.resource_ledger.counters):
         if "width" in counter or "tape" in counter or "growth" in counter:
-            term._ledger.counters[counter] = 10**12
+            term.resource_ledger.counters[counter] = 10**12
     monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", _forbidden)
     monkeypatch.setattr(PoweredCollatzTerm, "digits", _forbidden)
     after = observe_physical_clock(27, 64, max_ticks=1000, max_digits=1000, _term=term)

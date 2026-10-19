@@ -17,6 +17,8 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
     FamilyTileHooks,
     FinitePairTransfer,
     FinitePairTransferFactory,
+    is_finite_pair_transfer,
+    is_finite_pair_transfer_factory,
 )
 from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
@@ -45,6 +47,9 @@ if TYPE_CHECKING:
         OrderedBooleanSupport,
     )
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        LazyProjectionAuditSnapshot,
+    )
 
 
 def _close_all(values: list[tuple[int, TileLease]]) -> None:
@@ -96,7 +101,7 @@ def import_exact_source(
         raise TypeError("tile source import requires source and tile arenas")
     if geometry.ledger is not tiles.ledger:
         raise ValueError("tile source import requires one index ledger")
-    OriginalSourceConstruction.validate_source(geometry._construction, source)
+    OriginalSourceConstruction.validate_source(geometry.construction, source)
     logical_extent = len(source.digits) if source.extent is None else source.extent
     if not source.digits:
         raise ValueError("tile source import requires at least one original symbol")
@@ -111,7 +116,7 @@ def import_exact_source(
         or tile_alphabet.symbol_count != symbol_count
     ):
         raise ValueError("tile alphabet does not describe the exact source")
-    if geometry._read_root is None:
+    if not geometry.has_materialized_source:
         # The source geometry authenticates original symbols.  Blank extension
         # belongs to the tile arena and is built below as a logarithmic tower.
         geometry.span(source.digits, source.blank, len(source.digits))
@@ -207,8 +212,8 @@ class LazyProjection:
         self.ledger.register_execution_root(self)
 
     def _open(self) -> TileApplication:
-        issued = self.ledger._execution_roots.get(id(self))
-        if issued is None or issued() is not self:
+        issued = self.ledger.owns_execution_root(self)
+        if not issued:
             raise ValueError("tile projection was not issued by its ledger")
         if type(self._closed) is not bool or self._closed:
             raise ValueError("closed lazy tile projection")
@@ -222,6 +227,20 @@ class LazyProjection:
             raise ValueError("tile projection belongs to another scheduler")
         _ = self._application.source
         return self._application
+
+    def audit_snapshot(self) -> LazyProjectionAuditSnapshot:
+        """Expose the retained application relationship to resource auditors."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            LazyProjectionAuditSnapshot,
+        )
+
+        return LazyProjectionAuditSnapshot(
+            self.ledger,
+            self.scheduler,
+            self._application,
+            self._logical_extent,
+            self._closed,
+        )
 
     @source_reads_only
     def point(self, position: int) -> int:
@@ -471,7 +490,7 @@ def _build_tile_projection(
     if type(geometry.ledger) is not ResourceLedger:
         raise TypeError("tile projection requires its index resource ledger")
     OriginalSourceConstruction.validate_source(
-        geometry._construction, geometry._construction.source
+        geometry.construction, geometry.construction.source
     )
     from number_compiler.arithmetic.contracts.block_kernel import (
         BaseBlockEffect,
@@ -496,10 +515,10 @@ def _build_tile_projection(
 
     if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
         raise TypeError("tile projection requires canonical family hooks")
-    if pair_transfer_factory is not None and not isinstance(
-        pair_transfer_factory, FinitePairTransferFactory
+    if pair_transfer_factory is not None and not is_finite_pair_transfer_factory(
+        pair_transfer_factory
     ):
-        raise TypeError("tile projection requires a typed pair-transfer factory")
+        raise TypeError(type(pair_transfer_factory))
 
     supported = type(effect) in (
         ProgramComposition,
@@ -522,13 +541,13 @@ def _build_tile_projection(
     interfaces = DiamondQuotientArena(
         SemanticFunctionArena(ledger, cache_construction_reductions=True)
     )
-    pair_transfer = (
-        None if pair_transfer_factory is None else pair_transfer_factory.create(ledger)
-    )
-    if pair_transfer is not None and (
-        not isinstance(pair_transfer, FinitePairTransfer)
-        or pair_transfer.ledger is not ledger
-    ):
+    pair_transfer: FinitePairTransfer | None = None
+    if pair_transfer_factory is not None:
+        created_transfer = pair_transfer_factory.create(ledger)
+        if not is_finite_pair_transfer(created_transfer):
+            raise TypeError(type(created_transfer))
+        pair_transfer = created_transfer
+    if pair_transfer is not None and pair_transfer.ledger is not ledger:
         raise ValueError("tile pair-transfer factory returned a foreign strategy")
     adapter = PrimitiveTileKernelAdapter(
         tiles,
@@ -604,7 +623,7 @@ def _build_tile_projection(
     return LazyProjection(
         scheduler,
         action,
-        geometry._construction.source,
+        geometry.construction.source,
         geometry,
         adapter.alphabet(action),
         adapter.initial_ports(action),

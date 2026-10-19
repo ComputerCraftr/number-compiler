@@ -19,6 +19,11 @@ from itertools import pairwise
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_band_members,
+)
 
 from .outer_center_residue99 import constrain_center_from_outer_pairs
 from .temporal_carry_wire import MiddleCarryWire, restrict_middle_carry_wire
@@ -28,14 +33,6 @@ if TYPE_CHECKING:
 
 _FULL = (1 << 10) - 1
 _NONZERO = _FULL ^ 1
-_BANDS = (
-    ("lt_low", range(5)),
-    ("lt_high", range(5, 9)),
-    ("eq", (9,)),
-    ("gt_low", range(10, 15)),
-    ("gt_high", range(15, 19)),
-)
-_BAND = {name: frozenset(values) for name, values in _BANDS}
 
 
 def _members(mask: int) -> tuple[int, ...]:
@@ -77,7 +74,7 @@ class ReverseInwardConstraints:
         *,
         max_cells: int = 16384,
         on_middle_filter_visit: Callable[[], None] | None = None,
-    ):
+    ) -> None:
         if (
             type(widths) is not tuple
             or not 1 <= len(widths) <= 513
@@ -172,17 +169,20 @@ class ReverseInwardConstraints:
             self.constrain_digit(row, low, options)
 
     def constrain_pair(
-        self, t: int, i: int, allowed: str | int | tuple[str | int, ...]
+        self,
+        t: int,
+        i: int,
+        allowed: DecimalPairBand | int | tuple[DecimalPairBand | int, ...],
     ) -> None:
         if not 0 <= t < len(self.widths) or not 0 <= i < (self.widths[t] + 1) // 2:
             raise IndexError((t, i))
-        inputs = (allowed,) if isinstance(allowed, (str, int)) else allowed
+        inputs = allowed if type(allowed) is tuple else (allowed,)
         values: set[int] = set()
         for x in inputs:
             if type(x) is int and 0 <= x <= 18:
                 values.add(x)
-            elif type(x) is str and x in _BAND:
-                values.update(_BAND[x])
+            elif type(x) is DecimalPairBand:
+                values.update(decimal_pair_band_members(x))
             else:
                 raise ValueError("invalid symmetric pair domain")
         if not values:
@@ -194,7 +194,10 @@ class ReverseInwardConstraints:
         self._pairs[key] = frozenset(retained)
 
     def _restrict_pair(
-        self, t: int, i: int, allowed: str | int | tuple[str | int, ...]
+        self,
+        t: int,
+        i: int,
+        allowed: DecimalPairBand | int | tuple[DecimalPairBand | int, ...],
     ) -> bool:
         """Intersect one pair domain and report whether its mask changed."""
         previous = self._pairs.get((t, i))
@@ -308,6 +311,41 @@ class ReverseInwardConstraints:
 
     def global_residue198(self, t: int) -> int | None:
         return self._residues.get((t, 198))
+
+    def admitted_temporal_span(self, start: int, duration: int) -> range:
+        """Validate and expose a finite span of represented transitions."""
+        if (
+            type(start) is not int
+            or type(duration) is not int
+            or start < 0
+            or duration < 1
+            or start + duration > len(self._carries)
+        ):
+            raise ValueError("temporal span is outside the represented carry tape")
+        return range(start, start + duration)
+
+    def raw_borrow_domain(self, t: int, position: int) -> tuple[int, ...]:
+        """Read one raw innovation-borrow domain without exposing storage."""
+        if (
+            type(t) is not int
+            or not 0 <= t < len(self._borrows)
+            or type(position) is not int
+            or not 0 <= position < len(self._borrows[t])
+        ):
+            raise IndexError((t, position))
+        return _bits(self._borrows[t][position])
+
+    def represented_middle_constraint_keys(self, t: int) -> tuple[int, ...]:
+        """List border widths with retained middle constraints at transition t."""
+        if type(t) is not int or not 0 <= t < len(self.widths):
+            raise IndexError(t)
+        return tuple(
+            sorted(
+                border_digits
+                for row, border_digits in self._middle_transfers
+                if row == t
+            )
+        )
 
     def _middle_constraints(self) -> bool:
         """Intersect low carry, one whole symmetric reset map, high ingress.
@@ -624,12 +662,17 @@ class ReverseInwardConstraints:
             }
             if channel == "five_band":
                 shared_bands = {
-                    name
-                    for name, vals in _BANDS
-                    if any(v in vals for v in sums_t) and any(v in vals for v in sums_u)
+                    band
+                    for band in DECIMAL_PAIR_BANDS
+                    if any(value in decimal_pair_band_members(band) for value in sums_t)
+                    and any(
+                        value in decimal_pair_band_members(band) for value in sums_u
+                    )
                 }
                 shared = {
-                    v for name, vals in _BANDS if name in shared_bands for v in vals
+                    value
+                    for band in shared_bands
+                    for value in decimal_pair_band_members(band)
                 }
             else:
                 shared = sums_t & sums_u
@@ -696,7 +739,7 @@ class ReverseInwardConstraints:
                 if any((10 * r + d) % modulus in following for d in options)
             }
         changed = False
-        for j, mask in enumerate(row):
+        for j in range(len(row)):
             allowed = sum(
                 1 << d
                 for d in digit_options[j]
@@ -772,22 +815,24 @@ class ReverseInwardConstraints:
         return tuple(sorted({s % 5 for s in self.pair_domain(t, i)}))
 
     def bank_mask_domain(
-        self, t: int, start: int, count: int, channel: str
+        self, t: int, start: int, count: int, channel: DecimalPairBand
     ) -> tuple[int | None, ...]:
         """Return 0/1 only for five-band bits forced in every completion."""
-        if channel not in _BAND or not 1 <= count <= 64:
+        if type(channel) is not DecimalPairBand or not 1 <= count <= 64:
             raise ValueError("invalid five-band mask/window")
         if start < 0 or start + count > (self.widths[t] + 1) // 2:
             raise IndexError("mask window reaches the moving center")
-        members = _BAND[channel]
-        row = []
+        members = decimal_pair_band_members(channel)
+        row: list[int | None] = []
         for i in range(start, start + count):
             domain = self.pair_domain(t, i)
             bits = {int(s in members) for s in domain}
             row.append(next(iter(bits)) if len(bits) == 1 else None)
         return tuple(row)
 
-    def walsh64_mod5(self, t: int, start: int, channel: str) -> tuple[int, ...]:
+    def walsh64_mod5(
+        self, t: int, start: int, channel: DecimalPairBand
+    ) -> tuple[int, ...]:
         """Demand a true spatial Walsh64 packet; reject unresolved lanes."""
         lanes = self.bank_mask_domain(t, start, 64, channel)
         if any(lane is None for lane in lanes):
@@ -814,16 +859,16 @@ class ReverseInwardConstraints:
         )
 
     def summary(self) -> ReverseInwardSummary:
-        pairs = []
+        pairs: list[tuple[tuple[str, ...], ...]] = []
         for t, width in enumerate(self.widths):
-            bands = []
+            bands: list[tuple[str, ...]] = []
             for i in range((width + 1) // 2):
                 dom = self.pair_domain(t, i)
                 bands.append(
                     tuple(
-                        name
-                        for name, members in _BANDS
-                        if any(x in members for x in dom)
+                        band.value
+                        for band in DECIMAL_PAIR_BANDS
+                        if any(x in decimal_pair_band_members(band) for x in dom)
                     )
                 )
             pairs.append(tuple(bands))

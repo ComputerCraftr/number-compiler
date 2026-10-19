@@ -13,7 +13,7 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
 )
 from number_compiler.arithmetic.polynomials.binomial_pow2 import binomial_mod_pow2
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate
+from tests.support.symbolic_innovation import evaluate
 
 
 def test_sign_intervals_feed_the_existing_carry_event_algebra() -> None:
@@ -47,9 +47,9 @@ def test_sign_intervals_feed_the_existing_carry_event_algebra() -> None:
         if carry:
             expected[extent] = -carry
         assert result.terminal == carry
-        assert _evaluate(arena, result.jump) == expected
+        assert evaluate(arena, result.jump) == expected
         expected[0] = expected.get(0, 0) + incoming
-        assert _evaluate(arena, result.coboundary) == {
+        assert evaluate(arena, result.coboundary) == {
             k: v for k, v in expected.items() if v
         }
 
@@ -66,7 +66,7 @@ def test_huge_neutral_and_same_reset_spans_keep_only_boundary_events() -> None:
         result = common_growth_carry_events(
             arena, width, terms, extent=width, incoming=incoming, work=work
         )
-        assert _evaluate(arena, result.jump) == expected
+        assert evaluate(arena, result.jump) == expected
         assert result.sign_intervals == work.sign_queries == 1
         assert work.ratio_factors == 0
         assert arena.ledger.counters["radial_sign_carry_intervals"] == 1
@@ -74,7 +74,7 @@ def test_huge_neutral_and_same_reset_spans_keep_only_boundary_events() -> None:
 
 def _centered_pair(seed: int) -> tuple[int, ...]:
     digits = tuple(int(digit) for digit in str(seed)[::-1])
-    return tuple(a + b - 9 for a, b in zip(digits, reversed(digits)))
+    return tuple(a + b - 9 for a, b in zip(digits, reversed(digits), strict=True))
 
 
 def _jet(delta: tuple[int, ...], order: int) -> tuple[int, ...]:

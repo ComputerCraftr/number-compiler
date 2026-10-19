@@ -8,17 +8,19 @@ from typing import Never, cast
 
 import pytest
 
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageView,
 )
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-from number_compiler.sequences.prime.successor_action import (
-    PrimeSuccessorActionArena,
-    PrimeSuccessorImageAdapter,
+from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
+from number_compiler.sequences.prime.successor_action_contracts import (
     PrimeSuccessorImagePayload,
     PrimeSuccessorSource,
+)
+from number_compiler.sequences.prime.successor_image_adapter import (
+    PrimeSuccessorImageAdapter,
 )
 
 
@@ -373,6 +375,8 @@ def test_admitted_composed_prefix_traces_every_mark_rank_select_and_phase() -> N
 def test_action_identity_is_associative_and_shared_scheduler_uses_real_image() -> None:
     from number_compiler.hashlife.execution.source_bound_images import (
         SourceBoundSchedulerCore,
+    )
+    from number_compiler.hashlife.execution.source_image_inventory import (
         SourceImageDemand,
     )
 

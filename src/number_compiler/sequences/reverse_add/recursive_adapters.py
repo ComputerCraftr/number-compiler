@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
     FieldGeometryArena,
+    FieldGeometryAuditSnapshot,
     FieldGeometryID,
 )
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
@@ -45,15 +49,34 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.reverse_add.field_action import (
     ReverseFieldActionArena,
 )
 from number_compiler.sequences.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompilation,
     ReverseHigherInterfaceCompiler,
 )
 
 
-class _ReverseRecursiveFieldAdapter:
+@dataclass(frozen=True, slots=True)
+class ReverseRecursiveFieldAdapterAuditSnapshot:
+    """Exact recursive source adapter owners for explicit payload audits."""
+
+    ledger: ResourceLedger
+    actions: ReverseFieldActionArena
+    sources: SourceCellArena
+    semantics: HigherSemanticArena
+    interfaces: HigherLocalInterfaceArena
+    outputs: RecursiveCoordinateMorphismArena
+    compiler_cache: Mapping[FieldCellActionID, ReverseHigherInterfaceCompilation]
+    geometries: FieldGeometryAuditSnapshot | None
+    composers: OwnedMemoAuditSnapshot[FieldCellActionID, HigherSpatialMacroComposer]
+    signatures: OwnedMemoAuditSnapshot[tuple[FieldCellActionID, int], PortSignatureID]
+    blank: int
+
+
+class ReverseRecursiveFieldAdapter:
     _geometries: FieldGeometryArena
     """Compile leaves and join nonleaf actions from completed child images."""
 
@@ -108,6 +131,27 @@ class _ReverseRecursiveFieldAdapter:
             ledger, source_extent_owner
         )
         self.ledger.register_execution_root(self)
+
+    def audit_snapshot(self) -> ReverseRecursiveFieldAdapterAuditSnapshot:
+        """Return current caches and geometric owner without compiling actions."""
+        geometries = getattr(self, "_geometries", None)
+        return ReverseRecursiveFieldAdapterAuditSnapshot(
+            ledger=self.ledger,
+            actions=self.actions,
+            sources=self.sources,
+            semantics=self.semantics,
+            interfaces=self.interfaces,
+            outputs=self.outputs,
+            compiler_cache=self.compiler.audit_snapshot().cache,
+            geometries=(
+                geometries.audit_snapshot()
+                if type(geometries) is FieldGeometryArena
+                else None
+            ),
+            composers=self._composers.audit_snapshot(),
+            signatures=self._signatures.audit_snapshot(),
+            blank=self.blank,
+        )
 
     def validate_action(self, action: FieldCellActionID) -> None:
         self.actions.validate_action(action)
@@ -390,7 +434,7 @@ class _ReverseProviderAdapter:
 
     def __init__(
         self,
-        core: _ReverseRecursiveFieldAdapter,
+        core: ReverseRecursiveFieldAdapter,
         providers: ProviderAbsorptionArena,
     ) -> None:
         self.core, self.providers = core, providers

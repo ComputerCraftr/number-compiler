@@ -109,16 +109,16 @@ def special_local_frobenius_chunk_audit(
     if start < 1 or span < 1 or q <= 2:
         raise ValueError((start, span, q))
     if fam == "fermat":
-        N = fermat_number(par)
+        candidate = fermat_number(par)
         baseline = par + 1
         character = 1
     elif fam == "mersenne":
-        N = mersenne_number(par)
+        candidate = mersenne_number(par)
         baseline = 2
         character = _mersenne_local_character(q)
     else:
         raise ValueError(fam)
-    if N % q:
+    if candidate % q:
         raise ValueError(("not-a-supplied-special-factor", fam, par, q))
 
     delta = q - character
@@ -315,7 +315,7 @@ def _crt_pairwise_coprime(residues: tuple[int, ...], moduli: tuple[int, ...]) ->
             pass
         modulus *= q
     out = 0
-    for residue, q in zip(residues, moduli):
+    for residue, q in zip(residues, moduli, strict=True):
         cofactor = modulus // q
         out += (int(residue) % q) * cofactor * pow(cofactor, -1, q)
     return out % modulus

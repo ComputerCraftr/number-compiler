@@ -35,6 +35,7 @@ from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
 )
+from number_compiler.resources.causal_types import CausalState
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
@@ -42,10 +43,10 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+    from number_compiler.hashlife.execution.tile_causal_api import CausalTileAPI
 
 
-def _blank_view(engine: CausalTileEngine, view: BoundaryTileView | None) -> bool:
+def _blank_view(engine: CausalTileAPI, view: BoundaryTileView | None) -> bool:
     if view is None:
         return True
     validate_boundary_operands(engine.tiles, BoundaryTileOperands(view))
@@ -56,12 +57,12 @@ def _blank_view(engine: CausalTileEngine, view: BoundaryTileView | None) -> bool
 
 
 def quiescent_boundary(
-    engine: CausalTileEngine,
+    engine: CausalTileAPI,
     action: FieldCellActionID,
     side: int,
     view: BoundaryTileView,
-    anchor: object,
-    argument: object,
+    anchor: CausalState,
+    argument: CausalState,
     *,
     discharged_extent: int | None = None,
 ) -> BoundaryTileView | None:
@@ -79,9 +80,9 @@ def quiescent_boundary(
         or not 0 <= discharged_extent <= view.relative_extent
     ):
         raise ValueError("behavioral discharge extent escaped the requested view")
-    token = engine._action_admission_token
+    token = engine.action_admission
     if token is None:
-        record = engine.adapter._action(action)
+        record = engine.adapter.action_record(action)
         kernel_id = record.kernel
     else:
         from number_compiler.resources.causal_workspace import (
@@ -109,7 +110,7 @@ def quiescent_boundary(
             view.tile,
             PrimitiveCausalPorts(left, right),
             engine._wiring(action),
-            action_admission=engine._action_admission_token,
+            action_admission=engine.action_admission,
         )
     else:
         key = engine._composite_key(action, view.tile, left, right)

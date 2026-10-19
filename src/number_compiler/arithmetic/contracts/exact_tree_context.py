@@ -7,7 +7,7 @@ endpoint lowering cannot override a point observer's read-only scope.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -97,7 +97,9 @@ class OriginalSourceConstruction:
         return self.source
 
     @contextmanager
-    def allow(self, values: tuple[int, ...], blank: int, length: int) -> Iterator[None]:
+    def allow(
+        self, values: tuple[int, ...], blank: int, length: int
+    ) -> Generator[None, None, None]:
         if _POINT_REQUEST.get():
             raise ExactTreeConstructionForbidden(
                 "a point request cannot enter an unrestricted source-construction scope"
@@ -156,7 +158,7 @@ def require_endpoint_construction() -> None:
 @contextmanager
 def endpoint_construction(
     owner: ArenaToken, capability: LoweringCapability
-) -> Iterator[None]:
+) -> Generator[None, None, None]:
     """Explicit future-tree construction cannot be entered by a point callback."""
     if not isinstance(capability, LoweringCapability) or capability.owner is not owner:
         raise ValueError("foreign or missing endpoint lowering capability")

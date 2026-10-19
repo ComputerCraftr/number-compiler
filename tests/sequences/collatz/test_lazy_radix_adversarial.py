@@ -89,14 +89,14 @@ def test_radix_projection_rejects_foreign_source_before_cache_or_exterior(
     foreign = PoweredCollatzTerm(31, 1)
     source_width = source.width()
     assert source_width == foreign.width()
-    arena = RadixProjection(3, source_width, source._ledger)
+    arena = RadixProjection(3, source_width, source.resource_ledger)
     if warm:
         assert arena.digit(source, 1) == 0
-    before = source._ledger.snapshot()
+    before = source.resource_ledger.snapshot()
     for index in (1, -1, source_width):
         with pytest.raises(ValueError, match="another binary source"):
             arena.digit(foreign, index)
-        assert source._ledger.snapshot() == before
+        assert source.resource_ledger.snapshot() == before
 
 
 def test_radix_entry_rejects_unadmitted_callbacks_and_numeric_aliases_before_width(
@@ -109,7 +109,7 @@ def test_radix_entry_rejects_unadmitted_callbacks_and_numeric_aliases_before_wid
     with pytest.raises(TypeError, match="owned powered"):
         collatz_radix_digit(cast("PoweredCollatzTerm", Unadmitted()), 3, 0)
     term = PoweredCollatzTerm(27, 1)
-    before = term._ledger.snapshot()
+    before = term.resource_ledger.snapshot()
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("invalid radix request reached field width")
@@ -120,22 +120,24 @@ def test_radix_entry_rejects_unadmitted_callbacks_and_numeric_aliases_before_wid
             collatz_radix_digit(term, cast("int", radix), cast("int", index))
     with pytest.raises(IndexError):
         collatz_radix_digit(term, 3, -1)
-    assert term._ledger.snapshot() == before
+    assert term.resource_ledger.snapshot() == before
 
 
 def test_projection_admission_rejects_before_registration_or_source_callbacks() -> None:
     term = PoweredCollatzTerm(27, 1)
-    before = term._ledger.snapshot()
+    before = term.resource_ledger.snapshot()
     for radix, width in ((3.0, 7), (True, 7), (3, 7.0), (3, True)):
         with pytest.raises(TypeError, match="exact integers"):
-            RadixProjection(cast("int", radix), cast("int", width), term._ledger)
-        assert term._ledger.snapshot() == before
+            RadixProjection(
+                cast("int", radix), cast("int", width), term.resource_ledger
+            )
+        assert term.resource_ledger.snapshot() == before
     for width in (0, -1):
         with pytest.raises(ValueError, match="positive"):
-            RadixProjection(3, width, term._ledger)
-        assert term._ledger.snapshot() == before
-    projection = RadixProjection(3, term.width(), term._ledger)
-    before = term._ledger.snapshot()
+            RadixProjection(3, width, term.resource_ledger)
+        assert term.resource_ledger.snapshot() == before
+    projection = RadixProjection(3, term.width(), term.resource_ledger)
+    before = term.resource_ledger.snapshot()
 
     class Unadmitted:
         @property
@@ -147,4 +149,4 @@ def test_projection_admission_rejects_before_registration_or_source_callbacks() 
     for index in (True, 1.0, "1"):
         with pytest.raises(TypeError, match="exact integer"):
             projection.digit(term, cast("int", index))
-        assert term._ledger.snapshot() == before
+        assert term.resource_ledger.snapshot() == before

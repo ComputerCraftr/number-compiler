@@ -2,10 +2,12 @@
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     RadialMultiplier,
-    SymbolicInnovationArena,
     SymbolicRadialInnovation,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
+    SymbolicInnovationArena,
 )
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,

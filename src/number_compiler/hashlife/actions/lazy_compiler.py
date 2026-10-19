@@ -33,12 +33,12 @@ from number_compiler.arithmetic.contracts.semantic_identity import (
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
 from number_compiler.resources.ledger import ResourceLedger, ResourceScope
-
-ACTION_PROGRAM_CANONICAL_KEY_TAG: Final[str] = "action-program-v2"
 from number_compiler.resources.metric_keys import (
     hashlife_actions as _actions_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
+
+ACTION_PROGRAM_CANONICAL_KEY_TAG: Final[str] = "action-program-v2"
 
 
 class UnsupportedInterfaceError(TypeError):

@@ -9,8 +9,9 @@ in ``select`` discharges it by selecting the least remaining positive survivor.
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Generator, MutableMapping
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from itertools import islice
 from math import gcd
 
@@ -20,6 +21,49 @@ from number_compiler.resources.process_cache import MISSING, CacheLease
 from number_compiler.resources.stores import LedgerList
 
 MAX_SHARED_FACTOR_STAGES = 4096
+
+
+@dataclass(frozen=True, slots=True)
+class PrimeFactorSourceIdentity:
+    """Read-only identity for one append-only prime-factor source."""
+
+    _owner_token: object
+    mutation_stamp: tuple[object, int]
+    factor_count: int
+
+    def belongs_to(self, owner_token: object) -> bool:
+        """Check the opaque issuer identity without exposing it to callers."""
+        return self._owner_token is owner_token
+
+
+@dataclass(frozen=True, slots=True)
+class CachedPrimePrefixCapability:
+    """Owner-bound permission to import the next factor of one issued prefix."""
+
+    _owner_token: object
+    _issuer: object
+    _factors: tuple[object, ...]
+
+    def next_factor(
+        self,
+        *,
+        owner_token: object,
+        issuer: object,
+        prefix: tuple[int, ...],
+    ) -> int:
+        """Return exactly the next item after validating the issued prefix."""
+        if (
+            self._owner_token is not owner_token
+            or self._issuer is not issuer
+            or type(prefix) is not tuple
+            or len(prefix) >= len(self._factors)
+            or self._factors[: len(prefix)] != prefix
+        ):
+            raise ValueError("cached prime prefix is not bound to this source")
+        value = self._factors[len(prefix)]
+        if type(value) is not int:
+            raise ValueError("cached prime prefix contains a noninteger factor")
+        return value
 
 
 class CoprimeRankDAG:
@@ -33,12 +77,15 @@ class CoprimeRankDAG:
         max_work: int | None = None,
         retain_queries: bool = True,
         shared_lease: CacheLease | None = None,
+        cache_import_issuer: object | None = None,
     ) -> None:
         if any(
             v is not None and (type(v) is not int or v < 1)
             for v in (max_states, max_work)
         ):
             raise ValueError("prime states and work budgets must be positive integers")
+        if cache_import_issuer is not None and type(cache_import_issuer) is not object:
+            raise TypeError("prime cache importer requires an exact object capability")
         self.max_states = max_states
         self.max_work = max_work
         self.ledger = ResourceLedger()
@@ -68,6 +115,8 @@ class CoprimeRankDAG:
         )
         self._issued_factor_store = self._primes
         self._issued_factor_stamp = self._primes.mutation_stamp
+        self._factor_source_token = object()
+        self._cache_import_issuer = cache_import_issuer
         self.work = self.cache_hits = self.arithmetic_bit_work = 0
         self.shared_hits = self.shared_misses = self.shared_puts = 0
         self.peak_pending_frames = self.pending_frames = 0
@@ -91,10 +140,95 @@ class CoprimeRankDAG:
     def factor_count(self) -> int:
         return len(self._primes)
 
-    @property
-    def _factor_store_authority(self) -> LedgerList[int]:
-        """Process-local identity used by source-bound prime adapters."""
-        return self._primes
+    def factor_source_identity(self) -> PrimeFactorSourceIdentity:
+        """Return a read-only source identity without exposing its mutable store."""
+        self._validate_factor_source()
+        return PrimeFactorSourceIdentity(
+            self._factor_source_token,
+            self._issued_factor_stamp,
+            len(self._primes),
+        )
+
+    def validates_factor_source(self, identity: PrimeFactorSourceIdentity) -> bool:
+        """Check that an identity belongs to this intact append-only source."""
+        if type(identity) is not PrimeFactorSourceIdentity:
+            return False
+        try:
+            self._validate_factor_source()
+        except RuntimeError:
+            return False
+        return (
+            identity.belongs_to(self._factor_source_token)
+            and type(identity.mutation_stamp) is tuple
+            and len(identity.mutation_stamp) == 2
+            and identity.mutation_stamp[0] is self._issued_factor_stamp[0]
+            and type(identity.mutation_stamp[1]) is int
+            and 0 <= identity.mutation_stamp[1] <= self._issued_factor_stamp[1]
+            and type(identity.factor_count) is int
+            and 0 <= identity.factor_count <= len(self._primes)
+        )
+
+    def is_current_factor_source(self, identity: PrimeFactorSourceIdentity) -> bool:
+        """Check both source ownership and the exact current prefix snapshot."""
+        return self.validates_factor_source(identity) and identity == (
+            self.factor_source_identity()
+        )
+
+    def factor_source_mutation_stamp(
+        self, identity: PrimeFactorSourceIdentity
+    ) -> tuple[object, int]:
+        """Read mutation state for a bound source so its prefix can be rechecked.
+
+        This deliberately observes an unissued mutation of the original store:
+        its caller must compare the returned stamp and revalidate the bound
+        prefix before reusing any cached action. It does not certify the changed
+        store as a valid factor source.
+        """
+        if type(identity) is not PrimeFactorSourceIdentity:
+            raise ValueError("prime factor source identity is stale or foreign")
+        stamp = self._primes.mutation_stamp
+        if (
+            not identity.belongs_to(self._factor_source_token)
+            or self._primes is not self._issued_factor_store
+            or not self._primes.append_only
+            or type(identity.mutation_stamp) is not tuple
+            or len(identity.mutation_stamp) != 2
+            or identity.mutation_stamp[0] is not stamp[0]
+            or type(identity.mutation_stamp[1]) is not int
+            or not 0 <= identity.mutation_stamp[1] <= self._issued_factor_stamp[1]
+            or type(identity.factor_count) is not int
+            or (
+                not self._closed and not 0 <= identity.factor_count <= len(self._primes)
+            )
+        ):
+            raise ValueError("prime factor source identity is stale or foreign")
+        return stamp
+
+    def factor_at(self, index: int, identity: PrimeFactorSourceIdentity) -> int:
+        """Read one factor through an authenticated source identity."""
+        if not self.validates_factor_source(identity):
+            raise ValueError("prime factor source identity is stale or foreign")
+        if type(index) is not int or not 0 <= index < identity.factor_count:
+            raise IndexError("prime factor index is outside the admitted source")
+        return self._primes[index]
+
+    def issue_cached_prefix_capability(
+        self, factors: tuple[object, ...], issuer: object
+    ) -> CachedPrimePrefixCapability:
+        """Bind a cache-issued immutable prefix to this exact rank owner."""
+        self._validate_factor_source()
+        if (
+            self._cache_import_issuer is None
+            or type(issuer) is not object
+            or issuer is not self._cache_import_issuer
+            or type(factors) is not tuple
+            or not factors
+            or len(factors) > MAX_SHARED_FACTOR_STAGES
+            or len(factors) < len(self._primes)
+            or factors[: len(self._primes)] != self._primes.snapshot()
+        ):
+            raise ValueError("cached prime prefix lacks this owner's issuer")
+        return CachedPrimePrefixCapability(self._factor_source_token, issuer, factors)
 
     @property
     def last_factor(self) -> int:
@@ -154,12 +288,34 @@ class CoprimeRankDAG:
         self.append_factor(prime)
         self._consecutive_depth = len(self._primes)
 
-    def _append_issued_consecutive_factor(self, prime: int) -> None:
-        """Import one factor from the process-private published source prefix."""
-        if self._consecutive_depth != len(self._primes):
-            raise RuntimeError("issued prime prefix extends an unauthenticated source")
+    def append_next_cached_prefix_factor(
+        self, capability: CachedPrimePrefixCapability
+    ) -> int:
+        """Import only the next factor from an authenticated cached prefix.
+
+        The capability binds the complete immutable manifest, cache issuer and
+        this exact source owner. Callers cannot supply an arbitrary factor.
+        """
+        self._validate_factor_source()
+        if (
+            type(capability) is not CachedPrimePrefixCapability
+            or self._cache_import_issuer is None
+            or self._consecutive_depth != len(self._primes)
+        ):
+            raise RuntimeError("cached prime prefix is not bound to this source")
+        try:
+            prime = capability.next_factor(
+                owner_token=self._factor_source_token,
+                issuer=self._cache_import_issuer,
+                prefix=self._primes.snapshot(),
+            )
+        except ValueError as error:
+            raise RuntimeError(
+                "cached prime prefix is not bound to this source"
+            ) from error
         self.append_factor(prime)
         self._consecutive_depth = len(self._primes)
+        return prime
 
     def validate_consecutive_prefix(self, depth: int | None = None) -> None:
         """Authenticate factors as the initial consecutive prime prefix.
@@ -536,7 +692,7 @@ class CoprimeRankDAG:
         ) - self.count_progression(lower - 1, modulus, residue, depth)
 
     @contextmanager
-    def suspend_shared_publication(self) -> Iterator[None]:
+    def suspend_shared_publication(self) -> Generator[None, None, None]:
         """Keep temporary discovery ranks local, preserving the caller's mode."""
         previous = self.shared_publication_enabled
         self.shared_publication_enabled = False
@@ -562,7 +718,7 @@ class CoprimeRankDAG:
             # Factor positions are source authorities while the query is live,
             # so the public store is append-only.  Disposal may discard its
             # unpublished backing suffix only after all consumers have closed.
-            self._primes._rollback_unpublished(0)
+            self._primes.rollback_unpublished(0)
             self.ledger.release(self._factor_owner, entries=size, nodes=size)
         self._issued_factor_stamp = self._primes.mutation_stamp
         self.ledger.mark_disposed(self._factor_owner)

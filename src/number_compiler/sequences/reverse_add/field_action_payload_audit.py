@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence, Sized
-from typing import TYPE_CHECKING, cast
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sized
+from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
 from number_compiler.resources.payload_contracts import (
@@ -20,52 +21,10 @@ if TYPE_CHECKING:
 
 def register_reverse_field_action_contract(root: ReverseFieldActionArena) -> None:
     """Bind the reverse action arena's exact owned stores to its pure auditor."""
-    from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
-
     root.ledger.register_payload_audit_contract(
         root,
         "reverse_add",
-        (
-            PayloadAuditStoreBinding(
-                root._residual_owner, "_residuals", "reverse_residual_node"
-            ),
-            PayloadAuditStoreBinding(
-                root._residual_key_owner, "_residual_keys", "reverse_residual_interner"
-            ),
-            PayloadAuditStoreBinding(
-                root._output_owner, "_outputs", "reverse_output_morphism"
-            ),
-            PayloadAuditStoreBinding(
-                root._output_key_owner, "_output_keys", "reverse_output_interner"
-            ),
-            PayloadAuditStoreBinding(
-                root._action_owner, "_actions", "reverse_field_action"
-            ),
-            PayloadAuditStoreBinding(
-                root._action_key_owner, "_action_keys", "reverse_action_interner"
-            ),
-            PayloadAuditStoreBinding(
-                root._compose_owner, "_compose", "reverse_action_composition"
-            ),
-            PayloadAuditStoreBinding(
-                root._transform_owner, "_transforms", "reverse_action_transform"
-            ),
-            PayloadAuditStoreBinding(
-                root._witness_owner,
-                "_witnesses",
-                "reverse_action_construction_witness",
-            ),
-            PayloadAuditStoreBinding(
-                root._semantic_identity_owner,
-                "_semantic_identities",
-                "reverse_action_semantic_identity",
-            ),
-            PayloadAuditStoreBinding(
-                root._semantic_identity_issued_owner,
-                "_semantic_identity_issued",
-                "reverse_action_semantic_identity_authority",
-            ),
-        ),
+        root.payload_audit_store_bindings(),
         audit_reverse_field_action_owner,
     )
 
@@ -162,37 +121,53 @@ def audit_reverse_field_action_root(
     root: object,
     ledger: ResourceLedger,
     containers: dict[int, object],
+    owner_snapshot: object | None = None,
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Validate one reverse action/output arena without blessing its class name."""
     from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
-    from number_compiler.arithmetic.carry.carry_monoid import compose_carry_fn
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.hashlife.actions.field_actions import (
+        CoordinateOutputMorphismID,
+        FieldCellActionID,
+    )
     from number_compiler.sequences.reverse_add.coordinate_program import (
         ReverseCoordinateProgram,
         ReverseCoordinateProgramArena,
+        ReverseCoordinateProgramAuditSnapshot,
     )
     from number_compiler.sequences.reverse_add.field_action import (
-        ReverseActionAutomorphisms,
         ReverseDefectClassID,
-        ReverseFieldAction,
         ReverseFieldActionArena,
-        ReverseGeometry,
     )
-    from number_compiler.sequences.reverse_add.semantic_identity_cache import (
-        build_radial_identity,
+    from number_compiler.sequences.reverse_add.field_action_audit import (
+        ReverseFieldActionAuditSnapshot,
     )
 
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     if type(root) is ReverseCoordinateProgramArena:
+        coordinate_snapshot = (
+            root.payload_audit_snapshot() if owner_snapshot is None else owner_snapshot
+        )
+        if type(coordinate_snapshot) is not ReverseCoordinateProgramAuditSnapshot:
+            raise TypeError("coordinate owner returned an invalid audit snapshot")
+        coordinate_keys = dict(coordinate_snapshot.keys)
         coordinate_stores = (
-            (root._node_owner, root._nodes, "reverse_output_morphism", True),
-            (root._key_owner, root._keys, "reverse_output_interner", False),
             (
-                root._compose_owner,
-                root._compose,
+                coordinate_snapshot.node_owner,
+                coordinate_snapshot.node_backing,
+                "reverse_output_morphism",
+                True,
+            ),
+            (
+                coordinate_snapshot.key_owner,
+                coordinate_snapshot.key_backing,
+                "reverse_output_interner",
+                False,
+            ),
+            (
+                coordinate_snapshot.compose_owner,
+                coordinate_snapshot.compose_backing,
                 "reverse_output_composition",
                 False,
             ),
@@ -201,10 +176,10 @@ def audit_reverse_field_action_root(
             ledger, (owner for owner, _, _, _ in coordinate_stores)
         )
         all_valid = (
-            root.ledger is ledger
-            and type(root.owner) is ArenaToken
-            and type(root.base) is int
-            and root.base >= 2
+            coordinate_snapshot.ledger is ledger
+            and type(coordinate_snapshot.owner) is ArenaToken
+            and type(coordinate_snapshot.base) is int
+            and coordinate_snapshot.base >= 2
             and all(
                 _registered_store(
                     owner,
@@ -226,13 +201,13 @@ def audit_reverse_field_action_root(
             return (
                 type(value) is CoordinateOutputMorphismID
                 and type(value.owner) is ArenaToken
-                and value.owner is root.owner
-                and value.kind == root._KIND
+                and value.owner is coordinate_snapshot.owner
+                and value.kind == coordinate_snapshot.kind
                 and type(value.local_id) is int
-                and 0 <= value.local_id < len(root._nodes)
+                and 0 <= value.local_id < len(coordinate_snapshot.nodes)
             )
 
-        for index, program in enumerate(root._nodes):
+        for index, program in enumerate(coordinate_snapshot.nodes):
             valid = type(program) is ReverseCoordinateProgram
             try:
                 if not valid:
@@ -241,10 +216,16 @@ def audit_reverse_field_action_root(
                 valid &= program.base == root.base
                 if program.atom is not None:
                     valid &= _bounded_semantic_key(program.atom)
-                reference = root._handle(index)
+                from number_compiler.hashlife.actions.field_actions import (
+                    CoordinateOutputMorphismID,
+                )
+
+                reference = CoordinateOutputMorphismID(
+                    coordinate_snapshot.owner, coordinate_snapshot.kind, index
+                )
                 valid &= coordinate_handle(reference)
                 valid &= root.resolve(reference) is program
-                valid &= root._keys.get(program) == index
+                valid &= coordinate_keys.get(program) == index
                 if index == 0:
                     valid &= program == ReverseCoordinateProgram(root.base, 0, False)
                 elif index == 1:
@@ -256,27 +237,27 @@ def audit_reverse_field_action_root(
             if valid:
                 approved.add(id(program))
             else:
-                invalid.add((root._node_owner, id(program)))
+                invalid.add((coordinate_snapshot.node_owner, id(program)))
                 all_valid = False
 
-        for program, index in root._keys.items():
+        for program, index in coordinate_snapshot.keys:
             valid = type(program) is ReverseCoordinateProgram and type(index) is int
             try:
                 if not valid:
                     raise TypeError("invalid reverse coordinate interner entry")
-                valid &= 0 <= index < len(root._nodes)
-                valid &= root._nodes[index] is program
-                valid &= program.base == root.base
+                valid &= 0 <= index < len(coordinate_snapshot.nodes)
+                valid &= coordinate_snapshot.nodes[index] is program
+                valid &= program.base == coordinate_snapshot.base
             except (TypeError, ValueError, IndexError, AttributeError):
                 valid = False
             if valid:
                 approved.add(id(program))
             else:
-                invalid.add((root._key_owner, id(program)))
+                invalid.add((coordinate_snapshot.key_owner, id(program)))
                 all_valid = False
-        all_valid &= len(root._keys) == len(root._nodes)
+        all_valid &= len(coordinate_snapshot.keys) == len(coordinate_snapshot.nodes)
 
-        for coordinate_key, coordinate_result in root._compose.items():
+        for coordinate_key, coordinate_result in coordinate_snapshot.compositions:
             valid = (
                 type(coordinate_key) is tuple
                 and len(coordinate_key) == 2
@@ -287,100 +268,61 @@ def audit_reverse_field_action_root(
                 if not valid:
                     raise TypeError("invalid reverse coordinate composition")
                 before, after = coordinate_key
-                first, second = root.resolve(before), root.resolve(after)
-                actual = root.resolve(coordinate_result)
-                valid &= first.executable and second.executable
-                valid &= not (
-                    first.normalized and (second.pair_steps or second.normalized)
+                valid &= root.audit_composition_is_exact(
+                    before, after, coordinate_result
                 )
-                expected = ReverseCoordinateProgram(
-                    root.base,
-                    first.pair_steps + second.pair_steps,
-                    first.normalized or second.normalized,
-                )
-                valid &= actual == expected
-                valid &= root._keys.get(expected) == coordinate_result.local_id
             except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                 valid = False
             if valid:
                 approved.update((id(coordinate_key), id(coordinate_result)))
             else:
-                invalid.add((root._compose_owner, id(coordinate_key)))
+                invalid.add((coordinate_snapshot.compose_owner, id(coordinate_key)))
                 all_valid = False
         if all_valid:
             approved.update(id(store) for _, store, _, _ in coordinate_stores)
             approved.update(
-                id(value) for value in (root.identity, root.primitive, root.terminal)
+                id(value)
+                for value in (
+                    coordinate_snapshot.identity,
+                    coordinate_snapshot.primitive,
+                    coordinate_snapshot.terminal,
+                )
             )
     elif type(root) is ReverseFieldActionArena:
-        coordinate_programs = root._coordinate_programs
-        action_stores = (
-            (root._residual_owner, root._residuals, "reverse_residual_node", True),
+        action_snapshot = (
+            root.payload_audit_snapshot() if owner_snapshot is None else owner_snapshot
+        )
+        if type(action_snapshot) is not ReverseFieldActionAuditSnapshot:
+            raise TypeError("field-action owner returned an invalid audit snapshot")
+        coordinate_programs = action_snapshot.coordinate_programs
+        action_stores = tuple(
             (
-                root._residual_key_owner,
-                root._residual_keys,
-                "reverse_residual_interner",
-                False,
-            ),
-            (root._output_owner, root._outputs, "reverse_output_morphism", True),
-            (
-                root._output_key_owner,
-                root._output_keys,
-                "reverse_output_interner",
-                False,
-            ),
-            (root._action_owner, root._actions, "reverse_field_action", True),
-            (
-                root._action_key_owner,
-                root._action_keys,
-                "reverse_action_interner",
-                False,
-            ),
-            (
-                root._compose_owner,
-                root._compose,
-                "reverse_action_composition",
-                False,
-            ),
-            (
-                root._transform_owner,
-                root._transforms,
-                "reverse_action_transform",
-                False,
-            ),
-            (
-                root._witness_owner,
-                root._witnesses,
-                "reverse_action_construction_witness",
-                False,
-            ),
-            (
-                root._semantic_identity_owner,
-                root._semantic_identities,
-                "reverse_action_semantic_identity",
-                True,
-            ),
-            (
-                root._semantic_identity_issued_owner,
-                root._semantic_identity_issued,
-                "reverse_action_semantic_identity_authority",
-                False,
-            ),
+                owner,
+                backing,
+                role,
+                role
+                in {
+                    "reverse_residual_node",
+                    "reverse_output_morphism",
+                    "reverse_field_action",
+                    "reverse_action_semantic_identity",
+                },
+            )
+            for owner, _attribute, role, backing in action_snapshot.stores
         )
         inventory = _owner_inventory(
             ledger, (owner for owner, _, _, _ in action_stores)
         )
-        coordinate_reference = ledger._execution_roots.get(id(coordinate_programs))
         all_valid = (
-            root.ledger is ledger
-            and type(root.owner) is ArenaToken
-            and type(root._base) is int
-            and root._base >= 2
-            and type(root._order) is int
-            and 2 <= root._order <= 16
-            and root._order & (root._order - 1) == 0
-            and type(root._max_residual_classes) is int
-            and 1 <= root._max_residual_classes <= 64
+            action_snapshot.ledger is ledger
+            and type(action_snapshot.owner) is ArenaToken
+            and type(action_snapshot.base) is int
+            and action_snapshot.base >= 2
+            and type(action_snapshot.order) is int
+            and 2 <= action_snapshot.order <= 16
+            and action_snapshot.order & (action_snapshot.order - 1) == 0
+            and type(action_snapshot.max_residual_classes) is int
+            and 1 <= action_snapshot.max_residual_classes <= 64
             and all(
                 _registered_store(
                     owner,
@@ -397,213 +339,174 @@ def audit_reverse_field_action_root(
             all_valid &= (
                 type(coordinate_programs) is ReverseCoordinateProgramArena
                 and coordinate_programs.ledger is ledger
-                and coordinate_programs.base == root._base
-                and coordinate_reference is not None
-                and coordinate_reference() is coordinate_programs
+                and coordinate_programs.base == action_snapshot.base
+                and any(
+                    live_root is coordinate_programs
+                    for live_root in ledger.iter_execution_roots()
+                )
             )
 
         def action_handle(value: object) -> bool:
-            return (
-                type(value) is FieldCellActionID
-                and type(value.owner) is ArenaToken
-                and value.owner is root.owner
-                and value.kind == root._ACTION_KIND
-                and type(value.local_id) is int
-                and 0 <= value.local_id < len(root._actions)
-            )
+            if (
+                type(value) is not FieldCellActionID
+                or type(value.owner) is not ArenaToken
+                or value.owner is not action_snapshot.owner
+                or value.kind != action_snapshot.action_kind
+                or type(value.local_id) is not int
+                or not 0 <= value.local_id < len(action_snapshot.actions)
+            ):
+                return False
+            try:
+                root.validate_action(value)
+            except (TypeError, ValueError, IndexError):
+                return False
+            return True
 
         def residual_handle(value: object) -> bool:
-            return (
-                type(value) is ReverseDefectClassID
-                and type(value.owner) is ArenaToken
-                and value.owner is root.owner
-                and value.kind == root._RESIDUAL_KIND
-                and type(value.local_id) is int
-                and 0 <= value.local_id < len(root._residuals)
-            )
+            if (
+                type(value) is not ReverseDefectClassID
+                or type(value.owner) is not ArenaToken
+                or value.owner is not action_snapshot.owner
+                or value.kind != action_snapshot.residual_kind
+                or type(value.local_id) is not int
+                or not 0 <= value.local_id < len(action_snapshot.residuals)
+            ):
+                return False
+            try:
+                root.validate_residual(value)
+            except (TypeError, ValueError, IndexError):
+                return False
+            return True
 
         def output_handle(value: object) -> bool:
-            from number_compiler.hashlife.actions.field_actions import (
-                CoordinateOutputMorphismID,
-            )
-
             if type(value) is not CoordinateOutputMorphismID:
                 return False
-            expected_owner = (
-                root.owner if coordinate_programs is None else coordinate_programs.owner
-            )
-            size = (
-                len(root._outputs)
-                if coordinate_programs is None
-                else len(coordinate_programs._nodes)
-            )
+            try:
+                root.validate_output(value)
+            except (TypeError, ValueError, IndexError):
+                return False
+            if coordinate_programs is None:
+                return (
+                    value.owner is action_snapshot.owner
+                    and value.kind == action_snapshot.output_kind
+                    and type(value.local_id) is int
+                    and 0 <= value.local_id < len(action_snapshot.outputs)
+                )
+            if type(coordinate_programs) is not ReverseCoordinateProgramArena:
+                return False
+            coordinate_snapshot = coordinate_programs.payload_audit_snapshot()
             return (
-                type(value.owner) is ArenaToken
-                and value.owner is expected_owner
-                and value.kind == root._OUTPUT_KIND
+                value.owner is coordinate_snapshot.owner
+                and value.kind == coordinate_snapshot.kind
                 and type(value.local_id) is int
-                and 0 <= value.local_id < size
+                and 0 <= value.local_id < len(coordinate_snapshot.nodes)
             )
 
-        residuals_valid = len(root._residuals) <= root._max_residual_classes
-        for index, residual_value in enumerate(root._residuals):
-            residual_reference = root._residual_keys.get(residual_value)
+        residuals_valid = (
+            len(action_snapshot.residuals) <= action_snapshot.max_residual_classes
+        )
+        for index, residual_value in enumerate(action_snapshot.residuals):
+            residual_reference = action_snapshot.residual_keys.get(residual_value)
             if _semantic_slot(
                 residual_value, residual_reference, index, residual_handle
             ):
                 approved.update((id(residual_value), id(residual_reference)))
             else:
-                invalid.add((root._residual_owner, id(residual_value)))
+                invalid.add((action_snapshot.residual_owner, id(residual_value)))
                 residuals_valid = False
-        residuals_valid &= len(root._residual_keys) == len(root._residuals)
+        residuals_valid &= len(action_snapshot.residual_keys) == len(
+            action_snapshot.residuals
+        )
         all_valid &= residuals_valid
+
         if coordinate_programs is None:
             outputs_valid = True
-            for index, output_value in enumerate(root._outputs):
-                output_reference = root._output_keys.get(output_value)
+            for index, output_value in enumerate(action_snapshot.outputs):
+                output_reference = action_snapshot.output_keys.get(output_value)
                 if _semantic_slot(output_value, output_reference, index, output_handle):
                     approved.update((id(output_value), id(output_reference)))
                 else:
-                    invalid.add((root._output_owner, id(output_value)))
+                    invalid.add((action_snapshot.output_owner, id(output_value)))
                     outputs_valid = False
-            outputs_valid &= len(root._output_keys) == len(root._outputs)
+            outputs_valid &= len(action_snapshot.output_keys) == len(
+                action_snapshot.outputs
+            )
             all_valid &= outputs_valid
         else:
-            # Coordinate programs are the sole output store in this mode.
-            all_valid &= not root._outputs and not root._output_keys
-            if root._outputs or root._output_keys:
-                invalid.add((root._output_owner, id(root._outputs)))
-                invalid.add((root._output_key_owner, id(root._output_keys)))
+            all_valid &= not action_snapshot.outputs and not action_snapshot.output_keys
+            if action_snapshot.outputs or action_snapshot.output_keys:
+                invalid.add(
+                    (action_snapshot.output_owner, id(action_snapshot.output_backing))
+                )
+                invalid.add(
+                    (
+                        action_snapshot.output_key_owner,
+                        id(action_snapshot.output_key_backing),
+                    )
+                )
             if all_valid:
-                approved.update((id(root._outputs), id(root._output_keys)))
-
-        def action_record(reference: FieldCellActionID) -> ReverseFieldAction:
-            return root.resolve(reference)
-
-        def expected_action_key(action: ReverseFieldAction) -> tuple[object, ...]:
-            return root._action_key(
-                action.base,
-                root._block(action),
-                action.carry_forward,
-                action.carry_backward,
-                action.residual,
-                action.output,
-                action.geometry,
-            )
+                approved.update(
+                    (
+                        id(action_snapshot.output_backing),
+                        id(action_snapshot.output_key_backing),
+                    )
+                )
 
         actions_valid = True
-        for index, action in enumerate(root._actions):
-            valid = type(action) is ReverseFieldAction
-            action_id = FieldCellActionID(root.owner, root._ACTION_KIND, index)
-            try:
-                if not valid:
-                    raise TypeError("invalid reverse field-action record")
-                valid &= action.base == root._base
-                valid &= type(action.carry_forward).__name__ == "CarryFn"
-                valid &= type(action.carry_backward).__name__ == "CarryFn"
-                valid &= type(action.geometry) is ReverseGeometry
-                action.geometry.__post_init__()
-                block = root._block(action)
-                valid &= root._canonical_block(block) == block
-                valid &= residual_handle(action.residual)
-                valid &= output_handle(action.output)
-                valid &= root.resolve(action_id) is action
-                valid &= root._action_keys.get(expected_action_key(action)) == action_id
-                if coordinate_programs is None:
-                    valid &= _bounded_semantic_key(root._residual_key(action.residual))
-                    valid &= _bounded_semantic_key(root._output_key(action.output))
-                else:
-                    output_program = coordinate_programs.resolve(action.output)
-                    valid &= output_program.base == root._base
-                    if output_program.atom is not None:
-                        valid &= _bounded_semantic_key(output_program.atom)
-            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                valid = False
+        for index, action in enumerate(action_snapshot.actions):
+            valid = root.audit_action_record_is_exact(index, action)
             if valid:
                 approved.add(id(action))
                 approved.update(
-                    id(getattr(action, name))
-                    for name in (
-                        "radial",
-                        "innovation",
-                        "carry_forward",
-                        "carry_backward",
-                        "residual",
-                        "output",
-                        "geometry",
+                    id(component)
+                    for component in (
+                        action.radial,
+                        action.innovation,
+                        action.carry_forward,
+                        action.carry_backward,
+                        action.residual,
+                        action.output,
+                        action.geometry,
                     )
                 )
             else:
-                invalid.add((root._action_owner, id(action)))
+                invalid.add((action_snapshot.action_owner, id(action)))
                 actions_valid = False
-        actions_valid &= len(root._action_keys) == len(root._actions)
-        for action_key, action_reference in root._action_keys.items():
+        actions_valid &= len(action_snapshot.action_keys) == len(
+            action_snapshot.actions
+        )
+        for action_key, action_reference in action_snapshot.action_keys.items():
             valid = action_handle(action_reference) and type(action_key) is tuple
             try:
-                action = action_record(action_reference)
-                valid &= action_key == expected_action_key(action)
+                action = root.resolve(action_reference)
+                valid &= action_key == root.audit_expected_action_key(action)
             except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                 valid = False
             if valid:
                 approved.update((id(action_key), id(action_reference)))
             else:
-                invalid.add((root._action_key_owner, id(action_key)))
+                invalid.add((action_snapshot.action_key_owner, id(action_key)))
                 actions_valid = False
         all_valid &= actions_valid
 
         identities_valid = (
-            len(root._semantic_identities)
-            == len(root._semantic_identity_issued)
-            <= len(root._actions)
+            len(action_snapshot.semantic_identities)
+            == len(action_snapshot.semantic_identity_issued)
+            <= len(action_snapshot.actions)
         )
-        for identity_source, record in root._semantic_identities.items():
-            valid = (
-                action_handle(identity_source)
-                and type(record) is tuple
-                and root._semantic_identity_issued.get(identity_source) is record
+        for identity_source, record in action_snapshot.semantic_identities.items():
+            issued_record = action_snapshot.semantic_identity_issued.get(
+                identity_source
             )
-            radial_identity: SemanticIdentity | None = None
-            digest: str | None = None
-            behavior: tuple[object, ...] | None = None
-            try:
-                if not valid:
-                    raise TypeError("invalid reverse semantic identity cache entry")
-                (
-                    source,
-                    action_seal,
-                    radial_seal,
-                    radial_identity,
-                    digest,
-                    behavior,
-                ) = record
-                action = action_record(identity_source)
-                expected_identity = build_radial_identity(action.radial)
-                valid &= (
-                    type(source) is FieldCellActionID
-                    and action_handle(source)
-                    and source == identity_source
-                    and type(action_seal) is int
-                    and action_seal == id(action)
-                    and type(radial_seal) is tuple
-                    and len(radial_seal) == 2
-                    and type(radial_seal[0]) is int
-                    and type(radial_seal[1]) is int
-                    and radial_seal == (action.radial.no_growth, action.radial.growth)
-                    and type(radial_identity) is SemanticIdentity
-                    and type(digest) is str
-                    and radial_identity.digest == digest
-                    and type(behavior) is tuple
-                    and radial_identity.behavior is behavior
-                    and radial_identity == expected_identity
-                )
-            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                valid = False
-            if (
-                valid
-                and type(radial_identity) is SemanticIdentity
-                and type(digest) is str
-                and type(behavior) is tuple
-            ):
+            valid = action_handle(
+                identity_source
+            ) and root.audit_semantic_identity_is_exact(
+                identity_source, record, issued_record
+            )
+            if valid and type(record) is tuple and len(record) == 6:
+                radial_identity = record[3]
+                digest = record[4]
+                behavior = record[5]
                 approved.update(
                     (
                         id(identity_source),
@@ -614,104 +517,59 @@ def audit_reverse_field_action_root(
                     )
                 )
             else:
-                invalid.add((root._semantic_identity_owner, id(record)))
+                invalid.add((action_snapshot.semantic_identity_owner, id(record)))
                 identities_valid = False
         all_valid &= identities_valid
 
-        def composition_valid(key: object, result: object) -> bool:
-            if (
-                type(key) is not tuple
-                or len(key) != 2
-                or not all(action_handle(item) for item in key)
-                or not action_handle(result)
-            ):
-                return False
-            typed_key = cast(tuple[FieldCellActionID, FieldCellActionID], key)
-            before, after = typed_key
-            result_id = cast(FieldCellActionID, result)
-            try:
-                first = action_record(before)
-                second = action_record(after)
-                actual = action_record(result_id)
-                block = root._canonical_block(
-                    root._block(first).then(root._block(second))
-                )
-                valid = (
-                    actual.base == first.base == second.base
-                    and actual.radial == block.radial
-                    and actual.innovation == block.innovation
-                    and actual.carry_forward
-                    is compose_carry_fn(second.carry_forward, first.carry_forward)
-                    and actual.carry_backward
-                    is compose_carry_fn(second.carry_backward, first.carry_backward)
-                    and actual.geometry == first.geometry.then(second.geometry)
-                )
-                if coordinate_programs is None:
-                    residual_key = root._residual_compose(
-                        root._residual_key(first.residual),
-                        root._residual_key(second.residual),
-                    )
-                    output_key = root._output_compose(
-                        root._output_key(first.output),
-                        root._output_key(second.output),
-                    )
-                    valid &= _bounded_semantic_key(residual_key)
-                    valid &= _bounded_semantic_key(output_key)
-                    valid &= root._residual_keys.get(residual_key) == actual.residual
-                    valid &= root._output_keys.get(output_key) == actual.output
-                else:
-                    before_program = coordinate_programs.resolve(first.output)
-                    after_program = coordinate_programs.resolve(second.output)
-                    actual_program = coordinate_programs.resolve(actual.output)
-                    expected_program = ReverseCoordinateProgram(
-                        root._base,
-                        before_program.pair_steps + after_program.pair_steps,
-                        before_program.normalized or after_program.normalized,
-                    )
-                    valid &= (
-                        actual_program == expected_program
-                        and coordinate_programs._keys.get(expected_program)
-                        == result_id.local_id
-                        and root._residual_key(actual.residual)
-                        == root._residual_key(first.residual)
-                        == root._residual_key(second.residual)
-                    )
-                return bool(valid)
-            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                return False
-
         compositions_valid = True
-        for action_composition_key, action_composition_result in root._compose.items():
-            valid = composition_valid(action_composition_key, action_composition_result)
+        for (
+            action_composition_key,
+            action_composition_result,
+        ) in action_snapshot.compositions.items():
+            valid = (
+                type(action_composition_key) is tuple
+                and len(action_composition_key) == 2
+                and action_handle(action_composition_key[0])
+                and action_handle(action_composition_key[1])
+                and action_handle(action_composition_result)
+            )
+            if valid:
+                action_before, action_after = action_composition_key
+                valid &= root.audit_composition_is_exact(
+                    action_before, action_after, action_composition_result
+                )
             if valid:
                 approved.update(
                     (id(action_composition_key), id(action_composition_result))
                 )
             else:
-                invalid.add((root._compose_owner, id(action_composition_key)))
+                invalid.add((action_snapshot.compose_owner, id(action_composition_key)))
                 compositions_valid = False
         all_valid &= compositions_valid
 
         witnesses_valid = True
-        for witness_result, witness in root._witnesses.items():
+        for witness_result, witness in action_snapshot.witnesses.items():
             valid = (
                 action_handle(witness_result)
                 and type(witness) is tuple
                 and len(witness) == 2
-                and all(action_handle(item) for item in witness)
+                and action_handle(witness[0])
+                and action_handle(witness[1])
             )
             if valid:
-                valid &= root._compose.get(witness) == witness_result
-                valid &= composition_valid(witness, witness_result)
+                valid &= action_snapshot.compositions.get(witness) == witness_result
+                valid &= root.audit_composition_is_exact(
+                    witness[0], witness[1], witness_result
+                )
             if valid:
                 approved.update((id(witness_result), id(witness)))
             else:
-                invalid.add((root._witness_owner, id(witness)))
+                invalid.add((action_snapshot.witness_owner, id(witness)))
                 witnesses_valid = False
         all_valid &= witnesses_valid
 
         transforms_valid = True
-        for transform_key, transform_result in root._transforms.items():
+        for transform_key, transform_result in action_snapshot.transforms.items():
             valid = (
                 type(transform_key) is tuple
                 and len(transform_key) == 2
@@ -720,57 +578,35 @@ def audit_reverse_field_action_root(
                 and int(transform_key[1]) & ~3 == 0
                 and action_handle(transform_result)
             )
-            try:
-                if not valid:
-                    raise TypeError("invalid reverse action transform entry")
-                if coordinate_programs is not None:
-                    valid = False
-                else:
-                    source_action = action_record(transform_key[0])
-                    valid &= type(root._automorphisms) is ReverseActionAutomorphisms
-                    (
-                        block,
-                        residual_key,
-                        output_key,
-                        carry_forward,
-                        carry_backward,
-                        geometry,
-                    ) = root._transformed_components(source_action, transform_key[1])
-                    valid &= _bounded_semantic_key(residual_key)
-                    valid &= _bounded_semantic_key(output_key)
-                    residual_result = root._residual_keys.get(residual_key)
-                    output_result = root._output_keys.get(output_key)
-                    valid &= residual_result is not None and output_result is not None
-                    if residual_result is not None and output_result is not None:
-                        expected_key = root._action_key(
-                            source_action.base,
-                            block,
-                            carry_forward,
-                            carry_backward,
-                            residual_result,
-                            output_result,
-                            geometry,
-                        )
-                        valid &= root._action_keys.get(expected_key) == transform_result
-            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                valid = False
+            if valid:
+                valid &= root.audit_transform_is_exact(
+                    transform_key[0], transform_key[1], transform_result
+                )
             if valid:
                 approved.update((id(transform_key), id(transform_result)))
             else:
-                invalid.add((root._transform_owner, id(transform_key)))
+                invalid.add((action_snapshot.transform_owner, id(transform_key)))
                 transforms_valid = False
         all_valid &= transforms_valid
         if all_valid:
             approved.update(id(store) for _, store, _, _ in action_stores)
         else:
-            invalid.add((root._action_owner, id(root)))
+            invalid.add((action_snapshot.action_owner, id(root)))
     return approved, invalid
+
+
+def _coordinate_item_values(rows: tuple[object, ...]) -> Iterable[object]:
+    """Expose exact mapping members without trusting erased snapshot types."""
+    for row in rows:
+        if not is_object_tuple(row) or type(row) is not tuple or len(row) != 2:
+            raise TypeError("coordinate audit snapshot requires key/value pairs")
+        yield from row
 
 
 def audit_reverse_field_action_owner(
     ledger: object, root: object
 ) -> PayloadAuditContribution:
-    """Constrain one reverse action audit to its exact direct owned stores."""
+    """Audit a fresh owner snapshot and report its exact direct members."""
     if not isinstance(ledger, ResourceLedger):
         raise TypeError("reverse field audit requires a resource ledger")
     from number_compiler.sequences.reverse_add.coordinate_program import (
@@ -780,48 +616,136 @@ def audit_reverse_field_action_owner(
         ReverseFieldActionArena,
     )
 
-    bindings: tuple[tuple[int, str], ...]
-    if type(root) is ReverseCoordinateProgramArena:
+    bindings: tuple[tuple[int, str, object, object], ...]
+    owner_snapshot: object
+    if isinstance(root, ReverseCoordinateProgramArena):
+        if type(root) is not ReverseCoordinateProgramArena:
+            raise TypeError("coordinate audit rejects subclassed arena owners")
+        coordinate_snapshot = root.payload_audit_snapshot()
+        owner_snapshot = coordinate_snapshot
         bindings = (
-            (root._node_owner, "_nodes"),
-            (root._key_owner, "_keys"),
-            (root._compose_owner, "_compose"),
+            (
+                coordinate_snapshot.node_owner,
+                "_nodes",
+                coordinate_snapshot.node_backing,
+                coordinate_snapshot.nodes,
+            ),
+            (
+                coordinate_snapshot.key_owner,
+                "_keys",
+                coordinate_snapshot.key_backing,
+                coordinate_snapshot.keys,
+            ),
+            (
+                coordinate_snapshot.compose_owner,
+                "_compose",
+                coordinate_snapshot.compose_backing,
+                coordinate_snapshot.compositions,
+            ),
         )
-    elif type(root) is ReverseFieldActionArena:
+    elif isinstance(root, ReverseFieldActionArena):
+        if type(root) is not ReverseFieldActionArena:
+            raise TypeError("field-action audit rejects subclassed arena owners")
+        action_snapshot = root.payload_audit_snapshot()
+        owner_snapshot = action_snapshot
         bindings = (
-            (root._residual_owner, "_residuals"),
-            (root._residual_key_owner, "_residual_keys"),
-            (root._output_owner, "_outputs"),
-            (root._output_key_owner, "_output_keys"),
-            (root._action_owner, "_actions"),
-            (root._action_key_owner, "_action_keys"),
-            (root._compose_owner, "_compose"),
-            (root._transform_owner, "_transforms"),
-            (root._witness_owner, "_witnesses"),
-            (root._semantic_identity_owner, "_semantic_identities"),
-            (root._semantic_identity_issued_owner, "_semantic_identity_issued"),
+            (
+                action_snapshot.residual_owner,
+                "_residuals",
+                action_snapshot.residual_backing,
+                action_snapshot.residuals,
+            ),
+            (
+                action_snapshot.residual_key_owner,
+                "_residual_keys",
+                action_snapshot.residual_key_backing,
+                action_snapshot.residual_keys,
+            ),
+            (
+                action_snapshot.output_owner,
+                "_outputs",
+                action_snapshot.output_backing,
+                action_snapshot.outputs,
+            ),
+            (
+                action_snapshot.output_key_owner,
+                "_output_keys",
+                action_snapshot.output_key_backing,
+                action_snapshot.output_keys,
+            ),
+            (
+                action_snapshot.action_owner,
+                "_actions",
+                action_snapshot.action_backing,
+                action_snapshot.actions,
+            ),
+            (
+                action_snapshot.action_key_owner,
+                "_action_keys",
+                action_snapshot.action_key_backing,
+                action_snapshot.action_keys,
+            ),
+            (
+                action_snapshot.compose_owner,
+                "_compose",
+                action_snapshot.compose_backing,
+                action_snapshot.compositions,
+            ),
+            (
+                action_snapshot.transform_owner,
+                "_transforms",
+                action_snapshot.transform_backing,
+                action_snapshot.transforms,
+            ),
+            (
+                action_snapshot.witness_owner,
+                "_witnesses",
+                action_snapshot.witness_backing,
+                action_snapshot.witnesses,
+            ),
+            (
+                action_snapshot.semantic_identity_owner,
+                "_semantic_identities",
+                action_snapshot.semantic_identity_backing,
+                action_snapshot.semantic_identities,
+            ),
+            (
+                action_snapshot.semantic_identity_issued_owner,
+                "_semantic_identity_issued",
+                action_snapshot.semantic_identity_issued_backing,
+                action_snapshot.semantic_identity_issued,
+            ),
         )
     else:
         return PayloadAuditContribution()
 
-    containers = _owner_containers(ledger, (owner for owner, _ in bindings))
+    containers = _owner_containers(ledger, (owner for owner, _, _, _ in bindings))
     approved_ids, invalid_rows = audit_reverse_field_action_root(
-        root, ledger, containers
+        root, ledger, containers, owner_snapshot
     )
 
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
     anchor_owner = bindings[0][0]
-    for owner, attribute in bindings:
-        store = getattr(root, attribute)
-        if isinstance(store, Mapping):
-            values: Iterable[object] = (item for pair in store.items() for item in pair)
-        elif isinstance(store, Sequence) and not isinstance(
-            store, (str, bytes, bytearray)
+    for owner, attribute, _backing, contents in bindings:
+        if isinstance(contents, Mapping):
+            values: Iterable[object] = (
+                item for pair in contents.items() for item in pair
+            )
+        elif type(root) is ReverseCoordinateProgramArena and attribute in (
+            "_keys",
+            "_compose",
         ):
-            values = iter(store)
+            # Coordinate snapshots store immutable item rows, whereas the
+            # original owners use mappings. Treat the pair members as direct
+            # store entries so the identity approvals made by the owner audit
+            # are applied to the actual key and value objects, not only to the
+            # temporary row tuple.
+            if type(contents) is not tuple:
+                raise TypeError("coordinate audit snapshot requires exact item rows")
+            values = _coordinate_item_values(contents)
         else:
-            values = iter(())
+            values = iter(contents)
         for value in values:
             if id(value) in approved_ids:
                 approved.append(PayloadAuditEntry(owner, value))
@@ -835,10 +759,9 @@ def audit_reverse_field_action_owner(
 def audit_reverse_powered_codec_owner(
     ledger: object, root: object
 ) -> PayloadAuditContribution:
-    """Validate the bounded local-action codec from its family-owned stores."""
+    """Validate one fresh packed-codec snapshot without reading private fields."""
     if not isinstance(ledger, ResourceLedger):
         raise TypeError("reverse codec audit requires a resource ledger")
-    from number_compiler.arithmetic.contracts.block_effect import BoundarySide
     from number_compiler.hashlife.execution.field_images import (
         SourceCellID,
         SourceForestID,
@@ -849,30 +772,47 @@ def audit_reverse_powered_codec_owner(
         ReversePoweredLocalCodec,
     )
 
-    if type(root) is not ReversePoweredLocalCodec:
+    if not isinstance(root, ReversePoweredLocalCodec):
         return PayloadAuditContribution()
+    if type(root) is not ReversePoweredLocalCodec:
+        raise TypeError("reverse codec audit rejects subclassed codec owners")
+
+    owner_snapshot = root.payload_audit_snapshot()
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
-    valid_root = (
-        root.ledger is ledger
-        and root.sources.ledger is ledger
-        and type(root._states) is tuple
-        and len(root._states) == 2
-        and len(root._state_ids) == 2
-        and root._state_ids[0] is root._left_state_ids
-        and root._state_ids[1] is root._right_state_ids
-    )
 
     def accept(owner: int, value: object, valid: bool) -> None:
         entry = PayloadAuditEntry(owner, value)
         (approved if valid else invalid).append(entry)
 
+    valid_root = (
+        owner_snapshot.ledger is ledger
+        and owner_snapshot.sources.ledger is ledger
+        and type(owner_snapshot.base) is int
+        and owner_snapshot.base >= 2
+        and owner_snapshot.blank == 2 * owner_snapshot.base - 1
+        and type(owner_snapshot.states) is tuple
+        and len(owner_snapshot.states) == 2
+        and len(owner_snapshot.state_ids) == 2
+        and owner_snapshot.state_index_layout_valid
+        and len(owner_snapshot.state_owners) == 2
+        and len(owner_snapshot.state_backings) == 2
+    )
+
     for states, state_ids, owner in zip(
-        root._states, root._state_ids, root._state_owners, strict=True
+        owner_snapshot.states,
+        owner_snapshot.state_ids,
+        owner_snapshot.state_owners,
+        strict=True,
     ):
         state_valid = valid_root and len(states) == len(state_ids)
         state_valid &= all(
-            state_ids.get(state) == index for index, state in enumerate(states)
+            type(index) is int and 0 <= index < len(states) and states[index] == state
+            for state, index in state_ids.items()
+        )
+        state_valid &= all(
+            type(index) is int and state_ids.get(state) == index
+            for index, state in enumerate(states)
         )
         if not state_valid:
             invalid.append(PayloadAuditEntry(owner, root))
@@ -886,102 +826,52 @@ def audit_reverse_powered_codec_owner(
             accept(owner, state, item_valid)
             accept(owner, local_index, item_valid)
 
-    node_owner = root._node_owner
     nodes_valid = valid_root
-    for index, action in enumerate(root._nodes):
-        valid = type(action) is ReverseLocalAction
-        try:
-            valid &= root.resolve(root._handle(index)) is action
-            widths = (
-                len(root._states[0]),
-                len(root._states[0]),
-                len(root._states[1]),
-                len(root._states[1]),
-            )
-            for mapping, width in zip(
-                (
-                    action.left_forward,
-                    action.left_reverse,
-                    action.right_forward,
-                    action.right_reverse,
-                ),
-                widths,
-                strict=True,
-            ):
-                valid &= type(mapping) is tuple and len(mapping) == width
-                valid &= all(
-                    type(item) is int and 0 <= item < width for item in mapping
-                )
-            valid &= root._keys.get(action) == index
-        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-            valid = False
-        accept(node_owner, action, valid)
+    for index, action in enumerate(owner_snapshot.nodes):
+        valid = root.audit_action_record_is_exact(index, action)
+        accept(owner_snapshot.node_owner, action, valid)
         nodes_valid &= valid
 
-    for action, index in root._keys.items():
+    keys_valid = valid_root and len(owner_snapshot.keys) == len(owner_snapshot.nodes)
+    for action, index in owner_snapshot.keys.items():
         valid = (
             type(action) is ReverseLocalAction
             and type(index) is int
-            and 0 <= index < len(root._nodes)
-            and root._nodes[index] is action
+            and 0 <= index < len(owner_snapshot.nodes)
+            and owner_snapshot.nodes[index] is action
         )
-        accept(root._key_owner, action, valid)
-        if not valid:
-            nodes_valid = False
+        accept(owner_snapshot.key_owner, action, valid)
+        keys_valid &= valid
 
     compose_valid = valid_root
-    for key, result in root._compose.items():
+    for key, result in owner_snapshot.compositions.items():
         valid = (
             type(key) is tuple
             and len(key) == 2
-            and all(type(item) is ReverseLocalActionID for item in key)
+            and type(key[0]) is ReverseLocalActionID
+            and type(key[1]) is ReverseLocalActionID
+            and type(result) is ReverseLocalActionID
         )
-        try:
+        if valid:
             left, right = key
-            before, after, actual = (
-                root.resolve(left),
-                root.resolve(right),
-                root.resolve(result),
-            )
-            expected = ReverseLocalAction(
-                root._then(before.left_forward, after.left_forward),
-                root._then(after.left_reverse, before.left_reverse),
-                root._then(before.right_forward, after.right_forward),
-                root._then(after.right_reverse, before.right_reverse),
-            )
-            valid &= actual == expected
-        except (TypeError, ValueError, IndexError, AttributeError):
-            valid = False
-        accept(root._compose_owner, key, valid)
+            valid &= root.audit_composition_is_exact(left, right, result)
+        accept(owner_snapshot.compose_owner, key, valid)
         compose_valid &= valid
 
     bindings_valid = valid_root
-    for symbol, action_id in root._leaf_actions.items():
-        try:
-            valid = type(symbol) is int and 0 <= symbol <= root.blank
-            valid &= root.resolve(action_id) == ReverseLocalAction(
-                root._mapping(BoundarySide.LEFT, symbol),
-                root._mapping(BoundarySide.LEFT, symbol),
-                root._mapping(BoundarySide.RIGHT, symbol),
-                root._mapping(BoundarySide.RIGHT, symbol),
-            )
-        except (TypeError, ValueError, IndexError, AttributeError):
-            valid = False
-        accept(root._leaf_owner, action_id, valid)
-        bindings_valid &= valid
-    for source, action_id in root._source_actions.items():
-        try:
-            valid = type(source) in (SourceCellID, SourceForestID)
-            if type(source) is SourceCellID:
-                root.sources.resolve(source)
-            elif type(source) is SourceForestID:
-                root.sources.resolve_forest(source)
-            root.resolve(action_id)
-        except (TypeError, ValueError, IndexError, AttributeError):
-            valid = False
-        accept(root._source_owner, source, valid)
+    for symbol, action_id in owner_snapshot.leaf_actions.items():
+        valid = root.audit_leaf_binding_is_exact(symbol, action_id)
+        accept(owner_snapshot.leaf_owner, action_id, valid)
         bindings_valid &= valid
 
-    if not (nodes_valid and compose_valid and bindings_valid):
-        invalid.append(PayloadAuditEntry(node_owner, root))
+    for source, action_id in owner_snapshot.source_actions.items():
+        valid = type(source) in (
+            SourceCellID,
+            SourceForestID,
+        ) and root.audit_source_binding_is_valid(source, action_id)
+        accept(owner_snapshot.source_owner, source, valid)
+        bindings_valid &= valid
+
+    if not (nodes_valid and keys_valid and compose_valid and bindings_valid):
+        invalid.append(PayloadAuditEntry(owner_snapshot.node_owner, root))
     return PayloadAuditContribution(tuple(approved), tuple(invalid))

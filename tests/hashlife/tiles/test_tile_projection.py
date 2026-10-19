@@ -24,8 +24,10 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
     LocalInterfaceID,
     MacroComponents,
     MacroInterface,
@@ -50,7 +52,7 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import oracle
 from tests.support.finite_functions import carry_atoms
-from tests.support.tile_kernel import _runtime as primitive_runtime
+from tests.support.tile_kernel import make_tile_runtime as primitive_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import TileAlphabetID

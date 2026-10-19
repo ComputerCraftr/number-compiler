@@ -30,7 +30,7 @@ def initial_event_shift(
     adapter = scheduler.adapter
     if type(adapter) is not PrimitiveTileKernelAdapter:
         return None
-    scheduler.results._validate_key(key)
+    scheduler.results.validate_key(key)
     action = adapter._action(key.action)
     ticks = action.cocycle.physical_ticks
     if (

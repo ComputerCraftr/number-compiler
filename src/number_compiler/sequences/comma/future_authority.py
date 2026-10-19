@@ -62,7 +62,7 @@ SOURCE20_SELECTED_CHILD = 19_999_999_999
 
 
 @dataclass(frozen=True, slots=True)
-class _KernelInstanceAdmission:
+class KernelInstanceAdmission:
     artifact_sha256: str
     instance_id: str
     theorem_id: str
@@ -79,11 +79,11 @@ def _valid_artifact_digest(digest: str) -> bool:
     )
 
 
-def _registered_admission_matches(
-    admission: _KernelInstanceAdmission, digest: str
+def registered_admission_matches(
+    admission: KernelInstanceAdmission, digest: str
 ) -> bool:
     if (
-        type(admission) is not _KernelInstanceAdmission
+        type(admission) is not KernelInstanceAdmission
         or not _valid_artifact_digest(digest)
         or type(admission.artifact_sha256) is not str
         or admission.artifact_sha256 != digest
@@ -96,7 +96,7 @@ def _registered_admission_matches(
     ):
         return False
     if admission.scope == KERNEL_RELEASE_SCOPE:
-        return _global_release_admission_matches(admission, digest)
+        return global_release_admission_matches(admission, digest)
     return (
         admission.scope == FINITE_TEST_FIXTURE_SCOPE
         and admission.instance_id == FINITE_TEST_FIXTURE_SESSION_ID
@@ -106,11 +106,11 @@ def _registered_admission_matches(
     )
 
 
-def _global_release_admission_matches(
-    admission: _KernelInstanceAdmission, digest: str
+def global_release_admission_matches(
+    admission: KernelInstanceAdmission, digest: str
 ) -> bool:
     return (
-        type(admission) is _KernelInstanceAdmission
+        type(admission) is KernelInstanceAdmission
         and _valid_artifact_digest(digest)
         and type(admission.artifact_sha256) is str
         and admission.artifact_sha256 == digest
@@ -129,18 +129,18 @@ def _global_release_admission_matches(
 
 
 def registered_global_release_artifact_sha256(
-    registry: Mapping[str, _KernelInstanceAdmission],
+    registry: Mapping[str, KernelInstanceAdmission],
 ) -> str | None:
     """Read the unique exact global digest from an immutable admission map."""
     if type(registry) is not MappingProxyType:
         raise PermissionError("semantic future admission registry is not immutable")
     global_digests: list[str] = []
     for digest, admission in registry.items():
-        if type(admission) is not _KernelInstanceAdmission:
+        if type(admission) is not KernelInstanceAdmission:
             raise PermissionError("semantic future registry contains a foreign entry")
         if admission.scope != KERNEL_RELEASE_SCOPE:
             continue
-        if not _global_release_admission_matches(admission, digest):
+        if not global_release_admission_matches(admission, digest):
             raise PermissionError("semantic future global registry entry is invalid")
         global_digests.append(digest)
     if len(global_digests) > 1:
@@ -182,7 +182,7 @@ class FutureClass:
     rank: int | None
 
 
-def _class_row_signature(row: FutureClass) -> ScalarSignature:
+def class_row_signature(row: FutureClass) -> ScalarSignature:
     if type(row) is not FutureClass or type(row.control) is not FutureControl:
         raise TypeError("future class row has a foreign control descriptor")
     control = row.control

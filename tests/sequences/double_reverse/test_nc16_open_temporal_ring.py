@@ -7,10 +7,13 @@ from random import Random
 
 import pytest
 
-from number_compiler.sequences.double_reverse import _temporal_bank_authority
+from number_compiler.sequences.double_reverse import open_temporal_ring
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
-    _SourceAuthority,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
+)
+from number_compiler.sequences.double_reverse._temporal_bank_authority import (
+    validate_source_record as validate_source_record_owner,
 )
 from number_compiler.sequences.double_reverse.conditional_open_moore import (
     ConditionalOpenMoore,
@@ -23,7 +26,9 @@ from number_compiler.sequences.double_reverse.open_temporal_ring import (
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
+    BANK_CHANNELS,
     PeriodicBankFrame,
+    bank_channel_name,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
 
@@ -122,18 +127,18 @@ def test_open_ring_validated_projection_checks_source_once_and_rejects_tampering
     seed = int("17" + "9" * 90 + "88")
     with DoubleReverseTerm(seed, 24) as term:
         packet = term.open_temporal_bank_window(18, 5)
-        original_validate = _temporal_bank_authority.validate_source_record
+        original_validate = validate_source_record_owner
         validations = 0
 
         def counted_validate(
-            record: _SourceAuthorizedRecord,
-        ) -> _SourceAuthority:
+            record: SourceAuthorizedRecord,
+        ) -> SourceRecordAuthority:
             nonlocal validations
             validations += 1
             return original_validate(record)
 
         monkeypatch.setattr(
-            _temporal_bank_authority, "validate_source_record", counted_validate
+            open_temporal_ring, "validate_source_record", counted_validate
         )
         counts, words = packet.validated_projection(("carry_xor", "f5"))
         assert validations == 1
@@ -284,8 +289,8 @@ def test_conditional_future_moore_checks_all_admitted_input_letters() -> None:
             assert 0 <= target < quotient.class_count
             assert counts == total
         expected, frames = expected.advance(a)
-        for channel in total:
-            total[channel] += frames[0].scalar(channel)
+        for channel in BANK_CHANNELS:
+            total[bank_channel_name(channel)] += frames[0].scalar(channel)
     target, counts = quotient.repeat_program((a,), 10**12)
     assert 0 <= target < quotient.class_count
     assert all(value >= 0 for value in counts.values())

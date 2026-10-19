@@ -17,15 +17,16 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
+)
 from number_compiler.sequences.collatz.joint_cylinder_cache import (
     JointCertifiedMacroCache,
 )
 
 _MAX_JOINT_COEFFICIENT_BITS = 1_000_000
 _D8_BATCH_VALIDATION_ISSUER = object()
-from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
-    DyadicTerminalFieldAction,
-)
+
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.source_cylinder_cache import (
@@ -196,6 +197,11 @@ class CollatzAccumulatorObservation:
 
 class JointTemporalSpine:
     """Online binary frontier; retains logarithmically many action blocks."""
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Read the resource owner, including for closed-state inspection."""
+        return self._ledger
 
     __slots__ = (
         "_cursor_source",

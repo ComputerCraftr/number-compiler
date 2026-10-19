@@ -24,14 +24,14 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     QuotientRecord,
 )
 from number_compiler.hashlife.interfaces.tile_reverse_functions import (
     reverse_parent_components,
 )
 from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
-    _aligned_reverse_interval_forcing,
+    aligned_reverse_interval_forcing,
     reverse_sector_width_from_interface,
 )
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection
@@ -204,7 +204,7 @@ def test_annihilated_source_observation_skips_source_sector_compilation(
             def forbidden(*_args: object, **_kwargs: object) -> Never:
                 raise AssertionError("annihilated source was compiled again")
 
-            monkeypatch.setattr(adapter, "_compile_interface", forbidden)
+            monkeypatch.setattr(adapter, "compile_interface", forbidden)
             monkeypatch.setattr(application.scheduler, "complete", forbidden)
             product = observe_reverse_sector_product(application)
             assert product.steps == 20
@@ -233,7 +233,7 @@ def test_aligned_interval_forcing_counts_evaluation_and_failed_work(
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         payload = application.interface()
-        observed = _aligned_reverse_interval_forcing(
+        observed = aligned_reverse_interval_forcing(
             adapter,
             payload,
             payload,
@@ -255,7 +255,7 @@ def test_aligned_interval_forcing_counts_evaluation_and_failed_work(
             fail_interval,
         )
         with pytest.raises(RuntimeError, match="injected interval"):
-            _aligned_reverse_interval_forcing(
+            aligned_reverse_interval_forcing(
                 adapter,
                 payload,
                 payload,
@@ -378,7 +378,7 @@ def test_digit_terminal_interface_exposes_exact_width_without_output(
                 16,
             )
             assert observed == expected
-            monkeypatch.setattr(adapter, "_compile_interface", forbidden)
+            monkeypatch.setattr(adapter, "compile_interface", forbidden)
             monkeypatch.setattr(causal_api, "causal_width", forbidden)
             assert application.width(16) == expected
         finally:
@@ -446,12 +446,12 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
         left_tile = adapter.tiles.leaf(alphabet, 7)
         right_tile = adapter.tiles.leaf(alphabet, 18)
         try:
-            left = adapter._compile_interface(
+            left = adapter.compile_interface(
                 application.action,
                 left_tile.tile,
                 application.wiring,
             )
-            right = adapter._compile_interface(
+            right = adapter.compile_interface(
                 application.action,
                 right_tile.tile,
                 application.wiring,
@@ -505,7 +505,7 @@ def test_unissued_sector_rejects_before_quotient_publication() -> None:
         application = projection._application
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
-        interface = adapter._compile_interface(
+        interface = adapter.compile_interface(
             application.action,
             application.source,
             application.wiring,

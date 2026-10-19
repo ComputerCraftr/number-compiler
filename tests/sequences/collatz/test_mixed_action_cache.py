@@ -17,6 +17,7 @@ from number_compiler.sequences.collatz import (
     temporal_run_executor,
     temporal_unified_skew_execution,
 )
+from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
 )
@@ -364,7 +365,7 @@ def test_512_symbol_cache_parent_restores_before_any_child_discovery(
     motif = (1, 0)
     repetitions = 256
     with scratch.scope(), BoundaryActionTemplateMemo(ledger) as templates:
-        action = templates.get(motif, repetitions)[0]
+        action = templates.get(MixedParityMotif(motif), repetitions)[0]
         source = action.source_residue + (5 << action.steps)
         macro = mixed_clock_macros.select_mixed_clock_macro(
             source,
@@ -417,7 +418,7 @@ def test_disabled_process_cache_is_reported_as_bypass(
     ledger = ResourceLedger()
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
     with scratch.scope(), BoundaryActionTemplateMemo(ledger) as templates:
-        action = templates.get((0, 1), 8)[0]
+        action = templates.get(MixedParityMotif((0, 1)), 8)[0]
         source = action.source_residue + (5 << action.steps)
         macro = mixed_clock_macros.select_mixed_clock_macro(
             source, 24, templates=templates

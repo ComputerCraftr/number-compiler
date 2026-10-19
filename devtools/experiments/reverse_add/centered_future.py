@@ -34,8 +34,8 @@ from number_compiler.arithmetic.fields.live_carry_projection import (
     recover_centered_carry_events,
 )
 from number_compiler.arithmetic.fields.live_forcing import LiveForcingProjection
+from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    InnovationID,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -320,7 +320,7 @@ class CenteredFutureGrammar:
                 ledger.mark_disposed(workspace_owner)
             if self._states is not None and self._state_owner is not None:
                 count = len(self._states)
-                self._states._rollback_unpublished(0)
+                self._states.rollback_unpublished(0)
                 if count:
                     ledger.release(self._state_owner, entries=count, nodes=count)
             if self._state_owner is not None:
@@ -510,7 +510,7 @@ class CenteredFutureGrammar:
             return
         assert self._states is not None and self._state_owner is not None
         count = len(self._states)
-        self._states._rollback_unpublished(0)
+        self._states.rollback_unpublished(0)
         if count:
             self.ledger.release(self._state_owner, entries=count, nodes=count)
         self.ledger.mark_disposed(self._state_owner)

@@ -1,7 +1,8 @@
 """The proof inventory is navigation and validation, never proof certification."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TypeGuard
 
 import pytest
 
@@ -39,6 +40,16 @@ def _sample(directory: Path) -> Path:
     return directory / "Session" / "Sample.thy"
 
 
+def _record(value: object) -> TypeGuard[dict[str, object]]:
+    return type(value) is dict and all(type(key) is str for key in value)
+
+
+def _record_sequence(value: object) -> TypeGuard[Sequence[dict[str, object]]]:
+    if type(value) is list or type(value) is tuple:
+        return all(_record(item) for item in value)
+    return False
+
+
 def test_index_uses_canonical_isabelle_root() -> None:
     assert index.ISABELLE == isabelle_root(index.ROOT)
 
@@ -49,10 +60,14 @@ def test_index_retains_statement_assumptions_attributes_and_location(
     _fixture(tmp_path, monkeypatch)
     result = index.build_index()
     theories = result["theories"]
-    assert isinstance(theories, list)
-    declaration = theories[0]["declarations"][0]
+    assert _record_sequence(theories)
+    declaration_rows = theories[0].get("declarations")
+    assert _record_sequence(declaration_rows)
+    declaration = declaration_rows[0]
     assert declaration["name"] == "bounded" and declaration["line"] == 2
-    assert '[simp]: assumes "n = (0::nat)"' in declaration["statement_and_assumptions"]
+    statement = declaration["statement_and_assumptions"]
+    assert isinstance(statement, str)
+    assert '[simp]: assumes "n = (0::nat)"' in statement
     assert theories[0]["session"] == "Example"
 
 
@@ -76,10 +91,12 @@ def test_theory_inventory_uses_one_source_snapshot_per_pass(
     monkeypatch.setattr(Path, "read_text", changing_source)
     result = index.build_index()
     theories = result["theories"]
-    assert isinstance(theories, list)
+    assert _record_sequence(theories)
     assert reads == [theory]
     assert theories[0]["oracle_audit_theorems"] == ("bounded",)
-    assert theories[0]["declarations"][0]["name"] == "bounded"
+    declarations = theories[0].get("declarations")
+    assert _record_sequence(declarations)
+    assert declarations[0]["name"] == "bounded"
 
 
 def test_index_reuses_theory_analysis_for_tree_and_inventory_views(
@@ -118,10 +135,12 @@ def test_index_reuses_theory_analysis_for_tree_and_inventory_views(
     assert inventory_calls == 1
     assert tree_parse_calls == 0
     theories = result["theories"]
-    assert isinstance(theories, list)
-    assert theories[0]["declarations"][0]["name"] == "bounded"
+    assert _record_sequence(theories)
+    declarations = theories[0].get("declarations")
+    assert _record_sequence(declarations)
+    assert declarations[0]["name"] == "bounded"
     source_report = result["source_analysis"]
-    assert isinstance(source_report, dict)
+    assert _record(source_report)
     assert source_report["declaration_count"] == 1
 
 
@@ -210,7 +229,7 @@ def test_index_accepts_unregistered_theory_reached_from_registered_root(
     )
     result = index.build_index()
     theories = result["theories"]
-    assert isinstance(theories, list)
+    assert _record_sequence(theories)
     helper = next(row for row in theories if row["theory"] == "Helper")
     assert helper["session"] is None
 
@@ -253,8 +272,12 @@ def test_ml_file_inventory_resolves_relative_to_theory_source(
         sample.read_text().replace("\nend\n", '\nML_file "helper.ML"\nend\n')
     )
     rows = index.build_index()["ml_files"]
-    assert isinstance(rows, list)
-    by_path = {row["path"]: row for row in rows}
+    assert _record_sequence(rows)
+    by_path: dict[str, dict[str, object]] = {}
+    for row in rows:
+        path = row.get("path")
+        assert isinstance(path, str)
+        by_path[path] = row
     assert by_path["proofs/isabelle/families/example/Session/helper.ML"][
         "referenced_by"
     ] == ("Sample",)
@@ -270,12 +293,12 @@ def test_ml_file_lexer_ignores_comments_documentation_and_ml_strings() -> None:
         'text \\<open>ML_file "missing.ML"\\<close>\n'
         'ML \\<open>val fake = "ML_file \\"missing.ML\\"";\\<close>\n'
     )
-    assert index._ml_file_references(source, Path("Sample.thy")) == ()
+    assert index.ml_file_references(source, Path("Sample.thy")) == ()
 
 
 def test_ml_file_without_a_target_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported ML_file target"):
-        index._ml_file_references("ML_file\n", Path("Sample.thy"))
+        index.ml_file_references("ML_file\n", Path("Sample.thy"))
 
 
 def test_comments_and_documentation_cannot_forge_declarations_or_uses() -> None:
@@ -286,7 +309,7 @@ def test_comments_and_documentation_cannot_forge_declarations_or_uses() -> None:
         "lemma live: True by simp\n"
         "end\n"
     )
-    assert [row["name"] for row in index._declarations(text)] == ["live"]
+    assert [row["name"] for row in index.declarations(text)] == ["live"]
     clean = syntax.executable_text(text)
     assert "bounded" not in clean and "commented" not in clean
 
@@ -311,7 +334,7 @@ def test_nested_documentation_and_escaped_strings_cannot_forge_proof_items() -> 
         'then () else error "oracle";\\<close>\n'
         "lemma live: True by simp\nend\n"
     )
-    assert [row["name"] for row in index._declarations(text)] == ["live"]
+    assert [row["name"] for row in index.declarations(text)] == ["live"]
     assert isabelle_oracle_audit.audited_theorems(text) == ("live",)
 
 
@@ -330,7 +353,7 @@ def test_comment_cannot_forge_theory_header_or_session(
     result = index.build_index()
     sessions = result["sessions"]
     theories = result["theories"]
-    assert isinstance(sessions, list) and isinstance(theories, list)
+    assert _record_sequence(sessions) and _record_sequence(theories)
     assert [row["session"] for row in sessions] == ["Example"]
     assert [row["theory"] for row in theories] == ["Sample"]
 
@@ -370,7 +393,7 @@ def test_quoted_relative_theory_path_resolves_to_its_declared_owner(
         'session Example in child = HOL +\n  theories\n    "../Session/Sample"\n'
     )
     rows = index.build_index()["theories"]
-    assert isinstance(rows, list)
+    assert _record_sequence(rows)
     assert rows[0]["theory"] == "Sample" and rows[0]["session"] == "Example"
 
 
@@ -413,7 +436,7 @@ def test_quoted_comment_markers_leave_later_theorems_visible() -> None:
         "ML \\<open>val _ = if null (Thm_Deps.all_oracles @{thms live}) "
         'then () else error "oracle";\\<close>\nend\n'
     )
-    assert [row["name"] for row in index._declarations(text)] == ["live"]
+    assert [row["name"] for row in index.declarations(text)] == ["live"]
     assert isabelle_oracle_audit.audited_theorems(text) == ("live",)
 
 
@@ -440,12 +463,12 @@ def test_multiline_strings_and_ml_bodies_cannot_forge_commands() -> None:
         "ML \\<open>val _ = if null (Thm_Deps.all_oracles @{thms live}) "
         'then () else error "oracle";\\<close>\nend\n'
     )
-    assert [row["name"] for row in index._declarations(theory)] == ["live"]
+    assert [row["name"] for row in index.declarations(theory)] == ["live"]
     assert isabelle_oracle_audit.audited_theorems(theory) == ("live",)
 
 
 def test_quoted_proof_words_do_not_truncate_assumptions() -> None:
-    declarations = index._declarations(
+    declarations = index.declarations(
         "theory Sample imports Main begin\n"
         'lemma live: assumes "marker = \\"proof by\\"" '
         'shows "marker = marker" by simp\nend\n'

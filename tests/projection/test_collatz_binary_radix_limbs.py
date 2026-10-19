@@ -7,7 +7,9 @@ import pytest
 
 from number_compiler.api.number_api import PoweredCollatzTermPayload
 from number_compiler.hashlife.execution.dyadic_return_images import DyadicReturnImageID
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 
@@ -83,15 +85,17 @@ def test_whole_limb_uses_one_guarded_demand_and_reuses_its_cache(
     term = PoweredCollatzTerm(seed, steps)
     payload = PoweredCollatzTermPayload(term, radix)
     assert payload.digit(0) == expected % radix
-    assert term._ledger.counters["collatz_image_radix_demands"] == 1
-    projection_work = term._ledger.counters["collatz_image_projection_operand_bits"]
-    entries = term._ledger.entries
+    assert term.resource_ledger.counters["collatz_image_radix_demands"] == 1
+    projection_work = term.resource_ledger.counters[
+        "collatz_image_projection_operand_bits"
+    ]
+    entries = term.resource_ledger.entries
     assert payload.digit(0) == expected % radix
     assert (
-        term._ledger.counters["collatz_image_projection_operand_bits"]
+        term.resource_ledger.counters["collatz_image_projection_operand_bits"]
         == projection_work
     )
-    assert term._ledger.entries == entries
+    assert term.resource_ledger.entries == entries
 
 
 @pytest.mark.parametrize("radix", (2, 64))
@@ -173,13 +177,13 @@ def test_warm_limb_rejects_coherent_replacement_root_handles() -> None:
 def test_original_source_points_reuse_charged_width_bound() -> None:
     seed = (1 << 2048) + 27
     term = PoweredCollatzTerm(seed, 0)
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
     assert tuple(term.digit(i) for i in range(seed.bit_length())) == tuple(
         (seed >> i) & 1 for i in range(seed.bit_length())
     )
-    assert term._ledger.counters["collatz_width_bound_constructions"] == 1
+    assert term.resource_ledger.counters["collatz_width_bound_constructions"] == 1
     assert (
-        term._ledger.counters["collatz_width_bound_operand_bits"]
+        term.resource_ledger.counters["collatz_width_bound_operand_bits"]
         == before["collatz_width_bound_operand_bits"]
     )
     term.steps = 1

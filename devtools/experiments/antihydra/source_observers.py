@@ -89,7 +89,7 @@ def observe_event(
         raise BlockContextBudgetExceeded(
             "Mahler carry observation exceeds column budget"
         )
-    stages = []
+    stages: list[CollatzF5SpatialAction] = []
     for _ in range(width):
         current, carry, place, emitted = numerator, 0, 1, 0
         summary: CollatzF5SpatialAction | None = None
@@ -118,7 +118,7 @@ def observe_event(
         raise ValueError("fractional safety event has a negative endpoint")
     columns = max(1, (max(numerator, subtrahend).bit_length() + 5) // 6)
     n, m, carry, emitted, place = numerator, subtrahend, 1, 0, 1
-    subtraction = []
+    subtraction: list[CarryFn] = []
     for _ in range(columns):
         n, digit = divmod(n, 64)
         m, other = divmod(m, 64)
@@ -135,7 +135,7 @@ def observe_event(
         or Q(emitted, 1 << (exponent + width)) != Q(4) * event.next_fraction
     ):
         raise ArithmeticError("subtraction carry lost the source endpoint")
-    buckets = []
+    buckets: list[tuple[int, int, int]] = []
     for p, before, after in lanes:
         partition = prime_buckets(p, ledger)
         buckets.append((p, partition[before], partition[after]))

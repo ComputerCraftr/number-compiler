@@ -8,20 +8,22 @@ owned by ``DiamondQuotientArena`` and spatial aliases by
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
+    from number_compiler.resources.causal_workspace import CausalActionAdmission
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
+    require_causal_authority,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
     MacroComponents,
 )
@@ -174,6 +176,14 @@ class CausalInterfacePayload:
             raise ValueError("causal interface retains an orphan request proof")
 
 
+@dataclass(frozen=True, slots=True)
+class CausalLeafInterface:
+    """One emitted symbol and its completed causal interface payload."""
+
+    symbol: int
+    payload: CausalInterfacePayload
+
+
 def _attach_bound_reverse_output(
     payload: CausalInterfacePayload,
     output: ReverseBoundOutput,
@@ -256,7 +266,7 @@ def interface_payload_from_completed(
     completed.__post_init__()
     observed = completed.observed_input_ports
     incoming = incoming_ports if observed is None else observed
-    results._validate_ports(
+    results.validate_ports(
         results.interfaces.resolve(completed.outgoing).signature, incoming
     )
     node = results.tiles.resolve(completed.output)
@@ -277,7 +287,7 @@ def interface_payload_from_completed(
 def _authority(results: CompletedResultArena) -> PrimitiveTileKernelAdapter:
     if type(results) is not CompletedResultArena:
         raise TypeError("causal interfaces require the shared result arena")
-    return cast("PrimitiveTileKernelAdapter", results.action_authority)
+    return require_causal_authority(results.validated_action_authority())
 
 
 def combine_local_interfaces(
@@ -289,12 +299,12 @@ def combine_local_interfaces(
 ) -> LocalInterfaceID:
     """Compose the existing thirteen semantic channels with early reuse."""
     authority = _authority(results)
-    results._validate_action_wiring(action, wiring)
+    results.validate_action_wiring(action, wiring)
     key = SpatialInterfaceKey(left, right, wiring)
     found = results.lookup_spatial_interface(key)
     if found is not None:
         return found
-    record = authority._action(action)
+    record = authority.action_record(action)
     kernel = authority.kernels.kernel(record.kernel)
     from number_compiler.arithmetic.carry.reverse_port_functions import (
         MAX_CLOSED_REVERSE_BASE,
@@ -335,7 +345,7 @@ def combine_local_interfaces(
             results.ledger,
         )
         return publish_spatial_quotient(results, key, components)
-    parent_functions = authority._parent_components(kernel, left, right)
+    parent_functions = authority.parent_components(kernel, left, right)
     macro = MacroComponents(
         *(authority.structures.atom(component) for component in parent_functions)
     )
@@ -369,24 +379,44 @@ def primitive_interface_payload(
     occurrence: TemporalCocycle,
     *,
     physical_support: OrderedBooleanSupport | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> CausalInterfacePayload:
     """Bind one primitive action to an exact input without emitting its output."""
     authority = _authority(results)
-    if authority.action_children(action) is not None:
-        raise ValueError("primitive causal interface requires an atomic action")
     if type(ports) is not PrimitiveCausalPorts:
         raise TypeError("primitive causal interface requires finite ports")
     if type(occurrence) is not TemporalCocycle:
         raise TypeError("primitive causal interface requires an occurrence cocycle")
-    results._validate_base(action, input_tile, wiring)
-    results._validate_ports(wiring.signature, ports.ports)
-    node = results.tiles.resolve(input_tile)
-    interface = authority._compile_interface(action, input_tile, wiring)
-    outgoing = (
-        authority._observe(interface, "boundary_left", ports.ports),
-        authority._observe(interface, "boundary_right", ports.ports),
+    results.validate_base(
+        action,
+        input_tile,
+        wiring,
+        action_admission=action_admission,
     )
-    active = bool(authority._observe(interface, "activity", ports.ports))
+    if action_admission is None:
+        from number_compiler.hashlife.execution.tile_kernel import (
+            PrimitiveTileKernelAdapter,
+        )
+
+        record = PrimitiveTileKernelAdapter.action_record(authority, action)
+    else:
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
+        )
+
+        _signature, _kernel, record = admitted_action_metadata(
+            action_admission, authority, action
+        )
+    if record.children is not None:
+        raise ValueError("primitive causal interface requires an atomic action")
+    results.validate_ports(wiring.signature, ports.ports)
+    node = results.tiles.resolve(input_tile)
+    interface = authority.compile_interface(action, input_tile, wiring)
+    outgoing = (
+        authority.observe(interface, "boundary_left", ports.ports),
+        authority.observe(interface, "boundary_right", ports.ports),
+    )
+    active = bool(authority.observe(interface, "activity", ports.ports))
     action_weight = authority.action_cocycle(action)
     if type(action_weight) is not TemporalCocycle:
         raise TypeError("primitive causal action returned another cocycle sort")
@@ -424,9 +454,9 @@ def interface_payload_from_causal(
     node = results.tiles.resolve(completed.output)
     if node.level != expected_level:
         raise ValueError("causal interface extraction has another spatial level")
-    results._validate_action_wiring(action, wiring)
-    results._validate_ports(wiring.signature, completed.incoming_ports)
-    results._validate_ports(wiring.signature, completed.semantics.outgoing_ports)
+    results.validate_action_wiring(action, wiring)
+    results.validate_ports(wiring.signature, completed.incoming_ports)
+    results.validate_ports(wiring.signature, completed.semantics.outgoing_ports)
     # Publication already checked the interface against the exact output.
     # Its canonical summary is an observation result, not a reason to execute
     # the semantic function again on every completed-parent hit.
@@ -467,8 +497,8 @@ def combine_causal_interfaces(
         raise ValueError("causal interface parent requires a positive exact level")
     if left.level != expected_level - 1 or right.level != expected_level - 1:
         raise ValueError("causal interface children have another spatial level")
-    results._validate_ports(wiring.signature, left.incoming_ports)
-    results._validate_ports(wiring.signature, right.incoming_ports)
+    results.validate_ports(wiring.signature, left.incoming_ports)
+    results.validate_ports(wiring.signature, right.incoming_ports)
     if (
         left.outgoing_ports[0] != right.incoming_ports[0]
         or right.outgoing_ports[1] != left.incoming_ports[1]
@@ -487,8 +517,8 @@ def combine_causal_interfaces(
     )
     incoming = (left.incoming_ports[0], right.incoming_ports[1])
     outgoing = (right.outgoing_ports[0], left.outgoing_ports[1])
-    active = bool(authority._observe(interface, "activity", incoming))
-    record = authority._action(action)
+    active = bool(authority.observe(interface, "activity", incoming))
+    record = authority.action_record(action)
     if record.spatial_events_add:
         events = left.event_weight + right.event_weight
     else:

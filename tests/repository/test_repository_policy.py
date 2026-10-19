@@ -317,10 +317,13 @@ def test_semantic_name_policy_rejects_raw_dispatch_and_boundary_keys(
         "    ledger.bump(Domain.EXAMPLE)\n"
         "    return SemanticIdentity(Domain.EXAMPLE, ())\n"
     )
+    family_identity = source_root / "arithmetic" / "contracts" / "family_identity.py"
+    family_identity.parent.mkdir(parents=True)
+    family_identity.write_text(
+        'from enum import StrEnum\nclass FamilyId(StrEnum):\n    COLLATZ = "collatz"\n'
+    )
     observations = api / "observation_types.py"
     observations.write_text(
-        "class FamilyId(StrEnum):\n"
-        '    COLLATZ = "collatz"\n'
         "class SelectorId(StrEnum):\n"
         '    NTH = "nth"\n'
         "class ObservationId(StrEnum):\n"
@@ -328,7 +331,14 @@ def test_semantic_name_policy_rejects_raw_dispatch_and_boundary_keys(
         '    METRICS = "metrics"\n'
     )
 
-    sources = (consumers, duplicate_parser, canonical, named, observations)
+    sources = (
+        consumers,
+        duplicate_parser,
+        canonical,
+        named,
+        observations,
+        family_identity,
+    )
     parsed = {
         path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for path in sources
@@ -344,6 +354,26 @@ def test_semantic_name_policy_rejects_raw_dispatch_and_boundary_keys(
         "src/number_compiler/api/observation_adapters.py:7: semantic dispatch must use typed identifiers",
         "src/number_compiler/api/other_cli.py:2: API options must be declared by the family registry",
         "src/number_compiler/api/other_cli.py:2: CLI flag --info is declared more than once",
+    )
+
+
+def test_semantic_name_policy_rejects_raw_typed_observer_kind_dispatch(
+    tmp_path: Path,
+) -> None:
+    module = tmp_path / "src" / "number_compiler" / "api" / "cylinder_observation.py"
+    module.parent.mkdir(parents=True)
+    source = (
+        "def observe_collatz(seed: int, *, kind: CollatzObservationKind):\n"
+        '    if kind == "clock":\n'
+        '        return "ordinary diagnostic text"\n'
+        "def render_diagnostic(kind: object):\n"
+        '    return kind == "clock"\n'
+    )
+    module.write_text(source, encoding="utf-8")
+    tree = ast.parse(source, filename=str(module))
+
+    assert semantic_name_violations(tmp_path, {module: tree}) == (
+        "src/number_compiler/api/cylinder_observation.py:2: semantic dispatch must use typed identifiers",
     )
 
 
@@ -383,16 +413,16 @@ def test_versioned_semantic_tags_require_final_string_annotations(
 
 
 def test_proof_inventory_uses_shared_declaration_owner() -> None:
-    from devtools.checks.isabelle_proof_index import _declarations
+    from devtools.checks.isabelle_proof_index import declarations
 
-    declarations = _declarations(
+    rows = declarations(
         '  lemma real: "True" by simp\n'
         '  text \\<open>lemma fake: "False" by simp\\<close>\n'
         '  ML_prf \\<open>val x = "lemma also_fake: False"\\<close>\n'
     )
-    assert [entry["name"] for entry in declarations] == ["real"]
-    assert declarations[0]["line"] == 1
-    assert declarations[0]["statement_and_assumptions"] == ': "True"'
+    assert [entry["name"] for entry in rows] == ["real"]
+    assert rows[0]["line"] == 1
+    assert rows[0]["statement_and_assumptions"] == ': "True"'
 
 
 def test_recursion_cycle_checker_detects_direct_and_cross_module_mutual_cycles(

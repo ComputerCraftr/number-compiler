@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalPrefix,
     primitive_advance,
 )
 from number_compiler.hashlife.execution.tile_execution_adapter import (
@@ -26,6 +25,7 @@ from number_compiler.hashlife.tiles.interface_publication import (
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
+from number_compiler.resources.causal_types import CausalPrefix
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.reverse_morphism_transfer import (
     ReverseMorphismTransferArena,
@@ -212,7 +212,7 @@ def _finite_pair_transfer(
                 producer_wiring=producer_wiring,
             )
         ports = (initial[0], state) if side else (state, initial[1])
-        state = adapter._observe(
+        state = adapter.observe(
             interface,
             "boundary_right" if side else "boundary_left",
             ports,

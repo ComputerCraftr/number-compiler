@@ -22,9 +22,9 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.polynomials.primary_jet import (
     PrimaryJetBlock,
-    _poly_add,
-    _poly_mul,
-    _poly_scale,
+    primary_jet_add,
+    primary_jet_multiply,
+    primary_jet_scale,
 )
 
 ZERO = (0,) * 5
@@ -39,15 +39,15 @@ _CLOCK_POWERS = tuple(
 
 def _reflected(jet: tuple[int, ...], clock: tuple[int, ...]) -> tuple[int, ...]:
     """Evaluate ``z^L P(z^-1)`` within the existing primary algebra."""
-    substitution = _poly_add(INVERSE_Z, ONE, 32)
+    substitution = primary_jet_add(INVERSE_Z, ONE, 32)
     result: tuple[int, ...] = ZERO
     for coefficient in reversed(jet):
-        result = _poly_add(
-            _poly_mul(result, substitution, 32),
+        result = primary_jet_add(
+            primary_jet_multiply(result, substitution, 32),
             (coefficient, 0, 0, 0, 0),
             32,
         )
-    return _poly_mul(clock, result, 32)
+    return primary_jet_multiply(clock, result, 32)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,20 +113,26 @@ class DecimalCarryJetBlock:
         if type(incoming) is not int or incoming not in (0, 1):
             raise ValueError("decimal cylinder port must be Boolean")
         row = self.cylinder.rows[incoming]
-        numerator = _poly_add(row.jet, _poly_scale(ONE, -incoming, 32), 32)
-        numerator = _poly_add(numerator, _poly_scale(self.clock, row.outgoing, 32), 32)
-        return _poly_mul(INVERSE_Z, numerator, 32)
+        numerator = primary_jet_add(row.jet, primary_jet_scale(ONE, -incoming, 32), 32)
+        numerator = primary_jet_add(
+            numerator, primary_jet_scale(self.clock, row.outgoing, 32), 32
+        )
+        return primary_jet_multiply(INVERSE_Z, numerator, 32)
 
     def reset_jet(self, incoming: int) -> tuple[int, ...]:
         following = self.following_jet(incoming)
-        return _poly_add(
-            following, _poly_scale(self.cylinder.rows[incoming].jet, -1, 32), 32
+        return primary_jet_add(
+            following,
+            primary_jet_scale(self.cylinder.rows[incoming].jet, -1, 32),
+            32,
         )
 
     def normalization_jet(self, incoming: int) -> tuple[int, ...]:
         following = self.following_jet(incoming)
-        return _poly_add(
-            self.cylinder.rows[incoming].jet, _poly_scale(following, -10, 32), 32
+        return primary_jet_add(
+            self.cylinder.rows[incoming].jet,
+            primary_jet_scale(following, -10, 32),
+            32,
         )
 
     def forcing_jet(self) -> tuple[int, ...]:
@@ -136,8 +142,14 @@ class DecimalCarryJetBlock:
         growth = self.cylinder.rows[0].outgoing
         clock = self.clock
         normalization = self.normalization_jet(0)
-        reflection_clock = clock if growth else _poly_mul(clock, INVERSE_Z, 32)
-        result = _poly_add(
+        reflection_clock = (
+            clock if growth else primary_jet_multiply(clock, INVERSE_Z, 32)
+        )
+        result = primary_jet_add(
             normalization, _reflected(normalization, reflection_clock), 32
         )
-        return _poly_add(result, _poly_add(ONE, clock, 32), 32) if growth else result
+        return (
+            primary_jet_add(result, primary_jet_add(ONE, clock, 32), 32)
+            if growth
+            else result
+        )

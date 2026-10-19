@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -24,8 +24,11 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellRecord,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
-    _require_immutable_key,
-    _TypedKey,
+    TypedPayloadKey,
+    require_immutable_key,
+)
+from number_compiler.resources.field_image_audit_contracts import (
+    ProviderImageInputAuditSnapshot,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -87,7 +90,7 @@ class ProviderImageInputArena:
                 int,
                 FieldCellActionID | None,
                 FieldGeometryID | None,
-                _TypedKey,
+                TypedPayloadKey,
             ],
             tuple[ProviderImageInputID, ProviderImageInputID],
         ] = self.ledger.make_dict(self._child_owner)
@@ -108,6 +111,32 @@ class ProviderImageInputArena:
 
     def _handle(self, local_id: int) -> ProviderImageInputID:
         return ProviderImageInputID(self.owner, self._KIND, local_id)
+
+    def audit_snapshot(self) -> ProviderImageInputAuditSnapshot:
+        """Return read-only views of the exact stores retained by this arena."""
+        nodes: Mapping[int, ProviderImageInput] = self._nodes
+        keys: Mapping[tuple[ProviderBindingKey, ImageRequestKey, int], int] = self._keys
+        children: Mapping[
+            tuple[
+                int,
+                FieldCellActionID | None,
+                FieldGeometryID | None,
+                TypedPayloadKey,
+            ],
+            tuple[ProviderImageInputID, ProviderImageInputID],
+        ] = self._children
+        return ProviderImageInputAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._next_id,
+            self._node_owner,
+            nodes,
+            self._key_owner,
+            keys,
+            self._child_owner,
+            children,
+        )
 
     def _components(
         self, record: ProviderImageInput
@@ -137,8 +166,10 @@ class ProviderImageInputArena:
             or record.request.action != provider.action
             or record.request.geometry != image.geometry
             or record.request.active_extent != record.binding.active_extent
-            or _TypedKey(record.context) != _TypedKey(record.binding.context)
-            or _TypedKey(record.request.context) != _TypedKey(record.context)
+            or TypedPayloadKey(record.context)
+            != TypedPayloadKey(record.binding.context)
+            or TypedPayloadKey(record.request.context)
+            != TypedPayloadKey(record.context)
             or record.level != source.level
             or record.level != image.level
             or type(record.active_extent) is not int
@@ -251,21 +282,21 @@ class ProviderImageInputArena:
             raise TypeError("provider child contexts must be an exact pair")
         for context in contexts:
             if context is not None:
-                _require_immutable_key(context, "provider child image context")
+                require_immutable_key(context, "provider child image context")
         if (complete is None) != (geometry is None):
             raise TypeError("provider child cache qualification is incomplete")
         if complete is not None:
             assert geometry is not None
             self.images.validate_action(complete)
             self.images.geometries.resolve(geometry)
-        child_key = value.local_id, complete, geometry, _TypedKey(contexts)
+        child_key = value.local_id, complete, geometry, TypedPayloadKey(contexts)
         found = self._children.get(child_key)
         if found is not None:
             for child, context in zip(found, contexts, strict=True):
                 child_record = self.resolve(child)
                 self.providers.validate_occurrence(child_record.binding)
                 self.images.validate_binding(child_record.request, child_record.image)
-                if _TypedKey(child_record.context) != _TypedKey(context):
+                if TypedPayloadKey(child_record.context) != TypedPayloadKey(context):
                     raise ValueError(
                         "provider child context differs from its admission"
                     )

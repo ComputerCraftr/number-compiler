@@ -87,14 +87,14 @@ def _production_projection_rows() -> list[dict[str, object]]:
         if digit != _scalar_digit(generation, position):
             raise AssertionError((generation, position, digit))
         metrics = term.metrics()
-        before_replay = dict(term._ledger.counters)
+        before_replay = dict(term.resource_ledger.counters)
         if term.digit(position) != digit:
             raise AssertionError(
                 ("runtime-image-replay-mismatch", generation, position)
             )
-        after_replay = term._ledger.counters
+        after_replay = term.resource_ledger.counters
         behavior = term.behavior_metrics()
-        audit, audit_seconds, audit_work = explicit_resource_audit(term._ledger)
+        audit, audit_seconds, audit_work = explicit_resource_audit(term.resource_ledger)
         counters = metrics.resource_work_counters
         source_publications = counters.get("source_image_publications", 0)
         projection_publications = counters.get(
@@ -180,7 +180,7 @@ def _production_projection_rows() -> list[dict[str, object]]:
     return rows
 
 
-def _source_audit() -> dict[str, bool]:
+def source_audit() -> dict[str, bool]:
     hashlife = source_syntax(
         ROOT / "src" / "number_compiler" / "hashlife/observation/hashlife_projection.py"
     )
@@ -227,7 +227,7 @@ def _source_audit() -> dict[str, bool]:
     return checks
 
 
-def _doubling_envelope(rows: Sequence[Mapping[str, object]], field: str) -> bool:
+def doubling_envelope(rows: Sequence[Mapping[str, object]], field: str) -> bool:
     """Measure growth in one unit, allowing a fixed first-sample bootstrap.
 
     Thousands of canonical cells are permissible.  A small compiler graph
@@ -255,7 +255,7 @@ def run_probe() -> dict[str, object]:
         projection = []
         rejection = error
     envelopes = {
-        field: _doubling_envelope(projection, field)
+        field: doubling_envelope(projection, field)
         for field in (
             "total_internal_action_work",
             "resource_ledger_nodes",
@@ -303,7 +303,7 @@ def run_probe() -> dict[str, object]:
         "status": "RED" if blockers else "GREEN",
         "construction": construction,
         "projection": projection,
-        "source_audit": _source_audit(),
+        "source_audit": source_audit(),
         "execution_available": rejection is None,
         "execution_status": "available" if rejection is None else "unavailable",
         "measurements_complete": rejection is None and bool(projection),

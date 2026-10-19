@@ -14,7 +14,7 @@ from number_compiler.hashlife.tiles.tile_behavior_memo import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from tests.hashlife.tiles.test_tile_behavior_memo import _binding
-from tests.support.tile_results import _fused_setup, _setup
+from tests.support.tile_results import _setup, fused_setup
 
 
 def _assert_snapshot_failure(
@@ -37,7 +37,7 @@ def _assert_snapshot_failure(
         raise RuntimeError("injected reverse snapshot failure")
 
     with monkeypatch.context() as patch:
-        patch.setattr(type(results), "_reverse_snapshot", fail_snapshot)
+        patch.setattr(type(results), "reverse_snapshot", fail_snapshot)
         with pytest.raises(RuntimeError, match="injected reverse snapshot"):
             operation()
     after = ledger.snapshot()
@@ -65,7 +65,7 @@ def test_snapshot_failure_precedes_result_reservations(
 ) -> None:
     if fused:
         ledger, _, _, results, input_lease, output_lease, key, result, fused_key = (
-            _fused_setup(publish=False)
+            fused_setup(publish=False)
         )
 
         def operation() -> object:

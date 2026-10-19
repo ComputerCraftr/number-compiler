@@ -38,8 +38,8 @@ class _Carrier(Protocol[Cell]):
         self, cell: Cell
     ) -> tuple[Cell, int, F5AffineTransport[PlaneID], tuple[PlaneID, PlaneID]]: ...
     def successor(self, cell: Cell) -> tuple[Cell, int]: ...
-    def _add(self, left: PlaneID, right: PlaneID) -> PlaneID: ...
-    def _scale(self, plane: PlaneID, scalar: int) -> PlaneID: ...
+    def add_planes(self, left: PlaneID, right: PlaneID) -> PlaneID: ...
+    def scale_plane(self, plane: PlaneID, scalar: int) -> PlaneID: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +49,14 @@ class FactoredPowerBlock(Generic[Cell]):
     output: Cell
     action: F5AffineTransport[PlaneID]
     emission: tuple[PlaneID, PlaneID] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FactoredPowerCacheSnapshot:
+    """Read-only cache populations without exposing mutable cache contents."""
+
+    complete_entries: int
+    endpoint_entries: int
 
 
 class FactoredTemporalPower(Generic[Cell]):
@@ -71,6 +79,9 @@ class FactoredTemporalPower(Generic[Cell]):
         self.cache_hits = 0
         self.compositions = 0
         self.endpoint_publications = 0
+
+    def cache_snapshot(self) -> FactoredPowerCacheSnapshot:
+        return FactoredPowerCacheSnapshot(len(self._memo), len(self._endpoint_memo))
 
     def _pad(self, plane: PlaneID, width: int) -> PlaneID:
         p = self.carrier.planes
@@ -95,8 +106,8 @@ class FactoredTemporalPower(Generic[Cell]):
             action = earlier.then(
                 after.action,
                 shift=p.shift,
-                add=self.carrier._add,
-                scale=self.carrier._scale,
+                add=self.carrier.add_planes,
+                scale=self.carrier.scale_plane,
             )
             # The right block already returned the exact grammar. Reapplying
             # the entire accumulated action here repeats source-to-output work
@@ -216,8 +227,6 @@ class FactoredTemporalPower(Generic[Cell]):
                 pending.append((cell, count, 1))
                 pending.append((cell, 1 << ((count - 1).bit_length() - 1), 0))
                 continue
-            if result is None:
-                raise AssertionError("temporal composition produced no result")
             if len(self._memo) + len(self._endpoint_memo) >= self.max_entries:
                 raise BlockContextBudgetExceeded(
                     "factored temporal execution cache exhausted"

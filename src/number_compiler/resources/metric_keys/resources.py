@@ -47,6 +47,11 @@ TILE_CAUSAL_SPATIAL_BUFFER_ALLOCATED_BYTES: Final = (
 )
 TILE_CAUSAL_SPATIAL_BUFFER_ALLOCATIONS: Final = "tile_causal_spatial_buffer_allocations"
 TILE_CAUSAL_SPATIAL_BUFFER_APPENDS: Final = "tile_causal_spatial_buffer_appends"
+TILE_CAUSAL_SPATIAL_BUFFER_APPEND_FAILURES: Final = (
+    "tile_causal_spatial_buffer_append_failures"
+)
+TILE_CAUSAL_SPATIAL_BUFFER_PEAK_BYTES: Final = "tile_causal_spatial_buffer_peak_bytes"
+TILE_CAUSAL_SPATIAL_BUFFER_PEAK_SLOTS: Final = "tile_causal_spatial_buffer_peak_slots"
 TILE_CAUSAL_SPATIAL_BUFFER_REVERSAL_VISITS: Final = (
     "tile_causal_spatial_buffer_reversal_visits"
 )

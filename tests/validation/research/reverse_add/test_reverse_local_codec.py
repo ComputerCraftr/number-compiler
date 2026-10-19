@@ -28,7 +28,7 @@ from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReversePoweredLocalCodec,
 )
 from tests.support.local_codec_assertions import assert_publication_refused
-from tests.support.reverse_field_action import _source_cells
+from tests.support.reverse_field_action import source_cells
 
 
 @pytest.mark.representation
@@ -115,7 +115,7 @@ def test_powered_local_codec_compiles_complete_source_forest() -> None:
 
 @pytest.mark.representation
 def test_source_cell_and_forest_local_bindings_cannot_integer_alias() -> None:
-    ledger, cells, _root = _source_cells((1, 2))
+    ledger, cells, _root = source_cells((1, 2))
     root = cells.intern(0, 0)
     forest = cells.forest(0, 1)
     assert root.local_id == forest.local_id == 0
@@ -134,7 +134,7 @@ def test_source_cell_and_forest_local_bindings_cannot_integer_alias() -> None:
 @pytest.mark.parametrize("base", (2, 3, 4, 5, 10))
 def test_powered_local_codec_matches_exact_directed_scans(base: int) -> None:
     word = tuple(value % (2 * base) for value in (1, 7, 4, 3, 6, 2, 5, 0))
-    ledger, cells, root = _source_cells(word, base)
+    ledger, cells, root = source_cells(word, base)
     codec = ReversePoweredLocalCodec(base, cells, ledger=ledger)
     action = codec.source_action(root)
     kernel = codec.kernel
@@ -169,7 +169,7 @@ def test_powered_local_codec_alias_does_not_imply_output_equivalence() -> None:
     """
     first = (0, 0, 0, 0)
     second = (0, 0, 1, 0)
-    ledger, cells, root = _source_cells(first + second, base=2)
+    ledger, cells, root = source_cells(first + second, base=2)
     left_source, right_source = cells.children(root)
     codec = ReversePoweredLocalCodec(2, cells, ledger=ledger)
 
@@ -206,7 +206,7 @@ def test_powered_local_codec_alias_does_not_imply_output_equivalence() -> None:
 
 @pytest.mark.algebra
 def test_powered_local_codec_is_associative_and_mirror_canonical() -> None:
-    _, cells, _ = _source_cells((1, 2, 3, 4, 5, 6, 7, 8))
+    _, cells, _ = source_cells((1, 2, 3, 4, 5, 6, 7, 8))
     codec = ReversePoweredLocalCodec(10, cells)
     a, b, c = (codec.leaf(value) for value in (2, 7, 12))
     assert codec.compose(codec.compose(a, b), c) == codec.compose(
@@ -222,7 +222,7 @@ def test_powered_local_codec_is_associative_and_mirror_canonical() -> None:
 
 @pytest.mark.representation
 def test_powered_local_codec_rejects_unscoped_and_proof_ids() -> None:
-    _, cells, root = _source_cells((1, 2))
+    _, cells, root = source_cells((1, 2))
     codec = ReversePoweredLocalCodec(10, cells)
     action = codec.source_action(root)
     before = codec.metrics()
@@ -259,7 +259,7 @@ def test_powered_local_codec_rejects_unscoped_and_proof_ids() -> None:
 def test_powered_local_codec_probes_canonical_source_before_child_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, cells, root = _source_cells((1, 2, 2, 1))
+    _, cells, root = source_cells((1, 2, 2, 1))
     codec = ReversePoweredLocalCodec(10, cells)
     first = codec.source_action(root)
     before = codec.metrics()
@@ -275,7 +275,7 @@ def test_powered_local_codec_probes_canonical_source_before_child_work(
 
 @pytest.mark.accounting
 def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() -> None:
-    ledger, cells, _ = _source_cells((1, 2))
+    ledger, cells, _ = source_cells((1, 2))
     codec = ReversePoweredLocalCodec(10, cells, ledger=ledger)
     assert_publication_refused(
         ledger,
@@ -283,7 +283,7 @@ def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() ->
         lambda: codec.leaf(3),
     )
 
-    ledger, cells, _ = _source_cells((1, 2))
+    ledger, cells, _ = source_cells((1, 2))
     codec = ReversePoweredLocalCodec(10, cells, ledger=ledger)
     left, right = codec.leaf(2), codec.leaf(7)
     assert_publication_refused(
@@ -295,7 +295,7 @@ def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() ->
 
 @pytest.mark.algebra
 def test_mirrored_source_cells_share_one_semantic_local_action() -> None:
-    _, cells, root = _source_cells((1, 2, 2, 1))
+    _, cells, root = source_cells((1, 2, 2, 1))
     codec = ReversePoweredLocalCodec(10, cells)
     left, right = cells.children(root)
     forward = codec.source_action(left)

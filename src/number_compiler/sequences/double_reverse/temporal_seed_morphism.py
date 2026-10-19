@@ -23,15 +23,15 @@ from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.resources.ledger import ResourceLedger
 
 from ._temporal_bank_authority import (
-    _SourceAuthority,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
     issue_source_record,
     require_source_arena,
     validate_source_record,
 )
 from .source_bound_bank import PointedBankSource
 from .temporal_center_cyclotomic import (
-    _band_moore,
+    band_moore,
     certified_cyclotomic_center_driver,
     cyclotomic_four_block_order,
 )
@@ -40,7 +40,7 @@ from .temporal_hashlife import growth_ports
 from .temporal_hashlife_types import UncertifiedPointedStencilError
 from .temporal_residue_quotient import (
     CertifiedResidueTemporalAction,
-    _SLPResidues,
+    SLPResidues,
     certified_residue_action,
 )
 
@@ -89,7 +89,7 @@ def word_fiber_from_root(
     center_width = 1 if width % 2 else 2
     s = (width - center_width) // 2
     center = tuple(symbol_at(arena, root, s + j) for j in range(center_width))
-    zero = _SLPResidues(0, 0, 0)
+    zero = SLPResidues(0, 0, 0)
     # One DAG fold serves the two independent exterior interval reads and the
     # complete-word check.  REPEAT is folded by binary monoid powering.
     bound = len(arena.nodes) + 1
@@ -98,7 +98,7 @@ def word_fiber_from_root(
             arena,
             root,
             empty_value=zero,
-            terminal_value=lambda d: _SLPResidues(1, d % 99, d % 198),
+            terminal_value=lambda d: SLPResidues(1, d % 99, d % 198),
             concatenate=lambda left, right: left.then(right),
             repeat=lambda value, count: value.power(count),
         )
@@ -106,8 +106,8 @@ def word_fiber_from_root(
         def interval(
             begin: int,
             end: int,
-            values: dict[int, _SLPResidues],
-        ) -> _SLPResidues:
+            values: dict[int, SLPResidues],
+        ) -> SLPResidues:
             return fold_slp_interval(
                 arena,
                 root,
@@ -139,7 +139,7 @@ def word_fiber_from_root(
         root,
         width,
         center,
-        _band_moore().class_for((center[0], center[1])) if center_width == 2 else None,
+        band_moore().class_for((center[0], center[1])) if center_width == 2 else None,
         full.modulo99,
         full.modulo198,
         exterior99,
@@ -152,7 +152,7 @@ def _word_fiber(source: PointedBankSource, root: int) -> SeedWordFiber:
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedSeedOrbitMorphism(_SourceAuthorizedRecord):
+class CertifiedSeedOrbitMorphism(SourceAuthorizedRecord):
     """Source-anchored full-word F**(2*steps) plus outer/inner ring ports.
 
     The action applies to *one pointed source root*, not every other word
@@ -202,7 +202,7 @@ class CertifiedSeedOrbitMorphism(_SourceAuthorizedRecord):
             self.physical_prefix + 2 * (self.start_f_steps + self.steps),
         )
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         return validate_source_record(self)
 
     def digit_at(self, msd_position: int, *, after: bool = True) -> int:

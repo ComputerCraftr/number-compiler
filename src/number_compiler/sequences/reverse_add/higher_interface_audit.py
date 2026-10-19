@@ -114,7 +114,7 @@ def audit_reverse_higher_interface_owner(
             )
             valid &= signature.phase_count == action_record.geometry.phase_count
             valid &= (
-                root.interfaces._validate_components(
+                root.interfaces.validate_components(
                     compilation.signature, interface_record.components
                 )
                 is signature

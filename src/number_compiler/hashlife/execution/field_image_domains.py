@@ -28,7 +28,7 @@ FieldInterfaceArena: TypeAlias = "DiamondQuotientArena | HigherLocalInterfaceAre
 
 
 @dataclass(frozen=True, slots=True)
-class _FieldImageDomain:
+class FieldImageDomain:
     action_owner: ArenaToken
     action_kind: str
     action_validate: Callable[[FieldCellActionID], object]
@@ -43,27 +43,29 @@ class _FieldImageDomain:
 
 
 @dataclass(frozen=True, slots=True)
-class _DomainLookupKey:
+class FieldImageDomainKey:
     role: str
     owner: ArenaToken
     kind: str
 
 
 @dataclass(frozen=True, slots=True)
-class _InterfaceAuthority:
+class FieldImageInterfaceAuthority:
     arena: FieldInterfaceArena
     signature_kind: str
 
 
 @dataclass(frozen=True, slots=True)
-class _OutputAuthority:
+class FieldImageOutputAuthority:
     owner: ArenaToken
     kind: str
     validate: Callable[[CoordinateOutputMorphismID], object]
     authority: object | None
 
 
-_DomainEntry = _FieldImageDomain | _InterfaceAuthority | _OutputAuthority
+FieldImageDomainEntry: TypeAlias = (
+    FieldImageDomain | FieldImageInterfaceAuthority | FieldImageOutputAuthority
+)
 
 
 def validate_field_image_authorities(
@@ -103,7 +105,7 @@ def validate_field_image_authorities(
 def register_field_image_domain(
     ledger: ResourceLedger,
     owner: int,
-    domains: MutableMapping[_DomainLookupKey, _DomainEntry],
+    domains: MutableMapping[FieldImageDomainKey, FieldImageDomainEntry],
     interfaces: FieldInterfaceArena,
     *,
     action_owner: ArenaToken,
@@ -137,7 +139,7 @@ def register_field_image_domain(
         )
     ):
         raise TypeError("field image domains require allocated validators")
-    action_key = _DomainLookupKey("action", action_owner, action_kind)
+    action_key = FieldImageDomainKey("action", action_owner, action_kind)
     if action_key in domains:
         raise ValueError("field action sort is already registered")
     if any(
@@ -161,17 +163,17 @@ def register_field_image_domain(
         signature_authority,
         signature_for,
     )
-    interface_key = _DomainLookupKey(
+    interface_key = FieldImageDomainKey(
         "interface",
         interfaces.owner,
         interfaces.interface_kind,
     )
-    output_key = _DomainLookupKey("output", output_owner, output_kind)
-    interface_authority = _InterfaceAuthority(interfaces, signature_kind)
+    output_key = FieldImageDomainKey("output", output_owner, output_kind)
+    interface_authority = FieldImageInterfaceAuthority(interfaces, signature_kind)
     existing_interface = domains.get(interface_key)
     if existing_interface is not None and existing_interface != interface_authority:
         raise ValueError("local interface sort has another image authority")
-    output_record = _OutputAuthority(
+    output_record = FieldImageOutputAuthority(
         output_owner,
         output_kind,
         output_validate,
@@ -179,7 +181,7 @@ def register_field_image_domain(
     )
     existing_output = domains.get(output_key)
     if existing_output is not None and (
-        type(existing_output) is not _OutputAuthority
+        type(existing_output) is not FieldImageOutputAuthority
         or existing_output.authority is not output_authority
         or getattr(existing_output.validate, "__self__", None)
         is not getattr(output_validate, "__self__", None)
@@ -187,7 +189,7 @@ def register_field_image_domain(
         is not getattr(output_validate, "__func__", output_validate)
     ):
         raise ValueError("coordinate output sort has another image authority")
-    domain = _FieldImageDomain(
+    domain = FieldImageDomain(
         action_owner,
         action_kind,
         action_validate,
@@ -200,7 +202,9 @@ def register_field_image_domain(
         signature_for,
         signature_authority,
     )
-    additions: list[tuple[_DomainLookupKey, _DomainEntry]] = [(action_key, domain)]
+    additions: list[tuple[FieldImageDomainKey, FieldImageDomainEntry]] = [
+        (action_key, domain)
+    ]
     if existing_interface is None:
         additions.append((interface_key, interface_authority))
     if existing_output is None:
@@ -210,4 +214,12 @@ def register_field_image_domain(
         domains[key] = value
 
 
-__all__ = ["register_field_image_domain"]
+__all__ = [
+    "FieldImageDomain",
+    "FieldImageDomainEntry",
+    "FieldImageDomainKey",
+    "FieldImageInterfaceAuthority",
+    "FieldImageOutputAuthority",
+    "FieldInterfaceArena",
+    "register_field_image_domain",
+]

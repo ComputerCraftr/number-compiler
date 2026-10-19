@@ -130,7 +130,7 @@ class SemanticIdentity:
             elif isinstance(left, tuple) and isinstance(right, tuple):
                 if len(left) != len(right):
                     return False
-                pending.extend(zip(left, right))
+                pending.extend(zip(left, right, strict=True))
             elif type(left) is not type(right) or left != right:
                 return False
         return True

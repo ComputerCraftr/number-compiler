@@ -3,19 +3,32 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Never
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Never
 
 import pytest
 
 from number_compiler.api import cli, cli_context, cli_render
 from number_compiler.api.cylinder_observation import CollatzObservationContext
+from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
 from number_compiler.api.observation_types import ObservationId
 from number_compiler.api.query_types import TermQuery
 
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.source_publisher import (
+        CollatzPublishedPrefix,
+    )
+
 
 def forbidden(*args: object, **kwargs: object) -> Never:
     raise AssertionError("unrequested execution was entered")
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if not is_string_object_mapping(value):
+        raise AssertionError("expected a JSON object with string keys")
+    return dict(value)
 
 
 @pytest.mark.parametrize("steps", (4, 8, 16, 32, 65))
@@ -74,7 +87,7 @@ def test_arithmetic_observers_do_not_request_physical_execution(
 
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     if names == ("arithmetic.hensel",):
         from number_compiler.sequences.antihydra import mahler_action
 
@@ -128,7 +141,7 @@ def test_plain_terms_do_not_request_information(
     from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
     monkeypatch.setattr(cli_context.QueryContext, "_observe", forbidden)
-    monkeypatch.setattr(cli_context, "_metrics_json", forbidden)
+    monkeypatch.setattr(cli_context, "metrics_json", forbidden)
     monkeypatch.setattr(CanonicalSequenceCompiler, "resolve_special_theorem", forbidden)
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     assert (
@@ -148,7 +161,7 @@ def test_primality_only_does_not_construct_a_value(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(NumberCompiler, "project", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [
@@ -178,7 +191,7 @@ def test_reverse_metrics_only_does_not_construct_reachable_image(
     monkeypatch.setattr(TileApplication, "complete", forbidden)
     monkeypatch.setattr(TileApplication, "point", forbidden)
     monkeypatch.setattr(TileApplication, "width", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [
@@ -214,7 +227,7 @@ def test_antihydra_metrics_only_do_not_audit_or_construct_endpoint(
 
     monkeypatch.setattr(metric_collection, "collect_ledger_metrics", forbidden)
     monkeypatch.setattr(AntihydraArithmeticTerm, "result", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [
@@ -358,12 +371,20 @@ def test_collatz_event_cli_consumes_published_support_without_digit_replay(
 
 def test_collatz_context_rejects_substituted_published_root() -> None:
     from number_compiler.api.cylinder_observation import observe_collatz
+    from number_compiler.sequences.collatz.observation_kind import (
+        CollatzObservationKind,
+    )
 
     context = CollatzObservationContext(27, 4, max_events=4, max_digits=100)
     context.root = context.arena.identity
     with pytest.raises(ValueError, match="published source binding"):
         observe_collatz(
-            27, 4, kind="clock", max_events=4, max_digits=100, _context=context
+            27,
+            4,
+            kind=CollatzObservationKind.CLOCK,
+            max_events=4,
+            max_digits=100,
+            _context=context,
         )
 
 
@@ -381,16 +402,20 @@ def test_collatz_finite_safety_cli_shares_discovery(
     original = saturated_future.from_published_prefix
     calls = 0
 
-    def counted(*args: Any, **kwargs: Any) -> Any:
+    def counted(
+        published: CollatzPublishedPrefix,
+        *,
+        leaf_events: int = 6,
+    ) -> saturated_future.SaturatedCollatzPowerResult | None:
         nonlocal calls
         calls += 1
-        return original(*args, **kwargs)
+        return original(published, leaf_events=leaf_events)
 
     monkeypatch.setattr(saturated_future, "from_published_prefix", counted)
     monkeypatch.setattr(
         saturated_future.SourceFreeSaturatedCollatzProgram, "bind", forbidden
     )
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [
@@ -568,15 +593,16 @@ def test_antihydra_equivalent_information_reuses_the_demand(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from number_compiler.api import antihydra_observation
+    from number_compiler.api.antihydra_observation import AntihydraRunKind
     from number_compiler.sequences.antihydra.runtime import Run
 
     observe = antihydra_observation.observe_run
-    calls: list[str] = []
+    calls: list[AntihydraRunKind] = []
 
     def counted(
         result: Run,
         *,
-        kind: str,
+        kind: AntihydraRunKind,
         modulus: int = 257,
         width: int = 2,
         sign: int = -1,
@@ -585,7 +611,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
         time_sign: int = 1,
         max_observer_terms: int = 1_000_000,
         _include_metrics: bool = True,
-    ) -> dict[str, Any]:
+    ) -> Mapping[str, object]:
         calls.append(kind)
         if len(calls) > 1:
             raise AssertionError("equivalent demand was evaluated again")
@@ -603,14 +629,17 @@ def test_antihydra_equivalent_information_reuses_the_demand(
         )
 
     monkeypatch.setattr(antihydra_observation, "observe_run", counted)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
-    first, second = (row["info"][name] for name in names)
+    info = _json_object(row["info"])
+    first, second = (_json_object(info[name]) for name in names)
     assert calls == [names[0].split(".")[-1]]
     assert first["kind"] == names[0] and second["kind"] == names[1]
     assert first["value"] == second["value"]
     assert row["value"] is None
-    work = row["info"]["metrics"]["execution_metrics"]["observations"]
+    metrics = _json_object(info["metrics"])
+    execution_metrics = _json_object(metrics["execution_metrics"])
+    work = _json_object(execution_metrics["observations"])
     assert work["query_observer_reuses"] == 1
 
 
@@ -647,18 +676,24 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     monkeypatch.setattr(antihydra_observation, "tangent", counted_tangent)
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
     assert calls == 1
-    mahler = row["info"]["arithmetic.mahler"]["value"]
-    hensel = row["info"]["arithmetic.hensel"]["value"]
+    info = _json_object(row["info"])
+    mahler_packet = _json_object(info["arithmetic.mahler"])
+    hensel_packet = _json_object(info["arithmetic.hensel"])
+    mahler = _json_object(mahler_packet["value"])
+    hensel = _json_object(hensel_packet["value"])
     assert "associated_action" not in hensel
     assert {
         key: value for key, value in mahler.items() if key != "associated_action"
     } == hensel
-    assert mahler["associated_action"]["extent"] == 16
+    associated_action = _json_object(mahler["associated_action"])
+    assert associated_action["extent"] == 16
     assert row["value"] is None
-    work = row["info"]["metrics"]["execution_metrics"]["observations"]
+    metrics = _json_object(info["metrics"])
+    execution_metrics = _json_object(metrics["execution_metrics"])
+    work = _json_object(execution_metrics["observations"])
     assert work["arithmetic_returns"] == 16
 
 
@@ -708,7 +743,7 @@ def test_family_output_bases_preserve_values_and_json_units(
 def _antihydra_info_pair(
     names: tuple[str, str],
     capsys: pytest.CaptureFixture[str],
-) -> Any:
+) -> dict[str, object]:
     assert (
         cli.main(
             [
@@ -728,8 +763,7 @@ def _antihydra_info_pair(
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)
-    return row
+    return _json_object(json.loads(capsys.readouterr().out))
 
 
 def test_collatz_clock_budget_rejection_precedes_observer_preparation(
@@ -810,7 +844,7 @@ def test_failed_collatz_prepare_retries_without_reprojecting(
 
     with pytest.raises(RuntimeError, match="transient observer preparation failure"):
         _ = context.term
-    assert context._term_prepared is False
+    assert preparations == 1
     assert len(projected) == 1
 
     first_success = context.term

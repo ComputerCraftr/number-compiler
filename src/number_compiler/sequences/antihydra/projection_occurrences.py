@@ -364,7 +364,7 @@ class ProjectionOccurrenceCursor:
     @staticmethod
     def _state_seal(state: _CursorState) -> tuple[object, ...]:
         result = state.projection.result
-        term = result._term
+        term = result.source_term
         # ``begin`` authenticates the result and materializes this exact store
         # before the first state is sealed.  Reading the public ``segments``
         # property here used to call ``result()`` (and therefore validate every
@@ -432,8 +432,8 @@ class ProjectionOccurrenceCursor:
         if (
             type(result) is not Run
             or result.ledger is not self.ledger
-            or type(result._term) is not AntihydraArithmeticTerm
-            or result._term.engine is not result._engine
+            or type(result.source_term) is not AntihydraArithmeticTerm
+            or result.source_term.engine is not result._engine
             or any(
                 type(value) is not int
                 for value in (
@@ -518,7 +518,7 @@ class ProjectionOccurrenceCursor:
             if odd != h & 1:
                 raise ValueError("retained Antihydra projection support was changed")
             translated = (
-                projection._section_key(balance, h - 4),
+                projection.section_key(balance, h - 4),
                 head % spatial_phase,
                 time % temporal_phase,
             )
@@ -573,8 +573,8 @@ class ProjectionOccurrenceCursor:
         # The cursor seal snapshots the authenticated retained store directly.
         # Publish it once here instead of reaching through the public property
         # during every subsequent state transition.
-        result._term._materialize_segments(result)
-        segments = result._term._segments
+        result.source_term._materialize_segments(result)
+        segments = result.source_term._segments
         segment_count = len(segments)
         state_nodes = self._STATE_NODES + self._SEGMENT_SEAL_NODES * segment_count
         seal_nodes = self._STATE_SEAL_NODES + self._SEGMENT_SEAL_NODES * segment_count
@@ -607,7 +607,7 @@ class ProjectionOccurrenceCursor:
         """Issue the next exact occurrence and advance the private cursor once."""
         state = self._state()
         self._invalidate_occurrence()
-        term = state.projection.result._term
+        term = state.projection.result.source_term
         segments = term._segments
         if state.segment_index == len(segments):
             if not state.terminal:
@@ -803,7 +803,7 @@ class ProjectionOccurrenceCursor:
         if type(record) is not ProjectionOccurrence:
             raise ValueError("Antihydra projection occurrence was changed")
         source_index = state.segment_index - 1
-        segments = state.projection.result._term._segments
+        segments = state.projection.result.source_term._segments
         if (
             not 0 <= source_index < len(segments)
             or segments[source_index].cylinder is not record.block
@@ -826,7 +826,7 @@ class ProjectionOccurrenceCursor:
         result.require_source()
         if (
             not state.terminal
-            or state.segment_index != len(result._term._segments)
+            or state.segment_index != len(result.source_term._segments)
             or (
                 state.completed,
                 state.h,

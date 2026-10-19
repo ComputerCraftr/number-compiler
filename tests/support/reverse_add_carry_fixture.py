@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
@@ -18,8 +18,10 @@ from .reverse_add_source_data import iterate_reverse_add
 
 
 @contextmanager
-def source_196_generation_79_border() -> Iterator[
-    tuple[int, ResourceLedger, ReversePairQ19OutputOwner, CertifiedBorderGrowth]
+def source_196_generation_79_border() -> Generator[
+    tuple[int, ResourceLedger, ReversePairQ19OutputOwner, CertifiedBorderGrowth],
+    None,
+    None,
 ]:
     """Issue the canonical 9-step, three-pair border certificate once."""
     value = iterate_reverse_add(196, 79)

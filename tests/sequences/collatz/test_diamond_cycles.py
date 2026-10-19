@@ -13,6 +13,7 @@ from number_compiler.sequences.collatz.diamond_cycle import (
     physical_cycle,
 )
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_runtime import build, oracle
 
 
@@ -21,7 +22,9 @@ def test_every_cycle_phase_matches_complete_physical_kernel(
     source: tuple[int, int, int] | tuple[int, int] | tuple[int],
 ) -> None:
     for steps in range(9):
-        runtime, root = build(CollatzPhysicalBlockEffect(), source, 8, steps)
+        runtime, root = build_collatz_diamond_runtime(
+            CollatzPhysicalBlockEffect(), source, 8, steps
+        )
         proof = physical_cycle(runtime, root)
         assert proof is not None
         expected = oracle(CollatzPhysicalBlockEffect(), source, 8, steps)
@@ -36,7 +39,9 @@ def test_huge_cycle_power_never_runs_a_transition_or_future_projection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     steps = 10**80 + 1
-    runtime, root = build(CollatzPhysicalBlockEffect(), (1,), 8, steps)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, steps
+    )
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError(
@@ -62,16 +67,22 @@ def test_huge_cycle_power_never_runs_a_transition_or_future_projection(
 def test_noncanonical_or_noncycle_source_is_not_reinterpreted_as_cycle(
     source: tuple[int, int, int] | tuple[int, int] | tuple[int],
 ) -> None:
-    runtime, root = build(CollatzPhysicalBlockEffect(), source, 8, 100)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), source, 8, 100
+    )
     assert physical_cycle(runtime, root) is None
 
 
 def test_clipped_field_and_other_operator_cannot_claim_physical_cycle() -> None:
-    runtime, root = build(CollatzPhysicalBlockEffect(), (1,), 2, 1)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 2, 1
+    )
     assert physical_cycle(runtime, root) is None
     runtime, root = build(BaseBlockEffect(2), (1,), 8, 2)
     assert physical_cycle(runtime, root) is None
-    foreign, other = build(CollatzPhysicalBlockEffect(), (1,), 8, 2)
+    foreign, other = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 2
+    )
     assert_rejected_atomically(
         runtime.ledger, lambda: physical_cycle(runtime, other), ValueError
     )
@@ -85,7 +96,9 @@ def test_application_cycle_queries_skip_generic_execution_and_source_reproof(
 ) -> None:
     from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
-    runtime, root = build(CollatzPhysicalBlockEffect(), source, 8, 10**80 + 1)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), source, 8, 10**80 + 1
+    )
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError(
@@ -118,7 +131,9 @@ def test_application_cycle_queries_skip_generic_execution_and_source_reproof(
 def test_application_cycle_validates_coordinates_and_scopes_before_warm_hit() -> None:
     from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
-    runtime, root = build(CollatzPhysicalBlockEffect(), (1,), 8, 100)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 100
+    )
     application = DiamondApplication(runtime, root)
     application.point(0)
     before = runtime.ledger.snapshot()
@@ -145,7 +160,9 @@ def test_cycle_projection_is_not_retained_when_its_reservation_fails(
     )
     from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
-    runtime, root = build(CollatzPhysicalBlockEffect(), (1,), 8, 100)
+    runtime, root = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 100
+    )
     reserve = runtime.ledger.reserve
 
     def reject_cycle(owner: int, *, entries: int = 0, nodes: int = 0) -> None:

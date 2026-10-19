@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import Any
 
 from number_compiler.arithmetic.formula.types import Expr, FormulaStorage, _bits, _mask
 
@@ -18,7 +17,7 @@ class FormulaBuildMixin(FormulaStorage):
         self._closed_values: dict[int, int] = {}
         self._closed_bit_count = 0
         self._derived: dict[tuple[object, ...], Expr] = {}
-        self._metadata: dict[tuple[object, ...], Any] = {}
+        self._metadata: dict[tuple[object, ...], object] = {}
 
     def _raw(
         self,

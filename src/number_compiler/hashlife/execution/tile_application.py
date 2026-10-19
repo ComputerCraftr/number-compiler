@@ -27,6 +27,9 @@ if TYPE_CHECKING:
         ResultLease,
     )
     from number_compiler.hashlife.tiles.tiles import TileID
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        TileApplicationAuditSnapshot,
+    )
 
 
 class TileApplication:
@@ -74,18 +77,17 @@ class TileApplication:
 
         if type(scheduler) is not TileScheduler:
             raise TypeError("tile application requires the canonical scheduler")
-        if type(identity) is not int or not 0 <= identity < scheduler._next_application:
-            raise ValueError("tile application has an invalid scoped identity")
+        scheduler.validate_application_identity(identity)
         key = impl.PoweredResultKey(action, source, ports, wiring)
-        scheduler._validate_execution_key(key)
+        scheduler.validate_execution_key(key)
         if root is not None:
             if (
                 type(root) is not impl.ResultLease
-                or root._issuer is not scheduler.results
+                or root.audit_snapshot().issuer is not scheduler.results
             ):
                 raise ValueError("tile application has a foreign completed root")
             _ = root.result
-            if root._key != key:
+            if root.audit_snapshot().key != key:
                 raise ValueError("tile application root belongs to another request")
         self.scheduler, self.identity, self.action, self.ports, self.wiring = (
             scheduler,
@@ -99,7 +101,7 @@ class TileApplication:
         self._closed = False
         scheduler.ledger.register_execution_root(self)
         try:
-            scheduler._applications.register(self, key)
+            scheduler.register_application(self, key)
         except BaseException:
             self._input.close()
             raise
@@ -110,12 +112,29 @@ class TileApplication:
 
         return impl.application_source(self)
 
+    def audit_snapshot(self) -> TileApplicationAuditSnapshot:
+        """Expose issued application bindings to read-only resource auditors."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            TileApplicationAuditSnapshot,
+        )
+
+        return TileApplicationAuditSnapshot(
+            self.scheduler,
+            self.identity,
+            self.action,
+            self.ports,
+            self.wiring,
+            self._input,
+            self._root,
+            self._closed,
+        )
+
     def validate_execution(self) -> None:
         import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
 
         key = impl.PoweredResultKey(self.action, self.source, self.ports, self.wiring)
-        self.scheduler.results._validate_base(key.action, key.input, key.wiring)
-        self.scheduler._validate_execution_context(key)
+        self.scheduler.results.validate_base(key.action, key.input, key.wiring)
+        self.scheduler.validate_execution_context(key)
 
     def _cached_root(self) -> ResultLease | None:
         import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
@@ -123,21 +142,21 @@ class TileApplication:
         key = impl.PoweredResultKey(self.action, self.source, self.ports, self.wiring)
         root = self._validate_root(key)
         if root is not None:
-            self.scheduler._validate_execution_key(key)
+            self.scheduler.validate_execution_key(key)
             return root
-        found = self.scheduler._lookup_execution_key(key)
+        found = self.scheduler.lookup_execution_key(key)
         if found is not None:
             self._adopt_root(found)
         return found
 
     def _adopt_root(self, root: ResultLease) -> None:
         try:
-            self.scheduler._applications.replace_root(self, root)
+            self.scheduler.replace_application_root(self, root)
         except BaseException:
             root.close()
             raise
         self._root = root
-        self.scheduler._release_pins(self.identity)
+        self.scheduler.release_application_pins(self.identity)
 
     def _validate_root(self, key: PoweredResultKey) -> ResultLease | None:
         import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
@@ -147,10 +166,10 @@ class TileApplication:
             return None
         if (
             type(root) is not impl.ResultLease
-            or root._issuer is not self.scheduler.results
+            or root.audit_snapshot().issuer is not self.scheduler.results
         ):
             raise ValueError("tile application has a foreign completed root")
-        if root._key != key:
+        if root.audit_snapshot().key != key:
             raise ValueError("tile application root belongs to another request")
         _ = root.result
         return root
@@ -231,8 +250,8 @@ class TileApplication:
         return engine.interface(
             self.action,
             self.source,
-            engine._initial(self.action, 0, self.ports[0]),
-            engine._initial(self.action, 1, self.ports[1]),
+            engine.initial_state(self.action, 0, self.ports[0]),
+            engine.initial_state(self.action, 1, self.ports[1]),
             application=self.identity,
         )
 
@@ -248,7 +267,7 @@ class TileApplication:
             )
             if self._root is not None:
                 self._validate_root(key)
-            self.scheduler._applications.unregister(self)
+            self.scheduler.unregister_application(self)
             self._closed = True
 
     def __enter__(self) -> Self:

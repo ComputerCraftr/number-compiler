@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.hashlife.execution.tile_causal_tasks import CausalPrefix
+    from number_compiler.resources.causal_types import CausalPrefix, CausalState
 
 
 def finite_pair_transfer(
@@ -15,8 +15,8 @@ def finite_pair_transfer(
     action: FieldCellActionID,
     side: int,
     prefix: CausalPrefix,
-    opposite: object,
-    consumer: object,
+    opposite: CausalState,
+    consumer: CausalState,
 ) -> int | None:
     """Use only a runtime-injected family strategy; shared code has no law.
 

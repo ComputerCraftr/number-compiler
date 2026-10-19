@@ -35,7 +35,7 @@ from number_compiler.sequences.reverse_add.tile_pair_transfer import (
 )
 
 
-def _runtime(
+def make_tile_runtime(
     effect: BlockEffect,
 ) -> tuple[
     ResourceLedger,
@@ -78,7 +78,7 @@ def _runtime(
     return ledger, tiles, adapter, action, TileScheduler(tiles, results, adapter)
 
 
-def _tile(
+def make_tile_from_symbols(
     tiles: TileArena,
     adapter: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
@@ -103,7 +103,7 @@ def _tile(
         raise
 
 
-def _oracle(
+def literal_tile_output(
     effect: BlockEffect,
     symbols: tuple[int, ...],
 ) -> tuple[int, ...]:
@@ -128,13 +128,13 @@ def _oracle(
     )
 
 
-def _symbols(tiles: TileArena, tile: TileID) -> tuple[int, ...]:
+def read_tile_symbols(tiles: TileArena, tile: TileID) -> tuple[int, ...]:
     return tuple(
         tiles.point(tile, coordinate) for coordinate in range(tiles.resolve(tile).width)
     )
 
 
-def _runtime_source(
+def make_tile_runtime_source(
     effect: BlockEffect, symbols: tuple[int, ...]
 ) -> tuple[
     ResourceLedger,
@@ -145,12 +145,12 @@ def _runtime_source(
     TileLease,
 ]:
     """Construct and retain the exact input tile in the shared kernel fixture."""
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, symbols)
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(effect)
+    source = make_tile_from_symbols(tiles, adapter, primitive, symbols)
     return ledger, tiles, adapter, primitive, scheduler, source
 
 
-def _tile_inputs(
+def runtime_tile_inputs(
     tiles: TileArena,
     adapter: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
@@ -162,7 +162,7 @@ def _tile_inputs(
     return node, node.left, node.right, ports, wiring
 
 
-def _spatial_inputs(
+def runtime_spatial_inputs(
     tiles: TileArena,
     adapter: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
@@ -176,7 +176,9 @@ def _spatial_inputs(
     ChildContext,
     ChildContext,
 ]:
-    node, left, right, ports, wiring = _tile_inputs(tiles, adapter, action, source)
+    node, left, right, ports, wiring = runtime_tile_inputs(
+        tiles, adapter, action, source
+    )
     left_context = adapter.child_context(
         action, source.tile, left, right, ports, wiring, 0
     )
@@ -206,7 +208,7 @@ def powered_runtime_source(
     TileLease,
     FieldCellActionID,
 ]:
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, symbols
     )
     action = adapter.power(primitive, exponent)
@@ -224,7 +226,7 @@ def runtime_signature(
     tuple[int, ...],
     ResultWiring,
 ]:
-    ledger, tiles, adapter, action, scheduler = _runtime(effect)
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(effect)
     ports = adapter.initial_ports(action)
     wiring = adapter.wiring(action)
     return ledger, tiles, adapter, action, scheduler, ports, wiring
@@ -241,7 +243,7 @@ def powered_runtime(
     FieldCellActionID,
     int,
 ]:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(effect)
     action = adapter.power(primitive, exponent)
     blank = adapter.primitive_law(primitive).blank
     return ledger, tiles, adapter, primitive, scheduler, action, blank
@@ -258,7 +260,7 @@ def runtime_source_children(
     TileLease,
     TileRecord,
 ]:
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, symbols
     )
     node = tiles.resolve(source.tile)

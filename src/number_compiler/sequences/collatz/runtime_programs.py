@@ -12,8 +12,9 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypeGuard
 
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -24,6 +25,12 @@ from number_compiler.arithmetic.contracts.semantic_identity import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+    PayloadAuditStoreBinding,
+    register_payload_audit_contract,
+)
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.field_action import ProgramRole
 
@@ -136,11 +143,8 @@ class CollatzRuntimeProgramArena:
             node_count=lambda: self._identity_storage_nodes,
             payloads=self._semantic_identities.items,
         )
-        from number_compiler.sequences.collatz.payload_audit import (
-            register_collatz_runtime_program_contract,
-        )
 
-        register_collatz_runtime_program_contract(self)
+        self.register_payload_audit()
 
     @property
     def nodes(self) -> tuple[CollatzRuntimeProgram, ...]:
@@ -194,6 +198,9 @@ class CollatzRuntimeProgramArena:
     def validate(self, role: ProgramRole, reference: ActionProgramID) -> int:
         role = self._role(role)
         node = self.resolve(reference)
+        if type(node) is not CollatzRuntimeProgram:
+            raise TypeError("Collatz runtime program store contains another node type")
+        node.__post_init__()
         if node.role != role:
             raise ValueError("Collatz runtime program has another semantic role")
         return reference.local_id
@@ -211,9 +218,91 @@ class CollatzRuntimeProgramArena:
         """
         role = self._role(role)
         node = self.resolve(reference)
+        if type(node) is not CollatzRuntimeProgram:
+            raise TypeError("Collatz runtime program store contains another node type")
+        node.__post_init__()
         if node.role != role:
             raise ValueError("Collatz runtime program has another semantic role")
         return self._semantic_identity_for(role, node.exponent)
+
+    def audit_semantic_identity(
+        self,
+        role: ProgramRole,
+        reference: ActionProgramID,
+    ) -> SemanticIdentity:
+        """Read and authenticate an already-issued identity without publishing.
+
+        Payload audits must not repair a missing cache entry or increment
+        production counters.  Both stores are read through their backing
+        mapping views so this path remains forensic even if normal admission
+        is no longer available.
+        """
+        role = self._role(role)
+        node = self.resolve(reference)
+        if type(node) is not CollatzRuntimeProgram:
+            raise TypeError("Collatz runtime program store contains another node type")
+        node.__post_init__()
+        if node.role != role:
+            raise ValueError("Collatz runtime program has another semantic role")
+        identity_store = self._semantic_identities
+        authority_store = self._semantic_identity_authority
+        if (
+            type(identity_store) is not LedgerDict
+            or type(authority_store) is not LedgerDict
+            or identity_store.ledger is not self.ledger
+            or authority_store.ledger is not self.ledger
+            or identity_store.owner != self._identity_owner
+            or authority_store.owner != self._identity_authority_owner
+            or not self.ledger.is_factory_container(identity_store)
+            or not self.ledger.is_factory_container(authority_store)
+        ):
+            raise ValueError("Collatz semantic identity stores lost their owners")
+        key = role, node.exponent
+        record = identity_store.backing_store.get(key)
+        issued = authority_store.backing_store.get(key)
+        if record is None or record is not issued:
+            raise ValueError("Collatz semantic identity is not already authenticated")
+        return self._audit_identity_record(role, node.exponent, record)
+
+    @staticmethod
+    def _audit_identity_record(
+        role: ProgramRole,
+        exponent: int,
+        record: object,
+    ) -> SemanticIdentity:
+        """Check an existing identity row against its exact semantic key."""
+        if type(record) is not tuple or len(record) != 4:
+            raise ValueError("malformed Collatz semantic identity record")
+        identity, digest, behavior, stored_exponent = record
+        if (
+            type(identity) is not SemanticIdentity
+            or type(digest) is not str
+            or type(behavior) is not tuple
+            or len(behavior) != 3
+            or type(stored_exponent) is not int
+            or stored_exponent != exponent
+            or identity.digest != digest
+            or identity.behavior is not behavior
+            or behavior[0] != COLLATZ_RUNTIME_PROGRAM_TAG
+            or behavior[1] != role
+        ):
+            raise ValueError("Collatz semantic identity lost its exact binding")
+        descriptor = behavior[2]
+        if (
+            type(descriptor) is not tuple
+            or len(descriptor) != 3
+            or descriptor[0] != EXACT_EXPONENT_LIMBS_TAG
+            or descriptor[1] != exponent.bit_length()
+            or not _is_exponent_limbs(descriptor[2])
+            or sum(
+                limb << (_EXPONENT_LIMB_BITS * index)
+                for index, limb in enumerate(descriptor[2])
+            )
+            != exponent
+        ):
+            raise ValueError("Collatz semantic identity has a malformed exponent")
+        identity.validate()
+        return identity
 
     def _semantic_identity_for(
         self, role: ProgramRole, exponent: int
@@ -255,10 +344,12 @@ class CollatzRuntimeProgramArena:
                 or found.behavior is not behavior_seal
                 or behavior_seal[0] != COLLATZ_RUNTIME_PROGRAM_TAG
                 or behavior_seal[1] != role
+                or not is_object_tuple(descriptor)
                 or type(descriptor) is not tuple
                 or len(descriptor) != 3
                 or descriptor[0] != EXACT_EXPONENT_LIMBS_TAG
                 or descriptor[1] != bit_length
+                or not is_object_tuple(descriptor[2])
                 or type(descriptor[2]) is not tuple
                 or len(descriptor[2]) != limb_count
             ):
@@ -318,14 +409,14 @@ class CollatzRuntimeProgramArena:
             if node_count_published:
                 self._identity_storage_nodes -= retained_nodes
             authority_removed = (
-                self._semantic_identity_authority._rollback_unpublished(key, record)
+                self._semantic_identity_authority.rollback_unpublished(key, record)
                 if record is not None
                 else False
             )
             if not authority_removed:
                 self.ledger.release(self._identity_authority_owner, entries=1)
             cache_removed = (
-                self._semantic_identities._rollback_unpublished(key, record)
+                self._semantic_identities.rollback_unpublished(key, record)
                 if record is not None
                 else False
             )
@@ -407,5 +498,203 @@ class CollatzRuntimeProgramArena:
         )
         return first + second
 
+    def register_payload_audit(self) -> None:
+        root = self
+
+        if type(root) is not CollatzRuntimeProgramArena:
+            raise TypeError("Collatz runtime audit requires its exact arena")
+        stores = (
+            PayloadAuditStoreBinding(root._node_owner, "_nodes", "action_program"),
+            PayloadAuditStoreBinding(
+                root._key_owner, "_keys", "action_program_interner"
+            ),
+            PayloadAuditStoreBinding(
+                root._compose_owner, "_compositions", "action_construction_metadata"
+            ),
+            PayloadAuditStoreBinding(
+                root._identity_owner, "_semantic_identities", "semantic_identity_cache"
+            ),
+            PayloadAuditStoreBinding(
+                root._identity_authority_owner,
+                "_semantic_identity_authority",
+                "semantic_identity_cache_authority",
+            ),
+        )
+        register_payload_audit_contract(
+            root.ledger, root, "collatz", stores, audit_collatz_runtime_programs
+        )
+
+    def audit_payload(self, ledger: object, root: object) -> PayloadAuditContribution:
+        """Validate canonical program nodes, compositions and identity witnesses."""
+        if root is not self:
+            raise TypeError("payload audit callback received another owner")
+        from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+        from number_compiler.arithmetic.contracts.semantic_identity import (
+            SemanticIdentity,
+        )
+        from number_compiler.resources.ledger import ResourceLedger
+
+        if (
+            type(ledger) is not ResourceLedger
+            or type(root) is not CollatzRuntimeProgramArena
+        ):
+            raise TypeError("Collatz runtime-program audit received a foreign owner")
+        arena = root
+        approved: list[PayloadAuditEntry] = []
+        invalid: list[PayloadAuditEntry] = []
+
+        def record(owner: int, value: object, valid: bool) -> None:
+            entry = PayloadAuditEntry(owner, value)
+            (approved if valid else invalid).append(entry)
+
+        identity_row = ledger.inventory_owner(arena._identity_owner)
+        authority_row = ledger.inventory_owner(arena._identity_authority_owner)
+        root_valid = (
+            arena.ledger is ledger
+            and identity_row.role == "semantic_identity_cache"
+            and identity_row.entries == len(arena._semantic_identities)
+            and identity_row.nodes == arena._identity_storage_nodes
+            and authority_row.role == "semantic_identity_cache_authority"
+            and authority_row.entries == len(arena._semantic_identity_authority)
+            and authority_row.nodes == 0
+            and len(arena._semantic_identities)
+            == len(arena._semantic_identity_authority)
+        )
+        if not root_valid:
+            invalid.append(PayloadAuditEntry(arena._node_owner, arena))
+
+        for identity_key, identity_record in arena._semantic_identities.items():
+            valid = (
+                type(identity_key) is tuple
+                and len(identity_key) == 2
+                and type(identity_key[0]) is str
+                and identity_key[0]
+                in {"root", "affine", "output", "physical-tick", "valuation", "frame"}
+                and type(identity_key[1]) is int
+                and identity_key[1] >= 0
+                and arena._semantic_identity_authority.get(identity_key)
+                is identity_record
+                and type(identity_record) is tuple
+                and len(identity_record) == 4
+            )
+            try:
+                if type(identity_record) is not tuple or len(identity_record) != 4:
+                    raise ValueError("malformed Collatz semantic identity row")
+                identity, digest, behavior, exponent = identity_record
+                if type(behavior) is not tuple or len(behavior) != 3:
+                    raise ValueError("malformed Collatz identity behavior")
+                descriptor = behavior[2]
+                if (
+                    not is_object_tuple(descriptor)
+                    or type(descriptor) is not tuple
+                    or len(descriptor) != 3
+                ):
+                    raise ValueError("malformed Collatz exponent descriptor")
+                limbs = descriptor[2]
+                valid &= (
+                    type(identity) is SemanticIdentity
+                    and type(digest) is str
+                    and identity.digest == digest
+                    and identity.behavior is behavior
+                    and type(exponent) is int
+                    and exponent == identity_key[1]
+                    and behavior[0] == COLLATZ_RUNTIME_PROGRAM_TAG
+                    and behavior[1] == identity_key[0]
+                    and descriptor[0] == EXACT_EXPONENT_LIMBS_TAG
+                    and descriptor[1] == exponent.bit_length()
+                    and _is_exponent_limbs(limbs)
+                    and sum(limb << (64 * index) for index, limb in enumerate(limbs))
+                    == exponent
+                )
+                identity.validate()
+            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+                valid = False
+            record(arena._identity_owner, identity_key, valid)
+            record(arena._identity_owner, identity_record, valid)
+            record(arena._identity_authority_owner, identity_key, valid)
+            record(arena._identity_authority_owner, identity_record, valid)
+
+        for index, program in enumerate(arena._nodes):
+            if type(program) is not CollatzRuntimeProgram:
+                record(arena._node_owner, program, False)
+                continue
+            valid = True
+            stored_handle = None
+            try:
+                program.__post_init__()
+                handle = ActionProgramID(arena.owner, arena._KIND, index)
+                stored_handle = arena._keys.get((program.role, program.exponent))
+                valid &= arena.resolve(handle) is program
+                valid &= stored_handle == handle
+                for child in (program.before, program.after):
+                    if child is not None:
+                        arena.resolve(child)
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._node_owner, program, valid)
+            if stored_handle is not None:
+                record(arena._key_owner, stored_handle, valid)
+
+        for interner_key, handle in arena._keys.items():
+            valid = (
+                type(interner_key) is tuple
+                and len(interner_key) == 2
+                and type(interner_key[0]) is str
+                and type(interner_key[1]) is int
+                and type(handle) is ActionProgramID
+            )
+            try:
+                program = arena.resolve(handle)
+                valid &= (program.role, program.exponent) == interner_key
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._key_owner, interner_key, valid)
+            record(arena._key_owner, handle, valid)
+
+        for composition_key, result in arena._compositions.items():
+            valid = (
+                type(composition_key) is tuple
+                and len(composition_key) == 3
+                and type(composition_key[0]) is str
+            )
+            try:
+                if type(composition_key) is not tuple or len(composition_key) != 3:
+                    raise ValueError("malformed Collatz composition key")
+                first, second = (
+                    arena.resolve(composition_key[1]),
+                    arena.resolve(composition_key[2]),
+                )
+                actual = arena.resolve(result)
+                valid &= first.role == second.role == composition_key[0] == actual.role
+                valid &= actual.exponent == first.exponent + second.exponent
+                valid &= (
+                    actual.before == composition_key[1]
+                    and actual.after == composition_key[2]
+                )
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._compose_owner, composition_key, valid)
+            record(arena._compose_owner, result, valid)
+
+        return PayloadAuditContribution(tuple(approved), tuple(invalid))
+
 
 __all__ = ["CollatzRuntimeProgram", "CollatzRuntimeProgramArena"]
+
+
+def _is_exponent_limbs(value: object) -> TypeGuard[tuple[int, ...]]:
+    """Validate exact limb tuples at the forensic payload boundary."""
+    return (
+        is_object_tuple(value)
+        and type(value) is tuple
+        and all(type(limb) is int and 0 <= limb < 1 << 64 for limb in value)
+    )
+
+
+def audit_collatz_runtime_programs(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    """Closure-free ledger entry point for its exact family owner."""
+    if type(root) is not CollatzRuntimeProgramArena:
+        raise TypeError("Collatz payload audit received another owner")
+    return root.audit_payload(ledger, root)

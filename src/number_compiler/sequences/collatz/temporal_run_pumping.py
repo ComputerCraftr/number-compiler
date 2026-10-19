@@ -11,23 +11,34 @@ from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
+from number_compiler.sequences.collatz.run_prefix_checkpoints import (
+    publish_run_root_checkpoints,
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzWidthSpineAccumulator,
     charge_width_repeat,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
-    _CYCLE_F5,
+    CYCLE_F5,
     CollatzF5AffineAction,
-    _run_one_f5,
+    run_one_f5,
+    run_zero_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
+)
+from number_compiler.sequences.collatz.terminal_run_execution import (
+    consume_pending_odd_half_step,
 )
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.innovation_input_tape import (
         ParityProgramBuilder,
     )
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        CollatzDyadicMacros,
+    )
+    from number_compiler.sequences.collatz.temporal_run_state import CollatzRunControl
 
 
 def pump_normalized_ones(
@@ -57,7 +68,7 @@ def pump_normalized_ones(
         # Each odd raw cell is at most one bit above its normalized bound.
         width_spine.record(BlankLedger(displacement, 0, displacement + 1))
     if normalized_f5 is not None and physical_f5 is not None:
-        f5 = _run_one_f5(length)
+        f5 = run_one_f5(length)
         normalized_f5 = normalized_f5.then(f5)
         physical_f5 = physical_f5.then(f5)
     ledger = scratch.ledger
@@ -92,7 +103,7 @@ def pump_normalized_one_cycle(
     normalized_f5 = state.normalized_f5
     physical_f5 = state.physical_f5
     if normalized_f5 is not None and physical_f5 is not None:
-        cycle_f5 = _CYCLE_F5.power(repetitions)
+        cycle_f5 = CYCLE_F5.power(repetitions)
         normalized_f5 = normalized_f5.then(cycle_f5)
         physical_f5 = physical_f5.then(cycle_f5)
     if width_spine.complete:
@@ -118,3 +129,126 @@ def pump_normalized_one_cycle(
         ),
         repetitions,
     )
+
+
+def consume_homogeneous_run(
+    control: CollatzRunControl,
+    *,
+    seed: int,
+    available: int,
+    control_bits: int,
+    include_joint_cocycle: bool,
+    ledger: ResourceLedger,
+    scratch: RunArithmeticWorkspace,
+    width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder,
+    parity_builder: ParityProgramBuilder | None,
+    macros: CollatzDyadicMacros | None,
+) -> None:
+    """Consume the selected even/odd run, retaining any pending odd half tick."""
+    if control.current & 1 == 0:
+        length = min(available, control.remaining)
+        run_source = control.current
+        run_offset = control.normalized
+        run_odd_offset = control.one_symbols
+        before_bits = control.current.bit_length()
+        joint_source = control.current
+        if parity_builder is not None:
+            control.current = parity_builder.append_zero_run(run_source, length)
+        else:
+            control.current >>= length
+        if include_joint_cocycle:
+            joint_builder.append_run(joint_source, length, odd=False)
+        if width_spine.complete:
+            after_bits = control.current.bit_length()
+            segment = BlankLedger(
+                after_bits - before_bits,
+                min(0, after_bits - before_bits),
+                max(0, after_bits - before_bits),
+            )
+            width_spine.record(segment)
+        if control.normalized_f5 is not None and control.physical_f5 is not None:
+            f5 = run_zero_f5(length)
+            control.normalized_f5 = control.normalized_f5.then(f5)
+            control.physical_f5 = control.physical_f5.then(f5)
+        control.remaining -= length
+        control.division_ticks += length
+        control.normalized += length
+        control.zero_symbols += length
+        control.run_actions += 1
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ZERO_RUN_PUMPS)
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_ZERO_RUN_SYMBOLS, length)
+        ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
+            before_bits + control.current.bit_length() + length.bit_length(),
+        )
+        if macros is not None and control.current > 2:
+            publish_run_root_checkpoints(
+                macros,
+                scratch,
+                anchor=seed,
+                source=run_source,
+                normalized_offset=run_offset,
+                odd_offset=run_odd_offset,
+                run_length=length,
+                odd_run=False,
+            )
+        control.unified_skew_retry = True
+        return
+
+    complete = min(available, control.remaining // 2)
+    if complete:
+        run_source = control.current
+        run_offset = control.normalized
+        run_odd_offset = control.one_symbols
+        control.current, control.normalized_f5, control.physical_f5 = (
+            pump_normalized_ones(
+                control.current,
+                complete,
+                scratch=scratch,
+                control_bits=control_bits,
+                width_spine=width_spine,
+                joint_builder=joint_builder if include_joint_cocycle else None,
+                parity_builder=parity_builder,
+                normalized_f5=control.normalized_f5,
+                physical_f5=control.physical_f5,
+            )
+        )
+        control.remaining -= 2 * complete
+        control.odd_ticks += complete
+        control.division_ticks += complete
+        control.normalized += complete
+        control.one_symbols += complete
+        control.run_actions += 1
+        if macros is not None and control.current > 2:
+            publish_run_root_checkpoints(
+                macros,
+                scratch,
+                anchor=seed,
+                source=run_source,
+                normalized_offset=run_offset,
+                odd_offset=run_odd_offset,
+                run_length=complete,
+                odd_run=True,
+            )
+        control.unified_skew_retry = True
+    if control.remaining:
+        if complete >= available or control.remaining != 1 or not control.current & 1:
+            return
+        control.pending_normalized_source = control.current
+        half_step = consume_pending_odd_half_step(
+            control.current,
+            ledger=ledger,
+            scratch=scratch,
+            control_bits=control_bits,
+            width_spine=width_spine,
+            odd_ticks=control.odd_ticks,
+            run_actions=control.run_actions,
+            physical_f5=control.physical_f5,
+        )
+        control.current = half_step.endpoint
+        control.odd_ticks = half_step.odd_ticks
+        control.run_actions = half_step.run_actions
+        control.physical_f5 = half_step.physical_f5
+        control.remaining = 0
+        control.phase = 1

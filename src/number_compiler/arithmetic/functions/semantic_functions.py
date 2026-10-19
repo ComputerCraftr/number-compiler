@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -121,6 +122,23 @@ class SemanticFunctionArena:
 
     def _handle(self, identity: int) -> SemanticFunctionID:
         return SemanticFunctionID(self.token, "semantic-function", identity)
+
+    def candidate_handle(
+        self, identity: int, *, base: int, candidate_count: int
+    ) -> SemanticFunctionID:
+        """Create a prospective ID bounded by the active publication window.
+
+        The returned handle is usable only after the corresponding canonical
+        node is published; ``resolve`` remains the authority check.
+        """
+        require_integer(identity, "semantic candidate ID", 0)
+        require_integer(base, "semantic publication base", 0)
+        require_integer(candidate_count, "semantic candidate count", 0)
+        if base != len(self.nodes):
+            raise RuntimeError("semantic publication base is stale")
+        if identity >= base + candidate_count:
+            raise ValueError("semantic candidate ID is outside its publication window")
+        return self._handle(identity)
 
     def resolve(self, function: SemanticFunctionID) -> SemanticNode:
         if type(function) is not SemanticFunctionID:
@@ -250,7 +268,7 @@ class SemanticFunctionArena:
             transaction.resign(
                 item.local_id, FunctionSignature(inputs, node.signature.output)
             )
-            for item, node in zip(functions, nodes)
+            for item, node in zip(functions, nodes, strict=True)
         )
         root = transaction.zip_product(roots, signature)
         return transaction.finish(transaction.admissible(root))

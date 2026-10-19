@@ -23,7 +23,7 @@ from number_compiler.arithmetic.fields.digit_formula import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 
 MAX_DIGIT_MODULUS = 1_000_000
 MAX_SOURCE_LEVEL_BITS = 4_096
@@ -145,24 +145,74 @@ def _matrix_multiply(first: Matrix2, second: Matrix2, modulus: int) -> Matrix2:
     )
 
 
-def _mersenne_source_residue(level: int, modulus: int) -> tuple[int, int, int, int]:
-    order, factor_trials = _sl2_group_order(modulus)
-    exponent_power = modular_power(2, level, order)
-    exponent = exponent_power.value
-    matrix: Matrix2 = (4 % modulus, (-1) % modulus, 1 % modulus, 0)
+def checked_dyadic_matrix_power(
+    matrix: Matrix2,
+    steps: int,
+    modulus: int,
+    proposed_period: int,
+) -> tuple[Matrix2, int, int]:
+    """Power a modular 2x2 matrix after checking its proposed period.
+
+    The proposed period is only a candidate.  It is admitted for exponent
+    reduction only after exact modular powering shows that this particular
+    source matrix has that period identity.  The returned work counts include
+    the period check and the requested matrix power.
+    """
+    if (
+        type(steps) is not int
+        or steps < 0
+        or type(modulus) is not int
+        or modulus <= 1
+        or type(proposed_period) is not int
+        or proposed_period <= 0
+        or type(matrix) is not tuple
+        or len(matrix) != 4
+        or any(type(entry) is not int or not 0 <= entry < modulus for entry in matrix)
+    ):
+        raise ValueError("invalid modular dyadic matrix request")
+
     identity: Matrix2 = (1 % modulus, 0, 0, 1 % modulus)
 
-    def compose(left: Matrix2, right: Matrix2) -> Matrix2:
-        return _matrix_multiply(left, right, modulus)
+    def compose(first: Matrix2, after: Matrix2) -> Matrix2:
+        return _matrix_multiply(first, after, modulus)
 
-    matrix_power = binary_power(
+    period_check = binary_power(
         matrix,
-        exponent,
+        proposed_period,
         identity=identity,
         compose=compose,
     )
-    result = (matrix_power.value[0] + matrix_power.value[3]) % modulus
-    return result, factor_trials, exponent_power.compositions, matrix_power.compositions
+    if period_check.value != identity:
+        raise ArithmeticError("proposed matrix identity failed exact period check")
+
+    if proposed_period == 1:
+        reduced_exponent_value = 0
+        scalar_compositions = 0
+    else:
+        reduced_exponent = modular_power(2, steps, proposed_period)
+        reduced_exponent_value = reduced_exponent.value
+        scalar_compositions = reduced_exponent.compositions
+    powered = binary_power(
+        matrix,
+        reduced_exponent_value,
+        identity=identity,
+        compose=compose,
+    )
+    return (
+        powered.value,
+        scalar_compositions,
+        period_check.compositions + powered.compositions,
+    )
+
+
+def _mersenne_source_residue(level: int, modulus: int) -> tuple[int, int, int, int]:
+    order, factor_trials = _sl2_group_order(modulus)
+    matrix: Matrix2 = (4 % modulus, (-1) % modulus, 1 % modulus, 0)
+    matrix_power, scalar_compositions, matrix_compositions = (
+        checked_dyadic_matrix_power(matrix, level, modulus, order)
+    )
+    result = (matrix_power[0] + matrix_power[3]) % modulus
+    return result, factor_trials, scalar_compositions, matrix_compositions
 
 
 def _fermat_source_residue(level: int, modulus: int) -> tuple[int, int, int, int]:
@@ -239,7 +289,7 @@ class SmallModulusWork:
             raise ValueError("small-modulus factor work exceeded its trial bound")
 
 
-def _source_residue(
+def source_residue(
     family: str, level: int, modulus: int
 ) -> tuple[int, SmallModulusWork]:
     _check_digit_modulus(modulus)
@@ -442,7 +492,7 @@ class FermatMultiradixPort:
             type(issuer) is _MultiradixProvenance
             and issuer.issuer is _MULTIRADIX_ISSUER
             and issuer.record() is self
-            and _typed_equal(issuer.snapshot, _multiradix_snapshot(self))
+            and typed_payload_equal(issuer.snapshot, _multiradix_snapshot(self))
         )
 
 
@@ -527,7 +577,7 @@ def demand_three_power_multiradix_port(
     # squarings in this admitted small radix modulus, never in the Fermat
     # candidate ring. All carry/borrow projections therefore share one
     # authenticated source owner.
-    previous, previous_work = _source_residue("fermat", level - 1, modulus)
+    previous, previous_work = source_residue("fermat", level - 1, modulus)
     source = (previous * previous) % modulus
     following = (source * source) % modulus
     source_work = SmallModulusWork(modulus, 0, 1, 0)
@@ -677,7 +727,7 @@ def demand_unwrapped_inner_digit_stencil(
     if exponent > 19 or base > MAX_DIGIT_MODULUS:
         raise ValueError(("digit-modulus-budget-exceeded", base, exponent))
     modulus = _bounded_radix_power(base, exponent)
-    source, work = _source_residue(family, level, modulus)
+    source, work = source_residue(family, level, modulus)
     target = (source * source - (2 if family == "mersenne" else 0)) % modulus
     digits = tuple((target // (base**position)) % base for position in positions)
     return UnwrappedInnerDigitStencil(
@@ -779,7 +829,7 @@ class UnwrappedInnerRadixPort:
         return (self.target_prefix // place) % self.base
 
 
-def _radix_port_from_source_residue(
+def radix_port_from_source_residue(
     family: str,
     parameter: int,
     level: int,
@@ -838,8 +888,8 @@ def demand_unwrapped_inner_radix_port(
         raise ValueError(("digit-modulus-budget-exceeded", base, MAX_DIGIT_MODULUS))
     modulus = _bounded_radix_power(base, 6)
     _check_digit_modulus(modulus)
-    source, work = _source_residue(family, level, modulus)
-    return _radix_port_from_source_residue(family, parameter, level, base, source, work)
+    source, work = source_residue(family, level, modulus)
+    return radix_port_from_source_residue(family, parameter, level, base, source, work)
 
 
 __all__ = [
@@ -854,6 +904,7 @@ __all__ = [
     "ThreePowerRadixBoundary",
     "UnwrappedInnerDigitStencil",
     "UnwrappedInnerRadixPort",
+    "checked_dyadic_matrix_power",
     "demand_three_power_multiradix_port",
     "demand_unwrapped_inner_digit_stencil",
     "demand_unwrapped_inner_radix_port",

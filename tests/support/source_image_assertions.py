@@ -3,6 +3,14 @@
 from collections.abc import Iterator, Mapping
 from typing import Protocol
 
+from number_compiler.hashlife.execution.dyadic_return_images import (
+    DyadicImageSummary,
+    DyadicReturnImageID,
+    DyadicReturnImageWorkspace,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageView,
+)
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -33,7 +41,7 @@ def assert_source_image_runtime_bridge(term: SourceImageTerm, family: str) -> No
     first = term.digit(0)
     metrics = term.metrics()
     behavior = term.behavior_metrics()
-    audit = collect_ledger_metrics(term._ledger)
+    audit = collect_ledger_metrics(term.resource_ledger)
     assert metrics.metrics_schema_version == 8
     counters = metrics.resource_work_counters
     if isinstance(term, PoweredCollatzTerm):
@@ -56,9 +64,9 @@ def assert_source_image_runtime_bridge(term: SourceImageTerm, family: str) -> No
     assert behavior.temporal_quotient_state_class_bound == 0
     assert behavior.temporal_quotient_action_class_bound == 0
     assert behavior.seed_application_temporal_action_nodes > 0
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
     assert term.digit(0) == first
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
     assert counters.get("source_image_publications", 0) > 0
     assert counters.get("source_image_projection_publications", 0) > 0
     for counter in (
@@ -76,7 +84,7 @@ def assert_source_image_behavior(
     """Exercise and audit the family-owned source image after a cold snapshot."""
     assert not hasattr(term, "_diamond_runtime")
     before = term.behavior_metrics()
-    before_audit = collect_ledger_metrics(term._ledger)
+    before_audit = collect_ledger_metrics(term.resource_ledger)
     collatz = isinstance(term, PoweredCollatzTerm)
     family = "collatz-dyadic-source-image" if collatz else "reverse-add-source-cylinder"
     assert before.field_action_nodes == 0
@@ -89,7 +97,7 @@ def assert_source_image_behavior(
     term.digit(0)
     after = term.behavior_metrics()
     runtime = term.metrics()
-    after_audit = collect_ledger_metrics(term._ledger)
+    after_audit = collect_ledger_metrics(term.resource_ledger)
     assert after_audit.resource_audit_complete == 1
     assert after.resource_accounting_mismatch == 0
     assert after.field_action_nodes == 0
@@ -151,3 +159,11 @@ def assert_source_image_replay_stable(
         assert after.get(counter, 0) == before[counter]
     assert after.get("higher_action_continuation_requests", 0) == 0
     assert after.get("higher_concrete_operation_evaluations", 0) == 0
+
+
+def dyadic_image_summary(
+    workspace: DyadicReturnImageWorkspace, view: SourceImageView
+) -> DyadicImageSummary:
+    """Assert the source scheduler's payload sort before inspecting its summary."""
+    assert type(view.payload) is DyadicReturnImageID
+    return workspace.image_node(view.payload).summary

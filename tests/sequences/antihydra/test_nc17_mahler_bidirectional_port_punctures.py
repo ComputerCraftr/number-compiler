@@ -119,12 +119,20 @@ def test_100007_and_109907_aliases_keep_distinct_source_ports_and_rows() -> None
     matrix = MahlerCenterBooleanMatrix.from_exterior(join, admitted_only=False)
     assert matrix.destinations(0) == (left.fixed_next_center,)
     assert matrix.destinations(99) == (right.fixed_next_center,)
-    packet = MahlerCertifiedCenterDepthTransfer.from_source(100007, 2).packet()
-    assert packet["punctured_port_constraints_active"] is True
-    frame_counts = cast(tuple[int, ...], packet["punctured_source_frame_counts"])
+    packet = MahlerCertifiedCenterDepthTransfer.from_source(100007, 2).packet(
+        trace=True
+    )
+    assert (
+        cast(dict[str, object], packet["trace"])["punctured_port_constraints_active"]
+        is True
+    )
+    frame_counts = cast(
+        tuple[int, ...],
+        cast(dict[str, object], packet["trace"])["punctured_source_frame_counts"],
+    )
     separations = cast(
         tuple[tuple[dict[str, object], ...], ...],
-        packet["first_separating_port_punctures"],
+        cast(dict[str, object], packet["trace"])["first_separating_port_punctures"],
     )
     assert frame_counts[0] == 2
     assert separations[0]
@@ -154,14 +162,19 @@ def test_compressed_source_motif_carry_is_reused_at_the_center() -> None:
 
 def test_667000_width_birth_uses_authenticated_next_center_position() -> None:
     trace = MahlerCertifiedCenterDepthTransfer.from_source(667000, 1)
-    packet = trace.packet()
+    packet = trace.packet(trace=True)
     assert trace.pointed_sources == (667000, 1000500)
     assert trace.width_births == (1,)
     assert trace.center_positions == (2, 2)
-    assert packet["punctured_port_constraints_active"] is True
+    assert (
+        cast(dict[str, object], packet["trace"])["punctured_port_constraints_active"]
+        is True
+    )
     puncture_frames = cast(
         tuple[tuple[dict[str, object], ...], ...],
-        packet["source_certified_bidirectional_port_punctures"],
+        cast(dict[str, object], packet["trace"])[
+            "source_certified_bidirectional_port_punctures"
+        ],
     )
     first_frame = puncture_frames[0]
     pointed = next(item for item in first_frame if item["source_center"] == 70)

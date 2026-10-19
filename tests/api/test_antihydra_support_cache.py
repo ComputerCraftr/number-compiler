@@ -11,8 +11,7 @@ from weakref import ref
 
 import pytest
 
-from number_compiler.hashlife.execution.source_bound_images import (
-    SourceBoundSchedulerCore,
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
@@ -22,10 +21,40 @@ from number_compiler.sequences.antihydra.projection_core import (
     AntihydraFragmentID,
     AntihydraProjectionDriver,
 )
-from number_compiler.sequences.antihydra.projection_occurrences import (
-    ProjectionOccurrenceCursor,
+from number_compiler.sequences.antihydra.runtime import (
+    AntihydraArithmeticTerm,
+    CylinderEngine,
+    Run,
+    run,
 )
-from number_compiler.sequences.antihydra.runtime import CylinderEngine, run
+
+
+def _execute_with_engine(returns: int) -> tuple[CylinderEngine, Run]:
+    engine = CylinderEngine()
+    return engine, engine.execute(returns)
+
+
+def _evaluated_projection(
+    returns: int,
+) -> tuple[CylinderEngine, Run, SpaceTimeProjection, dict[str, object]]:
+    engine, result = _execute_with_engine(returns)
+    request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
+    return engine, result, request, request.evaluate()
+
+
+def _assert_projection_workspaces_released(
+    driver: AntihydraProjectionDriver,
+) -> None:
+    image_owners = driver.core.transient_inventory()
+    fragment_owners = driver.adapter.transient_inventory()
+    uncleared_owners = tuple(
+        (row.name, row.role, row.entries, row.nodes)
+        for row in (*image_owners, *fragment_owners)
+        if (row.entries, row.nodes) != (0, 0)
+    )
+    assert not uncleared_owners, (
+        f"request-scoped projection owners retained: {uncleared_owners}"
+    )
 
 
 def test_empty_fragment_cache_does_not_import_observation_executor() -> None:
@@ -71,8 +100,8 @@ def test_image_period_reduction_preserves_all_typed_ports(
         projection = SpaceTimeProjection(
             result, width, time_width, sign, time_sign, modulus, 1000000
         )
-        original = projection._section(a, b)[0]
-        reduced = projection._section(*projection._section_key(a, b))[0]
+        original = projection.section_image(a, b)[0]
+        reduced = projection.section_image(*projection.section_key(a, b))[0]
         assert original == reduced
 
 
@@ -149,10 +178,10 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
 
 
 def test_fragment_eviction_keeps_only_detached_projection_ownership() -> None:
-    result = run(128)
+    engine, result = _execute_with_engine(128)
     first_query = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1000000, cache_entries=1)
     expected = first_query.evaluate()
-    cache = result._engine.projection_fragments
+    cache = engine.projection_fragments
     first_keys = tuple(cache.fragments)
     assert len(first_keys) == 1
 
@@ -168,27 +197,27 @@ def test_fragment_eviction_keeps_only_detached_projection_ownership() -> None:
 
 
 def test_equal_translated_section_images_are_combined_in_the_coefficient_ring() -> None:
-    result = run(0)
+    engine, result = _execute_with_engine(0)
     projection = SpaceTimeProjection(result, 2, 2, -1, 1, 5, 1000000)
     area = projection.width * projection.time_width
-    image, _ = projection._section(1, 3)
+    image, _ = projection.section_image(1, 3)
     expected = [[0] * area for _ in range(12)]
-    projection._shift(expected, image, 1, 1)
-    projection._shift(expected, image, 1, 1)
+    projection.shift_image(expected, image, 1, 1)
+    projection.shift_image(expected, image, 1, 1)
 
     actual = [[0] * area for _ in range(12)]
-    workspace = projection.result._engine.projection_workspace
+    workspace = engine.projection_workspace
     if workspace is None:
         from number_compiler.sequences.antihydra.projection_workspace import (
             SectionImageWorkspace,
         )
 
         workspace = SectionImageWorkspace(result.ledger)
-        projection.result._engine.projection_workspace = workspace
+        engine.projection_workspace = workspace
     workspace.start(area)
     try:
-        key = projection._section_key(1, 3)
-        projection._flush_section_classes(actual, {(key, 1, 1): 2}, workspace, 0)
+        key = projection.section_key(1, 3)
+        projection.flush_section_classes(actual, {(key, 1, 1): 2}, workspace, 0)
     finally:
         workspace.clear()
     assert actual == expected
@@ -271,14 +300,14 @@ def test_repeated_queries_and_budget_failure_reuse_empty_workspace() -> None:
 def test_halt_image_never_aliases_positive_ledger_image() -> None:
     projection = SpaceTimeProjection(run(0), 2, 3, -1, -1, 4, 1000000)
     for b in (3, 99, 1000001):
-        assert projection._section_key(0, b) != projection._section_key(24, b)
+        assert projection.section_key(0, b) != projection.section_key(24, b)
 
 
 def test_retained_projection_fragment_rejects_same_shape_substitution() -> None:
-    result = run(64)
+    engine, result = _execute_with_engine(64)
     request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
     request.evaluate()
-    cache = result._engine.projection_fragments
+    cache = engine.projection_fragments
     key = next(iter(cache.fragments))
     original = cache.fragments[key]
     cache.fragments[key] = replace(
@@ -293,10 +322,10 @@ def test_retained_projection_fragment_rejects_same_shape_substitution() -> None:
 
 
 def test_retained_projection_fragment_seal_is_an_independent_snapshot() -> None:
-    result = run(64)
+    engine, result = _execute_with_engine(64)
     request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
     request.evaluate()
-    cache = result._engine.projection_fragments
+    cache = engine.projection_fragments
     fragment = next(iter(cache.fragments.values()))
     original = fragment.typed_ports
     changed = list(original)
@@ -311,13 +340,12 @@ def test_retained_projection_fragment_seal_is_an_independent_snapshot() -> None:
 
 
 def test_rejected_fragment_drop_preserves_cache_and_ledger_state() -> None:
-    result = run(64)
+    engine, result = _execute_with_engine(64)
     request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
     request.evaluate()
-    cache = result._engine.projection_fragments
+    cache = engine.projection_fragments
     key = next(iter(cache.fragments))
     fragment = cache.fragments[key]
-    seal = cache.seals[key]
     entries, nodes = result.ledger.entries, result.ledger.nodes
     original = fragment.typed_ports
     changed = list(original)
@@ -325,30 +353,26 @@ def test_rejected_fragment_drop_preserves_cache_and_ledger_state() -> None:
     object.__setattr__(fragment, "typed_ports", tuple(changed))
     try:
         with pytest.raises(ValueError, match="fragment binding was changed"):
-            cache._drop(key)
+            cache.clear()
         assert cache.fragments[key] is fragment
-        assert cache.seals[key] is seal
         assert (result.ledger.entries, result.ledger.nodes) == (entries, nodes)
     finally:
         object.__setattr__(fragment, "typed_ports", original)
 
-    cache._drop(key)
+    cache.clear()
     assert key not in cache.fragments
-    assert key not in cache.seals
     assert result.ledger.entries == entries - 2
-    assert result.ledger.nodes == nodes - cache._nodes(key) - 2
+    assert result.ledger.nodes == nodes - 12 * key.area - 3
 
 
 def test_detached_fragment_requires_live_source_image_issuance() -> None:
-    result = run(64)
-    request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    expected = request.evaluate()
-    cache = result._engine.projection_fragments
+    engine, result, request, expected = _evaluated_projection(64)
+    cache = engine.projection_fragments
     key = next(iter(cache.fragments))
     original = cache.fragments[key]
     invalid = replace(original, typed_ports=tuple((0,) * key.area for _ in range(12)))
-    cache._drop(key)
-    driver = result._engine.projection_fragment_driver
+    cache.clear()
+    driver = engine.projection_fragment_driver
     assert type(driver) is AntihydraProjectionDriver
     for fragment in (original, invalid):
         for issuer in (None, driver, object()):
@@ -368,10 +392,8 @@ def test_live_fragment_cache_computes_coefficients_from_image(
         ProjectionFragmentCache,
     )
 
-    result = run(64)
-    request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    expected = request.evaluate()
-    cache = result._engine.projection_fragments
+    engine, result, request, expected = _evaluated_projection(64)
+    cache = engine.projection_fragments
     original_fragment = next(iter(cache.fragments.values()))
     invalid = replace(original_fragment, typed_ports=((0, 0, 0, 0),) * 12)
     cache.clear()
@@ -399,9 +421,10 @@ def test_live_fragment_cache_computes_coefficients_from_image(
 
 
 def test_projection_reauthenticates_source_when_it_is_demanded() -> None:
-    result = run(64)
+    term = AntihydraArithmeticTerm(64)
+    result = term.physical_run()
     request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    block = result._term.segments[0].cylinder
+    block = term.segments[0].cylinder
     original = block.parity_word
     object.__setattr__(block, "parity_word", original ^ 1)
     try:
@@ -412,7 +435,7 @@ def test_projection_reauthenticates_source_when_it_is_demanded() -> None:
 
 
 def test_fragment_authority_includes_both_twists_and_lane_sizes() -> None:
-    result = run(64)
+    engine, result = _execute_with_engine(64)
     for width, time_width, sign, time_sign in (
         (2, 3, -1, 1),
         (2, 3, 1, 1),
@@ -428,7 +451,7 @@ def test_fragment_authority_includes_both_twists_and_lane_sizes() -> None:
             5,
             1_000_000,
         ).evaluate()
-    keys = tuple(result._engine.projection_fragments.fragments)
+    keys = tuple(engine.projection_fragments.fragments)
     assert len(keys) == 4
     assert (
         len(
@@ -447,10 +470,10 @@ def test_fragment_authority_includes_both_twists_and_lane_sizes() -> None:
 
 
 def test_fragment_cache_rejects_boolean_key_alias_before_lookup() -> None:
-    result = run(64)
+    engine, result = _execute_with_engine(64)
     request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
     request.evaluate()
-    cache = result._engine.projection_fragments
+    cache = engine.projection_fragments
     key = next(key for key in cache.fragments if key.start == 0)
     expected = cache.get(key)
     assert expected is cache.fragments[key]
@@ -463,7 +486,7 @@ def test_fragment_cache_rejects_boolean_key_alias_before_lookup() -> None:
 
 
 def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> None:
-    result = run(8)
+    engine, result = _execute_with_engine(8)
     inventory_after_first: int | None = None
     request: SpaceTimeProjection | None = None
     for index in range(40):
@@ -486,13 +509,10 @@ def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> 
     gc.collect()
     assert request_reference() is None
 
-    driver = result._engine.projection_fragment_driver
+    driver = engine.projection_fragment_driver
     assert type(driver) is AntihydraProjectionDriver
     assert driver.adapter.projection is None
-    assert not driver.adapter._records
-    assert not driver.adapter._seals
-    assert not driver.core._nodes
-    assert not driver.core._applications
+    _assert_projection_workspaces_released(driver)
     audit = audit_registered_payloads(result.ledger)
     assert (
         audit.forbidden_future_payloads,
@@ -504,16 +524,18 @@ def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> 
 def test_shared_fragment_failure_clears_images_and_active_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.antihydra.projection_core import (
-        _AntihydraFragmentAdapter,
-    )
-
-    result = run(64)
-    original = _AntihydraFragmentAdapter.apply_primitive
+    engine, result = _execute_with_engine(64)
+    projection = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
+    projection.evaluate()
+    engine.projection_fragments.clear()
+    driver = engine.projection_fragment_driver
+    assert type(driver) is AntihydraProjectionDriver
+    adapter_type = type(driver.adapter)
+    original = driver.adapter.apply_primitive
     calls = 0
 
     def fail_admitted_image(
-        adapter: _AntihydraFragmentAdapter,
+        _adapter: object,
         action: Hashable,
         source: SourceImageView,
     ) -> SourceImageCandidate:
@@ -521,33 +543,23 @@ def test_shared_fragment_failure_clears_images_and_active_source(
         calls += 1
         if calls == 1:
             raise ValueError("injected primitive failure")
-        return original(adapter, action, source)
+        return original(action, source)
 
-    monkeypatch.setattr(
-        _AntihydraFragmentAdapter, "apply_primitive", fail_admitted_image
-    )
+    monkeypatch.setattr(adapter_type, "apply_primitive", fail_admitted_image)
     with pytest.raises(ValueError, match="injected primitive failure"):
-        SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000).evaluate()
-    driver = result._engine.projection_fragment_driver
-    assert type(driver) is AntihydraProjectionDriver
+        projection.evaluate()
     assert driver.adapter.projection is None
-    assert not driver.adapter._records
-    assert not driver.adapter._seals
-    assert not driver.core._nodes
-    assert not driver.core._origins
-    assert not driver.core._applications
-    assert not driver.core._projections
+    _assert_projection_workspaces_released(driver)
 
 
 def test_fragment_payload_authority_rotates_between_builds() -> None:
-    from number_compiler.sequences.antihydra.projection_core import (
-        _AntihydraFragmentAdapter,
-    )
-
-    result = run(8)
+    engine, result = _execute_with_engine(8)
     projection = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    adapter = _AntihydraFragmentAdapter(result.ledger)
-    cursor = ProjectionOccurrenceCursor(result.ledger)
+    projection.evaluate()
+    driver = engine.projection_fragment_driver
+    assert type(driver) is AntihydraProjectionDriver
+    adapter = driver.adapter
+    cursor = driver.cursor
     cursor.begin(projection)
     occurrence = cursor.next()
     assert occurrence is not None
@@ -569,14 +581,16 @@ def test_fragment_image_seal_rejects_in_place_field_change() -> None:
     from number_compiler.sequences.antihydra.projection_core import (
         AntihydraFragmentAction,
         AntihydraFragmentID,
-        _AntihydraFragmentAdapter,
     )
 
-    result = run(8)
+    engine, result = _execute_with_engine(8)
     projection = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    adapter = _AntihydraFragmentAdapter(result.ledger)
-    core = SourceBoundSchedulerCore(result.ledger)
-    cursor = ProjectionOccurrenceCursor(result.ledger)
+    projection.evaluate()
+    driver = engine.projection_fragment_driver
+    assert type(driver) is AntihydraProjectionDriver
+    adapter = driver.adapter
+    core = driver.core
+    cursor = driver.cursor
     cursor.begin(projection)
     occurrence = cursor.next()
     assert occurrence is not None

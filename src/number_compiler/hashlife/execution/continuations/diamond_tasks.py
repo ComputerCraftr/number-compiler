@@ -30,12 +30,14 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ImageBinding,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientID
 from number_compiler.hashlife.interfaces.semantic_expression_tasks import StructuredTask
 from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroTask,
 )
-from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    DiamondQuotientID,
+    StructureID,
+)
 
 
 @dataclass(frozen=True, slots=True)

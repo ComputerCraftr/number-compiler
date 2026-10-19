@@ -8,15 +8,19 @@ from typing import Never, cast
 
 import pytest
 
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-from number_compiler.sequences.prime.successor_action import (
-    PrimeSuccessorActionArena,
-    PrimeSuccessorImageAdapter,
+from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
+from number_compiler.sequences.prime.successor_action_contracts import (
     PrimeSuccessorImagePayload,
     PrimeSuccessorPortEffect,
     PrimeSuccessorSource,
+)
+from number_compiler.sequences.prime.successor_image_adapter import (
+    PrimeSuccessorImageAdapter,
 )
 
 

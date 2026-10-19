@@ -16,7 +16,7 @@ def audit(steps: int = 20_000) -> dict[str, object]:
     failures: Counter[str] = Counter()
     deep: Counter[str] = Counter()
     for _ in range(steps):
-        pair = [x + y for x, y in zip(digits, reversed(digits))]
+        pair = [x + y for x, y in zip(digits, reversed(digits), strict=True)]
         reset = next((x for x in pair if x != 9), None)
         counts["ID" if reset is None else "CONST1" if reset > 9 else "CONST0"] += 1
         carry = 0

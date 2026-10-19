@@ -37,7 +37,7 @@ def test_detailed_scheduler_publishes_carrier_without_recompiling(
         repeated = term.true_root_morphism()
         assert repeated == root and repeated is not root
         root.validate()
-        audit = audit_registered_payloads(term._ledger)
+        audit = audit_registered_payloads(term.resource_ledger)
         assert audit.forbidden_future_payloads == 0
         assert audit.unbounded_future_integers == 0
     finally:

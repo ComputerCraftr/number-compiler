@@ -8,7 +8,7 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_primitive_tables import (
     HigherPrimitiveTables,
 )
-from number_compiler.resources.higher_readonly import audit_schema_call
+from number_compiler.resources.higher_readonly import audit_validate_action
 from number_compiler.resources.payload_containers import audit_mapping_items
 
 
@@ -31,13 +31,11 @@ def valid_higher_primitive_table(
             ):
                 return False
             try:
-                audit_schema_call(root.schema, "validate_action", key)
-                if audit_schema_call(
-                    root.schema, "kind", key
-                ) != "primitive" or result != (
-                    audit_schema_call(root.schema, "state_count", key, 0),
-                    audit_schema_call(root.schema, "state_count", key, 1),
-                    audit_schema_call(root.schema, "alphabet", key)[1],
+                audit_validate_action(root.schema, key)
+                if root.schema.kind(key) != "primitive" or result != (
+                    root.schema.state_count(key, 0),
+                    root.schema.state_count(key, 1),
+                    root.schema.alphabet(key)[1],
                 ):
                     return False
             except (TypeError, ValueError, IndexError, AttributeError):
@@ -54,15 +52,10 @@ def valid_higher_primitive_table(
         action = key[0]
         first, second, third = key[1:]
         try:
-            audit_schema_call(root.schema, "validate_action", action)
-            _, blank = audit_schema_call(root.schema, "alphabet", action)
+            audit_validate_action(root.schema, action)
+            _, blank = root.schema.alphabet(action)
             if operation == "step":
-                state_count = audit_schema_call(
-                    root.schema,
-                    "state_count",
-                    action,
-                    first,
-                )
+                state_count = root.schema.state_count(action, first)
                 valid = (
                     first in (0, 1)
                     and 0 <= second < state_count
@@ -70,8 +63,8 @@ def valid_higher_primitive_table(
                     and 0 <= result < state_count
                 )
             else:
-                left_count = audit_schema_call(root.schema, "state_count", action, 0)
-                right_count = audit_schema_call(root.schema, "state_count", action, 1)
+                left_count = root.schema.state_count(action, 0)
+                right_count = root.schema.state_count(action, 1)
                 valid = (
                     0 <= first < left_count
                     and 0 <= second <= blank

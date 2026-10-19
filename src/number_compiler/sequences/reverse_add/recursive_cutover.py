@@ -64,6 +64,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.reverse_add.coordinate_program import (
     ReverseCoordinateProgramArena,
 )
@@ -78,8 +79,8 @@ from number_compiler.sequences.reverse_add.higher_schema import (
     ReverseHigherActionSchema,
 )
 from number_compiler.sequences.reverse_add.recursive_adapters import (
+    ReverseRecursiveFieldAdapter,
     _ReverseProviderAdapter,
-    _ReverseRecursiveFieldAdapter,
 )
 
 
@@ -116,6 +117,26 @@ class ReverseRecursiveOccurrence:
             type(self.active_extent) is not int or self.active_extent < 0
         ):
             raise ValueError("reverse recursive occurrence has invalid active extent")
+
+    @property
+    def authority(self) -> object:
+        """Return the issued authority token for read-only forensic comparison."""
+        return self._authority
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseRecursiveTemporalCutoverAuditSnapshot:
+    """Current source/action publication authority for explicit audits."""
+
+    ledger: ResourceLedger
+    source: SourceCellID
+    source_geometry: SourceGeometry
+    extent: int
+    maximum_steps: int
+    blank: int
+    disposed: bool
+    pair_actions: OwnedMemoAuditSnapshot[int, FieldCellActionID]
+    occurrence_authority: object
 
 
 class ReverseRecursiveTemporalCutover:
@@ -237,7 +258,7 @@ class ReverseRecursiveTemporalCutover:
         root_geometry = geometries.intern(
             FieldGeometry(level, phase_count=action_geometry.phase_count)
         )
-        adapter = _ReverseRecursiveFieldAdapter(
+        adapter = ReverseRecursiveFieldAdapter(
             ledger,
             actions,
             sources,
@@ -346,6 +367,20 @@ class ReverseRecursiveTemporalCutover:
         found = self.actions.power(self.primitive, temporal_steps - 1)
         self._pair_actions[temporal_steps] = found
         return found
+
+    def audit_snapshot(self) -> ReverseRecursiveTemporalCutoverAuditSnapshot:
+        """Expose current occurrence/cache authority without extending it."""
+        return ReverseRecursiveTemporalCutoverAuditSnapshot(
+            ledger=self.ledger,
+            source=self.source,
+            source_geometry=self.source_geometry,
+            extent=self.extent,
+            maximum_steps=self.maximum_steps,
+            blank=self.blank,
+            disposed=self._disposed,
+            pair_actions=self._pair_actions.audit_snapshot(),
+            occurrence_authority=self._occurrence_authority,
+        )
 
     def pair_image(self, temporal_steps: int) -> ReverseRecursiveOccurrence:
         if self._disposed:

@@ -13,13 +13,14 @@ and no finite-corpus result is promoted to a primality theorem.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.walsh import WalshH5, walsh_h5_at_offset
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 from number_compiler.sequences.power_numbers.source_matrix import (
     FermatMultiradixPort,
     demand_three_power_multiradix_port,
@@ -96,7 +97,7 @@ def _adaptive_snapshot(action: AdaptiveInteriorAction) -> tuple[object, ...]:
         action.index,
         action.level,
         tuple((id(port), _port_snapshot(port)) for port in action.radix_ports),
-        tuple((id(window), window._snapshot()) for window in action.windows),
+        tuple((id(window), window.structural_snapshot()) for window in action.windows),
     )
 
 
@@ -174,7 +175,7 @@ class AdaptiveInteriorAction:
             type(issuer) is _AdaptiveProvenance
             and issuer.issuer is _ADAPTIVE_ISSUER
             and issuer.record() is self
-            and _typed_equal(issuer.snapshot, _adaptive_snapshot(self))
+            and typed_payload_equal(issuer.snapshot, _adaptive_snapshot(self))
             and all(port.producer_verified for port in self.radix_ports)
             and all(window.producer_verified for window in self.windows)
         )
@@ -354,6 +355,11 @@ def demand_three_power_adaptive_interior(
     return action
 
 
+_MooreAuditRow = tuple[
+    int, tuple[int, ...], tuple[int, ...], tuple[int, int, int], tuple[int, int]
+]
+
+
 @dataclass(frozen=True, slots=True)
 class FiniteMooreStage:
     """A finite right-language collision census, never a global proof."""
@@ -383,7 +389,7 @@ def audit_adaptive_fermat_moore(
     w = _checked_candidate(index, 2)
     if index > 5 or type(output_width) is not int or not 1 <= output_width <= 32:
         raise ValueError("bounded Moore audit only supports F2..F5")
-    rows = []
+    rows: list[_MooreAuditRow] = []
     for t in range(2, w - 1):
         next_action = demand_dyadic_boolean_counter(t + 1, output_width, fermat_width=w)
         next_output = (next_action.xor_mask, next_action.signed_fermat_correction)
@@ -400,7 +406,7 @@ def audit_adaptive_fermat_moore(
         )
         h5 = current.absolute_walsh_h5
         rows.append((t, source, five, (h5.phi2, h5.phi3_a, h5.phi3_b), next_output))
-    stages = (
+    stages: tuple[tuple[str, Callable[[_MooreAuditRow], Hashable]], ...] = (
         ("10^1 + 5^1", lambda r: (r[1][0], r[2][0])),
         ("10^2 + 5^2", lambda r: (r[1][1], r[2][1])),
         ("10^3 + 5^3", lambda r: (r[1][2], r[2][2])),
@@ -408,9 +414,9 @@ def audit_adaptive_fermat_moore(
         ("10^3 + 5^3 + current H5", lambda r: (r[1][2], r[2][2], r[3])),
         ("10^4 + 5^4", lambda r: (r[1][3], r[2][3])),
     )
-    result = []
+    result: list[FiniteMooreStage] = []
     for name, selector in stages:
-        classes = defaultdict(list)
+        classes: dict[Hashable, list[_MooreAuditRow]] = defaultdict(list)
         for row in rows:
             classes[selector(row)].append(row)
         repeat = sum(len(group) > 1 for group in classes.values())
@@ -531,7 +537,7 @@ class AdaptiveRefinedTape:
 
     @property
     def missing_intervals(self) -> tuple[tuple[int, int], ...]:
-        missing = []
+        missing: list[tuple[int, int]] = []
         cursor = 0
         for start, stop, _ in self.certified_chunks:
             if start > cursor:

@@ -257,7 +257,7 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
 
 
 def test_mirror_reads_target_at_most_once() -> None:
-    calls = []
+    calls: list[int] = []
 
     def digit(i: int) -> int:
         calls.append(i)

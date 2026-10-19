@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
+    from number_compiler.resources.causal_workspace import CausalActionAdmission
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
@@ -68,7 +69,7 @@ class _Host(Protocol):
     tiles: TileArena
     kernels: DiamondKernelArena
 
-    def _action(self, action: FieldCellActionID) -> _ActionView: ...
+    def action_record(self, action: FieldCellActionID) -> _ActionView: ...
     def validate_action(self, action: FieldCellActionID) -> None: ...
     def fused_primitive_pair(
         self,
@@ -90,16 +91,16 @@ def validate_input(
     # The action's validated kernel is therefore an alphabet witness for both
     # endpoints. Walking a temporal spine here repeats O(log N) work at every
     # spatial memo hit without obtaining any additional alphabet information.
-    current = self._action(action)
+    current = self.action_record(action)
     kernel = self.kernels.kernel(current.kernel)
     validate_kernel_alphabet(self.tiles, source, kernel)
 
 
 def validate_fused_action(self: _Host, action: FieldCellActionID) -> None:
     """Validate a binary edge admitted by finite or causal tile absorption."""
-    # `_action` performs the complete warm validation. Calling
+    # `action_record` performs the complete warm validation. Calling
     # `validate_action` first repeats the same immutable-record audit.
-    if self._action(action).children is None:
+    if self.action_record(action).children is None:
         raise UnsupportedInterfaceError(
             "primitive temporal action has no bounded fused primitive-pair or causal edge"
         )
@@ -111,13 +112,13 @@ def validate_fused_wiring(
     producer: ResultWiring,
     result: ResultWiring,
 ) -> None:
-    pair = self._action(action).children
+    pair = self.action_record(action).children
     if pair is None:
         raise UnsupportedInterfaceError("fused wiring requires a temporal edge")
-    expected = self._action(pair[0]).signature
+    expected = self.action_record(pair[0]).signature
     if (
         producer.signature != expected
-        or result.signature != self._action(pair[1]).signature
+        or result.signature != self.action_record(pair[1]).signature
     ):
         raise ValueError("fused producer or result has another port signature")
     if any((producer.orientation, producer.phase, result.orientation, result.phase)):
@@ -144,6 +145,7 @@ def admit_family_effect(
 
 __all__ = [
     "admit_family_effect",
+    "admitted_action_record",
     "validate_action_record",
     "validate_fused_action",
     "validate_fused_wiring",
@@ -151,10 +153,33 @@ __all__ = [
 ]
 
 
-def validate_action_record(
+def admitted_action_record(
+    self: PrimitiveTileKernelAdapter,
+    action: FieldCellActionID,
+    admission: CausalActionAdmission,
+) -> PrimitiveTileAction:
+    """Read an action row using its live admission without deep replay."""
+    from number_compiler.resources.causal_workspace import (
+        CausalActionAdmission,
+        action_admission_matches,
+        action_admission_snapshot,
+    )
+
+    if type(admission) is not CausalActionAdmission:
+        raise TypeError("causal metadata read requires its admitted-run lease")
+    expected = admission.admitted_snapshot_for(self, action)
+    record = _checked_action_record(self, action)
+    if not action_admission_matches(
+        expected, action_admission_snapshot(action, record)
+    ):
+        raise ValueError("causal action metadata changed after admission")
+    return record
+
+
+def _checked_action_record(
     self: PrimitiveTileKernelAdapter, action: FieldCellActionID
-) -> tuple[PrimitiveTileAction, PrimitiveKernel]:
-    """Authenticate retained action structure without rebuilding deep semantics."""
+) -> PrimitiveTileAction:
+    """Resolve one structurally valid published action row."""
     if type(action) is not FieldCellActionID:
         raise TypeError("primitive tile execution requires a field action ID")
     action.validate(self.owner, "field-cell-action", size=self._next_action)
@@ -164,6 +189,14 @@ def validate_action_record(
         raise ValueError("stale or unpublished primitive tile action") from None
     if type(record) is not PrimitiveTileAction:
         raise TypeError("primitive action store contains another record sort")
+    return record
+
+
+def validate_action_record(
+    self: PrimitiveTileKernelAdapter, action: FieldCellActionID
+) -> tuple[PrimitiveTileAction, PrimitiveKernel]:
+    """Authenticate retained action structure without rebuilding deep semantics."""
+    record = _checked_action_record(self, action)
     kernel = self.kernels.kernel(record.kernel)
     self.quotients.interface(record.signature)
     if type(record.repetitions) is not int or record.repetitions < 1:

@@ -14,12 +14,12 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicCycleSummary,
     DyadicImageSummary,
     DyadicReturnActionID,
+    DyadicReturnImageRecord,
     DyadicReturnSourceID,
     DyadicReturnSupportID,
-    _ImageNode,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
@@ -30,25 +30,17 @@ if TYPE_CHECKING:
     )
 
 
-def _identity_transfer() -> SkewTransfer[int]:
-    return SkewTransfer(1, 0, 1)
-
-
 def complete_composite_candidate(
     self: DyadicReturnImageWorkspace, action: Hashable, source: SourceImageView
 ) -> SourceImageCandidate:
     """Scope finite arithmetic reuse to this one authenticated application."""
-    from number_compiler.hashlife.execution.dyadic_return_transport import (
-        _clear_finite_memo,
-    )
-
     self._validate_law()
-    if self._closed or self.macros or self.macro_stack or self.balanced_stack:
+    if self.closed or self.macros or self.macro_stack or self.balanced_stack:
         raise RuntimeError("nested or disposed dyadic finite construction")
     try:
         return _complete_composite_candidate(self, action, source)
     finally:
-        _clear_finite_memo(self)
+        self.clear_finite_support_cache()
 
 
 def _complete_composite_candidate(
@@ -92,10 +84,10 @@ def _complete_composite_candidate(
         )
 
     from number_compiler.hashlife.execution.dyadic_return_transport import (
-        _low_bits as transport_low_bits,
+        cycle_phase_summaries,
     )
     from number_compiler.hashlife.execution.dyadic_return_transport import (
-        cycle_phase_summaries,
+        low_bits as transport_low_bits,
     )
 
     retain_support = self.retain_chronological_support()
@@ -130,7 +122,7 @@ def _complete_composite_candidate(
     tracked_value = self._source_value(source_node) if track_cycle else None
 
     remaining = width
-    transfer = _identity_transfer()
+    transfer = SkewTransfer(1, 0, 1)
     odd_steps = 0
     delta = 0
     minimum = 0
@@ -150,7 +142,7 @@ def _complete_composite_candidate(
                 cycle_phase_summaries(self.law, entry_phase, remainder)
             )
             tail_safety = cycle_safety.repeat(cycles).then(remainder_safety)
-            self._bump("cycle_safety_transformer_applications")
+            self.bump_metric("cycle_safety_transformer_applications")
             tail_delta, tail_minimum = tail_safety.delta, tail_safety.minimum
             tail_odd = cycles * cycle_odd + remainder_odd
             terminal_phase = (entry_phase + remainder) % cycle_length
@@ -169,7 +161,7 @@ def _complete_composite_candidate(
             tail_support = None
             if retain_support:
                 tail_support = self._append_support(
-                    _SupportNode(
+                    DyadicReturnSupportRecord(
                         remaining,
                         transport_low_bits(tracked_value, remaining),
                         tail_transfer,
@@ -199,7 +191,7 @@ def _complete_composite_candidate(
             if retain_support:
                 assert support is not None and tail_support is not None
                 support = self._append_support(
-                    _SupportNode(
+                    DyadicReturnSupportRecord(
                         width,
                         source_node.residue,
                         transfer,
@@ -211,8 +203,8 @@ def _complete_composite_candidate(
                         published_cycle,
                     )
                 )
-            self._bump("cycle_compressions")
-            self._bump(
+            self.bump_metric("cycle_compressions")
+            self.bump_metric(
                 "cycle_repeat_operand_bits",
                 max(
                     1,
@@ -236,7 +228,7 @@ def _complete_composite_candidate(
 
         before_transfer = transfer
         transfer = before_transfer.then(chunk.transfer, multiply=mul, add=add)
-        self._bump(
+        self.bump_metric(
             "composition_operand_bits",
             max(
                 1,
@@ -259,7 +251,7 @@ def _complete_composite_candidate(
                 chunk_support
                 if support is None
                 else self._append_support(
-                    _SupportNode(
+                    DyadicReturnSupportRecord(
                         total_width,
                         transport_low_bits(source_node.residue, total_width),
                         transfer,
@@ -278,7 +270,7 @@ def _complete_composite_candidate(
                 "dyadic composite exact chunk transport was not integral"
             )
         tracked_value = numerator // chunk.transfer.lower
-        self._bump(
+        self.bump_metric(
             "transport_exact_operand_bits",
             max(
                 1,
@@ -289,8 +281,8 @@ def _complete_composite_candidate(
                 numerator.bit_length(),
             ),
         )
-        self._bump("composite_cutover_chunks")
-        self._bump("leaf_steps", chunk_width)
+        self.bump_metric("composite_cutover_chunks")
+        self.bump_metric("leaf_steps", chunk_width)
         discovered += chunk_width
         remaining -= chunk_width
         if tracked_value.bit_length() > MAX_CYCLE_TRACK_BITS:
@@ -320,7 +312,7 @@ def _complete_composite_candidate(
                 support = tail_support
             else:
                 support = self._append_support(
-                    _SupportNode(
+                    DyadicReturnSupportRecord(
                         width,
                         source_node.residue,
                         transfer,
@@ -331,8 +323,8 @@ def _complete_composite_candidate(
                         (support, tail_support),
                     )
                 )
-        self._bump("balanced_composite_tails")
-        self._bump(
+        self.bump_metric("balanced_composite_tails")
+        self.bump_metric(
             "composition_operand_bits",
             max(
                 1,
@@ -348,7 +340,7 @@ def _complete_composite_candidate(
 
     if not retain_support:
         support = self._append_support(
-            _SupportNode(
+            DyadicReturnSupportRecord(
                 width,
                 source_node.residue,
                 transfer,
@@ -361,7 +353,7 @@ def _complete_composite_candidate(
                 True,
             )
         )
-        self._bump("saturated_support_publications")
+        self.bump_metric("saturated_support_publications")
     if support is None:
         raise AssertionError("nonempty composite published no support")
     summary = DyadicImageSummary(
@@ -374,8 +366,8 @@ def _complete_composite_candidate(
         support,
         published_cycle,
     )
-    payload = self._append_image(_ImageNode(source_id, action, summary))
-    self._bump("composite_cutover_publications")
+    payload = self._append_image(DyadicReturnImageRecord(source_id, action, summary))
+    self.bump_metric("composite_cutover_publications")
     return SourceImageCandidate(
         payload,
         width,
@@ -397,7 +389,7 @@ def _residue_candidate(
     retain: bool,
     *,
     balanced: bool,
-) -> tuple[_SupportNode, DyadicReturnSupportID | None]:
+) -> tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None]:
     from number_compiler.hashlife.execution.dyadic_return_transport import (
         balanced_residue_effect,
         balanced_residue_macro,
@@ -405,7 +397,9 @@ def _residue_candidate(
     )
 
     if not retain:
-        return balanced_residue_effect(workspace, width, residue, _keep_memo=True), None
+        return balanced_residue_effect(
+            workspace, width, residue, retain_cache=True
+        ), None
     build = balanced_residue_macro if balanced else residue_macro
-    support = build(workspace, width, residue, _keep_memo=True)
+    support = build(workspace, width, residue, retain_cache=True)
     return workspace.support_node(support), support

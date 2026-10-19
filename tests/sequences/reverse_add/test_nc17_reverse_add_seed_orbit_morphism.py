@@ -1,6 +1,6 @@
 """Pointed source-root reverse/add temporal composition and cyclotomic ports."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import replace
@@ -70,7 +70,7 @@ def _check(record: CertifiedReverseAddSeedMorphism, seed: int) -> int:
 
 
 @contextmanager
-def _term(seed: int, generation: int) -> Iterator[ReverseAddPoweredTerm]:
+def _term(seed: int, generation: int) -> Generator[ReverseAddPoweredTerm, None, None]:
     """Dispose per-test scheduler owners even when an assertion fails."""
     term = ReverseAddPoweredTerm(seed, generation)
     try:
@@ -82,7 +82,7 @@ def _term(seed: int, generation: int) -> Iterator[ReverseAddPoweredTerm]:
             if workspace._cleanup_complete:
                 term._workspace = None
                 term._workspace_identity = None
-        if term._ledger.entries or term._ledger.nodes:
+        if term.resource_ledger.entries or term.resource_ledger.nodes:
             raise AssertionError("reverse temporal test leaked ledger resources")
 
 

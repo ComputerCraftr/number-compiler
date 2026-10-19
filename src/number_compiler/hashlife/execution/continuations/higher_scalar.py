@@ -37,7 +37,7 @@ def canonical_equal_constant(
             FieldAtomSort("boolean", 2),
             int(node.value == expected),
         )
-    return arena._intern_expression(
+    return arena.intern_expression(
         HigherExpression(
             "equal-constant",
             FieldAtomSort("boolean", 2),
@@ -56,7 +56,7 @@ def canonical_add_constant(
     node = arena.expression(value)
     if type(node.sort) is not FieldAtomSort or type(offset) is not int:
         raise ValueError("higher addition requires a bounded atom and exact offset")
-    arena._validate_sort(output)
+    arena.validate_sort(output)
     if offset == 0:
         return arena.retag(value, output)
     if node.kind == "constant":
@@ -69,9 +69,9 @@ def canonical_add_constant(
     source = value
     source_node = arena.expression(source)
     while source_node.kind == "retag":
-        source = arena._expression_handle(source_node.children[0])
+        source = arena.expression_id(source_node.children[0])
         source_node = arena.expression(source)
-    return arena._intern_expression(
+    return arena.intern_expression(
         HigherExpression(
             "add-constant",
             output,
@@ -87,7 +87,7 @@ def canonical_retag(
     output: FieldAtomSort,
 ) -> HigherExpressionID:
     node = arena.expression(value)
-    arena._validate_sort(output)
+    arena.validate_sort(output)
     if (
         type(node.sort) is not FieldAtomSort
         or output.cardinality < node.sort.cardinality
@@ -96,13 +96,11 @@ def canonical_retag(
     if node.sort == output:
         return value
     while node.kind == "retag":
-        value = arena._expression_handle(node.children[0])
+        value = arena.expression_id(node.children[0])
         node = arena.expression(value)
     if node.sort == output:
         return value
-    return arena._intern_expression(
-        HigherExpression("retag", output, (value.local_id,))
-    )
+    return arena.intern_expression(HigherExpression("retag", output, (value.local_id,)))
 
 
 def canonical_select(
@@ -123,14 +121,14 @@ def canonical_select(
     if condition_node.kind == "constant":
         return yes if condition_node.value else no
     while yes_node.kind == "select" and yes_node.children[0] == condition.local_id:
-        yes = arena._expression_handle(yes_node.children[1])
+        yes = arena.expression_id(yes_node.children[1])
         yes_node = arena.expression(yes)
     while no_node.kind == "select" and no_node.children[0] == condition.local_id:
-        no = arena._expression_handle(no_node.children[2])
+        no = arena.expression_id(no_node.children[2])
         no_node = arena.expression(no)
     if yes == no:
         return yes
-    return arena._intern_expression(
+    return arena.intern_expression(
         HigherExpression(
             "select",
             yes_node.sort,

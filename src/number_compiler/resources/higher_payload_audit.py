@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol
 
 from number_compiler.resources.higher_readonly import (
     audit_identity_index,
-    audit_schema_call,
+    audit_validate_action,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
@@ -17,6 +17,23 @@ from number_compiler.resources.payload_contracts import PayloadAuditContractAudi
 class HigherPayloadAudit:
     approved: frozenset[int]
     invalid: frozenset[tuple[int, int]]
+
+
+class _NodeKeyStoreAudit(Protocol):
+    @property
+    def ledger(self) -> ResourceLedger: ...
+
+    @property
+    def node_owner(self) -> int: ...
+
+    @property
+    def node_store(self) -> object: ...
+
+    @property
+    def key_owner(self) -> int: ...
+
+    @property
+    def key_store(self) -> object: ...
 
 
 def audit_higher_payloads(
@@ -38,13 +55,12 @@ def audit_higher_payloads(
     ):
         return HigherPayloadAudit(frozenset(approved), frozenset(invalid))
 
-    from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
     from number_compiler.hashlife.execution.continuations.higher_bimachine import (
         HigherBimachineRuntime,
-        _Emit,
-        _Initial,
-        _Step,
-        _Transfer,
+        HigherEmitOperation,
+        HigherInitialOperation,
+        HigherStepOperation,
+        HigherTransfer,
     )
     from number_compiler.hashlife.execution.continuations.higher_interfaces import (
         HigherInterfaceRecord,
@@ -54,8 +70,8 @@ def audit_higher_payloads(
     )
     from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
         HigherSpatialMacroComposer,
+        MacroBindingKey,
         SourceBoundHigherMacro,
-        _MacroBindingKey,
     )
     from number_compiler.hashlife.execution.continuations.higher_semantic import (
         HigherSemanticArena,
@@ -77,7 +93,6 @@ def audit_higher_payloads(
     from number_compiler.hashlife.execution.continuations.higher_values import (
         RuntimeEnvironment,
         RuntimeValueArena,
-        RuntimeValueID,
     )
     from number_compiler.hashlife.execution.field_images import (
         SourceCellID,
@@ -91,10 +106,9 @@ def audit_higher_payloads(
         RecursiveOutputSource,
         RecursiveOutputTemporal,
     )
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_interfaces import (
         SemanticBoundaryArena,
-        _Boundary,
+        SemanticBoundaryRecord,
     )
     from number_compiler.resources.higher_operation_payload import (
         valid_higher_operation,
@@ -108,28 +122,53 @@ def audit_higher_payloads(
     def store(owner: int, value: object) -> bool:
         return containers.get(owner) is value
 
+    def valid_node_key_store(snapshot: _NodeKeyStoreAudit) -> bool:
+        return (
+            snapshot.ledger is ledger
+            and store(snapshot.node_owner, snapshot.node_store)
+            and store(snapshot.key_owner, snapshot.key_store)
+        )
+
     for root in ledger.iter_execution_roots():
         if type(root) is HigherSemanticArena:
-            valid_root = root.ledger is ledger and all(
+            semantic_snapshot = root.audit_snapshot()
+            valid_root = semantic_snapshot.ledger is ledger and all(
                 (
-                    store(root._expression_owner, root._expressions),
-                    store(root._expression_key_owner, root._expression_keys),
-                    store(root._expression_free_owner, root._expression_free_ids),
-                    store(root._function_owner, root._functions),
-                    store(root._function_key_owner, root._function_keys),
-                    store(root._rewrite_owner, root._rewrites),
+                    store(
+                        semantic_snapshot.expression_owner,
+                        semantic_snapshot.expression_store,
+                    ),
+                    store(
+                        semantic_snapshot.expression_key_owner,
+                        semantic_snapshot.expression_key_store,
+                    ),
+                    store(
+                        semantic_snapshot.expression_free_owner,
+                        semantic_snapshot.expression_free_store,
+                    ),
+                    store(
+                        semantic_snapshot.function_owner,
+                        semantic_snapshot.function_store,
+                    ),
+                    store(
+                        semantic_snapshot.function_key_owner,
+                        semantic_snapshot.function_key_store,
+                    ),
+                    store(
+                        semantic_snapshot.rewrite_owner,
+                        semantic_snapshot.rewrite_store,
+                    ),
                 )
             )
             expressions_valid = valid_root
-            for index, expression_record in enumerate(root._expressions):
+            for index, expression_record in enumerate(semantic_snapshot.expressions):
                 valid = valid_root and type(expression_record) is HigherExpression
                 free: tuple[int, ...] = ()
                 try:
                     valid &= (
-                        root.expression(root._expression_handle(index))
-                        is expression_record
+                        root.expression(root.expression_id(index)) is expression_record
                     )
-                    root._validate_sort(expression_record.sort, readonly=True)
+                    root.validate_sort(expression_record.sort, readonly=True)
                     valid &= type(expression_record.children) is tuple and all(
                         type(child) is int and 0 <= child < index
                         for child in expression_record.children
@@ -143,17 +182,15 @@ def audit_higher_payloads(
                         and len(expression_record.role) <= 128
                     )
                     if expression_record.action is not None:
-                        audit_schema_call(
-                            root.schema, "validate_action", expression_record.action
-                        )
+                        audit_validate_action(root.schema, expression_record.action)
                     if expression_record.function is not None:
                         root.function_record(expression_record.function)
                     valid &= audit_identity_index(
-                        root._expression_keys,
+                        semantic_snapshot.expression_keys,
                         expression_record,
                         index,
                     )
-                    free = root._expression_free_ids[index]
+                    free = semantic_snapshot.expression_free_ids[index]
                     valid &= type(free) is tuple and all(
                         type(item) is int and 0 <= item <= index for item in free
                     )
@@ -165,17 +202,18 @@ def audit_higher_payloads(
                         (id(expression_record), id(expression_record.sort), id(free))
                     )
                 else:
-                    invalid.add((root._expression_owner, id(expression_record)))
+                    invalid.add(
+                        (semantic_snapshot.expression_owner, id(expression_record))
+                    )
                     expressions_valid = False
             functions_valid = valid_root
-            for index, function_record in enumerate(root._functions):
+            for index, function_record in enumerate(semantic_snapshot.functions):
                 valid = valid_root and type(function_record) is HigherFunction
                 try:
                     valid &= (
-                        root.function_record(root._function_handle(index))
-                        is function_record
+                        root.function_record(root.function_id(index)) is function_record
                     )
-                    root._validate_sort(function_record.signature, readonly=True)
+                    root.validate_sort(function_record.signature, readonly=True)
                     parameter = root.expression(function_record.parameter)
                     body = root.expression(function_record.body)
                     valid &= parameter.kind == "bound"
@@ -187,7 +225,7 @@ def audit_higher_payloads(
                         root.expression(variable)
                     valid &= type(function_record.parameter_used) is bool
                     valid &= audit_identity_index(
-                        root._function_keys,
+                        semantic_snapshot.function_keys,
                         function_record,
                         index,
                     )
@@ -198,10 +236,10 @@ def audit_higher_payloads(
                         (id(function_record), id(function_record.signature))
                     )
                 else:
-                    invalid.add((root._function_owner, id(function_record)))
+                    invalid.add((semantic_snapshot.function_owner, id(function_record)))
                     functions_valid = False
             rewrites_valid = valid_root
-            for rewrite, result in root._rewrites.items():
+            for rewrite, result in semantic_snapshot.rewrites.items():
                 valid = all(
                     type(item) is int
                     for item in (rewrite.root, rewrite.variable, rewrite.replacement)
@@ -210,56 +248,56 @@ def audit_higher_payloads(
                     valid &= (
                         min(rewrite.root, rewrite.variable, rewrite.replacement) >= 0
                     )
-                    root.expression(root._expression_handle(rewrite.root))
-                    root.expression(root._expression_handle(rewrite.variable))
-                    root.expression(root._expression_handle(rewrite.replacement))
+                    root.expression(root.expression_id(rewrite.root))
+                    root.expression(root.expression_id(rewrite.variable))
+                    root.expression(root.expression_id(rewrite.replacement))
                     root.expression(result)
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
                 if valid:
                     approved.add(id(rewrite))
                 else:
-                    invalid.add((root._rewrite_owner, id(rewrite)))
+                    invalid.add((semantic_snapshot.rewrite_owner, id(rewrite)))
                     rewrites_valid = False
             if expressions_valid and functions_valid and rewrites_valid:
                 approved.update(
                     (
-                        id(root._expressions),
-                        id(root._expression_keys),
-                        id(root._expression_free_ids),
-                        id(root._functions),
-                        id(root._function_keys),
-                        id(root._rewrites),
+                        id(semantic_snapshot.expression_store),
+                        id(semantic_snapshot.expression_key_store),
+                        id(semantic_snapshot.expression_free_store),
+                        id(semantic_snapshot.function_store),
+                        id(semantic_snapshot.function_key_store),
+                        id(semantic_snapshot.rewrite_store),
                     )
                 )
         elif type(root) is HigherLocalInterfaceArena:
-            valid_root = root.ledger is ledger and all(
+            interface_snapshot = root.audit_snapshot()
+            valid_root = interface_snapshot.ledger is ledger and all(
                 (
-                    store(root._higher_signature_owner, root._higher_signatures),
                     store(
-                        root._higher_signature_key_owner, root._higher_signature_keys
+                        interface_snapshot.signature_owner,
+                        interface_snapshot.signature_store,
                     ),
-                    store(root._higher_node_owner, root._higher_nodes),
-                    store(root._higher_key_owner, root._higher_keys),
+                    store(
+                        interface_snapshot.signature_key_owner,
+                        interface_snapshot.signature_key_store,
+                    ),
+                    store(interface_snapshot.node_owner, interface_snapshot.node_store),
+                    store(interface_snapshot.key_owner, interface_snapshot.key_store),
                 )
             )
             signatures_valid = valid_root
-            for index, interface_record in enumerate(root._higher_signatures):
+            for index, interface_record in enumerate(interface_snapshot.signatures):
                 valid = valid_root and type(interface_record) is HigherMacroInterface
                 found_signature = None
                 try:
-                    root._validate_interface(interface_record, readonly=True)
+                    root.validate_interface(interface_record, readonly=True)
                     valid &= (
-                        root.interface(
-                            PortSignatureID(
-                                root.owner,
-                                root._SIGNATURE_KIND,
-                                index,
-                            )
-                        )
-                        is interface_record
+                        root.interface(root.signature_id(index)) is interface_record
                     )
-                    found_signature = root._higher_signature_keys.get(interface_record)
+                    found_signature = interface_snapshot.signature_keys.get(
+                        interface_record
+                    )
                     valid &= (
                         found_signature is not None
                         and found_signature.local_id == index
@@ -278,28 +316,21 @@ def audit_higher_payloads(
                     if found_signature is not None:
                         approved.add(id(found_signature))
                 else:
-                    invalid.add((root._higher_signature_owner, id(interface_record)))
+                    invalid.add(
+                        (interface_snapshot.signature_owner, id(interface_record))
+                    )
                     signatures_valid = False
             interfaces_valid = valid_root
-            for index, node_record in enumerate(root._higher_nodes):
+            for index, node_record in enumerate(interface_snapshot.nodes):
                 valid = valid_root and type(node_record) is HigherInterfaceRecord
                 found_interface = None
                 try:
                     valid &= type(node_record.components) is HigherMacroComponents
-                    root._validate_components(
+                    root.validate_components(
                         node_record.signature, node_record.components
                     )
-                    valid &= (
-                        root.resolve(
-                            LocalInterfaceID(
-                                root.owner,
-                                root._INTERFACE_KIND,
-                                index,
-                            )
-                        )
-                        is node_record
-                    )
-                    found_interface = root._higher_keys.get(node_record)
+                    valid &= root.resolve(root.local_interface_id(index)) is node_record
+                    found_interface = interface_snapshot.keys.get(node_record)
                     valid &= (
                         found_interface is not None
                         and found_interface.local_id == index
@@ -316,26 +347,23 @@ def audit_higher_payloads(
                     if found_interface is not None:
                         approved.add(id(found_interface))
                 else:
-                    invalid.add((root._higher_node_owner, id(node_record)))
+                    invalid.add((interface_snapshot.node_owner, id(node_record)))
                     interfaces_valid = False
             if signatures_valid and interfaces_valid:
                 approved.update(
                     (
-                        id(root._higher_signatures),
-                        id(root._higher_signature_keys),
-                        id(root._higher_nodes),
-                        id(root._higher_keys),
+                        id(interface_snapshot.signature_store),
+                        id(interface_snapshot.signature_key_store),
+                        id(interface_snapshot.node_store),
+                        id(interface_snapshot.key_store),
                     )
                 )
         elif type(root) is RecursiveCoordinateMorphismArena:
-            valid_root = (
-                root.ledger is ledger
-                and store(root._node_owner, root._nodes)
-                and store(root._key_owner, root._keys)
-            )
+            output_snapshot = root.audit_snapshot()
+            valid_root = valid_node_key_store(output_snapshot)
             records_valid = valid_root
-            for local_id, record in root._nodes.items():
-                valid = type(local_id) is int and type(record) in (
+            for local_id, output_record in output_snapshot.nodes.items():
+                valid = type(local_id) is int and type(output_record) in (
                     RecursiveOutputSource,
                     RecursiveOutputBindingSource,
                     RecursiveOutputLeaf,
@@ -343,27 +371,24 @@ def audit_higher_payloads(
                     RecursiveOutputTemporal,
                 )
                 try:
-                    valid &= root.resolve(root._handle(local_id)) is record
-                    valid &= root._keys.get(record) == local_id
-                    if type(record) is RecursiveOutputSource:
-                        if root._validate_source is None or root._read_source is None:
-                            valid = False
-                        else:
-                            root._validate_source(record.source)
-                    elif type(record) is RecursiveOutputBindingSource:
-                        if type(record.source) is SourceCellID:
-                            if root._validate_source is None:
-                                valid = False
-                            else:
-                                root._validate_source(record.source)
-                        elif type(record.source) is SourceForestID:
+                    valid &= (
+                        root.resolve(root.handle_for_local_id(local_id))
+                        is output_record
+                    )
+                    valid &= output_snapshot.keys.get(output_record) == local_id
+                    if type(output_record) is RecursiveOutputSource:
+                        root.validate_source(output_record.source)
+                    elif type(output_record) is RecursiveOutputBindingSource:
+                        if type(output_record.source) is SourceCellID:
+                            root.validate_source(output_record.source)
+                        elif type(output_record.source) is SourceForestID:
                             pass
                         else:
                             valid = False
-                    elif type(record) is RecursiveOutputLeaf:
-                        root.interfaces.resolve(record.scalar_interface)
-                    elif type(record) is RecursiveOutputBranch:
-                        branch = record
+                    elif type(output_record) is RecursiveOutputLeaf:
+                        root.interfaces.resolve(output_record.scalar_interface)
+                    elif type(output_record) is RecursiveOutputBranch:
+                        branch = output_record
                         left = root.resolve(branch.left)
                         right = root.resolve(branch.right)
                         root.interfaces.resolve(branch.left_interface)
@@ -390,50 +415,55 @@ def audit_higher_payloads(
                                 )
                             )
                         )
+                    elif type(output_record) is RecursiveOutputTemporal:
+                        temporal_node = output_record
+                        root.resolve(temporal_node.provider)
+                        root.validate_output_action(temporal_node.action)
+                        root.validate_output_interface(temporal_node.interface)
                     else:
-                        temporal = cast(RecursiveOutputTemporal, record)
-                        root.resolve(temporal.provider)
-                        if root._validate_action is None:
-                            valid = False
-                        else:
-                            root._validate_action(temporal.action)
-                        root._validate_temporal_interface(temporal.interface)
+                        valid = False
                 except (TypeError, ValueError, KeyError, AttributeError):
                     valid = False
                 if valid:
-                    approved.add(id(record))
+                    approved.add(id(output_record))
                     approved.update(
-                        id(getattr(record, name))
-                        for name in record.__dataclass_fields__
+                        id(getattr(output_record, name))
+                        for name in output_record.__dataclass_fields__
                     )
                 else:
-                    invalid.add((root._node_owner, id(record)))
+                    invalid.add((output_snapshot.node_owner, id(output_record)))
                     records_valid = False
             if records_valid:
-                approved.update((id(root._nodes), id(root._keys)))
+                approved.update(
+                    (id(output_snapshot.node_store), id(output_snapshot.key_store))
+                )
         elif type(root) is HigherTemporalProviderEvaluator:
-            valid_root = root.ledger is ledger and store(
-                root._binding_owner, root._bindings
+            provider_snapshot = root.audit_snapshot()
+            valid_root = provider_snapshot.ledger is ledger and store(
+                provider_snapshot.binding_owner, provider_snapshot.binding_store
             )
             try:
-                root._check_authority()
+                root.validate_authority()
             except (TypeError, ValueError, KeyError, AttributeError):
                 valid_root = False
             if not valid_root:
-                invalid.add((root._binding_owner, id(root._bindings)))
+                invalid.add(
+                    (
+                        provider_snapshot.binding_owner,
+                        id(provider_snapshot.binding_store),
+                    )
+                )
             bindings_valid = valid_root
-            for output, provider_binding in root._bindings.items():
+            for output, provider_binding in provider_snapshot.bindings.items():
                 valid = (
                     valid_root
                     and type(provider_binding) is tuple
                     and len(provider_binding) == 2
                 )
                 try:
-                    root._validate_output(output)
+                    root.validate_output(output)
                     source, provider_action = provider_binding
-                    audit_schema_call(
-                        root.runtime.schema, "validate_action", provider_action
-                    )
+                    audit_validate_action(root.runtime.schema, provider_action)
                     if type(source) is SourceCellID:
                         root.runtime.sources.resolve(source)
                     elif type(source) is SourceForestID:
@@ -445,10 +475,10 @@ def audit_higher_payloads(
                 if valid:
                     approved.update((id(output), id(provider_binding)))
                 else:
-                    invalid.add((root._binding_owner, id(provider_binding)))
+                    invalid.add((provider_snapshot.binding_owner, id(provider_binding)))
                     bindings_valid = False
             if bindings_valid:
-                approved.add(id(root._bindings))
+                approved.add(id(provider_snapshot.binding_store))
         elif type(root) is HigherTemporalImageArena:
             from number_compiler.resources.higher_image_payload_audit import (
                 audit_temporal_image_owner,
@@ -460,26 +490,27 @@ def audit_higher_payloads(
             approved.update(image_approved)
             invalid.update(image_invalid)
         elif type(root) is HigherSpatialMacroComposer:
-            valid_root = root.ledger is ledger and store(
-                root._binding_owner, root._bindings
+            macro_snapshot = root.audit_snapshot()
+            valid_root = macro_snapshot.ledger is ledger and store(
+                macro_snapshot.binding_owner, macro_snapshot.binding_store
             )
             try:
                 root.declaration()
             except (TypeError, ValueError, KeyError, AttributeError):
                 valid_root = False
             if not valid_root:
-                invalid.add((root._binding_owner, id(root._bindings)))
+                invalid.add(
+                    (macro_snapshot.binding_owner, id(macro_snapshot.binding_store))
+                )
             bindings_valid = valid_root
-            for key, macro in root._bindings.items():
+            for key, macro in macro_snapshot.bindings.items():
                 valid = (
                     valid_root
-                    and type(key) is _MacroBindingKey
+                    and type(key) is MacroBindingKey
                     and type(macro) is SourceBoundHigherMacro
                 )
                 try:
-                    audit_schema_call(
-                        root.semantics.schema, "validate_action", key.action
-                    )
+                    audit_validate_action(root.semantics.schema, key.action)
                     root.sources.binding_extent(key.source)
                     root.interfaces.resolve(macro.interface)
                     root.outputs.resolve(macro.output)
@@ -516,11 +547,12 @@ def audit_higher_payloads(
                         )
                     )
                 else:
-                    invalid.add((root._binding_owner, id(key)))
+                    invalid.add((macro_snapshot.binding_owner, id(key)))
                     bindings_valid = False
             if bindings_valid:
-                approved.add(id(root._bindings))
+                approved.add(id(macro_snapshot.binding_store))
         elif type(root) is RuntimeValueArena:
+            value_snapshot = root.audit_snapshot()
             semantic_owner = next(
                 (
                     candidate
@@ -530,45 +562,57 @@ def audit_higher_payloads(
                 ),
                 None,
             )
-            valid_root = root.ledger is ledger and all(
+            valid_root = value_snapshot.ledger is ledger and all(
                 (
-                    store(root._record_owner, root._records),
-                    store(root._key_owner, root._keys),
-                    store(root._environment_owner, root._environments),
-                    store(root._environment_key_owner, root._environment_keys),
-                    store(root._memo_owner, root.evaluations),
-                    store(root._operation_owner, root.operations),
-                    store(root._projection_owner, root._projections),
-                    store(root._projection_pattern_owner, root._projection_patterns),
+                    store(value_snapshot.record_owner, value_snapshot.record_store),
+                    store(value_snapshot.key_owner, value_snapshot.key_store),
+                    store(
+                        value_snapshot.environment_owner,
+                        value_snapshot.environment_store,
+                    ),
+                    store(
+                        value_snapshot.environment_key_owner,
+                        value_snapshot.environment_key_store,
+                    ),
+                    store(value_snapshot.memo_owner, value_snapshot.evaluation_store),
+                    store(
+                        value_snapshot.operation_owner, value_snapshot.operation_store
+                    ),
+                    store(
+                        value_snapshot.projection_owner, value_snapshot.projection_store
+                    ),
+                    store(
+                        value_snapshot.projection_pattern_owner,
+                        value_snapshot.projection_pattern_store,
+                    ),
                 )
             )
             records_valid = valid_root
-            for local_id, runtime_record in root._records.items():
+            for local_id, runtime_record in value_snapshot.records.items():
                 valid = valid_root and type(local_id) is int
                 try:
-                    valid &= (
-                        root.resolve(RuntimeValueID(root.owner, root._KIND, local_id))
-                        is runtime_record
-                    )
+                    valid &= root.resolve(root.value_id(local_id)) is runtime_record
                     valid &= valid_runtime_value_record(
                         root,
                         semantic_owner,
                         runtime_record,
                     )
-                    valid &= root._keys.get(runtime_record) == local_id
+                    valid &= value_snapshot.keys.get(runtime_record) == local_id
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     valid = False
                 if valid:
                     approved.add(id(runtime_record))
                 else:
-                    invalid.add((root._record_owner, id(runtime_record)))
+                    invalid.add((value_snapshot.record_owner, id(runtime_record)))
                     records_valid = False
             environments_valid = valid_root
-            for local_id, environment in root._environments.items():
+            for local_id, environment in value_snapshot.environments.items():
                 valid = valid_root and type(environment) is RuntimeEnvironment
                 try:
                     valid &= root.environment(local_id) is environment
-                    valid &= root._environment_keys.get(environment) == local_id
+                    valid &= (
+                        value_snapshot.environment_keys.get(environment) == local_id
+                    )
                     valid &= tuple(sorted(environment.bindings)) == environment.bindings
                     for binding, value in environment.bindings:
                         valid &= type(binding) is int
@@ -578,10 +622,10 @@ def audit_higher_payloads(
                 if valid:
                     approved.add(id(environment))
                 else:
-                    invalid.add((root._environment_owner, id(environment)))
+                    invalid.add((value_snapshot.environment_owner, id(environment)))
                     environments_valid = False
             evaluations_valid = valid_root
-            for evaluation_key, value in root.evaluations.items():
+            for evaluation_key, value in value_snapshot.evaluations.items():
                 valid = (
                     type(evaluation_key) is tuple
                     and len(evaluation_key) == 2
@@ -595,9 +639,9 @@ def audit_higher_payloads(
                 if valid:
                     approved.add(id(evaluation_key))
                 else:
-                    invalid.add((root._memo_owner, id(evaluation_key)))
+                    invalid.add((value_snapshot.memo_owner, id(evaluation_key)))
                     evaluations_valid = False
-            for operation_key, value in root.operations.items():
+            for operation_key, value in value_snapshot.operations.items():
                 valid = valid_higher_operation(
                     root,
                     semantic_owner,
@@ -607,10 +651,10 @@ def audit_higher_payloads(
                 if valid:
                     approved.add(id(operation_key))
                 else:
-                    invalid.add((root._operation_owner, id(operation_key)))
+                    invalid.add((value_snapshot.operation_owner, id(operation_key)))
                     evaluations_valid = False
             projections_valid = valid_root
-            for projection_key, value in root._projections.items():
+            for projection_key, value in value_snapshot.projections.items():
                 valid = (
                     type(projection_key) is tuple
                     and len(projection_key) == 2
@@ -626,10 +670,10 @@ def audit_higher_payloads(
                 if valid:
                     approved.add(id(projection_key))
                 else:
-                    invalid.add((root._projection_owner, id(projection_key)))
+                    invalid.add((value_snapshot.projection_owner, id(projection_key)))
                     projections_valid = False
             patterns_valid = valid_root
-            for bindings, pattern in root._projection_patterns.items():
+            for bindings, pattern in value_snapshot.projection_patterns.items():
                 valid = (
                     type(bindings) is tuple
                     and all(type(item) is int and item >= 0 for item in bindings)
@@ -639,7 +683,7 @@ def audit_higher_payloads(
                 if valid:
                     approved.add(id(bindings))
                 else:
-                    invalid.add((root._projection_pattern_owner, id(bindings)))
+                    invalid.add((value_snapshot.projection_pattern_owner, id(bindings)))
                     patterns_valid = False
             if (
                 records_valid
@@ -650,36 +694,49 @@ def audit_higher_payloads(
             ):
                 approved.update(
                     (
-                        id(root._records),
-                        id(root._keys),
-                        id(root._environments),
-                        id(root._environment_keys),
-                        id(root.evaluations),
-                        id(root.operations),
-                        id(root._projections),
-                        id(root._projection_patterns),
+                        id(value_snapshot.record_store),
+                        id(value_snapshot.key_store),
+                        id(value_snapshot.environment_store),
+                        id(value_snapshot.environment_key_store),
+                        id(value_snapshot.evaluation_store),
+                        id(value_snapshot.operation_store),
+                        id(value_snapshot.projection_store),
+                        id(value_snapshot.projection_pattern_store),
                     )
                 )
         elif type(root) is HigherBimachineRuntime:
+            bimachine_snapshot = root.audit_snapshot()
             valid_root = (
                 root.ledger is ledger
-                and store(root._operation_owner, root._operations)
-                and store(root._transfer_owner, root._transfers)
+                and store(
+                    bimachine_snapshot.operation_owner,
+                    bimachine_snapshot.operation_store,
+                )
+                and store(
+                    bimachine_snapshot.transfer_owner,
+                    bimachine_snapshot.transfer_store,
+                )
             )
             operations_valid = valid_root
-            for op_record, result in root._operations.items():
-                valid = type(op_record) in (_Initial, _Step, _Emit)
+            for op_record, result in bimachine_snapshot.operations.items():
+                valid = type(op_record) in (
+                    HigherInitialOperation,
+                    HigherStepOperation,
+                    HigherEmitOperation,
+                )
                 try:
-                    audit_schema_call(root.schema, "validate_action", op_record.action)
-                    if isinstance(op_record, (_Initial, _Step)):
+                    audit_validate_action(root.schema, op_record.action)
+                    if isinstance(
+                        op_record, (HigherInitialOperation, HigherStepOperation)
+                    ):
                         valid &= type(op_record.side) is int and op_record.side in (
                             0,
                             1,
                         )
-                    if type(op_record) is _Step:
+                    if type(op_record) is HigherStepOperation:
                         root.semantics.expression(op_record.state)
                         root.semantics.expression(op_record.symbol)
-                    elif type(op_record) is _Emit:
+                    elif type(op_record) is HigherEmitOperation:
                         root.semantics.expression(op_record.left)
                         root.semantics.expression(op_record.symbol)
                         root.semantics.expression(op_record.right)
@@ -689,13 +746,13 @@ def audit_higher_payloads(
                 if valid:
                     approved.update((id(op_record), id(result)))
                 else:
-                    invalid.add((root._operation_owner, id(op_record)))
+                    invalid.add((bimachine_snapshot.operation_owner, id(op_record)))
                     operations_valid = False
             transfers_valid = valid_root
-            for transfer, transfer_result in root._transfers.items():
-                valid = type(transfer) is _Transfer
+            for transfer, transfer_result in bimachine_snapshot.transfers.items():
+                valid = type(transfer) is HigherTransfer
                 try:
-                    audit_schema_call(root.schema, "validate_action", transfer.action)
+                    audit_validate_action(root.schema, transfer.action)
                     root.sources.resolve(transfer.source)
                     valid &= type(transfer.side) is int and transfer.side in (0, 1)
                     root.semantics.function_record(transfer_result)
@@ -704,10 +761,15 @@ def audit_higher_payloads(
                 if valid:
                     approved.update((id(transfer), id(transfer_result)))
                 else:
-                    invalid.add((root._transfer_owner, id(transfer)))
+                    invalid.add((bimachine_snapshot.transfer_owner, id(transfer)))
                     transfers_valid = False
             if operations_valid and transfers_valid:
-                approved.update((id(root._operations), id(root._transfers)))
+                approved.update(
+                    (
+                        id(bimachine_snapshot.operation_store),
+                        id(bimachine_snapshot.transfer_store),
+                    )
+                )
         elif type(root) is HigherSummaryArena:
             from number_compiler.resources.higher_summary_payload import (
                 audit_higher_summary_arena,
@@ -721,26 +783,30 @@ def audit_higher_payloads(
             approved.update(summary_approved)
             invalid.update(summary_invalid)
         elif type(root) is SemanticBoundaryArena:
-            valid_root = store(root._node_owner, root._nodes) and store(
-                root._key_owner, root._keys
-            )
+            boundary_snapshot = root.audit_snapshot()
+            valid_root = valid_node_key_store(boundary_snapshot)
             records_valid = valid_root
-            for index, boundary in enumerate(root._nodes):
+            for index, boundary in enumerate(boundary_snapshot.records):
                 valid = (
-                    type(boundary) is _Boundary
+                    type(boundary) is SemanticBoundaryRecord
                     and type(boundary.left) is int
                     and boundary.left >= 0
                     and type(boundary.right) is int
                     and boundary.right >= 0
-                    and root._keys.get(boundary) == index
+                    and boundary_snapshot.keys.get(boundary) == index
                 )
                 if valid:
                     approved.add(id(boundary))
                 else:
-                    invalid.add((root._node_owner, id(boundary)))
+                    invalid.add((boundary_snapshot.node_owner, id(boundary)))
                     records_valid = False
             if records_valid:
-                approved.update((id(root._nodes), id(root._keys)))
+                approved.update(
+                    (
+                        id(boundary_snapshot.node_store),
+                        id(boundary_snapshot.key_store),
+                    )
+                )
     return HigherPayloadAudit(frozenset(approved), frozenset(invalid))
 
 

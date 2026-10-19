@@ -288,7 +288,7 @@ def seed_morphism_cli_packet(
 
     if source is None:
         last = word_fiber_from_root(
-            term._arena, term._ledger, term._scratch_owner, root
+            term._arena, term.resource_ledger, term._scratch_owner, root
         )
         power: dict[str, object] = {
             "mode": mode,

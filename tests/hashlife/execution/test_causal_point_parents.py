@@ -5,22 +5,27 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    CausalTaskFrame,
+    OutputFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_interface_step import interface_step
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_results import ResultLease
-from number_compiler.resources.causal_workspace import CausalFrameStack, CausalResults
-from tests.support.tile_kernel import _runtime, _tile
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import CausalTaskValue
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def test_point_reuses_completed_interior_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     fourth = adapter.power(primitive, 4)
     with (
-        _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
         scheduler.application(
             fourth,
             source.tile,
@@ -36,7 +41,7 @@ def test_point_reuses_completed_interior_parent(
         child = tiles.resolve(source.tile).left
         assert child is not None
         completed = engine._run(
-            CausalFrame("output", (fourth, child, *contexts[0])),
+            OutputFrame((fourth, child, *contexts[0])),
             tile_result=True,
             return_result=True,
         )
@@ -68,9 +73,11 @@ def test_selected_child_context_matches_full_parent_context(
     monkeypatch: pytest.MonkeyPatch,
     side: int,
 ) -> None:
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
         engine = CausalTileEngine(scheduler)
         engine._hold_workspace = True
         try:
@@ -80,7 +87,7 @@ def test_selected_child_context_matches_full_parent_context(
             child = parent.right if side else parent.left
             assert child is not None
             completed = engine._run(
-                CausalFrame("output", (action, child, *contexts[side])),
+                OutputFrame((action, child, *contexts[side])),
                 tile_result=True,
                 return_result=True,
             )
@@ -109,9 +116,11 @@ def test_point_does_not_construct_unselected_child_context(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
         engine = CausalTileEngine(scheduler)
         parent = tiles.resolve(source.tile)
         selected = parent.right if side else parent.left
@@ -121,11 +130,11 @@ def test_point_does_not_construct_unselected_child_context(
 
         def guarded(
             active_engine: CausalTileEngine,
-            frame: CausalFrame,
-            frames: CausalFrameStack,
-            values: CausalResults,
+            frame: CausalTaskFrame,
+            frames: CausalFrameStack[CausalTaskFrame],
+            values: CausalResults[CausalTaskValue],
         ) -> bool:
-            if frame.op == "advance":
+            if isinstance(frame, AdvanceFrame):
                 frame_action, direction, _state, view = frame.args
                 if (
                     frame_action == action

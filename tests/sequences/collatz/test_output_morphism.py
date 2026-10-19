@@ -139,7 +139,7 @@ def test_symbolic_temporal_composition_keeps_value_register_in_guards() -> None:
         ds = tuple(rng.randrange(64) for _ in ports)
         n = sum(d * 64**i for i, d in enumerate(ds))
         expected = (3 * ((3 * n + 1) // 8) + 1) // 2 % 64
-        binding = {p.variable: d for p, d in zip(ports, ds)}
+        binding = {p.variable: d for p, d in zip(ports, ds, strict=True)}
         assert bits.evaluate(result, binding) == expected
         assert bits.evaluate(domain, binding) == radix64_domain(expected)
     # This checks declared local phases, not their whole-event admissibility.

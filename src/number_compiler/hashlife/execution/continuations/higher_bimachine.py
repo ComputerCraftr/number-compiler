@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    HigherBimachineAuditSnapshot,
+)
 from number_compiler.hashlife.execution.continuations.higher_operations import (
     evaluate_operation,
     force_value,
@@ -41,13 +45,13 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 
 
 @dataclass(frozen=True, slots=True)
-class _Initial:
+class HigherInitialOperation:
     action: FieldCellActionID
     side: int
 
 
 @dataclass(frozen=True, slots=True)
-class _Step:
+class HigherStepOperation:
     action: FieldCellActionID
     side: int
     state: HigherExpressionID
@@ -55,18 +59,18 @@ class _Step:
 
 
 @dataclass(frozen=True, slots=True)
-class _Emit:
+class HigherEmitOperation:
     action: FieldCellActionID
     left: HigherExpressionID
     symbol: HigherExpressionID
     right: HigherExpressionID
 
 
-_Operation = _Initial | _Step | _Emit
+HigherOperation = HigherInitialOperation | HigherStepOperation | HigherEmitOperation
 
 
 @dataclass(frozen=True, slots=True)
-class _Transfer:
+class HigherTransfer:
     action: FieldCellActionID
     source: SourceCellID
     side: int
@@ -97,10 +101,10 @@ class HigherBimachineRuntime:
             prefix + "-transfers",
             "query_memo",
         )
-        self._operations: MutableMapping[_Operation, HigherExpressionID] = (
+        self._operations: MutableMapping[HigherOperation, HigherExpressionID] = (
             self.ledger.make_dict(self._operation_owner)
         )
-        self._transfers: MutableMapping[_Transfer, HigherFunctionID] = (
+        self._transfers: MutableMapping[HigherTransfer, HigherFunctionID] = (
             self.ledger.make_dict(self._transfer_owner)
         )
         self.ledger.register_container(
@@ -123,26 +127,38 @@ class HigherBimachineRuntime:
         self.ledger.release(self._operation_owner, entries=operation_count)
         self.ledger.release(self._transfer_owner, entries=transfer_count)
 
+    def audit_snapshot(self) -> HigherBimachineAuditSnapshot:
+        """Return read-only views of the exact operation memo stores."""
+        return HigherBimachineAuditSnapshot(
+            ledger=self.ledger,
+            operation_owner=self._operation_owner,
+            operations=MappingProxyType(self._operations),
+            operation_store=self._operations,
+            transfer_owner=self._transfer_owner,
+            transfers=MappingProxyType(self._transfers),
+            transfer_store=self._transfers,
+        )
+
     def _publish_operation(
         self,
-        task: _Operation,
+        task: HigherOperation,
         result: HigherExpressionID,
-        built: MutableMapping[_Operation, HigherExpressionID],
+        built: MutableMapping[HigherOperation, HigherExpressionID],
     ) -> None:
         self.ledger.reserve(self._operation_owner, entries=1)
         self._operations[task] = result
         built[task] = result
         self.ledger.bump(_execution_keys.OPAQUE_HIGHER_OPERATION_PUBLICATIONS)
 
-    def _operation(self, root: _Operation) -> HigherExpressionID:
+    def _operation(self, root: HigherOperation) -> HigherExpressionID:
         found = self._operations.get(root)
         if found is not None:
             self.ledger.bump(_execution_keys.HIGHER_OPERATION_EARLY_HITS)
             return found
-        published: dict[_Operation, HigherExpressionID] = {}
-        if isinstance(root, _Initial):
+        published: dict[HigherOperation, HigherExpressionID] = {}
+        if isinstance(root, HigherInitialOperation):
             result = self.semantics.action_initial(root.action, root.side)
-        elif isinstance(root, _Step):
+        elif isinstance(root, HigherStepOperation):
             result = self.semantics.action_step(
                 root.action,
                 root.side,
@@ -163,7 +179,7 @@ class HigherBimachineRuntime:
         self.schema.validate_action(action)
         if type(side) is not int or side not in (0, 1):
             raise ValueError("higher boundary side must be zero or one")
-        return self._operation(_Initial(action, side))
+        return self._operation(HigherInitialOperation(action, side))
 
     def step(
         self,
@@ -177,7 +193,7 @@ class HigherBimachineRuntime:
             raise ValueError("higher boundary side must be zero or one")
         self.semantics.expression(state)
         self.semantics.expression(symbol)
-        return self._operation(_Step(action, side, state, symbol))
+        return self._operation(HigherStepOperation(action, side, state, symbol))
 
     def emit(
         self,
@@ -190,7 +206,7 @@ class HigherBimachineRuntime:
         self.semantics.expression(left)
         self.semantics.expression(symbol)
         self.semantics.expression(right)
-        return self._operation(_Emit(action, left, symbol, right))
+        return self._operation(HigherEmitOperation(action, left, symbol, right))
 
     def transfer(
         self,
@@ -202,7 +218,7 @@ class HigherBimachineRuntime:
         self.sources.resolve(source)
         if type(side) is not int or side not in (0, 1):
             raise ValueError("higher transfer side must be zero or one")
-        root = _Transfer(action, source, side)
+        root = HigherTransfer(action, source, side)
         found = self._transfers.get(root)
         if found is not None:
             self.ledger.bump(_execution_keys.HIGHER_SPATIAL_TRANSFER_EARLY_HITS)
@@ -211,7 +227,7 @@ class HigherBimachineRuntime:
         built: dict[int, HigherFunctionID] = {}
         while stack:
             current, ready = stack.pop()
-            key = _Transfer(action, current, side)
+            key = HigherTransfer(action, current, side)
             cached = self._transfers.get(key)
             if cached is not None:
                 built[current.local_id] = cached
@@ -248,7 +264,7 @@ class HigherBimachineRuntime:
             self.ledger.bump(_execution_keys.HIGHER_SPATIAL_TRANSFER_PUBLICATIONS)
         return built[source.local_id]
 
-    def _range_cells(
+    def range_cells(
         self,
         source: SourceBindingID,
         start: int,
@@ -271,7 +287,7 @@ class HigherBimachineRuntime:
         end: int,
     ) -> HigherExpressionID:
         state = self.semantics.initial(action, side)
-        cells = self._range_cells(source, start, end)
+        cells = self.range_cells(source, start, end)
         ordered = cells if side == 0 else tuple(reversed(cells))
         for cell in ordered:
             state = self.summaries.apply_unary(
@@ -292,7 +308,7 @@ class HigherBimachineRuntime:
         provider_right: HigherExpressionID,
     ) -> HigherExpressionID:
         incoming = self.semantics.initial(consumer, side)
-        cells = self._range_cells(source, start, end)
+        cells = self.range_cells(source, start, end)
         if not cells:
             return incoming
         contexts = tuple(
@@ -318,7 +334,7 @@ class HigherBimachineRuntime:
         end: int,
     ) -> HigherExpressionID:
         state = self.initial(action, side)
-        cells = self._range_cells(source, start, end)
+        cells = self.range_cells(source, start, end)
         ordered = cells if side == 0 else tuple(reversed(cells))
         for cell in ordered:
             state = self.semantics.apply(
@@ -400,7 +416,7 @@ class HigherBimachineRuntime:
         end: int,
     ) -> RuntimeAtom:
         state = evaluate_operation(self.semantics, "initial", action, side, ())
-        cells = self._range_cells(source, start, end)
+        cells = self.range_cells(source, start, end)
         ordered = cells if side == 0 else tuple(reversed(cells))
         if not ordered:
             return state

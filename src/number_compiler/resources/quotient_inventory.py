@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.interfaces.semantic_structures import (
     DiamondKey,
-    DiamondQuotientArena,
     LocalInterfaceID,
     MacroComponents,
     MacroInterface,

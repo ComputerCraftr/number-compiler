@@ -25,6 +25,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval as Interval,
 )
+from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
@@ -606,14 +607,12 @@ class MahlerJointFutureAction:
             raise BlockContextBudgetExceeded(
                 "source-bound repeat exceeds its bit budget"
             )
-        out, factor, count = MahlerJointFutureAction(), self, repetitions
-        while count:
-            if count & 1:
-                out = out.then(factor)
-            count >>= 1
-            if count:
-                factor = factor.then(factor)
-        return out
+        return binary_power(
+            self,
+            repetitions,
+            identity=MahlerJointFutureAction(),
+            compose=MahlerJointFutureAction.then,
+        ).value
 
     @classmethod
     def event(

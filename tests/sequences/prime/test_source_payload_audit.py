@@ -8,19 +8,19 @@ import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
 )
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.support.source_bound_images import _source_audit
+from tests.support.source_bound_images import source_audit
 
 
 def _prime_invalid(
     ledger: ResourceLedger, core: SourceBoundSchedulerCore
 ) -> frozenset[tuple[int, int]]:
-    return (
-        ledger.audit_payload_contracts().invalid | _source_audit(ledger, core).invalid
-    )
+    return ledger.audit_payload_contracts().invalid | source_audit(ledger, core).invalid
 
 
 def _assert_audit_only_change(before: LedgerSnapshot, after: LedgerSnapshot) -> None:
@@ -35,8 +35,12 @@ def test_prime_source_payload_audit_is_read_only_at_the_work_limit() -> None:
     from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorSource,
+    )
+    from number_compiler.sequences.prime.successor_image_adapter import (
+        PrimeSuccessorImageAdapter,
     )
 
     dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
@@ -77,8 +81,12 @@ def test_prime_source_payload_audit_rejects_forged_arena_ownership(
     from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorSource,
+    )
+    from number_compiler.sequences.prime.successor_image_adapter import (
+        PrimeSuccessorImageAdapter,
     )
 
     dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
@@ -112,8 +120,12 @@ def test_prime_source_payload_audit_rejects_replaced_adapter_arena() -> None:
     from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorSource,
+    )
+    from number_compiler.sequences.prime.successor_image_adapter import (
+        PrimeSuccessorImageAdapter,
     )
 
     dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
@@ -130,7 +142,7 @@ def test_prime_source_payload_audit_rejects_replaced_adapter_arena() -> None:
             arena.prefix(7),
         )
         adapter.arena = foreign
-        audit = _source_audit(dag.ledger, core)
+        audit = source_audit(dag.ledger, core)
         assert audit.invalid
     finally:
         adapter.arena = arena
@@ -146,8 +158,12 @@ def test_prime_descriptor_authority_and_port_extent_are_immutable(damage: str) -
     from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorSource,
+    )
+    from number_compiler.sequences.prime.successor_image_adapter import (
+        PrimeSuccessorImageAdapter,
     )
 
     dag = CoprimeRankDAG((2, 3, 5, 7), max_states=1024, max_work=100_000)

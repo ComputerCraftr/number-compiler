@@ -596,11 +596,11 @@ class AssociatedActionArena:
         semantics = len(self._semantics)
         semantic_fingerprints = len(self._semantic_fingerprints)
         self._action_keys.clear()
-        self._actions._rollback_unpublished(0)
-        self._action_fingerprints._rollback_unpublished(0)
+        self._actions.rollback_unpublished(0)
+        self._action_fingerprints.rollback_unpublished(0)
         self._semantic_keys.clear()
-        self._semantics._rollback_unpublished(0)
-        self._semantic_fingerprints._rollback_unpublished(0)
+        self._semantics.rollback_unpublished(0)
+        self._semantic_fingerprints.rollback_unpublished(0)
         self.ledger.release(self._action_key_owner, entries=action_keys)
         self.ledger.release(self._action_owner, entries=actions, nodes=actions)
         self.ledger.release(self._action_fingerprint_owner, entries=action_fingerprints)
@@ -698,12 +698,12 @@ class AssociatedActionArena:
             self._action_keys[key] = local_id
         except BaseException:
             self._action_keys.pop(key, None)
-            self._actions._rollback_unpublished(action_size)
-            self._action_fingerprints._rollback_unpublished(action_fingerprint_size)
+            self._actions.rollback_unpublished(action_size)
+            self._action_fingerprints.rollback_unpublished(action_fingerprint_size)
             if new_semantic:
                 self._semantic_keys.pop(semantic, None)
-                self._semantics._rollback_unpublished(semantic_size)
-                self._semantic_fingerprints._rollback_unpublished(
+                self._semantics.rollback_unpublished(semantic_size)
+                self._semantic_fingerprints.rollback_unpublished(
                     semantic_fingerprint_size
                 )
             for owner, entries, nodes in reservations:

@@ -33,7 +33,7 @@ def test_reverse_production_requires_exact_output_and_source_image_evidence() ->
     expected_digits = str(value)[::-1]
     assert term.digit(position) == int(expected_digits[position])
     assert term.digits() == tuple(map(int, expected_digits))
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     metrics = term.metrics()
     counters = metrics.resource_work_counters
     assert counters.get("source_image_publications", 0) > 0
@@ -43,14 +43,14 @@ def test_reverse_production_requires_exact_output_and_source_image_evidence() ->
     assert metrics.sequential_generation_advances == 0
     assert metrics.higher_action_continuation_requests == 0
     assert metrics.higher_concrete_operation_evaluations == 0
-    before_replay = dict(term._ledger.counters)
+    before_replay = dict(term.resource_ledger.counters)
     assert term.digits() == tuple(map(int, expected_digits))
     assert (
-        term._ledger.counters["source_image_publications"]
+        term.resource_ledger.counters["source_image_publications"]
         == before_replay["source_image_publications"]
     )
     assert (
-        term._ledger.counters["source_image_projection_publications"]
+        term.resource_ledger.counters["source_image_projection_publications"]
         == before_replay["source_image_projection_publications"]
     )
 
@@ -91,7 +91,7 @@ def test_reverse_projection_respects_explicit_context_budget() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         zero_budget.digit(zero_budget.maximum_width // 3)
     assert zero_budget._workspace is None
-    assert zero_budget._ledger.entries == zero_budget._ledger.nodes == 0
+    assert zero_budget.resource_ledger.entries == zero_budget.resource_ledger.nodes == 0
     # Every retained action, source and publication is charged. The bounded
     # application must refuse atomically; an unbounded application still has
     # to construct and return the exact powered output.
@@ -105,7 +105,7 @@ def test_reverse_projection_respects_explicit_context_budget() -> None:
     for _ in range(128):
         value += int(str(value)[::-1])
     assert term.materialize(max_bits=10_000) == value
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     metrics = term.metrics()
     assert metrics.resource_work_counters.get("source_image_publications", 0) > 0
     assert (

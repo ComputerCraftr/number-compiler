@@ -55,7 +55,7 @@ def test_reverse_spacetime_terms_match_scalar_and_do_not_use_blockeffect_residua
     engine = ReverseAddCausalSpacetimeEngine(base=10)
     scalar = 196
     field = ReverseAddPairField.from_value(196, base=10)
-    for generation in range(1, 80):
+    for _ in range(1, 80):
         scalar += int(str(scalar)[::-1])
         digits = engine.terminal_digits(field)
         got = sum(digit * (10**i) for i, digit in enumerate(iter_symbols(digits)))

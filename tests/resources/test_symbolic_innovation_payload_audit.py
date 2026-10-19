@@ -11,10 +11,13 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAdd,
+    InnovationNode,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _Add,
 )
 from number_compiler.arithmetic.polynomials.f5_transport import (
     F5AffineTransport,
@@ -23,6 +26,14 @@ from number_compiler.arithmetic.polynomials.f5_transport import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from tests.support.arithmetic_fixtures import wide_innovation_operators
+
+
+def _replace_nodes_without_ledger_charge(
+    arena: SymbolicInnovationArena,
+    nodes: tuple[InnovationNode, ...] | list[InnovationNode],
+) -> None:
+    """Simulate corruption of an arena's backing list for its audit test."""
+    object.__setattr__(arena.audit_snapshot().nodes, "_data", list(nodes))
 
 
 def test_unrelated_resource_audit_does_not_load_innovation_machinery() -> None:
@@ -69,7 +80,7 @@ def test_live_f5_memo_is_audited_without_evaluating_arithmetic(
     before = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
     after = F5AffineTransport(F5SpatialTransport(3, 5**64 - 1), arena.interval(2))
     compose_f5_forcing(arena, before, after)
-    memo = arena._f5_composition_cache()
+    memo = arena.f5_composition_cache()
     assert memo.nodes_per_entry == 3
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -94,12 +105,13 @@ def test_f5_memo_capacity_grows_by_eviction_with_exact_metadata_accounting() -> 
     arena = SymbolicInnovationArena(ledger)
     before = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
     compose_f5_forcing(arena, before, before)
-    old = arena._f5_composition_cache()
+    old = arena.f5_composition_cache()
     after = F5AffineTransport(F5SpatialTransport(0, 5**64), before.forcing)
     compose_f5_forcing(arena, before, after)
-    current = arena._f5_composition_cache()
-    assert old._disposed and len(old._data) == 0
+    current = arena.f5_composition_cache()
     assert current is not old and current.nodes_per_entry == 3
+    with pytest.raises(RuntimeError, match="disposed"):
+        len(old)
     assert all(row.accounting_delta in (None, 0) for row in ledger.inventory())
     report = audit_registered_payloads(ledger)
     assert report.forbidden_future_payloads == report.unknown_payloads == 0
@@ -113,20 +125,23 @@ def test_f5_memo_audit_rejects_foreign_or_uncharged_payloads(tamper: str) -> Non
     arena = SymbolicInnovationArena(ledger)
     action = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
     compose_f5_forcing(arena, action, action)
-    memo = arena._f5_composition_cache()
+    memo = arena.f5_composition_cache()
     key = next(iter(memo))
     if tamper == "foreign-result":
         foreign = SymbolicInnovationArena(ResourceLedger())
         memo[key] = foreign.zero
     elif tamper == "foreign-empty-memo":
         sibling = SymbolicInnovationArena(ledger)
-        arena._f5_compositions = sibling._f5_composition_cache()
+        sibling.f5_composition_cache()
+        sibling_memo = sibling.audit_snapshot().f5_compositions
+        assert sibling_memo is not None
+        object.__setattr__(arena, "_f5_compositions", sibling_memo)
     elif tamper == "uncharged-key":
         value = memo[key]
         del memo[key]
         memo[(key[0], key[1], 1 << 130, key[3])] = value
     else:
-        del arena._f5_compositions
+        object.__delattr__(arena, "_f5_compositions")
     assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
 
 
@@ -166,17 +181,23 @@ def test_tampered_symbolic_dag_is_forbidden(tamper: str) -> None:
     ledger, arena = _mixed_arena()
     if tamper == "foreign-child":
         other = SymbolicInnovationArena(ResourceLedger())
-        node = arena._nodes[-1]
-        assert type(node) is _Add
-        arena._nodes._data[-1] = replace(node, left=other.zero)
+        snapshot = arena.audit_snapshot()
+        node = snapshot.nodes[-1]
+        assert isinstance(node, InnovationAdd)
+        nodes = list(snapshot.nodes)
+        nodes[-1] = replace(node, left=other.zero)
+        _replace_nodes_without_ledger_charge(arena, nodes)
     elif tamper == "foreign-store":
         other = SymbolicInnovationArena(ResourceLedger())
-        arena._keys = other._keys
+        object.__setattr__(arena, "_keys", other.audit_snapshot().keys)
     elif tamper == "interner":
-        reference = next(iter(arena._keys.values()))
+        reference = next(iter(arena.audit_snapshot().keys.values()))
         object.__setattr__(reference, "seal", "forged")
     else:
-        arena._nodes._data.append(arena._nodes[0])
+        snapshot = arena.audit_snapshot()
+        nodes = list(snapshot.nodes)
+        nodes.append(nodes[0])
+        _replace_nodes_without_ledger_charge(arena, nodes)
 
     assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
 

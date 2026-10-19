@@ -353,10 +353,11 @@ null when the owner was not instrumented.
 primitives. They do not increment `double_reverse_spatial_transducer_applications`;
 that counter continues to count the actual compressed decimal transducer path.
 `double_reverse_periodic_bank_pointed_reuse` counts final pair results consumed
-from an admitted temporal bank. Collatz cross-family guard construction,
-consumed temporal powers, refusals and explicitly demanded radix ports have
-separate counters. A finite residue or spectral observation is not a cache hit
-or a proof-completion flag.
+from an admitted temporal bank. The legacy-named Collatz cross-family counters
+track source-closed guard construction, consumed temporal powers, refusals and
+explicitly demanded radix ports separately; their serialized names remain stable.
+A finite residue or spectral observation is not a cache hit or a proof-completion
+flag.
 
 `reverse_radix19_cochain_node_visits` and
 `reverse_radix19_cochain_compositions` charge the source grammar fold itself.
@@ -417,3 +418,19 @@ evaluations include valid requests that cannot certify a common width.
 Operand-bit counters sum the integer operand lengths at instrumented sites,
 including unsuccessful work. They are neither elapsed time nor cache hits.
 Unobserved owners remain null, and reading metrics performs no cylinder work.
+
+Demanded `2rev10` packed projections separate actual packed-row steps and operand
+bits from `double_reverse_pointed_ring_stencil_cells`, which is the equivalent
+number of scalar stencil cells. The latter is not an executed-operation count.
+Overlapping causal windows share their source reads; disjoint windows do not
+charge or evaluate the intervening gap. Work completed before a failed endpoint
+check remains charged. Periodic motif steps count completed discovery rows;
+motif cell evaluations also include independent selected-lineage checks.
+Affine ports count actual carry reads, while affine logical ports describe the
+represented powered word. None of these counters proves unrestricted temporal
+closure or process-cache reuse.
+
+`collatz_pointed_pair_certificate_reuses` counts consumption of an already-issued
+pointed pair by the adjacent guarded-port join after authority and source checks.
+It measures an avoided second pointed-certificate construction, not a new macro
+application or a claim that a larger successor action was cached.

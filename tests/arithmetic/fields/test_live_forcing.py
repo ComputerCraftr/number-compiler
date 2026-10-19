@@ -11,13 +11,15 @@ from number_compiler.arithmetic.fields.live_forcing import (
     LiveForcingProjection,
     ResidueRun,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate
+from tests.support.symbolic_innovation import evaluate
 
 
 def test_dead_forcing_is_pruned_before_child_access(
@@ -71,7 +73,7 @@ def test_modular_packets_match_literal_laurent_oracle(
         CylinderChart(slope, offset),
     )
     expression = arena.linear_combination(((7, inner), (-3, arena.interval(7))))
-    expected = _evaluate(arena, expression)
+    expected = evaluate(arena, expression)
     retained = ledger.entries, ledger.nodes
     with LiveForcingProjection(arena, expression) as view:
         runs = view.residue_runs(-40, 40)
@@ -110,7 +112,7 @@ def test_modular_cancellation_does_not_erase_exact_expression() -> None:
     expression = arena.linear_combination(((32, arena.interval(1)),))
     with LiveForcingProjection(arena, expression) as view:
         assert not tuple(view.packets())
-    assert _evaluate(arena, expression) == {0: 32}
+    assert evaluate(arena, expression) == {0: 32}
 
 
 def test_unadmitted_live_growth_refuses_without_leaking() -> None:

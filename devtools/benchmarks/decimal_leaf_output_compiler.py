@@ -23,6 +23,10 @@ from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.interfaces.tile_decimal_functions import (
     decimal_leaf_output,
 )
+from number_compiler.hashlife.interfaces.tile_interface_compilation import (
+    input_ports_for_kernel,
+    output_sorts_for_kernel,
+)
 from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -44,9 +48,9 @@ def _compile(mode: Literal["joint-table", "factored"]) -> dict[str, object]:
     adapter = PrimitiveTileKernelAdapter(TileArena(ledger), kernels, quotients)
     action = adapter.admit(BaseBlockEffect(10))
     kernel = adapter.primitive_law(action)
-    ports = adapter._ports(kernel)
+    ports = input_ports_for_kernel(kernel)
     left_port, right_port = ports
-    output_sort = adapter._output_sorts(kernel)[2]
+    output_sort = output_sorts_for_kernel(kernel)[2]
     before = dict(ledger.counters)
     function_nodes_before = len(adapter.bits.functions.nodes)
     factored_nodes_before = len(adapter.bits.nodes)
@@ -64,7 +68,7 @@ def _compile(mode: Literal["joint-table", "factored"]) -> dict[str, object]:
                 output_sort,
             )
         else:
-            output = adapter._tabulated(
+            output = adapter.tabulated(
                 ports,
                 output_sort,
                 (left_port, right_port),

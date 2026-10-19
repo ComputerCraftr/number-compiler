@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.frame import CollatzFutureValuationRoot
 
 
-def _compile_collatz(
+def compile_collatz(
     spec: CollatzSequenceSpec, *, diagnostics: bool
 ) -> CollatzCompilation:
     if spec.radix == 2:

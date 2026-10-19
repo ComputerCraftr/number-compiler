@@ -5,16 +5,19 @@ from typing import Any, Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.execution.causal_frames import (
+    CausalTaskFrame,
+    PromoteMidpointFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def _skip_promotion(
     _engine: object,
-    frame: CausalFrame,
+    frame: CausalTaskFrame,
     _frames: object,
     values: list[Any],
 ) -> bool:
@@ -35,11 +38,11 @@ def test_completed_p4_children_promote_without_more_output_work(
     import number_compiler.hashlife.execution.tile_causal as causal
 
     causal_module: Any = causal
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     fourth = adapter.power(primitive, 4)
     eighth = adapter.power(primitive, 8)
     with (
-        _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
         scheduler.application(
             eighth,
             source.tile,
@@ -104,8 +107,7 @@ def test_completed_p4_children_promote_without_more_output_work(
         )
         engine._application = application.identity
         promoted = engine._run(
-            CausalFrame(
-                "promote_midpoint",
+            PromoteMidpointFrame(
                 (
                     eighth,
                     source.tile,
@@ -133,7 +135,7 @@ def test_completed_p4_children_promote_without_more_output_work(
         parent_guard = scheduler.results.lookup(parent_key)
         assert parent_guard is not None
         try:
-            scheduler._release_pins(application.identity)
+            scheduler.release_application_pins(application.identity)
             scheduler.results._remove_key(left_key)
             assert left_key not in scheduler.results._memo
             retained_parent = scheduler.results.lookup(parent_key)
@@ -145,8 +147,7 @@ def test_completed_p4_children_promote_without_more_output_work(
             engine._application = application.identity
             assert (
                 engine._run(
-                    CausalFrame(
-                        "promote_midpoint",
+                    PromoteMidpointFrame(
                         (
                             eighth,
                             source.tile,
@@ -168,10 +169,10 @@ def test_cold_parent_promotion_declines_before_constructing_child_contexts(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal_promotion as promotion
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     eighth = adapter.power(primitive, 8)
     with (
-        _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
         scheduler.application(
             eighth,
             source.tile,
@@ -180,8 +181,7 @@ def test_cold_parent_promotion_declines_before_constructing_child_contexts(
         ) as application,
     ):
         engine = CausalTileEngine(scheduler)
-        root = CausalFrame(
-            "promote_midpoint",
+        root = PromoteMidpointFrame(
             (
                 eighth,
                 source.tile,
@@ -193,7 +193,7 @@ def test_cold_parent_promotion_declines_before_constructing_child_contexts(
         def forbidden_frame(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("cold promotion constructed a child context")
 
-        monkeypatch.setattr(promotion, "CausalFrame", forbidden_frame)
+        monkeypatch.setattr(promotion, "AnchorFrame", forbidden_frame)
         engine._application = application.identity
         assert engine._run(root, tile_result=False) is False
         assert ledger.counters["tile_causal_parent_promotion_preflight_misses"] == 1
@@ -208,10 +208,12 @@ def test_promoted_p4_parent_reduces_later_p8_completion_frames(
     causal_module: Any = causal
 
     def run(*, promote: bool) -> tuple[int, int]:
-        ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+        ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+            BaseBlockEffect(3)
+        )
         eighth = adapter.power(primitive, 8)
         with (
-            _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+            make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
             scheduler.application(
                 eighth,
                 source.tile,

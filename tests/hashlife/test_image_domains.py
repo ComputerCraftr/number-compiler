@@ -32,14 +32,14 @@ from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotient
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import (
-    _application_setup,
-    _SecondDomainArena,
-    _setup,
+    SecondDomainArena,
+    field_image_application_setup,
+    recursive_field_image_setup,
 )
 
 
 def test_image_arena_rejects_callable_only_domain_before_registration() -> None:
-    ledger, _, _signature, _, _, images, adapter, _ = _setup()
+    ledger, _, _signature, _, _, images, adapter, _ = recursive_field_image_setup()
     assert_rejected_atomically(
         ledger,
         lambda: RecursiveFieldImageArena(
@@ -60,14 +60,14 @@ def test_image_arena_rejects_callable_only_domain_before_registration() -> None:
 
 
 def test_image_domain_audit_rejects_missing_authority_metadata() -> None:
-    from number_compiler.hashlife.execution.field_image_domains import _FieldImageDomain
+    from number_compiler.hashlife.execution.field_image_domains import FieldImageDomain
     from number_compiler.resources.payload_audit import audit_registered_payloads
 
-    ledger, _, _, _, _, images, _, _ = _setup()
+    ledger, _, _, _, _, images, _, _ = recursive_field_image_setup()
     domain_key, domain = next(
         (key, value)
         for key, value in images._domains.items()
-        if type(value) is _FieldImageDomain
+        if type(value) is FieldImageDomain
     )
     images._domains[domain_key] = replace(domain, action_authority=None)
 
@@ -76,12 +76,14 @@ def test_image_domain_audit_rejects_missing_authority_metadata() -> None:
 
 
 def test_shared_image_arena_admits_exact_second_semantic_domain() -> None:
-    ledger, source, signature, geometry, _, images, adapter, _ = _setup((0,))
+    ledger, source, signature, geometry, _, images, adapter, _ = (
+        recursive_field_image_setup((0,))
+    )
     action_owner = ArenaToken("second-actions")
     output_owner = ArenaToken("second-outputs")
     action = FieldCellActionID(action_owner, "second-field-action", 0)
     output = CoordinateOutputMorphismID(output_owner, "second-output", 0)
-    authority = _SecondDomainArena(
+    authority = SecondDomainArena(
         ledger,
         action_owner,
         output_owner,
@@ -125,11 +127,13 @@ def test_shared_image_arena_admits_exact_second_semantic_domain() -> None:
 
 
 def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> None:
-    ledger, source, signature, geometry, _, images, adapter, _ = _setup((0,))
+    ledger, source, signature, geometry, _, images, adapter, _ = (
+        recursive_field_image_setup((0,))
+    )
     initial_entries = len(images._domains)
     output_owner = ArenaToken("shared-output-arena")
     first_action_owner = ArenaToken("shared-output-first-actions")
-    first = _SecondDomainArena(
+    first = SecondDomainArena(
         ledger,
         first_action_owner,
         output_owner,
@@ -156,7 +160,7 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
     assert ledger.entries == before_entries + 2
 
     second_action_owner = ArenaToken("shared-output-second-actions")
-    second = _SecondDomainArena(
+    second = SecondDomainArena(
         ledger,
         second_action_owner,
         output_owner,
@@ -197,7 +201,7 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
 
 
 def test_duplicate_or_unowned_image_domain_rejects_before_reservation() -> None:
-    ledger, _, signature, _, _, images, adapter, _ = _setup((0,))
+    ledger, _, signature, _, _, images, adapter, _ = recursive_field_image_setup((0,))
     before = assert_rejected_atomically(
         ledger,
         lambda: images.admit_domain(
@@ -252,7 +256,7 @@ def test_same_arena_wrong_signature_cannot_reach_parent_observer(
         executor,
         incoming,
         application,
-    ) = _application_setup()
+    ) = field_image_application_setup()
     assert isinstance(images.interfaces, DiamondQuotientArena)
     other = images.interfaces.intern_interface(
         replace(
@@ -279,7 +283,9 @@ def test_same_arena_wrong_signature_cannot_reach_parent_observer(
 def test_image_phase_domain_matches_admitted_port_before_lookup() -> None:
     from number_compiler.hashlife.execution.field_images import ImageRequestKey
 
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     wrong_geometry = images.geometries.intern(FieldGeometry(1, phase=1, phase_count=2))
     assert_rejected_atomically(
@@ -295,7 +301,9 @@ def test_image_phase_domain_matches_admitted_port_before_lookup() -> None:
 def test_image_publication_rejects_interface_from_another_signature() -> None:
     from number_compiler.hashlife.execution.field_images import ImageRequestKey
 
-    ledger, source, signature, geometry, action, images, _adapter, executor = _setup()
+    ledger, source, signature, geometry, action, images, _adapter, executor = (
+        recursive_field_image_setup()
+    )
     image = executor.image(action, source, geometry, signature)
     record = images.resolve(image)
     assert isinstance(images.interfaces, DiamondQuotientArena)
@@ -362,7 +370,9 @@ def test_geometry_payload_audit_rejects_semantic_key_poisoning() -> None:
 
 
 def test_signature_subclass_cannot_alias_the_configured_handle_sort() -> None:
-    ledger, source, signature, geometry, action, images, _, executor = _setup()
+    ledger, source, signature, geometry, action, images, _, executor = (
+        recursive_field_image_setup()
+    )
 
     @dataclass(frozen=True, slots=True)
     class ForgedSignature(PortSignatureID):
@@ -376,14 +386,16 @@ def test_signature_subclass_cannot_alias_the_configured_handle_sort() -> None:
 
 
 @dataclass(frozen=True, slots=True)
-class _PortID(ArenaHandle):
+class FieldTransferPortID(ArenaHandle):
     pass
 
 
 def test_non_source_image_graph_owns_no_exact_digit_geometry() -> None:
     from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
 
-    ledger, source, signature, geometry, action, _, _, executor = _setup()
+    ledger, source, signature, geometry, action, _, _, executor = (
+        recursive_field_image_setup()
+    )
     executor.image(action, source, geometry, signature)
     roles = {item.owner: item.role for item in ledger.inventory()}
     allowed = {"source_cell", "source_cell_interner", "exact_source"}

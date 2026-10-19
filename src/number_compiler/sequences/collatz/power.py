@@ -461,6 +461,10 @@ class CollatzEventArena:
         )
         ledger.register_execution_root(self)
 
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        return self._ledger
+
     def _intern(
         self,
         key: tuple[object, ...],

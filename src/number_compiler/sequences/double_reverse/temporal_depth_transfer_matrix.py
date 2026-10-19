@@ -19,8 +19,8 @@ from number_compiler.arithmetic.fields.boolean_transfer import (
 )
 
 from ._temporal_bank_authority import (
-    _SourceAuthority,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
     issue_source_record,
     validate_source_record,
 )
@@ -29,10 +29,10 @@ from .temporal_certified_halo import (
     CertifiedHalo,
     SourceConditionedDepthWindowUnavailable,
     SourceContinuedHaloTrace,
-    _build_source_continued_halo_trace,
-    _halo_outer_odd_row,
-    _ring_next_pair,
-    _ring_outer,
+    build_source_continued_halo_trace,
+    halo_outer_odd_row,
+    ring_next_pair,
+    ring_outer,
     source_continued_halo_trace_packet_from_source,
 )
 from .temporal_hashlife import growth_ports
@@ -43,8 +43,12 @@ if TYPE_CHECKING:
 _Published = TypeVar("_Published")
 
 PAIR_COUNT = 100
-ALL_PAIRS = tuple((left, right) for left in range(10) for right in range(10))
-_PAIR_STATE_SPACE = BooleanStateSpace("double_reverse.decimal-pair", ALL_PAIRS)
+ALL_PAIRS: tuple[tuple[int, int], ...] = tuple(
+    (left, right) for left in range(10) for right in range(10)
+)
+_PAIR_STATE_SPACE: BooleanStateSpace[tuple[int, int]] = BooleanStateSpace(
+    "double_reverse.decimal-pair", ALL_PAIRS
+)
 
 
 def pair_index(pair: tuple[int, int]) -> int:
@@ -89,7 +93,9 @@ class BooleanPairMatrix:
 
     @classmethod
     def identity(cls) -> BooleanPairMatrix:
-        return cls._from_relation(BooleanMatrix.identity(_PAIR_STATE_SPACE))
+        return cls._from_relation(
+            BooleanMatrix[tuple[int, int]].identity(_PAIR_STATE_SPACE)
+        )
 
     def then(self, later: BooleanPairMatrix) -> BooleanPairMatrix:
         """Apply this matrix, then ``later``, in physical temporal order."""
@@ -248,12 +254,12 @@ def source_conditioned_depth_return(
     steps = len(outer) - 1
     if (
         source_halo.pairs < pairs + 1 + steps
-        or _ring_outer(source_halo, pairs) != outer[0]
+        or ring_outer(source_halo, pairs) != outer[0]
         or any(
             state.pairs != pairs or state.phase != (outer[0].phase + 2 * j) % 4
             for j, state in enumerate(outer)
         )
-        or _ring_next_pair(source_halo, pairs) != initial_pair
+        or ring_next_pair(source_halo, pairs) != initial_pair
     ):
         raise ValueError("incomplete or inconsistent initial causal halo")
     if odd_outer is not None and (
@@ -288,10 +294,10 @@ def source_conditioned_depth_return(
         admitted = True
         for tick in range(steps):
             current = current_halo.outer(pairs + 1)
-            if _ring_outer(current, pairs) != outer[tick]:
+            if ring_outer(current, pairs) != outer[tick]:
                 admitted = False
                 break
-            next_pair = _ring_next_pair(current, pairs)
+            next_pair = ring_next_pair(current, pairs)
             trace.append(next_pair)
             if (
                 odd_outer is not None
@@ -302,8 +308,8 @@ def source_conditioned_depth_return(
                 break
             current_halo = current_halo.step()
         final_outer = current_halo.outer(pairs + 1)
-        if admitted and _ring_outer(final_outer, pairs) == outer[-1]:
-            trace.append(_ring_next_pair(final_outer, pairs))
+        if admitted and ring_outer(final_outer, pairs) == outer[-1]:
+            trace.append(ring_next_pair(final_outer, pairs))
             rows.append(1 << pair_index(trace[-1]))
             if initial == initial_pair:
                 pointed_trace = tuple(trace)
@@ -336,7 +342,7 @@ def rooted_finite_depth_trace(
         if tick == f_steps:
             states.append(current_halo.outer(outer_pairs + 1))
             break
-        outer, odd_row = _halo_outer_odd_row(current_halo, outer_pairs)
+        outer, odd_row = halo_outer_odd_row(current_halo, outer_pairs)
         states.append(outer)
         odd.append(odd_row)
         current_halo = current_halo.step()
@@ -344,7 +350,7 @@ def rooted_finite_depth_trace(
 
 
 @dataclass(frozen=True, slots=True)
-class SourceConditionedDepthWindow(_SourceAuthorizedRecord):
+class SourceConditionedDepthWindow(SourceAuthorizedRecord):
     """Finite 2rev10 depth relation bound to an existing prepared source."""
 
     physical_prefix: int
@@ -380,7 +386,7 @@ class SourceConditionedDepthWindow(_SourceAuthorizedRecord):
         self.validate_source_authority()
         return self.transfer.action
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         authority = validate_source_record(self)
         if (
             authority.root != self.source_root
@@ -400,7 +406,7 @@ class SourceConditionedDepthWindow(_SourceAuthorizedRecord):
             or self.source_halo.phase
             != (self.source_phase + 2 * self.start_f_steps) % 4
             or self.source_halo.pairs != self.outer_pairs + 1 + self.f_steps
-            or self.initial_pair != _ring_next_pair(self.source_halo, self.outer_pairs)
+            or self.initial_pair != ring_next_pair(self.source_halo, self.outer_pairs)
             or self.transfer.physical_duration != 2 * self.f_steps
             or self.transfer.source_halo_pairs != self.source_halo.pairs
             or self.transfer.infinite_period_certified
@@ -483,7 +489,7 @@ def source_conditioned_depth_window_packet(
     """
 
     def publish(window: SourceConditionedDepthWindow) -> dict[str, object]:
-        continued = _build_source_continued_halo_trace(
+        continued = build_source_continued_halo_trace(
             source,
             outer_pairs=window.outer_pairs,
             start_f_steps=window.start_f_steps,
@@ -492,11 +498,11 @@ def source_conditioned_depth_window_packet(
         )
         if (
             tuple(
-                _ring_outer(state, window.outer_pairs) for state in continued.even_outer
+                ring_outer(state, window.outer_pairs) for state in continued.even_outer
             )
             != window.outer_trace
             or tuple(
-                _ring_next_pair(state, window.outer_pairs)
+                ring_next_pair(state, window.outer_pairs)
                 for state in continued.even_outer
             )
             != window.transfer.pointed_trace
@@ -504,7 +510,7 @@ def source_conditioned_depth_window_packet(
             raise AssertionError("refilled halo diverged from the matrix source trace")
         if any(
             row is None or row[: window.outer_pairs] != expected
-            for row, expected in zip(continued.odd_outer, window.odd_outer)
+            for row, expected in zip(continued.odd_outer, window.odd_outer, strict=True)
         ):
             raise AssertionError("refilled odd halo diverged from the matrix trace")
         packet = window.to_packet()
@@ -598,7 +604,7 @@ def _build_source_conditioned_depth_window(
     )
     phase = (source.phase + 2 * start_f_steps) % 4
     halo = BirthRingState(left, right, phase)
-    initial_pair = _ring_next_pair(halo, outer_pairs)
+    initial_pair = ring_next_pair(halo, outer_pairs)
     # Bound the finite matrix, trace, and source-record construction against
     # the same owner as the already prepared source. The two pointed windows
     # above are separately charged by Hashlife itself.
@@ -606,7 +612,7 @@ def _build_source_conditioned_depth_window(
         rooted_states, rooted_odd = rooted_finite_depth_trace(
             halo, outer_pairs=outer_pairs, f_steps=f_steps
         )
-        outer = tuple(_ring_outer(state, outer_pairs) for state in rooted_states)
+        outer = tuple(ring_outer(state, outer_pairs) for state in rooted_states)
         odd_rows: list[tuple[tuple[int, int], ...]] = []
         for row in rooted_odd:
             if row is None:

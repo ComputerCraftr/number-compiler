@@ -35,7 +35,7 @@ from tests.support.assertions import (
     assert_mutation_rejected,
     assert_rejected_atomically,
 )
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_state_codec import (
@@ -51,7 +51,7 @@ def registry(
 
 
 def codec() -> tuple[StateCodecArena, StateCodec]:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = StateCodecArena(runtime, StructureArena(BitFunctionArena(runtime.ledger)))
     record = arena.compile(runtime.actions.compose(action, action), 0)
     return arena, record
@@ -61,7 +61,7 @@ def codec() -> tuple[StateCodecArena, StateCodec]:
 def test_codec_inventory_is_complete_read_only_and_requires_issued_record(
     composed: bool,
 ) -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = StateCodecArena(runtime, StructureArena(BitFunctionArena(runtime.ledger)))
     record = arena.compile(
         runtime.actions.compose(action, action) if composed else action, 0
@@ -201,12 +201,12 @@ def test_public_radix_inventory_matches_actual_native_or_complete_action_route(
     term = PoweredCollatzTerm(27, steps)
     expected = 27 if not steps else 82
     assert collatz_radix_digit(term, radix, 1) == expected // radix % radix
-    before = term._ledger.snapshot()
-    report = collect_ledger_metrics(term._ledger)
+    before = term.resource_ledger.snapshot()
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.resource_audit_complete == 1
     assert report.forbidden_future_payloads == 0
-    assert report.cache_slots == term._ledger.entries
-    assert term._ledger.snapshot() == before
+    assert report.cache_slots == term.resource_ledger.entries
+    assert term.resource_ledger.snapshot() == before
 
 
 def test_actual_fused_binding_must_match_stage_and_source_mode() -> None:
@@ -215,9 +215,9 @@ def test_actual_fused_binding_must_match_stage_and_source_mode() -> None:
     projection = term._radix_projections[10]
     key = FusedRadixBindingKey(1)
     value = next(iter(projection._fused_actions.values()))
-    term._ledger.reserve(projection._fused_actions.owner, entries=1)
+    term.resource_ledger.reserve(projection._fused_actions.owner, entries=1)
     projection._fused_actions._data[key] = value
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.forbidden_future_payloads > 0
     assert report.representation_boundary_complete == 0
 
@@ -226,7 +226,7 @@ def test_original_reencoding_is_valid_under_point_scope_without_exact_tree_calls
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = PoweredCollatzTerm(27, 0)
-    arena = OriginalRadixArena(term._ledger)
+    arena = OriginalRadixArena(term.resource_ledger)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("original reencoding attempted an exact tree constructor")
@@ -237,21 +237,21 @@ def test_original_reencoding_is_valid_under_point_scope_without_exact_tree_calls
     monkeypatch.setattr(dyadic_tile, "join", forbidden)
     record = source_reads_only(arena.encode)(term._source_construction, 3)
     assert record.digits == (0, 0, 0, 1)
-    before = term._ledger.snapshot()
-    assert registry(term._ledger).valid(record)
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
-    assert term._ledger.snapshot() == before
+    before = term.resource_ledger.snapshot()
+    assert registry(term.resource_ledger).valid(record)
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
+    assert term.resource_ledger.snapshot() == before
 
 
 def test_exact_source_role_cannot_launder_a_future_radix_encoding() -> None:
     term = PoweredCollatzTerm(27, 1)
-    arena = OriginalRadixArena(term._ledger)
+    arena = OriginalRadixArena(term.resource_ledger)
     record = arena.encode(term._source_construction, 3)
     original = record.digits
     object.__setattr__(record, "digits", (1, 0, 0, 1))  # 28, not the original 27.
     try:
-        assert not registry(term._ledger).valid(record)
-        report = collect_ledger_metrics(term._ledger)
+        assert not registry(term.resource_ledger).valid(record)
+        report = collect_ledger_metrics(term.resource_ledger)
         assert report.forbidden_future_payloads > 0
         assert report.representation_boundary_complete == 0
     finally:
@@ -262,7 +262,7 @@ def test_same_ledger_distinct_original_cannot_reuse_warm_radix_action() -> None:
     ledger = ResourceLedger()
     first = PoweredCollatzTerm(27, 1)
     second = PoweredCollatzTerm(29, 1)
-    ledger = first._ledger
+    ledger = first.resource_ledger
     second._ledger = ledger
     collatz_radix_digit(first, 6, 0)
     projection = first._radix_projections[6]

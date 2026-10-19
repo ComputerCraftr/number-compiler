@@ -9,109 +9,20 @@ cycle nor a ``q``-entry port table is retained.
 
 from __future__ import annotations
 
-from collections.abc import Hashable
-from dataclasses import dataclass
 from math import prod
-from typing import Final, cast
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.hashlife.execution.source_bound_images import (
-    SourceBoundImageAdapter,
-    SourceImageBinding,
-    SourceImageCandidate,
-    SourceImageDemand,
-    SourceImageProjection,
-    SourceImageView,
-)
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo
-from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-
-PRIME_SUCCESSOR_ACTION_TAG: Final[str] = "prime-successor-action-v1"
-PRIME_SUCCESSOR_WHEEL_VERSION: Final[str] = "successor-wheel-v2"
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorActionDescriptor:
-    parent_factors: tuple[int, ...]
-    parent_period: int
-    fresh_prime: int
-    forbidden_residues: tuple[int, ...]
-
-    @property
-    def canonical_key(self) -> tuple[object, ...]:
-        return (
-            PRIME_SUCCESSOR_ACTION_TAG,
-            self.parent_factors,
-            self.parent_period,
-            self.fresh_prime,
-            self.forbidden_residues,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorActionNode:
-    copies: int
-    width: int
-    phase_shift: int
-    before: PrimeSuccessorActionID | None
-    after: PrimeSuccessorActionID | None
-
-    @property
-    def primitive(self) -> bool:
-        return self.width > 0 and self.before is None and self.after is None
-
-    @property
-    def identity(self) -> bool:
-        return self.width == 0
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorPortEffect:
-    entering_phase: int
-    outgoing_phase: int
-    parent_survivors: int
-    deleted_survivors: int
-    surviving_values: int
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorActionMetrics:
-    action_nodes: int
-    composition_entries: int
-    demanded_ports: int
-    progression_states: int
-    work: int
-    retained_entries: int
-    retained_nodes: int
-    parent_gap_positions_materialized: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorActionID(ArenaHandle):
-    """Arena-scoped action identity; foreign integer IDs cannot alias."""
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorDescriptorID(ArenaHandle):
-    """Small source authority for an arena-interned parent descriptor."""
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorSource:
-    descriptor: PrimeSuccessorDescriptorID
-    entering_phase: int
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeSuccessorImagePayload:
-    descriptor: PrimeSuccessorDescriptorID
-    action: PrimeSuccessorActionID
-    entering_phase: int
-    outgoing_phase: int
-    parent_survivors: int
-    deleted_survivors: int
-    surviving_values: int
+from number_compiler.sequences.prime.successor_action_contracts import (
+    PrimeSuccessorActionAuditSnapshot,
+    PrimeSuccessorActionDescriptor,
+    PrimeSuccessorActionID,
+    PrimeSuccessorActionMetrics,
+    PrimeSuccessorActionNode,
+    PrimeSuccessorDescriptorID,
+    PrimeSuccessorPortEffect,
+)
 
 
 class PrimeSuccessorActionArena:
@@ -159,10 +70,11 @@ class PrimeSuccessorActionArena:
         q = fresh_prime
         forbidden = tuple(sorted({value % q for value in raw_forbidden}))
         self.rank = rank
-        self._rank_authority = rank, rank.ledger, rank._factor_store_authority
+        factor_source = rank.factor_source_identity()
+        self._rank_authority = rank, rank.ledger, factor_source
         # Constructor admission checked this immutable prefix. Later arena
         # publications mutate unrelated stores, not the factor authority.
-        self._prefix_stamp = rank._factor_store_authority.mutation_stamp
+        self._prefix_stamp = factor_source.mutation_stamp
         self._parent_depth = parent_depth
         self._admitted_successor = admitted_successor
         self._owner = ArenaToken("prime-successor-actions")
@@ -191,6 +103,9 @@ class PrimeSuccessorActionArena:
         port_owner = ledger.register(
             prefix + ".ports", "demanded fresh-prime port effects"
         )
+        self._registered_node_owner = node_owner
+        self._registered_normal_form_owner = composition_owner
+        self._registered_port_owner = port_owner
         nodes: OwnedMemo[int, PrimeSuccessorActionNode] | None = None
         normal_forms: OwnedMemo[int, PrimeSuccessorActionID] | None = None
         ports: (
@@ -206,9 +121,9 @@ class PrimeSuccessorActionArena:
             self._nodes = nodes
             self._normal_forms = normal_forms
             self._ports = ports
-            self._audit_nodes = nodes._data
-            self._audit_normal_forms = normal_forms._data
-            self._audit_ports = ports._data
+            self._audit_nodes = nodes.audit_snapshot().container
+            self._audit_normal_forms = normal_forms.audit_snapshot().container
+            self._audit_ports = ports.audit_snapshot().container
             self._next_node = 0
             self._closed = False
             self._check_budget(4)
@@ -249,21 +164,15 @@ class PrimeSuccessorActionArena:
             descriptor.forbidden_residues,
         ) != (parent, period, fresh, forbidden):
             raise ValueError("prime successor descriptor lost its source authority")
-        rank, ledger, factors = self._rank_authority
-        if (
-            self.rank is not rank
-            or self.rank.ledger is not ledger
-            or self.rank._factor_store_authority is not factors
-        ):
+        rank, ledger, source_identity = self._rank_authority
+        if self.rank is not rank or self.rank.ledger is not ledger:
             raise ValueError("prime successor action lost its source authority")
         try:
-            stamp = factors.mutation_stamp
-        except (AttributeError, TypeError) as error:
+            stamp = self.rank.factor_source_mutation_stamp(source_identity)
+        except (TypeError, ValueError) as error:
             raise ValueError(
                 "prime successor action lost its source authority"
             ) from error
-        if not factors.append_only:
-            raise ValueError("prime successor action lost its append-only authority")
         if stamp == self._prefix_stamp:
             return
         self.rank.validate_bound_factor_prefix(
@@ -271,6 +180,115 @@ class PrimeSuccessorActionArena:
             self.descriptor.fresh_prime if self._admitted_successor else None,
         )
         self._prefix_stamp = stamp
+
+    def validate_open(self) -> None:
+        """Validate source and lifecycle authority for a shared adapter."""
+        self._check_open()
+
+    def audit_snapshot(self) -> PrimeSuccessorActionAuditSnapshot:
+        """Return fresh immutable rows and exact backing-identity evidence."""
+        rank: object = self.rank
+        rank_ledger: object = None
+        if type(rank) is CoprimeRankDAG:
+            rank_ledger = rank.ledger
+        authority = self._rank_authority
+        factor_source: object = None
+        recorded_ledger: object = None
+        if type(authority) is tuple and len(authority) == 3:
+            recorded_ledger, factor_source = authority[1], authority[2]
+        if (
+            type(self._nodes) is not OwnedMemo
+            or type(self._normal_forms) is not OwnedMemo
+            or type(self._ports) is not OwnedMemo
+        ):
+            return PrimeSuccessorActionAuditSnapshot(
+                rank_ledger,
+                rank,
+                recorded_ledger,
+                factor_source,
+                authority,
+                self.descriptor,
+                self._descriptor_authority,
+                self._parent_depth,
+                self._admitted_successor,
+                self.descriptor_id,
+                self._closed,
+                False,
+                self._registered_node_owner,
+                self._registered_normal_form_owner,
+                self._registered_port_owner,
+                (),
+                (),
+                (),
+                self._next_node,
+                self.identity,
+                self.base,
+            )
+        nodes = self._nodes.audit_snapshot()
+        normal_forms = self._normal_forms.audit_snapshot()
+        ports = self._ports.audit_snapshot()
+        stores_valid = (
+            self._audit_nodes is nodes.container
+            and self._audit_normal_forms is normal_forms.container
+            and self._audit_ports is ports.container
+            and nodes.ledger is rank_ledger
+            and normal_forms.ledger is rank_ledger
+            and ports.ledger is rank_ledger
+            and nodes.owner == self._registered_node_owner
+            and normal_forms.owner == self._registered_normal_form_owner
+            and ports.owner == self._registered_port_owner
+        )
+        return PrimeSuccessorActionAuditSnapshot(
+            rank_ledger,
+            rank,
+            recorded_ledger,
+            factor_source,
+            authority,
+            self.descriptor,
+            self._descriptor_authority,
+            self._parent_depth,
+            self._admitted_successor,
+            self.descriptor_id,
+            self._closed,
+            stores_valid,
+            self._registered_node_owner,
+            self._registered_normal_form_owner,
+            self._registered_port_owner,
+            tuple(self._nodes.items()),
+            tuple(self._normal_forms.items()),
+            tuple(self._ports.items()),
+            self._next_node,
+            self.identity,
+            self.base,
+        )
+
+    def validate_action_handle(
+        self, action: PrimeSuccessorActionID, *, size: int
+    ) -> None:
+        """Check an action handle against this arena without exposing its token."""
+        if type(action) is not PrimeSuccessorActionID:
+            raise TypeError("expected a prime successor action ID")
+        action.validate(self._owner, "prime-successor-action", size=size)
+
+    def audit_action_node(
+        self, action: PrimeSuccessorActionID
+    ) -> PrimeSuccessorActionNode | None:
+        """Resolve one canonical action for read-only image auditing."""
+        if self._closed or type(action) is not PrimeSuccessorActionID:
+            return None
+        try:
+            action.validate(
+                self._owner, "prime-successor-action", size=len(self._nodes)
+            )
+            node = self._nodes[action.local_id]
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+        if (
+            type(node) is not PrimeSuccessorActionNode
+            or self._normal_forms.get(node.width) is not action
+        ):
+            return None
+        return node
 
     def _check_budget(self, additional: int = 1) -> None:
         retained = len(self._nodes) + len(self._normal_forms) + len(self._ports)
@@ -408,6 +426,13 @@ class PrimeSuccessorActionArena:
             deleted,
             parent - deleted,
         )
+
+    def interval_effect(
+        self, start: int, width: int, phase: int
+    ) -> PrimeSuccessorPortEffect:
+        """Public checked interval evaluator for source-image adapters."""
+        self._check_open()
+        return self._interval_effect(start, width, phase)
 
     def _base_rank(self, entering_phase: int, stop: int) -> int:
         """Survivors in the first ``stop`` offsets of one parent period."""
@@ -642,354 +667,4 @@ class PrimeSuccessorActionArena:
         self._closed = True
 
 
-class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
-    """Connect fresh-prime actions to the shared chronological image owner."""
-
-    family = "prime"
-    semantic_version = PRIME_SUCCESSOR_WHEEL_VERSION
-
-    def __init__(self, arena: PrimeSuccessorActionArena) -> None:
-        if type(arena) is not PrimeSuccessorActionArena:
-            raise TypeError("prime image adapter requires its action arena")
-        self.arena = arena
-        self.ledger = arena.rank.ledger
-
-    def _charge(self) -> None:
-        self.arena._check_open()
-        self.arena.rank.charge()
-        self.ledger.bump(_prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK)
-
-    def _check_capacity(self, additional: int) -> None:
-        maximum = self.arena.rank.max_states
-        retained = self.ledger.entries - self.arena.rank.factor_count
-        if maximum is not None and retained + additional > maximum:
-            raise ValueError("prime state budget exceeded (--max-prime-states)")
-
-    def validate_source(self, source: Hashable) -> None:
-        self._charge()
-        if type(source) is not PrimeSuccessorSource:
-            raise TypeError("prime successor image requires its exact source")
-        try:
-            self.arena.validate_descriptor(source.descriptor)
-        except (TypeError, ValueError) as error:
-            raise ValueError(
-                "prime successor source belongs to another descriptor"
-            ) from error
-        if not 0 <= source.entering_phase < self.arena.descriptor.fresh_prime:
-            raise ValueError("prime successor source phase is not canonical")
-
-    def validate_action(self, action: Hashable) -> None:
-        self._charge()
-        if type(action) is not PrimeSuccessorActionID:
-            raise TypeError("prime successor image requires a scoped action")
-        self.arena.node(action)
-
-    def validate_payload(self, payload: Hashable) -> None:
-        self._charge()
-        if type(payload) is not PrimeSuccessorImagePayload:
-            raise TypeError("prime successor image has another payload sort")
-        self.arena.validate_descriptor(payload.descriptor)
-        node = self.arena.node(payload.action)
-        q = self.arena.descriptor.fresh_prime
-        from number_compiler.sequences.prime.payload_audit import (
-            validate_prime_payload_fields,
-        )
-
-        validate_prime_payload_fields(payload, node.width, q)
-
-    def audit_image_binding(
-        self,
-        binding: SourceImageBinding,
-        payload: object,
-        failure_prefix: Hashable | None,
-    ) -> None:
-        from number_compiler.sequences.prime.payload_audit import (
-            audit_prime_image_binding,
-        )
-
-        audit_prime_image_binding(self, binding, payload, failure_prefix)
-
-    def identity_action(self, source: Hashable) -> PrimeSuccessorActionID:
-        self.validate_source(source)
-        return self.arena.identity
-
-    def action_children(
-        self, action: Hashable
-    ) -> tuple[PrimeSuccessorActionID, PrimeSuccessorActionID] | None:
-        self.validate_action(action)
-        node = self.arena.node(cast(PrimeSuccessorActionID, action))
-        if node.before is None or node.after is None:
-            return None
-        return node.before, node.after
-
-    def compose_actions(
-        self, before: Hashable, after: Hashable
-    ) -> PrimeSuccessorActionID:
-        self.validate_action(before)
-        self.validate_action(after)
-        return self.arena.compose(
-            cast(PrimeSuccessorActionID, before),
-            cast(PrimeSuccessorActionID, after),
-        )
-
-    def admit_source(self, source: Hashable) -> SourceImageCandidate:
-        self.validate_source(source)
-        exact_source = cast(PrimeSuccessorSource, source)
-        payload = PrimeSuccessorImagePayload(
-            self.arena.descriptor_id,
-            self.arena.identity,
-            exact_source.entering_phase,
-            exact_source.entering_phase,
-            0,
-            0,
-            0,
-        )
-        self._check_capacity(3)
-        return SourceImageCandidate(
-            payload, 0, (exact_source.entering_phase, exact_source.entering_phase)
-        )
-
-    def apply_primitive(
-        self, action: Hashable, source: SourceImageView
-    ) -> SourceImageCandidate:
-        self.validate_action(action)
-        self.validate_payload(source.payload)
-        payload = cast(PrimeSuccessorImagePayload, source.payload)
-        exact_action = cast(PrimeSuccessorActionID, action)
-        node = self.arena.node(exact_action)
-        if not node.identity and not node.primitive:
-            raise ValueError("shared scheduler must refine composite prime actions")
-        if (
-            node.width == self.arena.descriptor.parent_period
-            and source.binding.extent % self.arena.descriptor.parent_period == 0
-        ):
-            effect = self.arena.port_effect(exact_action, payload.outgoing_phase)
-        else:
-            effect = self.arena._interval_effect(
-                source.binding.extent, node.width, payload.outgoing_phase
-            )
-        cumulative = self.arena.compose(payload.action, exact_action)
-        result = PrimeSuccessorImagePayload(
-            self.arena.descriptor_id,
-            cumulative,
-            payload.entering_phase,
-            effect.outgoing_phase,
-            payload.parent_survivors + effect.parent_survivors,
-            payload.deleted_survivors + effect.deleted_survivors,
-            payload.surviving_values + effect.surviving_values,
-        )
-        if node.primitive:
-            self.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_FILTERS)
-        self._check_capacity(4)
-        return SourceImageCandidate(
-            result,
-            source.binding.extent + node.width,
-            (result.entering_phase, result.outgoing_phase),
-        )
-
-    def apply_composite(
-        self,
-        action: Hashable,
-        source: SourceImageView,
-        demand: SourceImageDemand | None,
-    ) -> SourceImageCandidate | None:
-        """Admit the exact zero-phase fresh-prime specialization as one image."""
-        self.validate_action(action)
-        self.validate_payload(source.payload)
-        payload = cast(PrimeSuccessorImagePayload, source.payload)
-        exact_action = cast(PrimeSuccessorActionID, action)
-        node = self.arena.node(exact_action)
-        if (
-            demand is None
-            or node.primitive
-            or node.identity
-            or payload.outgoing_phase != 0
-            or self.arena.descriptor.forbidden_residues != (0,)
-            or demand.name != "rank-before"
-            or len(demand.parameters) != 1
-        ):
-            return None
-        width = node.width
-        effect = self.arena._interval_effect(
-            source.binding.extent, width, payload.outgoing_phase
-        )
-        cumulative = self.arena.compose(payload.action, exact_action)
-        result = PrimeSuccessorImagePayload(
-            self.arena.descriptor_id,
-            cumulative,
-            payload.entering_phase,
-            effect.outgoing_phase,
-            payload.parent_survivors + effect.parent_survivors,
-            payload.deleted_survivors + effect.deleted_survivors,
-            payload.surviving_values + effect.surviving_values,
-        )
-        self.ledger.bump(_prime_keys.PRIME_PARTIAL_SUCCESSOR_FILTERS)
-        self._check_capacity(4)
-        return SourceImageCandidate(
-            result,
-            source.binding.extent + width,
-            (result.entering_phase, result.outgoing_phase),
-        )
-
-    def admitted_input_key(
-        self, action: Hashable, source: SourceImageView
-    ) -> tuple[PrimeSuccessorDescriptorID, int, int]:
-        self.validate_action(action)
-        self.validate_payload(source.payload)
-        payload = cast(PrimeSuccessorImagePayload, source.payload)
-        # Arbitrary admitted prefixes need both translation coordinates.  Equal
-        # fresh-prime phase alone does not determine which parent-wheel slots
-        # survive when the source extent is not parent-period aligned.
-        return (
-            payload.descriptor,
-            payload.outgoing_phase,
-            source.binding.extent % self.arena.descriptor.parent_period,
-        )
-
-    def transport_reuse(
-        self,
-        action: Hashable,
-        cached_source: SourceImageView,
-        cached_result: SourceImageView,
-        source: SourceImageView,
-    ) -> SourceImageCandidate:
-        self.validate_action(action)
-        self.validate_payload(cached_source.payload)
-        self.validate_payload(cached_result.payload)
-        self.validate_payload(source.payload)
-        old_source = cast(PrimeSuccessorImagePayload, cached_source.payload)
-        old_result = cast(PrimeSuccessorImagePayload, cached_result.payload)
-        new = cast(PrimeSuccessorImagePayload, source.payload)
-        parent_period = self.arena.descriptor.parent_period
-        if (
-            old_source.outgoing_phase != new.outgoing_phase
-            or cached_source.binding.extent % parent_period
-            != source.binding.extent % parent_period
-        ):
-            raise ValueError("prime relative transfer has another incoming state")
-        exact_action = cast(PrimeSuccessorActionID, action)
-        cumulative = self.arena.compose(new.action, exact_action)
-        result = PrimeSuccessorImagePayload(
-            self.arena.descriptor_id,
-            cumulative,
-            new.entering_phase,
-            old_result.outgoing_phase,
-            new.parent_survivors
-            + old_result.parent_survivors
-            - old_source.parent_survivors,
-            new.deleted_survivors
-            + old_result.deleted_survivors
-            - old_source.deleted_survivors,
-            new.surviving_values
-            + old_result.surviving_values
-            - old_source.surviving_values,
-        )
-        node = self.arena.node(exact_action)
-        self._check_capacity(3)
-        return SourceImageCandidate(
-            result,
-            source.binding.extent + node.width,
-            (result.entering_phase, result.outgoing_phase),
-        )
-
-    def compose_chronological(
-        self,
-        action: Hashable,
-        source: SourceImageView,
-        before: SourceImageView,
-        after: SourceImageView,
-    ) -> SourceImageCandidate:
-        self.validate_action(action)
-        self.validate_payload(source.payload)
-        self.validate_payload(before.payload)
-        self.validate_payload(after.payload)
-        source_payload = cast(PrimeSuccessorImagePayload, source.payload)
-        after_payload = cast(PrimeSuccessorImagePayload, after.payload)
-        exact_action = cast(PrimeSuccessorActionID, action)
-        node = self.arena.node(exact_action)
-        if source.binding.extent % self.arena.descriptor.parent_period:
-            effect = self.arena._interval_effect(
-                source.binding.extent, node.width, source_payload.outgoing_phase
-            )
-        else:
-            effect = self.arena.port_effect(exact_action, source_payload.outgoing_phase)
-        if (
-            after.binding.extent != source.binding.extent + node.width
-            or after_payload.outgoing_phase != effect.outgoing_phase
-            or after_payload.parent_survivors - source_payload.parent_survivors
-            != effect.parent_survivors
-            or after_payload.deleted_survivors - source_payload.deleted_survivors
-            != effect.deleted_survivors
-            or after_payload.surviving_values - source_payload.surviving_values
-            != effect.surviving_values
-        ):
-            raise ValueError("prime chronological image disagrees with its action")
-        self._check_capacity(4)
-        return SourceImageCandidate(
-            after_payload,
-            after.binding.extent,
-            (after_payload.entering_phase, after_payload.outgoing_phase),
-        )
-
-    def project(
-        self, image: SourceImageView, demand: SourceImageDemand
-    ) -> SourceImageProjection:
-        self.validate_payload(image.payload)
-        payload = cast(PrimeSuccessorImagePayload, image.payload)
-        if demand.name == "effect" and not demand.parameters:
-            self._check_capacity(2)
-            self.ledger.bump(_prime_keys.PRIME_SUCCESSOR_IMAGE_EFFECT_PROJECTIONS)
-            return SourceImageProjection(
-                PrimeSuccessorPortEffect(
-                    payload.entering_phase,
-                    payload.outgoing_phase,
-                    payload.parent_survivors,
-                    payload.deleted_survivors,
-                    payload.surviving_values,
-                )
-            )
-        if demand.name == "rank-before" and len(demand.parameters) == 1:
-            stop = demand.parameters[0]
-            if type(stop) is not int:
-                raise TypeError("prime rank demand must contain an integer stop")
-            self._check_capacity(2)
-            # The scheduler authenticates this image's publication before
-            # calling the adapter. Its whole-extent rank is already part of
-            # the admitted support; only interior queries need count descent.
-            width = self.arena.node(payload.action).width
-            if stop == 0 or stop == width:
-                self.ledger.bump(
-                    _prime_keys.PRIME_SUCCESSOR_IMAGE_ENDPOINT_RANK_PROJECTIONS
-                )
-                return SourceImageProjection(
-                    0 if stop == 0 else payload.surviving_values
-                )
-            return SourceImageProjection(
-                self.arena.rank_before(payload.action, payload.entering_phase, stop)
-            )
-        if demand.name == "select" and len(demand.parameters) == 1:
-            rank = demand.parameters[0]
-            if type(rank) is not int:
-                raise TypeError("prime select demand must contain an integer rank")
-            self._check_capacity(2)
-            return SourceImageProjection(
-                self.arena.select(payload.action, payload.entering_phase, rank)
-            )
-        raise ValueError("unsupported prime successor image demand")
-
-    def first_failure(self, image: SourceImageView) -> None:
-        self.validate_payload(image.payload)
-
-
-__all__ = [
-    "PrimeSuccessorActionArena",
-    "PrimeSuccessorActionDescriptor",
-    "PrimeSuccessorActionID",
-    "PrimeSuccessorActionMetrics",
-    "PrimeSuccessorActionNode",
-    "PrimeSuccessorDescriptorID",
-    "PrimeSuccessorImageAdapter",
-    "PrimeSuccessorImagePayload",
-    "PrimeSuccessorPortEffect",
-    "PrimeSuccessorSource",
-]
+__all__ = ["PrimeSuccessorActionArena"]

@@ -75,6 +75,52 @@ lemma fermat_current_terminal_observer_splits_deck:
   "(-1::int) = -1 \<and> (1::int) \<noteq> -1"
   by simp
 
+section \<open>Source-bound Fermat digit punctures\<close>
+
+text \<open>A Fermat radix/position puncture is a projection of one
+source-bound root cylinder. Its physical tripling clock multiplies the whole
+selected low-plus-digit representative by \<open>3^steps\<close> modulo the
+source modulus. The next lemma proves chronological composition for that
+exact puncture formula; it does not license a new digit or carry unless its
+source interval and inlet guard are also certified.\<close>
+
+definition fermat_conditional_digit_transfer ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat"
+    where
+  "fermat_conditional_digit_transfer modulus place low digit steps =
+    (3^steps * (low + digit * place)) mod modulus"
+
+theorem fermat_conditional_digit_transfer_split:
+  assumes modulus: "0 < modulus"
+  shows "fermat_conditional_digit_transfer modulus place low digit
+      (first + second) =
+    (3^second * fermat_conditional_digit_transfer
+      modulus place low digit first) mod modulus"
+proof -
+  let ?representative = "low + digit * place"
+  have exponent:
+    "3^(first + second) * ?representative =
+      3^second * (3^first * ?representative)"
+    by (simp add: power_add algebra_simps)
+  have "(3^(first + second) * ?representative) mod modulus =
+      (3^second * (3^first * ?representative)) mod modulus"
+    by (simp only: exponent)
+  also have "... =
+      (3^second * ((3^first * ?representative) mod modulus)) mod modulus"
+    by (rule mod_mult_right_eq[symmetric])
+  finally have transfer:
+    "(3^(first + second) * ?representative) mod modulus =
+      (3^second * ((3^first * ?representative) mod modulus)) mod modulus" .
+  show ?thesis
+    unfolding fermat_conditional_digit_transfer_def
+    using transfer by simp
+qed
+
+lemma fermat_conditional_digit_transfer_initial:
+  "fermat_conditional_digit_transfer modulus place low digit 0 =
+    (low + digit * place) mod modulus"
+  by (simp add: fermat_conditional_digit_transfer_def)
+
 section \<open>Lucas trace of a norm-one doubling clock\<close>
 
 definition lucas_trace_step :: "'a::ring_1 \<Rightarrow> 'a" where
@@ -396,7 +442,9 @@ ML \<open>
     square_iteration_is_dyadic_clock square_iteration_skip_ahead
     fermat_deck_dies_after_one_square
     fermat_pulled_terminal_observer_is_deck_invariant
-    fermat_current_terminal_observer_splits_deck norm_one_pair_square
+    fermat_current_terminal_observer_splits_deck
+    fermat_conditional_digit_transfer_split
+    fermat_conditional_digit_transfer_initial norm_one_pair_square
     norm_one_trace_square dyadic_clock_norm_one
     lucas_trace_iteration_is_clock_readout lucas_trace_skip_ahead
     power_reduce_at_known_period dyadic_clock_known_order_reduce

@@ -291,6 +291,15 @@ class TemporalActionArena:
     def node(self, action: ActionProgramID) -> TemporalActionNode:
         return self.resolve(action)
 
+    def contains_alphabet(self, base: int, blank: int) -> bool:
+        """Whether an admitted non-identity action uses this alphabet."""
+        if type(base) is not int or base < 2 or type(blank) is not int or blank < 1:
+            return False
+        return any(
+            node.kind != "identity" and (node.base, node.blank) == (base, blank)
+            for node in self._nodes
+        )
+
     def intern(self, effect: BlockEffect) -> ActionProgramID:
         """Import an already admitted compiler definition without mutating it.
 

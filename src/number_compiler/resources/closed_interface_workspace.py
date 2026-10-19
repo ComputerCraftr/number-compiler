@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Literal
 
@@ -40,7 +40,7 @@ class ClosedInterfaceWorkspace:
         return 0
 
     @contextmanager
-    def scope(self, kind: Literal["leaf", "parent"]) -> Iterator[None]:
+    def scope(self, kind: Literal["leaf", "parent"]) -> Generator[None, None, None]:
         if self.nodes:
             raise RuntimeError("closed interface workspace is already active")
         if kind not in ("leaf", "parent"):

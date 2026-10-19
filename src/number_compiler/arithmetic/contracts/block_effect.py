@@ -228,6 +228,12 @@ class BlockEffectAdmissionAdapter(Protocol):
 _OPERATOR_IDS = count(1)
 _CONTEXT_IDS = count(1)
 
+
+def next_operator_id() -> int:
+    """Allocate a compatibility/display node ID from the shared sequence."""
+    return next(_OPERATOR_IDS)
+
+
 __all__ = [
     "BlockContextBudget",
     "BlockContextBudgetExceeded",
@@ -238,4 +244,5 @@ __all__ = [
     "_cache_state_key",
     "_effect_key",
     "_state_key",
+    "next_operator_id",
 ]

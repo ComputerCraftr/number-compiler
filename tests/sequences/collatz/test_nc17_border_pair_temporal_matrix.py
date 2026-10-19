@@ -27,7 +27,9 @@ from number_compiler.sequences.collatz.conditional_border_observation import (
     demanded_powered_pair_transfer,
     demanded_powered_upper_phase,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import MacroTraceGrammar
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+)
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
 )

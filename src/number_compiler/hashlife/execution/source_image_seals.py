@@ -77,7 +77,7 @@ def _root_matches(value: object, expected: object) -> bool:
             and len(children) == len(anchors)
             and all(
                 _anchor_matches(child, anchor)
-                for child, anchor in zip(children, anchors)
+                for child, anchor in zip(children, anchors, strict=True)
             )
         )
     if type(value) is frozenset:
@@ -95,7 +95,7 @@ def _root_matches(value: object, expected: object) -> bool:
 _MAX_INLINE_KEY_NODES = 64
 
 
-def _require_immutable_key(value: object, label: str) -> int:
+def require_immutable_key(value: object, label: str) -> int:
     """Accept structural immutable keys; reject user-defined mutable hashes."""
     pending: list[tuple[object, bool]] = [(value, False)]
     active: set[int] = set()
@@ -149,7 +149,7 @@ def _require_immutable_key(value: object, label: str) -> int:
     return visited
 
 
-def _typed_equal(left: object, right: object) -> bool:
+def typed_payload_equal(left: object, right: object) -> bool:
     """Compare admitted structural keys without Python's bool/int aliases."""
     pending = [(left, right)]
     seen: set[tuple[int, int]] = set()
@@ -182,11 +182,11 @@ def _typed_equal(left: object, right: object) -> bool:
             assert isinstance(second, tuple)
             if len(first) != len(second):
                 return False
-            pending.extend(zip(first, second))
+            pending.extend(zip(first, second, strict=True))
         elif type(first) is frozenset:
             assert isinstance(second, frozenset)
-            if {_TypedKey(item) for item in first} != {
-                _TypedKey(item) for item in second
+            if {TypedPayloadKey(item) for item in first} != {
+                TypedPayloadKey(item) for item in second
             }:
                 return False
         elif is_dataclass(first):
@@ -259,17 +259,19 @@ def _typed_hash(value: object) -> int:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class _TypedKey:
+class TypedPayloadKey:
     value: Hashable
 
     def __post_init__(self) -> None:
-        _require_immutable_key(self.value, "source image typed key")
+        require_immutable_key(self.value, "source image typed key")
 
     def __hash__(self) -> int:
         return _typed_hash(self.value)
 
     def __eq__(self, other: object) -> bool:
-        return type(other) is _TypedKey and _typed_equal(self.value, other.value)
+        return type(other) is TypedPayloadKey and typed_payload_equal(
+            self.value, other.value
+        )
 
 
 class PublicationSeal(tuple[object, tuple[_Guard, ...], int]):
@@ -490,6 +492,9 @@ def publication_matches_readonly(value: object, seal: PublicationSeal) -> bool:
 
 __all__ = [
     "PublicationSeal",
+    "TypedPayloadKey",
+    "require_immutable_key",
+    "typed_payload_equal",
     "publication_matches",
     "publication_matches_readonly",
     "publication_seal",

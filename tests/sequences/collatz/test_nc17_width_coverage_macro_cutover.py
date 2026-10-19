@@ -14,12 +14,12 @@ from number_compiler.sequences.collatz.border_harmonic_ring import PeriodicTail6
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 from number_compiler.sequences.collatz.temporal_source_morphism import (
     PointedCollatzSource,
@@ -34,7 +34,7 @@ def _changing_tail_source(motif: tuple[int, ...]) -> int:
     return source + 5 * modulus * (1 << 512)
 
 
-def _first_two_return_port(motif: tuple[int, ...]) -> CrossFamilyPortAction:
+def _first_two_return_port(motif: tuple[int, ...]) -> SourceClosedPortAction:
     action = DyadicTerminalFieldAction.identity()
     for tail in motif[:2]:
         odd = DyadicTerminalFieldAction.one_run(1)
@@ -45,7 +45,7 @@ def _first_two_return_port(motif: tuple[int, ...]) -> CrossFamilyPortAction:
         SourceCongruence(3, 5)
     )
     assert guard is not None
-    return CrossFamilyPortAction(action, guard, 4, None)
+    return SourceClosedPortAction(action, guard, 4, None)
 
 
 def test_width_coverage_retains_uncovered_middle_positions() -> None:
@@ -257,7 +257,7 @@ def test_invalid_width_coverage_precision_precedes_port_observation(
     def forbidden_demand(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("invalid coverage precision reached port observation")
 
-    monkeypatch.setattr(CrossFamilyPortAction, "demanded_ports", forbidden_demand)
+    monkeypatch.setattr(SourceClosedPortAction, "demanded_ports", forbidden_demand)
     with pytest.raises(ValueError, match="coverage precision"):
         root.demanded_outer_inner_ports(
             include_width_coverage=True, max_leading_digits=0

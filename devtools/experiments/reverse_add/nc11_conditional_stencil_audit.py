@@ -32,7 +32,7 @@ def run() -> dict[str, object]:
         modular_seconds = perf_counter() - start
         counters = {
             name: value
-            for name, value in term._ledger.counters.items()
+            for name, value in term.resource_ledger.counters.items()
             if name.startswith(
                 (
                     "reverse_q19_numeric_port_",
@@ -45,7 +45,7 @@ def run() -> dict[str, object]:
     finally:
         if term._workspace is not None:
             term._workspace.dispose()
-    assert term._ledger.entries == term._ledger.nodes == 0
+    assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
 
     observed_term = ReverseAddPoweredTerm(196, 97)
     stencil_start = perf_counter()
@@ -61,13 +61,17 @@ def run() -> dict[str, object]:
         assert bank.future_innovation_sign == next_sign
         stencil_counters = {
             name: value
-            for name, value in observed_term._ledger.counters.items()
+            for name, value in observed_term.resource_ledger.counters.items()
             if name.startswith("reverse_q19_temporal_stencil_")
         }
     finally:
         if observed_term._workspace is not None:
             observed_term._workspace.dispose()
-    assert observed_term._ledger.entries == observed_term._ledger.nodes == 0
+    assert (
+        observed_term.resource_ledger.entries
+        == observed_term.resource_ledger.nodes
+        == 0
+    )
     return {
         "scope": "endpoint observations and source-owned modular moments",
         "seed": 196,

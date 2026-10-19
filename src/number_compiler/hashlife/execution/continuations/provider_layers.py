@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.resources.field_image_audit_contracts import (
+    ProviderLayerArenaAuditSnapshot,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -77,6 +80,21 @@ class ProviderLayerArena:
 
     def _handle(self, local_id: int) -> ProviderLayerID:
         return ProviderLayerID(self.owner, self._KIND, local_id)
+
+    def audit_snapshot(self) -> ProviderLayerArenaAuditSnapshot:
+        """Return read-only views of the exact backing stores for explicit audits."""
+        nodes: Mapping[int, ProviderLayerNode] = self._nodes
+        keys: Mapping[ProviderLayerNode, int] = self._keys
+        return ProviderLayerArenaAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._next_id,
+            self._node_owner,
+            nodes,
+            self._key_owner,
+            keys,
+        )
 
     def resolve(self, reference: ProviderLayerID) -> ProviderLayerNode:
         if type(reference) is not ProviderLayerID:

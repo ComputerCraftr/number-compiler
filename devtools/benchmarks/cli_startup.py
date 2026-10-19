@@ -12,7 +12,6 @@ import sys
 import tempfile
 from pathlib import Path
 from time import perf_counter
-from typing import Any
 
 CASES = {
     "families": ["--list-families"],
@@ -71,7 +70,7 @@ def _install(wheel: Path, directory: Path, environment: dict[str, str]) -> Path:
     return python
 
 
-def _semantic(stdout: str, name: str) -> Any:
+def _semantic(stdout: str, name: str) -> object:
     if name == "families":
         return stdout
     packet = json.loads(stdout)
@@ -90,13 +89,13 @@ def _semantic(stdout: str, name: str) -> Any:
 
 def compare(
     baseline: Path, candidate: Path, *, samples: int = 3, cases: list[str] | None = None
-) -> dict[str, Any]:
+) -> dict[str, object]:
     if not 1 <= samples <= 5:
         raise ValueError("samples must be 1..5")
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     environment.pop("MYPYPATH", None)
-    rows: list[dict[str, Any]] = []
+    rows: list[dict[str, object]] = []
     with tempfile.TemporaryDirectory(prefix="number-compiler-cli-timing-") as temporary:
         work = Path(temporary)
         interpreters = {
@@ -109,7 +108,7 @@ def compare(
         }
         for name in dict.fromkeys(CASES if cases is None else cases):
             arguments = CASES[name]
-            values: list[Any] = []
+            values: list[object] = []
             measurements: dict[str, list[float]] = {label: [] for label in interpreters}
             for trial in range(samples):
                 # Pair each baseline/candidate trial and alternate ordering to

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator, Iterator, Mapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import (
@@ -29,6 +29,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 
 
 @dataclass(slots=True)
@@ -136,6 +137,22 @@ class _QueryWorkspace:
             self.ledger.release(self.owner, nodes=nodes)
 
 
+@dataclass(frozen=True, slots=True)
+class SourceCarryPortsAuditSnapshot:
+    """Fresh read-only evidence for the explicit source-port resource audit."""
+
+    ledger: ResourceLedger
+    source: ExactSource
+    width: int
+    authority: tuple[object, ...]
+    cache: OwnedMemoAuditSnapshot[tuple[int, int, int], CarryFn]
+    cache_identity: OwnedMemo[tuple[int, int, int], CarryFn]
+    audit_cache: Mapping[tuple[int, int, int], CarryFn | object]
+    workspace_owner: int
+    workspace_authority: int
+    closed: bool
+
+
 class SourceCarryPorts:
     """Memoize dyadic spatial carry actions, never pair or carry rows."""
 
@@ -240,9 +257,30 @@ class SourceCarryPorts:
         return self._ledger
 
     @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Return immutable ledger ownership metadata, including after close."""
+        return self._ledger
+
+    @property
     def width(self) -> int:
         self._check_open()
         return self._width
+
+    def audit_snapshot(self) -> SourceCarryPortsAuditSnapshot:
+        """Return current source/cache bindings without exposing writable fields."""
+        cache = self._cache.audit_snapshot()
+        return SourceCarryPortsAuditSnapshot(
+            self._ledger,
+            self._source,
+            self._width,
+            self._authority,
+            cache,
+            self._cache,
+            self._audit_cache,
+            self._workspace_owner,
+            self._workspace_authority,
+            self._closed,
+        )
 
     def _check_open(self) -> None:
         if self._closed:

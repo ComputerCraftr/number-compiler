@@ -8,7 +8,7 @@ import sys
 import weakref
 from collections.abc import Hashable
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, TypeVar, cast
+from typing import TYPE_CHECKING, Never, TypeVar
 
 import pytest
 
@@ -33,7 +33,11 @@ from tests.support.tile_dependency_assertions import (
     assert_tile_dependency_state,
     capture_tile_dependency_state,
 )
-from tests.support.tile_kernel import _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import (
@@ -56,11 +60,11 @@ def _request() -> tuple[
     PoweredResultKey,
     ResultLease,
 ]:
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, action, scheduler, source = make_tile_runtime_source(
         BaseBlockEffect(3), (0, 0, 0, 1)
     )
-    dependency = _tile(tiles, adapter, action, (1, 2))
-    boundary = _tile(tiles, adapter, action, (2, 1))
+    dependency = make_tile_from_symbols(tiles, adapter, action, (1, 2))
+    boundary = make_tile_from_symbols(tiles, adapter, action, (2, 1))
     wiring = adapter.wiring(action)
     operands = BoundaryTileOperands(
         BoundaryTileView(boundary.tile, -2, 2),
@@ -167,9 +171,14 @@ def test_causal_pin_deduplicates_application_source_and_rolls_back(
         poison.setattr(LedgerDict, "__setitem__", fail_dependency)
         with pytest.raises(RuntimeError, match="causal dependency"):
             scheduler._pin_causal(application.identity, key, result)
-    assert not scheduler._pins and not scheduler._causal_dependencies.records
-    assert result._closed is True
-    for owner in (scheduler._pin_owner, scheduler._causal_dependencies.owner):
+    assert (
+        not scheduler.audit_snapshot().pins
+        and not scheduler._causal_dependencies.records
+    )
+    assert result.audit_snapshot().closed is True
+    pin_owner = scheduler.audit_snapshot().pin_owner
+    assert type(pin_owner) is int
+    for owner in (pin_owner, scheduler._causal_dependencies.owner):
         account = ledger.inventory()[owner]
         assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
 
@@ -236,15 +245,18 @@ def test_causal_pin_reservation_failure_closes_unpublished_result(
     original = ledger.reserve
 
     def reject_pin(owner: int, *, entries: int = 0, nodes: int = 0) -> None:
-        if owner == scheduler._pin_owner:
+        if owner == scheduler.audit_snapshot().pin_owner:
             raise RuntimeError("injected causal pin reservation failure")
         original(owner, entries=entries, nodes=nodes)
 
     monkeypatch.setattr(ledger, "reserve", reject_pin)
     with pytest.raises(RuntimeError, match="causal pin reservation"):
         scheduler._pin_causal(application.identity, key, result)
-    assert result._closed is True
-    assert not scheduler._pins and not scheduler._causal_dependencies.records
+    assert result.audit_snapshot().closed is True
+    assert (
+        not scheduler.audit_snapshot().pins
+        and not scheduler._causal_dependencies.records
+    )
     application.close()
     boundary.close()
     dependency.close()
@@ -347,7 +359,7 @@ def test_stale_dependency_batch_cannot_close_reacquired_binding() -> None:
 
     current = dependencies.records[replacement.bindings[0]]
     assert current is replacement.leases[0]
-    assert not current._closed
+    assert not current.audit_snapshot().closed
     dependencies.rollback(replacement)
     result.close()
     application.close()
@@ -508,7 +520,7 @@ def test_application_registry_rejects_numeric_aliases_without_lookup() -> None:
     result.close()
     for alias in (True, False, 0.0, -1):
         with pytest.raises(ValueError, match="invalid scoped identity"):
-            scheduler._applications.application(cast(int, alias))
+            scheduler.application_by_id(alias)
     application.close()
     boundary.close()
     dependency.close()
@@ -516,9 +528,9 @@ def test_application_registry_rejects_numeric_aliases_without_lookup() -> None:
 
 
 def test_application_registry_weak_binding_expires_and_reconciles() -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 0, 0, 1)) as source:
-        lease_entries = ledger.inventory()[tiles._lease_owner].entries
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 0, 0, 1)) as source:
+        lease_entries = ledger.inventory()[tiles.lease_owner].entries
         application = scheduler.application(
             action,
             source.tile,
@@ -526,7 +538,7 @@ def test_application_registry_weak_binding_expires_and_reconciles() -> None:
             adapter.wiring(action),
         )
         application.complete()
-        root = application._root
+        root = application.audit_snapshot().root_lease
         assert root is not None
         identity = application.identity
         saved = weakref.ref(application)
@@ -534,10 +546,10 @@ def test_application_registry_weak_binding_expires_and_reconciles() -> None:
         del application
         gc.collect()
         assert saved() is None
-        assert root._closed is True
+        assert root is not None and root.audit_snapshot().closed is True
         _assert_application_retired(ledger, scheduler, identity)
         _assert_application_observation_empty(ledger, scheduler)
-        assert ledger.inventory()[tiles._lease_owner].entries == lease_entries
+        assert ledger.inventory()[tiles.lease_owner].entries == lease_entries
 
 
 def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
@@ -558,8 +570,8 @@ def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
     del application
     gc.collect()
     assert saved() is None
-    assert result._closed is True
-    assert not scheduler._pins
+    assert result.audit_snapshot().closed is True
+    assert not scheduler.audit_snapshot().pins
     assert not scheduler._causal_dependencies.records
     _assert_application_retired(ledger, scheduler, identity)
     boundary.close()
@@ -570,8 +582,8 @@ def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
 def test_application_registry_failed_publication_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 0, 0, 1)) as source:
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 0, 0, 1)) as source:
         ports = adapter.initial_ports(action)
         wiring = adapter.wiring(action)
         key = PoweredResultKey(action, source.tile, ports, wiring)
@@ -617,9 +629,9 @@ def test_application_registry_failed_publication_rolls_back(
 
 
 def test_application_registry_inventory_rejects_alias_and_stale_reference() -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with (
-        _tile(tiles, adapter, action, (0, 0, 0, 1)) as source,
+        make_tile_from_symbols(tiles, adapter, action, (0, 0, 0, 1)) as source,
         scheduler.application(
             action,
             source.tile,
@@ -647,8 +659,8 @@ def test_application_registry_inventory_rejects_alias_and_stale_reference() -> N
 def test_application_cleanup_delete_failure_is_retryable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 0, 0, 1)) as source:
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 0, 0, 1)) as source:
         application = scheduler.application(
             action,
             source.tile,
@@ -670,7 +682,7 @@ def test_application_cleanup_delete_failure_is_retryable(
             poison.setattr(LedgerDict, "__delitem__", fail_once)
             with pytest.raises(RuntimeError, match="cleanup deletion"):
                 application.close()
-        assert application._closed is False
+        assert application.audit_snapshot().closed is False
         assert identity in scheduler._applications.records
         assert application.source == source.tile
         application.close()
@@ -692,14 +704,14 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
         result,
     ) = _request()
     scheduler._pin_causal(application.identity, key, result)
-    binding = next(iter(scheduler._pins))
+    binding = next(iter(scheduler.audit_snapshot().pins))
     original = LedgerDict.__delitem__
     failed = False
 
     def fail_once(store: LedgerDict[KeyT, ValueT], key_value: KeyT) -> None:
         nonlocal failed
         original(store, key_value)
-        if store is scheduler._pins and not failed:
+        if store is scheduler.audit_snapshot().pin_store and not failed:
             failed = True
             raise RuntimeError("injected pin deletion failure")
 
@@ -707,11 +719,14 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
         poison.setattr(LedgerDict, "__delitem__", fail_once)
         with pytest.raises(RuntimeError, match="pin deletion"):
             application.close()
-    assert binding in scheduler._pins
-    assert result._closed is False
+    assert binding in scheduler.audit_snapshot().pins
+    assert result.audit_snapshot().closed is False
     assert application.source == source.tile
     application.close()
-    assert not scheduler._pins and not scheduler._causal_dependencies.records
+    assert (
+        not scheduler.audit_snapshot().pins
+        and not scheduler._causal_dependencies.records
+    )
     boundary.close()
     dependency.close()
     source.close()
@@ -720,10 +735,10 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
 def test_unclosed_application_shutdown_emits_no_weakref_cleanup_error() -> None:
     script = """
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_runtime, make_tile_from_symbols
 
-_ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-source = _tile(tiles, adapter, action, (0, 0, 0, 1))
+_ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+source = make_tile_from_symbols(tiles, adapter, action, (0, 0, 0, 1))
 application = scheduler.application(
     action,
     source.tile,

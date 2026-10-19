@@ -12,9 +12,11 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Literal, cast
 
-from devtools.verification.lazy_collatz import (
+from devtools.verification.collatz_carry_ranges import (
     CarryRangeSummary,
     CarryRangeTransfer,
+)
+from devtools.verification.lazy_collatz import (
     _Mul3Port,
     _ShiftPort,
 )
@@ -304,7 +306,7 @@ class CollatzRangeEvaluator:
         self.ledger.bump("collatz_leaf_evaluations")
         result, answer = self._empty, None
         for offset in range(length):
-            bit = self.application._program_bit(program, start + offset)
+            bit = self.application.program_bit(program, start + offset)
             result = result.then(self._atom(bit))
             self.ledger.bump("collatz_range_small_compositions")
             if start + offset == requested:
@@ -353,7 +355,7 @@ class CollatzRangeEvaluator:
         for position in range(request.length + 2):
             self.ledger.bump("collatz_event_scanned_cells")
             bit = (
-                self.application._program_bit(request.program, position)
+                self.application.program_bit(request.program, position)
                 if position < request.length
                 else 0
             )

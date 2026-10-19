@@ -9,10 +9,14 @@ or certify a complete temporal successor image for arbitrary consumers.
 from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping
+from types import MappingProxyType
 
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
+)
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    HigherTemporalProviderAuditSnapshot,
 )
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     HigherBimachineRuntime,
@@ -22,7 +26,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
     SourceForestID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -96,7 +100,8 @@ class HigherTemporalProviderEvaluator:
             self._bindings,
         )
 
-    def _check_authority(self) -> None:
+    def validate_authority(self) -> None:
+        """Revalidate that this provider retains its originally issued owners."""
         expected = self._authority
         actual = self._authority_objects()
         if (
@@ -107,6 +112,19 @@ class HigherTemporalProviderEvaluator:
         ):
             raise ValueError("higher temporal provider lost its issued authority")
 
+    def validate_output(self, provider: CoordinateOutputMorphismID) -> None:
+        """Validate a provider ID through the configured output issuer."""
+        self._validate_output(provider)
+
+    def audit_snapshot(self) -> HigherTemporalProviderAuditSnapshot:
+        """Expose a read-only view of source/action bindings for audits."""
+        return HigherTemporalProviderAuditSnapshot(
+            ledger=self.ledger,
+            binding_owner=self._binding_owner,
+            bindings=MappingProxyType(self._bindings),
+            binding_store=self._bindings,
+        )
+
     def bind(
         self,
         provider: CoordinateOutputMorphismID,
@@ -114,8 +132,8 @@ class HigherTemporalProviderEvaluator:
         action: FieldCellActionID,
     ) -> None:
         """Associate one canonical output provider with immutable source geometry."""
-        self._check_authority()
-        self._validate_output(provider)
+        self.validate_authority()
+        self.validate_output(provider)
         self.runtime.schema.validate_action(action)
         if type(source) is SourceCellID:
             self.runtime.sources.resolve(source)
@@ -141,8 +159,8 @@ class HigherTemporalProviderEvaluator:
         after: FieldCellActionID,
     ) -> FieldCellActionID:
         """Resolve and compose the provider action once, before publication."""
-        self._check_authority()
-        self._validate_output(provider)
+        self.validate_authority()
+        self.validate_output(provider)
         self.runtime.schema.validate_action(after)
         binding = self._bindings.get(provider)
         if binding is None:
@@ -166,8 +184,8 @@ class HigherTemporalProviderEvaluator:
         complete local-interface evaluator; silently ignoring those values would
         equate carry exits with output-complete behavior.
         """
-        self._check_authority()
-        self._validate_output(provider)
+        self.validate_authority()
+        self.validate_output(provider)
         self.runtime.schema.validate_action(action)
         binding = self._bindings.get(provider)
         if binding is None:

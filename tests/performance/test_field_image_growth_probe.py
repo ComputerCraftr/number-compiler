@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 
 class _Term:
+    @property
+    def resource_ledger(self) -> object:
+        """Read the resource owner without executing the effect."""
+        return self._ledger
+
     def __init__(self, horizon: int, ledger: object | None = None) -> None:
         self.horizon = horizon
         self._ledger = object() if ledger is None else ledger

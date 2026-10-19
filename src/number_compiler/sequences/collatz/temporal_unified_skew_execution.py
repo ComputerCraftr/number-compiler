@@ -12,7 +12,7 @@ from number_compiler.sequences.collatz.border_identity import (
     CycleEntryPhase,
     GuardedBorderPath,
 )
-from number_compiler.sequences.collatz.boundary_macros import boundary_metric_suffix
+from number_compiler.sequences.collatz.boundary_macros import boundary_metric_key
 from number_compiler.sequences.collatz.joint_radix_border import (
     candidate_family_for_residue160,
     has_border_parent_from_residue160,
@@ -23,7 +23,7 @@ from number_compiler.sequences.collatz.skew_cylinder_repeat import (
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 from number_compiler.sequences.collatz.temporal_f5_observer import (
     CollatzF5AffineAction,
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
@@ -280,15 +280,16 @@ def consume_unified_skew_chain(
         width_spine.record(chain.width_blank)
         width_spine.reset_segment()
     if normalized_f5 is not None and physical_f5 is not None:
-        f5 = _project_dyadic_fields_f5(applied_fields)
+        f5 = project_dyadic_fields_f5(applied_fields)
         normalized_f5 = normalized_f5.then(f5)
         physical_f5 = physical_f5.then(f5)
     # Count embedded border-family occurrences without pretending they were
     # separate Hashlife run actions. The composed root action count stays one.
     for identity in chain.segment_identities:
         if isinstance(identity, (CycleEntryPhase, GuardedBorderPath)):
-            suffix = boundary_metric_suffix(identity)
-            ledger.bump(f"collatz_physical_boundary_{suffix}_macro_actions")
+            ledger.bump(
+                boundary_metric_key(identity, _collatz_keys.BoundaryMacroMetric.ACTIONS)
+            )
     ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_COMPOSED_ACTIONS)
     if applied_endpoint == 1:
         ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_TERMINAL_ACTIONS)

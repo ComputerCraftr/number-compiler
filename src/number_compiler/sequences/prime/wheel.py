@@ -352,7 +352,7 @@ class PackedWheelProgram(_WheelSupportMixin):
             raise ValueError((len(state.residues), len(self.moduli)))
         residues: list[int] = []
         carries: list[int] = []
-        for residue, modulus in zip(state.residues, self.moduli):
+        for residue, modulus in zip(state.residues, self.moduli, strict=True):
             total = int(residue) + 2
             carry = int(total >= modulus)
             if carry:
@@ -366,7 +366,7 @@ class PackedWheelProgram(_WheelSupportMixin):
         if len(state.residues) != len(self.moduli):
             raise ValueError((len(state.residues), len(self.moduli)))
         calls = 0
-        for residue, modulus in zip(state.residues, self.moduli):
+        for residue, modulus in zip(state.residues, self.moduli, strict=True):
             calls += 1
             if gcd(residue, modulus) > 1:
                 return False, calls
@@ -612,7 +612,7 @@ class BroadwordPackedWheelProgram(_WheelSupportMixin):
     def classify_packed(self, packed: int) -> tuple[bool, int]:
         residues = self.unpack_state(packed)
         calls = 0
-        for residue, modulus in zip(residues, self.moduli):
+        for residue, modulus in zip(residues, self.moduli, strict=True):
             calls += 1
             if gcd(residue, modulus) > 1:
                 return False, calls

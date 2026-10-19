@@ -27,8 +27,8 @@ from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     primitive_operation,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
 )
 from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     StructuredExpressionTask,
@@ -43,9 +43,9 @@ from number_compiler.hashlife.interfaces.semantic_state_codec import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
+    StructureBuilder,
     StructuredNode,
     StructureID,
-    _Builder,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
@@ -147,7 +147,7 @@ def _structured_program(
             curried_node.signature.inputs,
             SemanticFunctionSort(declarations, curried_node.signature.output.output),
         )
-        builder = _Builder(structures)
+        builder = StructureBuilder(structures)
         return builder.finish(
             builder.intern(
                 StructuredNode(
@@ -274,9 +274,9 @@ def _encode_argument(
     if len(values) != len(ports):
         raise ValueError("paired application has another flat input interface")
     result = {}
-    for port, value in zip(ports, values):
+    for port, value in zip(ports, values, strict=True):
         node = bits.resolve(value)
-        circuit = _Circuit(self.functions, node.signature.inputs)
+        circuit = BooleanCircuit(self.functions, node.signature.inputs)
         roots, valid = circuit.imported(node)
         pending = circuit.normalized(
             FunctionSignature(
@@ -285,5 +285,5 @@ def _encode_argument(
             roots,
             valid,
         )
-        result[port.variable] = bits._publish(circuit, (pending,))[0]
+        result[port.variable] = bits.publish_circuit(circuit, (pending,))[0]
     return result

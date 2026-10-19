@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
+from number_compiler.sequences.collatz.source_closed_port_action import (
     MacroTraceGrammar,
+    SourceClosedPortAction,
 )
 
 if TYPE_CHECKING:
@@ -182,7 +182,7 @@ def snapshot_scheduler_candidate(
 ) -> tuple[object, ...]:
     """Capture every value a verified retained candidate can later publish."""
     port = candidate.port
-    if type(port) is not CrossFamilyPortAction:
+    if type(port) is not SourceClosedPortAction:
         raise TypeError("conditional candidate port has malformed authority")
     port._verify_issued()
     phase = candidate.numerator_phase

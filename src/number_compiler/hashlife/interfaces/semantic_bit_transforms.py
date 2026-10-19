@@ -21,8 +21,8 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
 )
 
 
@@ -139,7 +139,7 @@ def differs_from_constant(
 ) -> FactoredFunctionID:
     """Compare an admitted finite output without enumerating its input alphabet."""
     node = arena.resolve(function)
-    circuit = _Circuit(arena.functions, node.signature.inputs)
+    circuit = BooleanCircuit(arena.functions, node.signature.inputs)
     roots, valid = circuit.imported(node)
     equal = circuit.one
     for bit, root in enumerate(roots):
@@ -151,7 +151,7 @@ def differs_from_constant(
         (circuit.negate(equal),),
         valid,
     )
-    return arena._publish(circuit, (pending,))[0]
+    return arena.publish_circuit(circuit, (pending,))[0]
 
 
 MACRO_LEFT = PortVariable(0, 0, "macro-left", 0)
@@ -206,7 +206,7 @@ def retag_numeric(
         roots + (circuit.zero,) * (width - len(roots)),
         valid,
     )
-    return bits._publish(circuit, (pending,))[0]
+    return bits.publish_circuit(circuit, (pending,))[0]
 
 
 _Argument = TypeVar("_Argument")

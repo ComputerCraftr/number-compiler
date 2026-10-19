@@ -158,9 +158,9 @@ def compose_four_exact_birth_observations(
     width = actions[0].width
     if any(action.sign != sign or action.width != width for action in actions):
         raise ValueError("source sign/width mismatch")
-    birth_jets = []
-    base_jets = []
-    harmonics = []
+    birth_jets: list[tuple[int, ...]] = []
+    base_jets: list[tuple[int, ...]] = []
+    harmonics: list[WalshH5] = []
     for action in actions:
         # Computing a full degree-two primary jet by walking the coefficient
         # SLP is source-output work, not a claimed constant-time prime query.
@@ -175,8 +175,8 @@ def compose_four_exact_birth_observations(
             primary_jet_from_digits(window.digits, degree=2, modulus=16).jet
         )
         harmonics.append(window.h5)
-    tangents = []
-    forcing = []
+    tangents: list[PrimaryJetAffineMorphism] = []
+    forcing: list[tuple[int, int]] = []
     for i in range(4):
         twice_base = (2 * base_jets[i][0] % 16, 2 * base_jets[i][1] % 16)
         product = (

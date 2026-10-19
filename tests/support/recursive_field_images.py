@@ -35,7 +35,9 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
     ProviderImageInputArena,
 )
 from number_compiler.hashlife.execution.field_executor import (
-    FieldImageAdapter,
+    FieldImageAdapter as FieldImageAdapterProtocol,
+)
+from number_compiler.hashlife.execution.field_executor import (
     FieldImageCandidate,
     ParentObservation,
     RecursiveFieldImageExecutor,
@@ -58,8 +60,10 @@ from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferID,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
     LocalInterfaceID,
     MacroComponents,
     MacroInterface,
@@ -85,7 +89,7 @@ if TYPE_CHECKING:
     )
 
 
-class _Adapter:
+class RecursiveImageTestAdapter(FieldImageAdapterProtocol):
     signature_id: PortSignatureID
     observe_parent_point: Callable[
         [
@@ -218,7 +222,7 @@ class _Adapter:
         return 2
 
 
-class _SecondDomainArena:
+class SecondDomainArena:
     def __init__(
         self,
         ledger: ResourceLedger,
@@ -264,20 +268,20 @@ class _SecondDomainArena:
 
 
 @overload
-def _setup() -> tuple[
+def recursive_field_image_setup() -> tuple[
     ResourceLedger,
     SourceCellID,
     PortSignatureID,
     FieldGeometryID,
     FieldCellActionID,
     RecursiveFieldImageArena,
-    _Adapter,
-    RecursiveFieldImageExecutor[FieldImageAdapter],
+    RecursiveImageTestAdapter,
+    RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
 ]: ...
 
 
 @overload
-def _setup(
+def recursive_field_image_setup(
     digits: tuple[int, ...],
 ) -> tuple[
     ResourceLedger,
@@ -286,12 +290,12 @@ def _setup(
     FieldGeometryID,
     FieldCellActionID,
     RecursiveFieldImageArena,
-    _Adapter,
-    RecursiveFieldImageExecutor[FieldImageAdapter],
+    RecursiveImageTestAdapter,
+    RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
 ]: ...
 
 
-def _setup(
+def recursive_field_image_setup(
     digits: tuple[int, ...] = (0, 0),
 ) -> tuple[
     ResourceLedger,
@@ -300,8 +304,8 @@ def _setup(
     FieldGeometryID,
     FieldCellActionID,
     RecursiveFieldImageArena,
-    _Adapter,
-    RecursiveFieldImageExecutor[FieldImageAdapter],
+    RecursiveImageTestAdapter,
+    RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
 ]:
     ledger = ResourceLedger()
     geometry = SourceGeometry(
@@ -335,9 +339,9 @@ def _setup(
     output_owner = ArenaToken("test-field-outputs")
     action = FieldCellActionID(action_owner, "field-cell-action", 0)
     output = CoordinateOutputMorphismID(output_owner, "coordinate-output-morphism", 0)
-    adapter = _Adapter(action, interface, output, sources)
+    adapter = RecursiveImageTestAdapter(action, interface, output, sources)
     adapter.signature_id = declared
-    authority = _SecondDomainArena(
+    authority = SecondDomainArena(
         ledger,
         action_owner,
         output_owner,
@@ -365,10 +369,12 @@ def _setup(
     return ledger, root, declared, field_geometry, action, images, adapter, executor
 
 
-def _provider_setup() -> tuple[
+def provider_absorption_setup() -> tuple[
     ResourceLedger, ProviderAbsorptionArena, ProviderActionID, ProviderBindingKey
 ]:
-    ledger, source, _signature, _, action, images, adapter, _ = _setup((0, 1))
+    ledger, source, _signature, _, action, images, adapter, _ = (
+        recursive_field_image_setup((0, 1))
+    )
 
     def validate_boundary(value: object) -> None:
         if type(value) is not int or value not in (0, 1):
@@ -409,7 +415,7 @@ def _provider_setup() -> tuple[
     return ledger, providers, provider, binding
 
 
-def _completed_provider_input_setup(
+def completed_provider_input_setup(
     digits: tuple[int, int] = (0, 1),
 ) -> tuple[
     ResourceLedger,
@@ -431,7 +437,7 @@ def _completed_provider_input_setup(
         providers,
         _provider,
         binding,
-    ) = _completed_provider_setup(digits)
+    ) = completed_provider_setup(digits)
     inputs = ProviderImageInputArena(providers, images)
     assert isinstance(source, SourceCellID)
     root = inputs.bind(binding, source, 2)
@@ -439,7 +445,7 @@ def _completed_provider_input_setup(
 
 
 @dataclass(frozen=True, slots=True)
-class _PortID(ArenaHandle):
+class FieldTransferPortID(ArenaHandle):
     pass
 
 
@@ -461,7 +467,7 @@ class _TransferAdapter:
             raise ValueError("foreign field action")
 
     def validate_port(self, incoming: ArenaHandle) -> None:
-        if type(incoming) is not _PortID:
+        if type(incoming) is not FieldTransferPortID:
             raise TypeError("expected a typed test boundary")
         incoming.validate(self.port_owner, "test-boundary", size=2)
 
@@ -498,7 +504,7 @@ class _TransferAdapter:
         return incoming.local_id + 1
 
 
-def _transfer_setup() -> tuple[
+def field_transfer_setup() -> tuple[
     ResourceLedger,
     SourceCellID | SourceForestID,
     PortSignatureID,
@@ -509,7 +515,9 @@ def _transfer_setup() -> tuple[
     FieldTransferArena,
     FieldTransferExecutor,
 ]:
-    ledger, source, signature, geometry, action, images, adapter, _ = _setup()
+    ledger, source, signature, geometry, action, images, adapter, _ = (
+        recursive_field_image_setup()
+    )
     transfer_adapter = _TransferAdapter(action, adapter.interface, adapter.output)
     assert isinstance(images.interfaces, DiamondQuotientArena)
     transfers = FieldTransferArena(
@@ -536,19 +544,19 @@ def _transfer_setup() -> tuple[
     )
 
 
-def _application_setup() -> tuple[
+def field_image_application_setup() -> tuple[
     ResourceLedger,
     SourceCellID,
     PortSignatureID,
     FieldGeometryID,
     FieldCellActionID,
     RecursiveFieldImageArena,
-    _Adapter,
-    RecursiveFieldImageExecutor[FieldImageAdapter],
+    RecursiveImageTestAdapter,
+    RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
     ArenaHandle,
     FieldImageApplication,
 ]:
-    fixture = _setup()
+    fixture = recursive_field_image_setup()
     (
         _unused_ledger_binding,
         source,
@@ -567,7 +575,7 @@ def _application_setup() -> tuple[
     )
 
 
-def _completed_provider_setup(
+def completed_provider_setup(
     digits: tuple[int, int] = (0, 1),
 ) -> tuple[
     ResourceLedger,
@@ -576,14 +584,14 @@ def _completed_provider_setup(
     FieldGeometryID,
     FieldCellActionID,
     RecursiveFieldImageArena,
-    _Adapter,
-    RecursiveFieldImageExecutor[FieldImageAdapter],
+    RecursiveImageTestAdapter,
+    RecursiveFieldImageExecutor[RecursiveImageTestAdapter],
     FieldImageID,
     ProviderAbsorptionArena,
     ProviderActionID,
     ProviderBindingKey,
 ]:
-    fixture = _setup(digits)
+    fixture = recursive_field_image_setup(digits)
     ledger, source, signature, geometry, action, images, adapter, executor = fixture
     image = executor.image(action, source, geometry, signature)
     providers = ProviderAbsorptionArena(

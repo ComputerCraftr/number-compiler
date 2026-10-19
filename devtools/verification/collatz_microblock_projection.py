@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from devtools.verification.lazy_collatz import LazyCollatzApplication
 
 
-def _program_block(
+def program_block(
     self: LazyCollatzApplication, program: ActionProgramID, block: int
 ) -> int:
     from devtools.verification.lazy_collatz import Mul3Carry
@@ -157,10 +157,10 @@ def _program_block(
     return result.encoded
 
 
-def _program_bit(
+def program_bit(
     self: LazyCollatzApplication, program: ActionProgramID, position: int
 ) -> int:
     if type(position) is not int or position < 0:
         raise ValueError("Collatz program coordinates must be nonnegative")
     block = position // 64
-    return (self._program_block(program, block) >> (position % 64)) & 1
+    return (self.program_block(program, block) >> (position % 64)) & 1

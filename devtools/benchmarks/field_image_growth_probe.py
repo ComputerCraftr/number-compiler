@@ -70,9 +70,9 @@ def cold_rows(
     ledgers: list[object] = []
     for order_index, horizon in enumerate(ordered_horizons(horizons, order)):
         term = constructor(horizon)
-        if any(term._ledger is previous for previous in ledgers):
+        if any(term.resource_ledger is previous for previous in ledgers):
             raise AssertionError("cold probe constructor reused an index ledger")
-        ledgers.append(term._ledger)
+        ledgers.append(term.resource_ledger)
         digit = term.digit(0)
         metrics = term.metrics()
         if (

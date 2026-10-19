@@ -159,7 +159,9 @@ def test_direct_selector_rejects_non_integer_indices(bad: object) -> None:
 def test_wheel_and_production_share_the_same_count_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.prime.wheel_cyclotomic import _wheel_count_leq
+    from number_compiler.sequences.prime.wheel_cyclotomic import (
+        PrimeRecursiveWheelIndex,
+    )
 
     original = CoprimeRankDAG.count
     calls: list[CoprimeRankDAG] = []
@@ -169,17 +171,13 @@ def test_wheel_and_production_share_the_same_count_owner(
         return original(self, limit, depth)
 
     monkeypatch.setattr(CoprimeRankDAG, "count", counted)
-    _wheel_count_leq.cache_clear()
-    try:
-        assert _wheel_count_leq((2, 3, 5), 3, 500) == 134
-        assert len(calls) == 1
-        calls.clear()
-        assert nth_prime_at_or_after(100, 3)[0] == 109
-        assert len(calls) > 1
-        assert len({id(owner) for owner in calls}) == 1
-        assert calls[0].ledger.entries == 0  # disposal even if a spy retains the owner
-    finally:
-        _wheel_count_leq.cache_clear()
+    wheel = PrimeRecursiveWheelIndex.from_primes((2, 3, 5))
+    assert wheel.count_positive_below(501) == 134
+    calls.clear()
+    assert nth_prime_at_or_after(100, 3)[0] == 109
+    assert len(calls) > 1
+    assert len({id(owner) for owner in calls}) == 1
+    assert calls[0].ledger.entries == 0  # disposal even if a spy retains the owner
 
 
 @pytest.mark.parametrize("retain_queries", [False, True])
@@ -442,12 +440,13 @@ def test_cover_commits_do_not_snapshot_the_full_factor_prefix(
 def test_publish_rejects_a_foreign_factor_store_with_matching_markers() -> None:
     owner = PrimePrefixRank(max_states=10_000, max_work=100_000, max_stages=100)
     foreign = CoprimeRankDAG((2, 3, 5), max_states=10_000, max_work=100_000)
-    original_store = owner.dag._factor_store_authority
+    original_store: object = object.__getattribute__(owner.dag, "_primes")
+    foreign_store: object = object.__getattribute__(foreign, "_primes")
     try:
         owner.cover(25)
         assert owner.dag.factor_count == foreign.factor_count
         assert owner.dag.last_factor == foreign.last_factor
-        object.__setattr__(owner.dag, "_primes", foreign._factor_store_authority)
+        object.__setattr__(owner.dag, "_primes", foreign_store)
         with pytest.raises(RuntimeError, match="coverage is incomplete"):
             owner.publish()
     finally:
@@ -492,14 +491,20 @@ def test_cached_prefix_cursor_rejects_a_newly_reached_forged_entry(
 ) -> None:
     clear_process_cache()
     source = ("test-positive-integers", "test-consecutive-prefix", b"issuer")
+    record_issuer = object()
     monkeypatch.setattr(prime_select, "_PRIME_CACHE_SOURCE", source)
+    monkeypatch.setattr(prime_select, "_PRIME_CACHE_RECORD_ISSUER", record_issuer)
     cache = get_process_cache()
     with cache.acquire(
         "prime.coprime-rank",
         "positive-integers-least-survivor-v1",
         source,
     ) as lease:
-        assert lease.put(("admitted-prefix",), (19, (2, 3, 5, 4, 19), 0))
+        assert lease.put_issued(
+            ("admitted-prefix",),
+            (19, (2, 3, 5, 4, 19), 0),
+            record_issuer,
+        )
 
     owner = PrimePrefixRank(
         max_states=10_000,

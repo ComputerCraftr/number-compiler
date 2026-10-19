@@ -164,7 +164,7 @@ class ReverseAddMacroActionArena:
         require_exact_oracle()
         return ActionProgramID(self._owner, "reverse-macro-program", local_id)
 
-    def validate(self, handle: ActionProgramID) -> int:
+    def validate(self, handle: object) -> int:
         require_exact_oracle()
         if not isinstance(handle, ActionProgramID):
             raise TypeError("reverse macro action requires a scoped program ID")

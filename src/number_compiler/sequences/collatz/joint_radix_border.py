@@ -21,42 +21,20 @@ from number_compiler.arithmetic.functions.finite_observer import (
     partition_representatives,
 )
 from number_compiler.sequences.collatz.border_identity import (
-    ENTRY_0563,
-    ENTRY_89_AT_NINE,
-    ENTRY_421,
-    ENTRY_4721,
-    ENTRY_26847_PHASES,
-    PATH_305,
-    PATH_630,
+    BOUNDARY_SELECTOR_IDENTITIES,
     BoundaryActionIdentity,
     CollatzSegmentIdentity,
+    selector_guard_for,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
     CollatzF5AffineAction,
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 
 _RADIX6_CELLS = 6**5
-
-# One declaration owns both the finite candidate projection and its exact
-# source class. The minimum is not visible to the finite observer; it remains
-# part of the selector admission guard (notably source > 4 for ENTRY_421).
-_CANDIDATE_FAMILIES: tuple[tuple[BoundaryActionIdentity, int, int, int], ...] = (
-    (ENTRY_421, 4, 40, 5),
-    (ENTRY_4721, 14, 40, 1),
-    (ENTRY_0563, 30, 40, 1),
-    (ENTRY_26847_PHASES[0], 112, 160, 1),
-    (ENTRY_26847_PHASES[1], 56, 80, 1),
-    (ENTRY_26847_PHASES[2], 28, 40, 1),
-    (ENTRY_26847_PHASES[3], 34, 40, 1),
-    (ENTRY_26847_PHASES[4], 7, 10, 1),
-    (PATH_630, 6, 20, 1),
-    (PATH_305, 3, 10, 1),
-    (ENTRY_89_AT_NINE, 9, 10, 1),
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +140,7 @@ class JointRadix6Source:
             raise ValueError("radix successor endpoint disagrees with issued action")
         if type(odd_symbols) is not int or not 0 <= odd_symbols <= action.steps:
             raise ValueError("radix successor has an invalid event clock")
-        projected = _project_dyadic_fields_f5(action)
+        projected = project_dyadic_fields_f5(action)
         next_f5 = projected.apply(self.residue5)
         if next_f5 != endpoint % 5:
             raise AssertionError("transported F5 action disagrees with exact endpoint")
@@ -257,8 +235,8 @@ def candidate_family_for_residue160(
     """Stable finite candidate output; exact macro admission follows later."""
     if type(residue160) is not int or not 0 <= residue160 < 160:
         raise ValueError("candidate projection requires a radix-160 residue")
-    for identity, residue, modulus, _minimum_source in _CANDIDATE_FAMILIES:
-        if residue160 % modulus == residue:
+    for identity in BOUNDARY_SELECTOR_IDENTITIES:
+        if selector_guard_for(identity).matches_residue(residue160):
             return identity
     return None
 
@@ -280,9 +258,10 @@ def candidate_family_guard(
     issued action's exact parity cylinder.  The final component retains the
     one noncongruence selector condition: ENTRY_421 requires source > 4.
     """
-    for candidate, residue, modulus, minimum_source in _CANDIDATE_FAMILIES:
+    for candidate in BOUNDARY_SELECTOR_IDENTITIES:
         if identity == candidate:
-            return residue, modulus, minimum_source
+            guard = selector_guard_for(candidate)
+            return guard.residue, guard.modulus, guard.minimum_source
     raise ValueError("identity is not a radix-6 candidate-family output")
 
 
@@ -310,14 +289,14 @@ class BorderCRTMoore:
 
 def border_crt_moore() -> BorderCRTMoore:
     """Refine every residue and both lift-bit inputs on demand."""
-    rows = []
+    rows: list[tuple[int, int]] = []
     for residue in range(160):
-        successors = []
+        successors: list[int] = []
         for high_lift_bit in (0, 1):
             lifted = residue + 160 * high_lift_bit
             next_source = lifted // 2 if lifted % 2 == 0 else (3 * lifted + 1) // 2
             successors.append(next_source % 160)
-        rows.append(tuple(successors))
+        rows.append((successors[0], successors[1]))
     labels = tuple(candidate_family_for_residue160(residue) for residue in range(160))
     result = minimize_finite_observer(tuple(rows), labels)
     representatives = partition_representatives(result.class_ids, result.classes)

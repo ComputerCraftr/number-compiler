@@ -47,7 +47,7 @@ def test_boundary_macro_cli_exposes_coupling_without_rendering(
         )
 
     monkeypatch.setattr(CollatzRadialBoundarySeam, "observation", record_observation)
-    monkeypatch.setattr(cli_render, "_render_value", _fail_if_observed)
+    monkeypatch.setattr(cli_render, "render_value", _fail_if_observed)
     assert (
         cli.main(
             [
@@ -105,7 +105,7 @@ def test_mahler_information_exposes_radial_affine_transport(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", _fail_if_observed)
+    monkeypatch.setattr(cli_render, "render_value", _fail_if_observed)
     assert (
         cli.main(
             [

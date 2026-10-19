@@ -133,7 +133,9 @@ def _directional_tables() -> tuple[
     tuple[tuple[int, ...], ...],
     tuple[tuple[tuple[int, ...], ...], ...],
 ]:
-    left, right, tables = [], [], []
+    left: list[tuple[int, ...]] = []
+    right: list[tuple[int, ...]] = []
+    tables: list[tuple[tuple[int, ...], ...]] = []
     for shift in range(6):
         rows = tuple(
             tuple(

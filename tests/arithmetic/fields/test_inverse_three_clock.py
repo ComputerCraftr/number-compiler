@@ -27,12 +27,22 @@ def test_inverse_three_clock_is_a_prefix_local_bijection() -> None:
             assert normalized == source * pow(3, -phase, modulus) % modulus
 
 
-@pytest.mark.parametrize("precision", range(6, 15))
+@pytest.mark.parametrize(
+    ("precision", "exhaustive"),
+    tuple((precision, True) for precision in (6, 7, 8))
+    + tuple((precision, False) for precision in range(9, 15))
+    + tuple(
+        pytest.param(precision, True, marks=pytest.mark.validation)
+        for precision in range(9, 15)
+    ),
+)
 def test_root_lift_is_affine_in_the_next_temporal_phase_digit(
     precision: int,
+    exhaustive: bool,
 ) -> None:
     period = 1 << (precision - 2)
-    for phase in range(period):
+    phases = range(period) if exhaustive else (0, 1, period // 2, period - 1)
+    for phase in phases:
         clock = InverseThreeClock(precision, phase)
         assert clock.lift_coefficient == (35 if precision == 6 else 3)
         for digit in range(64):

@@ -241,8 +241,8 @@ class FiniteBoundaryWindow:
         if self.operation != "reverse-add":
             raise ValueError("symmetric pair interfaces belong to reverse/add")
         last: tuple[int, int, tuple[int, int]] | None = None
-        for last in self._iter_carry_interfaces(tile):
-            pass
+        for interface in self._iter_carry_interfaces(tile):
+            last = interface
         if last is None:
             raise AssertionError("a positive-width boundary has no carry interface")
         return last[1], last[2]

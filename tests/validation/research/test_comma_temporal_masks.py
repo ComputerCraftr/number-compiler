@@ -3,7 +3,7 @@
 import pytest
 
 from devtools.experiments.comma import temporal_masks
-from devtools.experiments.comma.generate_rank_candidate import _decade_round_candidate
+from devtools.experiments.comma.generate_rank_candidate import decade_round_candidate
 from devtools.experiments.comma.temporal_masks import (
     FULL_MASK,
     PhaseWord,
@@ -35,7 +35,7 @@ def test_orbit_is_a_control_quotient_not_a_weight_quotient() -> None:
     assert [offset_orbit(x) for x in reps] == list(range(46))
     group = [x for x in range(91) if offset_orbit(x) == 0]
     assert group == [0, 1, 12, 33, 64]
-    rows = [_decade_round_candidate(0, x) for x in group]
+    rows = [decade_round_candidate(0, x) for x in group]
     assert len({(row.kind, row.successor, row.fork_a) for row in rows}) == 1
     assert [row.positions for row in rows] == [52, 51, 50, 49, 48]
     assert offset_orbit(2) == 45  # Truncated natural subtraction would give zero.
@@ -116,7 +116,7 @@ def test_symbolic_construction_does_not_call_scalar_reference(
     def forbidden(*_args: object) -> object:
         raise AssertionError("symbolic constructor called the scalar round oracle")
 
-    monkeypatch.setattr(temporal_masks, "_decade_round_candidate", forbidden)
+    monkeypatch.setattr(temporal_masks, "decade_round_candidate", forbidden)
     compiler = SectorMaskCompiler()
     word = compiler.word(1, 0)
     work = (compiler.chart_moves, compiler.intersections, len(compiler.words))

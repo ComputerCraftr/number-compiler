@@ -24,4 +24,7 @@ def test_public_family_and_radix_paths_report_no_sequential_backend_work() -> No
         metrics = term.metrics()
         assert metrics.sequential_generation_advances == 0
         assert metrics.higher_concrete_operation_evaluations == 0
-    assert collect_ledger_metrics(projected_term._ledger).forbidden_future_payloads == 0
+    assert (
+        collect_ledger_metrics(projected_term.resource_ledger).forbidden_future_payloads
+        == 0
+    )

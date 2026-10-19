@@ -28,7 +28,7 @@ from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 from tests.support.semantic_state_codec import tiny
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ def test_every_small_arbitrary_continuation_and_anchor_are_preserved(side: int) 
             inputs = {codec.anchor_port.variable: initial}
             inputs.update(
                 (port.variable, value)
-                for port, value in zip(codec.component_ports, values)
+                for port, value in zip(codec.component_ports, values, strict=True)
             )
             actual = (
                 arena.structures.evaluate_atom(anchor, inputs),
@@ -139,7 +139,8 @@ def test_warm_codec_never_constructs_new_semantic_nodes(
         pytest.fail("warm codec rebuilt its selector circuit")
 
     monkeypatch.setattr(
-        "number_compiler.hashlife.interfaces.semantic_state_codec._Builder", forbidden
+        "number_compiler.hashlife.interfaces.semantic_state_codec.StructureBuilder",
+        forbidden,
     )
     assert arena.compile(paired, 0) is codec
     assert runtime.ledger.counters["semantic_state_codec_hits"] == 1
@@ -223,7 +224,7 @@ def test_parent_metadata_and_all_semantic_nodes_publish_atomically() -> None:
 def test_verified_c4_pair_codec_uses_fixed_primitive_component_bits(
     side: int, expected: int
 ) -> None:
-    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+    runtime, action = collatz_continuation_runtime(PhysicalCollatzFourBlockEffect())
     arena = codec_arena(runtime)
     codec = arena.compile(
         runtime.actions.compose(action, action), side, PortVariable(0, 0, "c4-pair", 0)

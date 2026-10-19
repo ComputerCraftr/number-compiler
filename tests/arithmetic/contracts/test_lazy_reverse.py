@@ -42,7 +42,7 @@ def test_lazy_reverse_points_match_independent_pair_recurrence(base: int) -> Non
     for count in range(5):
         digits = [random.randrange(base) for _ in range(1 + count)]
         digits[-1] = max(1, digits[-1])
-        pair = tuple(x + y for x, y in zip(digits, reversed(digits)))
+        pair = tuple(x + y for x, y in zip(digits, reversed(digits), strict=True))
         steps = 3 * count
         application = LazyReverseApplication(base, -1, steps, pair)
         for _ in range(steps):

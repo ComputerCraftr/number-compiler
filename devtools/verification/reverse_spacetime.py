@@ -440,7 +440,7 @@ class ReverseAddCausalSpacetimeEngine:
 
     def forcing_image(
         self,
-        source: ReverseAddPairField | ReverseAddCarrySlab,
+        source: object,
     ) -> ReverseAddForcingOccurrence:
         """Return the exact occurrence under its shared semantic ActionID."""
         require_exact_oracle()

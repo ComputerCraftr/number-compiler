@@ -114,7 +114,7 @@ def materialize_mersenne_power_radix_digits(
         raise ValueError((p, k))
     base = 1 << k
     value = (1 << p) - 1
-    out = []
+    out: list[int] = []
     while value:
         value, digit = divmod(value, base)
         out.append(digit)
@@ -129,7 +129,7 @@ def materialize_fermat_power_radix_digits(
         raise ValueError((n, k))
     base = 1 << k
     value = (1 << (1 << n)) + 1
-    out = []
+    out: list[int] = []
     while value:
         value, digit = divmod(value, base)
         out.append(digit)

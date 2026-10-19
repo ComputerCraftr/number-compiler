@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from number_compiler.api.matrix_contracts import MatrixRequest
 from number_compiler.api.observation_types import (
-    FamilyId,
     IndexEncoding,
     IndexUnit,
     ObservationId,
@@ -15,6 +14,7 @@ from number_compiler.api.observation_types import (
     SelectorId,
 )
 from number_compiler.api.query_types import ExecutionQuery
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 
 if TYPE_CHECKING:
@@ -389,10 +389,23 @@ class QueryRequest:
                     "requested information is unavailable for this selector"
                 )
             spec.validate_observation_request(self.execution, self.observations)
-        if ObservationId.TEMPORAL_MATRIX in self.observations.info:
+        if {
+            ObservationId.TEMPORAL_MATRIX,
+            ObservationId.TEMPORAL_MATRIX_TRACE,
+        }.intersection(self.observations.info):
             if spec.matrix is None or self.matrix is None:
                 raise ValueError("temporal.matrix requires an admitted matrix request")
             spec.matrix.validate(self.matrix)
+            from number_compiler.api.matrix_contracts import SourceTransferRequest
+
+            trace = ObservationId.TEMPORAL_MATRIX_TRACE in self.observations.info
+            if isinstance(self.matrix, SourceTransferRequest):
+                if self.matrix.trace is not trace:
+                    raise ValueError(
+                        "matrix trace demand differs from its admitted request"
+                    )
+            elif trace:
+                raise ValueError("matrix.trace requires source-transfer kind")
             if (
                 spec.matrix.max_source_index is not None
                 and self.index > spec.matrix.max_source_index

@@ -348,7 +348,7 @@ def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
     blocks = cartouches
     if not blocks and path.suffix.lower() in {".ml", ".sml"}:
         blocks = ((0, len(text), text),)
-    for start, end, body in blocks:
+    for start, _end, body in blocks:
         code, locator = _ml_code(body)
         all_matches = tuple(_ML_FUN_RE.finditer(locator))
         if not all_matches:
@@ -365,7 +365,7 @@ def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
             if _line_indent(locator, match.start()) == base_indent
         )
         boundary_positions = tuple(boundary.start() for boundary in boundaries)
-        for index, match in enumerate(matches):
+        for match in matches:
             boundary_index = bisect_right(boundary_positions, match.start())
             body_end = (
                 boundary_positions[boundary_index]
@@ -539,7 +539,7 @@ def _unsupported(
                     reason="indented/proof-local command scope is not modeled",
                 )
             )
-    for start, end, body in ml_cartouche_spans(text):
+    for start, _end, body in ml_cartouche_spans(text):
         _code, locator = _ml_code(body)
         matches = tuple(_ML_FUN_RE.finditer(locator))
         if matches:
@@ -613,7 +613,7 @@ def _unsupported(
     return tuple(findings)
 
 
-def _duplicate_groups(
+def duplicate_groups(
     declarations: Iterable[IsabelleDeclaration],
 ) -> tuple[IsabelleDuplicate, ...]:
     groups: dict[tuple[str, ...], list[IsabelleDeclaration]] = defaultdict(list)
@@ -675,7 +675,7 @@ def analyze_isabelle_source(
     )
     return IsabelleAnalysis(
         declarations=tuple(declarations),
-        duplicates=_duplicate_groups(declarations) if include_duplicates else (),
+        duplicates=duplicate_groups(declarations) if include_duplicates else (),
         unused_candidates=candidates,
         unknown_references=unknowns,
         unsupported_constructs=unsupported,
@@ -749,7 +749,7 @@ def analyze_isabelle_tree(
         )
         source_records.append((path, text, analysis))
         declarations.extend(analysis.declarations)
-    all_duplicates = _duplicate_groups(declarations)
+    all_duplicates = duplicate_groups(declarations)
     names: dict[str, list[IsabelleDeclaration]] = defaultdict(list)
     for declaration in declarations:
         names[declaration.name].append(declaration)

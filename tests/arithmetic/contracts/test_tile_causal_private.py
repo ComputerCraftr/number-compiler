@@ -9,11 +9,11 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from tests.support.tile_kernel import (
-    _runtime,
-    _runtime_source,
-    _symbols,
-    _tile,
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
     powered_runtime_source,
+    read_tile_symbols,
 )
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ def test_causal_macro_recurrence_p4_p8_without_temporal_midpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, (0, 0, 0, 1)
     )
 
@@ -66,7 +66,7 @@ def test_causal_macro_recurrence_p4_p8_without_temporal_midpoint(
                     == expected
                 )
             with engine.output(action, source.tile) as output:
-                assert _symbols(tiles, output.tile) == expected
+                assert read_tile_symbols(tiles, output.tile) == expected
         assert ledger.counters.get("tile_causal_frames", 0) > 0
         assert ledger.counters.get("tile_causal_result_hits", 0) > 0
         assert ledger.counters.get("tile_temporal_complete_frames", 0) == 0
@@ -107,9 +107,9 @@ def test_causal_p4_p8_explicit_noninitial_edge_contract() -> None:
     )
 
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(effect)
     source_symbols = (0, 0, 0, 1)
-    source = _tile(tiles, adapter, primitive, source_symbols)
+    source = make_tile_from_symbols(tiles, adapter, primitive, source_symbols)
     producer, consumer = (1, 0), (0, 1)
     try:
         engine = CausalTileEngine(scheduler)
@@ -146,7 +146,7 @@ def test_repeated_point_reuses_completed_causal_leaf(
 ) -> None:
     effect = BaseBlockEffect(3)
     ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(effect, (0, 0, 0, 1))
+        make_tile_runtime_source(effect, (0, 0, 0, 1))
     )
     action = adapter.power(primitive, 8)
     with (
@@ -173,7 +173,7 @@ def test_repeated_point_reuses_completed_causal_leaf(
 
 def test_causal_output_consumes_an_already_completed_midpoint() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, (0, 0, 0, 1)
     )
     square = adapter.power(primitive, 2)
@@ -181,10 +181,10 @@ def test_causal_output_consumes_an_already_completed_midpoint() -> None:
     try:
         engine = CausalTileEngine(scheduler)
         with engine.output(square, source.tile) as midpoint:
-            assert _symbols(tiles, midpoint.tile) == (0, 0, 0, 4)
+            assert read_tile_symbols(tiles, midpoint.tile) == (0, 0, 0, 4)
             before = ledger.counters.get("tile_causal_midpoint_reuse", 0)
             with engine.output(fourth, source.tile) as output:
-                assert _symbols(tiles, output.tile) == (2, 0, 0, 4)
+                assert read_tile_symbols(tiles, output.tile) == (2, 0, 0, 4)
             assert ledger.counters.get("tile_causal_midpoint_reuse", 0) > before
     finally:
         source.close()
@@ -195,7 +195,7 @@ def test_causal_width_uses_interfaces_without_output_tiles(
 ) -> None:
     effect = BaseBlockEffect(3)
     _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(effect, (0, 0, 0, 1))
+        make_tile_runtime_source(effect, (0, 0, 0, 1))
     )
     engine = CausalTileEngine(scheduler)
 

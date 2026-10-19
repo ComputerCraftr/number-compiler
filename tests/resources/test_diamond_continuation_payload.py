@@ -13,14 +13,14 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     StateSort,
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from tests.support.diamond_continuation_payload import populated
+from tests.support.collatz_diamond_fixtures import collatz_continuation_payload_case
 from tests.support.diamond_observation_adversarial import unsafe_capture
 
 
 def test_actual_primitive_function_map_has_a_live_domain_and_read_only_inventory() -> (
     None
 ):
-    runtime, _, _, _, _, _ = populated()
+    runtime, _, _, _, _, _ = collatz_continuation_payload_case()
     before = runtime.ledger.snapshot()
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
@@ -34,7 +34,7 @@ def test_actual_primitive_function_map_has_a_live_domain_and_read_only_inventory
 def test_injected_reduction_binding_cannot_hide_bound_values_or_change_domains(
     failure: str,
 ) -> None:
-    runtime, action, variable, _, key, function = populated()
+    runtime, action, variable, _, key, function = collatz_continuation_payload_case()
     arena = runtime.higher.expressions
     if failure == "closed-key":
         closed = arena.literal(runtime.boundaries.literal(action, 0, 0))
@@ -61,7 +61,7 @@ def test_injected_reduction_binding_cannot_hide_bound_values_or_change_domains(
 def test_constant_finite_function_is_not_misclassified_as_a_scalar_observation() -> (
     None
 ):
-    runtime, _, _, _, key, _ = populated()
+    runtime, _, _, _, key, _ = collatz_continuation_payload_case()
     existing = runtime.primitive_continuations.maps[key]
     domain = runtime.kernels.expression(existing).domain
     runtime.primitive_continuations.maps[key] = runtime.kernels.constant(domain, 0)
@@ -71,7 +71,7 @@ def test_constant_finite_function_is_not_misclassified_as_a_scalar_observation()
 def test_normalization_cannot_bind_closed_function_program_to_realized_response() -> (
     None
 ):
-    runtime, action, variable, expression, _, _ = populated()
+    runtime, action, variable, expression, _, _ = collatz_continuation_payload_case()
     arena = runtime.higher.expressions
     function = arena.lambda_(variable, expression)
     literal = arena.literal(runtime.boundaries.literal(action, 0, 0))
@@ -88,7 +88,9 @@ def test_normalization_cannot_bind_closed_function_program_to_realized_response(
 def test_live_input_cannot_hide_closed_capture_in_children_or_opaque_closure_body(
     opaque: bool,
 ) -> None:
-    runtime, action, variable, expression, _, function = populated()
+    runtime, action, variable, expression, _, function = (
+        collatz_continuation_payload_case()
+    )
     arena, body = unsafe_capture(runtime, action, variable, expression)
     if opaque:
         program = arena.closures.intern((variable,), body)

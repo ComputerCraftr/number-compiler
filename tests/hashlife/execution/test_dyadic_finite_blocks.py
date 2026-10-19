@@ -9,7 +9,6 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 )
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 from number_compiler.hashlife.execution.dyadic_return_transport import (
-    _residue_effect,
     balanced_residue_effect,
     residue_macro,
 )
@@ -34,7 +33,7 @@ def test_all_finite_residues_match_every_branch_and_high_fiber(
     monkeypatch.setattr(workspace, "_source_value", forbidden)
     for width in range(1, 9):
         for residue in range(1 << width):
-            transient = _residue_effect(workspace, width, residue)
+            transient = workspace.finite_residue_effect(width, residue)
             retained = workspace.support_node(residue_macro(workspace, width, residue))
             assert transient == retained
             for lift in (0, 1, (1 << 97) + 5):
@@ -52,7 +51,7 @@ def test_all_finite_residues_match_every_branch_and_high_fiber(
                     transient.delta,
                     transient.minimum,
                 ) == (word, odd, delta, minimum)
-            assert not workspace.macros
+            assert not workspace.finite_cache_audit_snapshot().macros
     workspace.dispose()
     assert workspace.ledger.nodes == workspace.ledger.entries == 0
 
@@ -63,13 +62,14 @@ def test_large_effect_reuses_finite_atoms_without_retained_cache(
 ) -> None:
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 0, 0, law)
     initial = workspace.ledger.nodes, workspace.ledger.entries
-    original = workspace._bump
+    original = workspace.bump_metric
     observed: set[int] = set()
 
     def inspect(suffix: str, amount: int = 1) -> None:
         if suffix == "finite_block_publications":
-            assert len(workspace.macros) <= 256
-            for owner, descriptor, width, residue in workspace.macros:
+            macros = workspace.finite_cache_audit_snapshot().macros
+            assert len(macros) <= 256
+            for owner, descriptor, width, residue in macros:
                 assert owner is workspace.owner
                 assert descriptor == law.descriptor
                 assert type(width) is int and type(residue) is int
@@ -77,7 +77,7 @@ def test_large_effect_reuses_finite_atoms_without_retained_cache(
                 observed.add(width)
         original(suffix, amount)
 
-    monkeypatch.setattr(workspace, "_bump", inspect)
+    monkeypatch.setattr(workspace, "bump_metric", inspect)
     width = 1024
     source = (1 << width) // 3
     effect = balanced_residue_effect(workspace, width, source)
@@ -93,9 +93,9 @@ def test_large_effect_reuses_finite_atoms_without_retained_cache(
     assert workspace.ledger.counters[prefix + "finite_block_cold_steps"] < width
     assert 4 in observed and 8 in observed
     assert (
-        not workspace.macros
-        and not workspace.macro_stack
-        and not workspace.balanced_stack
+        not workspace.finite_cache_audit_snapshot().macros
+        and not workspace.finite_cache_audit_snapshot().macro_stack
+        and not workspace.finite_cache_audit_snapshot().balanced_stack
     )
     assert (workspace.ledger.nodes, workspace.ledger.entries) == initial
     workspace.dispose()
@@ -106,7 +106,7 @@ def test_finite_cache_failure_cleanup_and_foreign_authority(
 ) -> None:
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 0, 0, COLLATZ_PHYSICAL_LAW)
     other = DyadicReturnImageWorkspace(ResourceLedger(), 0, 0, ANTIHYDRA_ARITHMETIC_LAW)
-    original = workspace._bump
+    original = workspace.bump_metric
     initial = workspace.ledger.nodes, workspace.ledger.entries
 
     def reject(suffix: str, amount: int = 1) -> None:
@@ -115,13 +115,14 @@ def test_finite_cache_failure_cleanup_and_foreign_authority(
         original(suffix, amount)
 
     with monkeypatch.context() as patch:
-        patch.setattr(workspace, "_bump", reject)
+        patch.setattr(workspace, "bump_metric", reject)
         with pytest.raises(MemoryError, match="finite publication"):
             balanced_residue_effect(workspace, 129, 19)
+    failure_state = workspace.finite_cache_audit_snapshot()
     assert (
-        not workspace.macros
-        and not workspace.macro_stack
-        and not workspace.balanced_stack
+        not failure_state.macros
+        and not failure_state.macro_stack
+        and not failure_state.balanced_stack
     )
     assert (workspace.ledger.nodes, workspace.ledger.entries) == initial
     support = residue_macro(workspace, 8, 19)
@@ -130,24 +131,20 @@ def test_finite_cache_failure_cleanup_and_foreign_authority(
     with monkeypatch.context() as patch:
         patch.setattr(workspace, "law", ANTIHYDRA_ARITHMETIC_LAW)
         with pytest.raises(ValueError):
-            _residue_effect(workspace, 8, 19)
+            workspace.finite_residue_effect(8, 19)
     workspace.dispose()
     with pytest.raises(ValueError):
-        _residue_effect(workspace, 8, 19)
+        workspace.finite_residue_effect(8, 19)
     other.dispose()
     assert workspace.ledger.entries == workspace.ledger.nodes == 0
 
 
 def test_finite_memo_eviction_and_scope_cleanup() -> None:
-    from number_compiler.hashlife.execution.dyadic_return_transport import (
-        _clear_finite_memo,
-    )
-
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 0, 0, COLLATZ_PHYSICAL_LAW)
     initial = workspace.ledger.nodes, workspace.ledger.entries
     try:
         for residue in range(256):
-            effect = _residue_effect(workspace, 8, residue, keep_memo=True)
+            effect = workspace.finite_residue_effect(8, residue, retain_cache=True)
             value = residue
             for _ in range(8):
                 value = 3 * value + 1 if value & 1 else value // 2
@@ -155,10 +152,13 @@ def test_finite_memo_eviction_and_scope_cleanup() -> None:
             assert (
                 transfer.upper * residue + transfer.offset
             ) // transfer.lower == value
-            assert len(workspace.macros) <= 256
-            inventory = workspace.ledger.inventory()[workspace.macro_owner]
-            assert inventory.entries == inventory.nodes == len(workspace.macros)
-        assert len(workspace.macros) == 256
+            macros = workspace.finite_cache_audit_snapshot().macros
+            assert len(macros) <= 256
+            inventory = workspace.ledger.inventory()[
+                workspace.finite_cache_audit_snapshot().macro_owner
+            ]
+            assert inventory.entries == inventory.nodes == len(macros)
+        assert len(workspace.finite_cache_audit_snapshot().macros) == 256
         assert (
             workspace.ledger.counters[
                 workspace.counter_prefix + "_finite_block_evictions"
@@ -168,10 +168,10 @@ def test_finite_memo_eviction_and_scope_cleanup() -> None:
         # Entries are acceleration state, never a new independently reusable
         # public source. A second unscoped call rejects the unfinished scope.
         with pytest.raises(RuntimeError, match="unfinished"):
-            _residue_effect(workspace, 8, 0)
+            workspace.finite_residue_effect(8, 0)
     finally:
-        _clear_finite_memo(workspace)
+        workspace.clear_finite_support_cache()
     assert (workspace.ledger.nodes, workspace.ledger.entries) == initial
-    assert not workspace.macros
+    assert not workspace.finite_cache_audit_snapshot().macros
     workspace.dispose()
     assert workspace.ledger.nodes == workspace.ledger.entries == 0

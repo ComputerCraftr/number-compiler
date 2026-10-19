@@ -840,7 +840,9 @@ class SymbolicReturnView:
 class _Builder:
     """Iterative symbolic builder using only public arena operations."""
 
-    def __init__(self, source_view: SemanticContinuation, arena: SemanticFunctionArena):
+    def __init__(
+        self, source_view: SemanticContinuation, arena: SemanticFunctionArena
+    ) -> None:
         self.source_view = source_view
         self.arena = arena
         prefix = f"comma-symbolic-return-{arena.ledger.owner_count}"

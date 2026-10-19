@@ -16,7 +16,7 @@ from number_compiler.hashlife.tiles.tiles import TileArena, TileLease
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 from tests.support.ledger_failures import inject_release_failure
-from tests.support.tile_results import _incoming_setup
+from tests.support.tile_results import incoming_setup
 
 
 def _publish_with_operand() -> tuple[
@@ -27,7 +27,7 @@ def _publish_with_operand() -> tuple[
     TileLease,
     tuple[TileLease, BoundaryTileView, ResultLease],
 ]:
-    ledger, _, tiles, results, source, output, key, result, boundary = _incoming_setup()
+    ledger, _, tiles, results, source, output, key, result, boundary = incoming_setup()
     view = BoundaryTileView(boundary.tile, 0, 1)
     result = replace(
         result,

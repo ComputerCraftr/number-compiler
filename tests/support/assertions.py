@@ -36,10 +36,11 @@ def assert_rejected_atomically(
 
 
 def assert_forbidden_payloads_read_only(ledger: ResourceLedger) -> None:
-    from number_compiler.resources.metric_collection import collect_ledger_metrics
+    from number_compiler.resources.payload_audit import audit_registered_payloads
 
     before = ledger.snapshot()
-    assert collect_ledger_metrics(ledger).forbidden_future_payloads > 0
+    audit = audit_registered_payloads(ledger, fresh=True)
+    assert audit.forbidden_future_payloads > 0
     assert ledger.snapshot() == before
 
 

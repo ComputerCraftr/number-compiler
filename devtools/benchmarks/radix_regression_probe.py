@@ -60,7 +60,7 @@ def measured(operation: Callable[[], Any]) -> tuple[Any, dict[str, Any]]:
 
 
 def snapshot(term: PoweredCollatzTerm) -> dict[str, Any]:
-    actual = term._ledger.snapshot()
+    actual = term.resource_ledger.snapshot()
     inventory = [
         {
             item.name: getattr(row, item.name)
@@ -157,9 +157,9 @@ def worker() -> dict[str, Any]:
                 "value": None,
                 "reason": "cold query did not complete",
             }
-        before_audit = term._ledger.snapshot()
-        report, audit = measured(lambda: collect_ledger_metrics(term._ledger))
-        audit["ledger_unchanged"] = term._ledger.snapshot() == before_audit
+        before_audit = term.resource_ledger.snapshot()
+        report, audit = measured(lambda: collect_ledger_metrics(term.resource_ledger))
+        audit["ledger_unchanged"] = term.resource_ledger.snapshot() == before_audit
         if report is not None:
             for name in (
                 "resource_audit_complete",
@@ -175,7 +175,7 @@ def worker() -> dict[str, Any]:
                 audit[name] = getattr(report, name)
         row["audit"] = audit
         projection = term._radix_projections.get(3)
-        counters = term._ledger.counters
+        counters = term.resource_ledger.counters
         row["no_response_or_microblock_assistance"] = bool(
             projection is not None
             and projection._native_source is not None

@@ -9,7 +9,6 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalPrefix,
     append_prefix,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
@@ -27,11 +26,12 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     NormalizedRegionResult,
 )
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.causal_types import CausalPrefix
 from tests.support.tile_dependency_assertions import (
     assert_tile_dependency_state,
     capture_tile_dependency_state,
 )
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def test_clipped_mirror_scan_reuses_region_before_decomposition(
@@ -40,8 +40,8 @@ def test_clipped_mirror_scan_reuses_region_before_decomposition(
     import number_compiler.hashlife.tiles.tile_region_memo as region_memo
     from number_compiler.hashlife.execution.tile_causal_tasks import scan_view
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         leases: list[TileLease] = []
         try:
             first = scan_view(
@@ -76,9 +76,9 @@ def test_prefix_concat_reuses_exact_content_across_actions(
 ) -> None:
     import number_compiler.hashlife.tiles.tile_boundary_concat_memo as concat_memo
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     square = adapter.power(primitive, 2)
-    with _tile(tiles, adapter, primitive, (0, 1)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         node = tiles.resolve(source.tile)
         assert node.left is not None and node.right is not None
         left = BoundaryTileView(node.left, 0, 1)
@@ -117,8 +117,10 @@ def test_prefix_concat_reuses_exact_content_across_actions(
 def test_prefix_extension_reuses_existing_canonical_child_before_join(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)
+    ) as source:
         node = tiles.resolve(source.tile)
         assert node.left is not None
         left = tiles.resolve(node.left)
@@ -142,10 +144,12 @@ def test_prefix_extension_reuses_existing_canonical_child_before_join(
 
 
 def test_prefix_extension_does_not_alias_a_different_adjacent_child() -> None:
-    _, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with (
-        _tile(tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)) as source,
-        _tile(tiles, adapter, primitive, (4, 4)) as different,
+        make_tile_from_symbols(
+            tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)
+        ) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (4, 4)) as different,
     ):
         node = tiles.resolve(source.tile)
         observed, lease = concat_cached_boundary_views(
@@ -166,10 +170,10 @@ def test_prefix_extension_does_not_alias_a_different_adjacent_child() -> None:
 
 
 def test_boundary_concat_retirement_removes_nonowning_binding() -> None:
-    _, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with (
-        _tile(tiles, adapter, primitive, (0,)) as left,
-        _tile(tiles, adapter, primitive, (1,)) as right,
+        make_tile_from_symbols(tiles, adapter, primitive, (0,)) as left,
+        make_tile_from_symbols(tiles, adapter, primitive, (1,)) as right,
     ):
         alphabet = adapter.alphabet(primitive)
         first = BoundaryTileView(left.tile, 0, 1)
@@ -190,8 +194,8 @@ def test_adjacent_clipped_and_mirrored_concat_remain_constant_time_views(
 ) -> None:
     import number_compiler.hashlife.tiles.tile_boundary_concat_memo as concat_memo
 
-    _, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         alphabet = adapter.alphabet(primitive)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -227,13 +231,15 @@ def test_adjacent_clipped_and_mirrored_concat_remain_constant_time_views(
 
 
 def test_foreign_boundary_concat_rejects_before_lookup_or_mutation() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    _, foreign_tiles, foreign_adapter, foreign_primitive, _ = _runtime(
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    _, foreign_tiles, foreign_adapter, foreign_primitive, _ = make_tile_runtime(
         BaseBlockEffect(3)
     )
     with (
-        _tile(tiles, adapter, primitive, (0,)) as local,
-        _tile(foreign_tiles, foreign_adapter, foreign_primitive, (1,)) as foreign,
+        make_tile_from_symbols(tiles, adapter, primitive, (0,)) as local,
+        make_tile_from_symbols(
+            foreign_tiles, foreign_adapter, foreign_primitive, (1,)
+        ) as foreign,
     ):
         before_memo = tuple(scheduler.results._memo.items())
         before_counters = dict(ledger.counters)
@@ -249,10 +255,10 @@ def test_foreign_boundary_concat_rejects_before_lookup_or_mutation() -> None:
 
 
 def test_boundary_concat_budget_failure_rolls_back_memo_and_reverse_index() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with (
-        _tile(tiles, adapter, primitive, (0,)) as left,
-        _tile(tiles, adapter, primitive, (1,)) as right,
+        make_tile_from_symbols(tiles, adapter, primitive, (0,)) as left,
+        make_tile_from_symbols(tiles, adapter, primitive, (1,)) as right,
         tiles.join(left.tile, right.tile) as _prebuilt,
     ):
         alphabet = adapter.alphabet(primitive)
@@ -277,9 +283,11 @@ def test_application_pins_clipped_normalization_across_observations(
 ) -> None:
     import number_compiler.hashlife.tiles.tile_region_memo as region_memo
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)
+    ) as source:
         raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
         key = NormalizedRegionKey(raw)
         with scheduler.application(
@@ -332,12 +340,12 @@ def test_application_pins_clipped_normalization_across_observations(
 def test_different_backings_share_content_but_keep_occurrence_bindings() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     first_symbols = (4, 4, 0, 1, 2, 4, 4, 4)
     second_symbols = (4, 0, 1, 2, 4, 3, 3, 3)
     with (
-        _tile(tiles, adapter, primitive, first_symbols) as first,
-        _tile(tiles, adapter, primitive, second_symbols) as second,
+        make_tile_from_symbols(tiles, adapter, primitive, first_symbols) as first,
+        make_tile_from_symbols(tiles, adapter, primitive, second_symbols) as second,
     ):
         first_raw = BoundaryTileView(first.tile, -7, 3, 0, 2)
         second_raw = BoundaryTileView(second.tile, -7, 3, 0, 1)
@@ -365,11 +373,11 @@ def test_different_backings_share_content_but_keep_occurrence_bindings() -> None
 
 
 def test_foreign_region_rejects_before_memo_lookup_or_mutation() -> None:
-    _, tiles, _adapter, _primitive, scheduler = _runtime(BaseBlockEffect(3))
-    _, foreign_tiles, foreign_adapter, foreign_primitive, _ = _runtime(
+    _, tiles, _adapter, _primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    _, foreign_tiles, foreign_adapter, foreign_primitive, _ = make_tile_runtime(
         BaseBlockEffect(3),
     )
-    with _tile(
+    with make_tile_from_symbols(
         foreign_tiles,
         foreign_adapter,
         foreign_primitive,
@@ -389,9 +397,11 @@ def test_foreign_region_rejects_before_memo_lookup_or_mutation() -> None:
 def test_region_publication_failure_rolls_back_index_and_application_pins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)
+    ) as source:
         raw = BoundaryTileView(source.tile, 0, 3, 0, 1)
         with scheduler.application(
             action,
@@ -426,9 +436,11 @@ def test_warm_region_detach_failure_rolls_back_new_dependency_pins(
 ) -> None:
     import number_compiler.hashlife.tiles.tile_region_memo as region_memo
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)
+    ) as source:
         raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
         _cached, memo_lease = normalize_cached_region(scheduler.results, raw)
         try:
@@ -467,8 +479,10 @@ def test_cold_region_seal_failure_closes_normalized_lease(
 ) -> None:
     import number_compiler.hashlife.tiles.tile_region_memo as region_memo
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)
+    ) as source:
         raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
         lease_entries_before = ledger.inventory()[tiles._lease_owner].entries
 
@@ -484,9 +498,9 @@ def test_cold_region_seal_failure_closes_normalized_lease(
 
 
 def test_stale_application_rejects_before_region_lookup() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (4, 0, 1, 2)) as source:
         with scheduler.application(
             action,
             source.tile,
@@ -521,8 +535,8 @@ def test_forged_region_scalars_reject_before_memo_or_counter_mutation(
     invalid: object,
     message: str,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         view = BoundaryTileView(source.tile, 0, 1)
         object.__setattr__(view, field, invalid)
         before_memo = tuple(scheduler.results._memo.items())
@@ -536,10 +550,10 @@ def test_forged_region_scalars_reject_before_memo_or_counter_mutation(
 def test_region_hit_metrics_forward_from_one_read_only_snapshot() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
     with (
-        _tile(tiles, adapter, primitive, (4, 0, 1, 2)) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (4, 0, 1, 2)) as source,
         (
             scheduler.application(
                 action,
@@ -586,8 +600,8 @@ def test_region_hit_metrics_forward_from_one_read_only_snapshot() -> None:
 
 
 def test_forged_boolean_tile_id_rejects_before_region_lookup() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         forged = TileID(source.tile.owner, source.tile.kind, source.tile.local_id)
         object.__setattr__(forged, "local_id", False)
         view = BoundaryTileView(forged, 0, 1)
@@ -601,8 +615,8 @@ def test_forged_boolean_tile_id_rejects_before_region_lookup() -> None:
 def test_published_region_detaches_caller_key_and_returned_view() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (4, 0, 1, 2)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (4, 0, 1, 2)) as source:
         raw = BoundaryTileView(source.tile, -3, 3, 0, 1)
         original = BoundaryTileView(source.tile, -3, 3, 0, 1)
         normalized, lease = normalize_cached_region(scheduler.results, raw)

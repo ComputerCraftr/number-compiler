@@ -65,7 +65,15 @@ def test_reverse_port_codec_matches_the_admitted_primitive_domains(base: int) ->
     )
 
 
-@pytest.mark.parametrize("base", range(2, 16))
+@pytest.mark.parametrize(
+    "base",
+    tuple(
+        base
+        if base in (2, 3, 10, 15)
+        else pytest.param(base, marks=pytest.mark.validation)
+        for base in range(2, 16)
+    ),
+)
 def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
     base: int,
 ) -> None:

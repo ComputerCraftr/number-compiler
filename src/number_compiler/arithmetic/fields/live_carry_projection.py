@@ -23,8 +23,8 @@ from number_compiler.arithmetic.fields.centered_carry import (
     uncenter_pair_field,
 )
 from number_compiler.arithmetic.fields.live_forcing import LiveForcingProjection
+from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    InnovationID,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.metric_keys import (

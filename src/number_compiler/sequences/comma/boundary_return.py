@@ -40,9 +40,9 @@ from number_compiler.sequences.comma.boundary_quotient import (
     MacroTemplate,
     SectorFragment,
     _affine_component_signature,
-    _boundary_state_signature,
     _macro_template_header,
     _sector_fragment_signature,
+    boundary_state_signature,
 )
 
 Q = ExactRational
@@ -306,7 +306,7 @@ def _completed_return_header(
 ) -> tuple[object, ...]:
     if type(completed) is not CompletedMacroReturn:
         raise ValueError("comma completed return publication was altered")
-    source = _boundary_state_signature(completed.source)
+    source = boundary_state_signature(completed.source)
     children = completed.ordered_children
     outcome = completed.outcome
     destination = completed.destination_a
@@ -322,7 +322,7 @@ def _completed_return_header(
     child_signatures: list[object] = []
     child_fields: list[tuple[str, int]] = []
     for child in children:
-        signature = _boundary_state_signature(child)
+        signature = boundary_state_signature(child)
         child_signatures.extend((id(child), *signature))
         child_fields.append((signature[0], signature[1]))
     if outcome == "landmine":

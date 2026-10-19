@@ -34,7 +34,7 @@ def test_public_collatz_accounts_for_shared_images_without_retired_tiles() -> No
 
     term = PoweredCollatzTerm(27, 16)
     assert term.digit(0) == 1
-    snapshot = term._ledger.snapshot()
+    snapshot = term.resource_ledger.snapshot()
     report = term.metrics()
     expected = {
         "runtime_query_state_nodes": ("runtime_query_state_memo", "observed_nodes"),
@@ -83,14 +83,14 @@ def test_public_collatz_accounts_for_shared_images_without_retired_tiles() -> No
     source_work = snapshot.counters["collatz_physical_temporal_run_actions"]
     publications = snapshot.counters["source_image_publications"]
     assert source_work > 0
-    term._ledger.evict_query_memos()
+    term.resource_ledger.evict_query_memos()
     after = term.metrics()
     assert after.runtime_query_state_nodes == 0
     assert after.runtime_query_environment_nodes == 0
     assert after.runtime_operation_memo_entries == 0
     assert after.recursive_field_image_nodes == 0
     assert after.canonical_tile_nodes == 0
-    refreshed = term._ledger.snapshot()
+    refreshed = term.resource_ledger.snapshot()
     assert {
         role: sum(
             row.observed_nodes or 0 for row in refreshed.inventory if row.role == role
@@ -98,8 +98,11 @@ def test_public_collatz_accounts_for_shared_images_without_retired_tiles() -> No
         for role in retained_roles
     } == retained
     assert term.digit(0) == 1
-    assert term._ledger.counters["source_image_publications"] == publications
-    assert term._ledger.counters["collatz_physical_temporal_run_actions"] == source_work
+    assert term.resource_ledger.counters["source_image_publications"] == publications
+    assert (
+        term.resource_ledger.counters["collatz_physical_temporal_run_actions"]
+        == source_work
+    )
 
 
 def test_field_action_work_is_forwarded_from_one_ledger_snapshot() -> None:
@@ -510,10 +513,8 @@ def test_collatz_field_actions_are_owner_validated_semantic_nodes() -> None:
         ActionProgramID,
         ArenaToken,
     )
-    from number_compiler.sequences.collatz.field_action import (
-        CollatzDefectArena,
-        CollatzFieldActionArena,
-    )
+    from number_compiler.sequences.collatz.defect_arena import CollatzDefectArena
+    from number_compiler.sequences.collatz.field_action import CollatzFieldActionArena
 
     class Programs:
         def __init__(self) -> None:
@@ -539,6 +540,16 @@ def test_collatz_field_actions_are_owner_validated_semantic_nodes() -> None:
             return reference.local_id
 
         def semantic_identity(
+            self, role: str, reference: ActionProgramID
+        ) -> SemanticIdentity:
+            from number_compiler.arithmetic.contracts.semantic_identity import (
+                SemanticIdentity,
+            )
+
+            self.validate(role, reference)
+            return SemanticIdentity("", ("schema-seven-program-v1", role))
+
+        def audit_semantic_identity(
             self, role: str, reference: ActionProgramID
         ) -> SemanticIdentity:
             from number_compiler.arithmetic.contracts.semantic_identity import (

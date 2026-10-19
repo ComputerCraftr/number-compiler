@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.arithmetic.automata.program_word import from_runs
+from number_compiler.arithmetic.contracts.family_identity import family_id
 from number_compiler.projection.output_quotient import SpecialSourceGuard
 from number_compiler.sequences.power_numbers.admission import (
     require_special_candidate_budget,
@@ -311,7 +311,7 @@ def with_etale_factor(
 
     method = "additive-etale-coefficient-gcd"
     certificate = SpecialDepthCertificateSummary(
-        FamilyId(result.family),
+        family_id(result.family),
         result.parameter,
         probe.candidate_modulus.bit_length(),
         "composite",

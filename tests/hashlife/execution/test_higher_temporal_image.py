@@ -156,6 +156,14 @@ def _initial_construction(
     return (*fixture, initial)
 
 
+def _assert_temporal_workspace_empty(images: HigherTemporalImageArena) -> None:
+    snapshot = images.audit_snapshot()
+    assert snapshot.frame_count == 0 and snapshot.built_count == 0
+    inventory = snapshot.ledger.inventory()
+    assert inventory[snapshot.frame_owner].entries == 0
+    assert inventory[snapshot.built_owner].entries == 0
+
+
 def _bound_domains(
     base: int,
 ) -> tuple[BaseBlockEffect, tuple[object, ...], tuple[object, ...]]:
@@ -204,7 +212,7 @@ def test_temporal_image_repeatedly_substitutes_bound_recursive_output(
         )
         assert all(
             type(node) is not RecursiveOutputTemporal
-            for node in outputs._nodes.values()
+            for node in outputs.audit_snapshot().nodes.values()
         )
     assert semantics.ledger.counters["higher_temporal_image_node_visits"] > 0
     assert semantics.ledger.counters["higher_temporal_image_boundary_substitutions"] > 0
@@ -252,9 +260,7 @@ def test_temporal_memo_rejects_changed_consumer_before_a_warm_hit(
         assert images._blank_macro(4) is first
     finally:
         images._clear_workspace()
-    assert not images._built and not images._frames
-    assert images.ledger._account(images._built_owner).entries == 0
-    assert images.ledger._account(images._frame_owner).entries == 0
+    _assert_temporal_workspace_empty(images)
 
 
 def test_temporal_memo_keys_bind_consumer_and_reject_foreign_publication() -> None:
@@ -263,14 +269,17 @@ def test_temporal_memo_keys_bind_consumer_and_reject_foreign_publication() -> No
     )
     try:
         macro = images._blank_macro(4)
-        key = next(key for key in images._built if key.width == 4)
+        image_snapshot = images.audit_snapshot()
+        built_store = images.ledger.registered_container(image_snapshot.built_owner)
+        assert type(built_store) is LedgerDict
+        key = next(key for key in built_store if key.width == 4)
         foreign = replace(key, consumer=replace(key.consumer, action=actions.identity))
         assert key != foreign
-        before = images.ledger._account(images._built_owner).entries
+        before = images.ledger.inventory()[image_snapshot.built_owner].entries
         with pytest.raises(ValueError, match="another consumer"):
             images._remember_built(foreign, macro)
-        assert images.ledger._account(images._built_owner).entries == before
-        assert foreign not in images._built
+        assert images.ledger.inventory()[image_snapshot.built_owner].entries == before
+        assert foreign not in built_store
     finally:
         images._clear_workspace()
 
@@ -295,8 +304,7 @@ def test_temporal_step_work_and_results_are_not_reused_from_an_earlier_call() ->
         assert (
             semantics.ledger.counters["higher_temporal_image_workspace_probes"] > probes
         )
-        assert not images._built and not images._frames
-        assert images.ledger._account(images._built_owner).entries == 0
+        _assert_temporal_workspace_empty(images)
         expected = _bound_step(expected, 0, 0)
         record = images.resolve(image)
         assert (
@@ -324,7 +332,7 @@ def test_temporal_arena_rejects_replaced_composition_authority(
     monkeypatch.setattr(images, "_compose_actions", lambda before, _after: before)
     with pytest.raises(ValueError, match="issued authority"):
         images._blank_macro(4)
-    assert not images._built
+    assert images.audit_snapshot().built_count == 0
 
 
 def test_empty_temporal_arena_audit_rejects_changed_consumer(
@@ -378,7 +386,7 @@ def test_temporal_consumer_seal_is_independent_of_the_memo_key(
     ) = _construction((7, 19, 19, 19))
     try:
         images._blank_macro(4)
-        object.__setattr__(images._consumer, "blank", 0)
+        object.__setattr__(images.spatial.declaration(), "blank", 0)
         monkeypatch.setattr(images.spatial, "blank", 0)
         with pytest.raises(ValueError, match="consumer binding"):
             images._blank_macro(4)
@@ -441,7 +449,7 @@ def test_temporal_image_rejects_foreign_mutated_and_unbound_occurrences() -> Non
     with pytest.raises(ValueError, match="different arena"):
         images.resolve(foreign)
 
-    record = images._nodes[image.local_id]
+    record = images.resolve(images.handle_for_local_id(image.local_id))
     object.__setattr__(record, "active_extent", record.active_extent - 1)
     with pytest.raises(ValueError, match="seal"):
         images.resolve(image)
@@ -473,7 +481,8 @@ def test_temporal_image_rejects_unadmitted_growth_before_traversal() -> None:
     assert (
         semantics.ledger.counters.get("higher_temporal_image_node_visits", 0) == before
     )
-    assert not images._frames and not images._built
+    image_snapshot = images.audit_snapshot()
+    assert image_snapshot.frame_count == 0 and image_snapshot.built_count == 0
 
 
 def test_temporal_image_growth_uses_one_admitted_blank_seam() -> None:
@@ -576,16 +585,14 @@ def test_temporal_image_workspace_rolls_back_failed_memo_insertion(
     def fail_built(
         store: LedgerDict[object, object], key: object, value: object
     ) -> None:
-        if store is images._built:
+        if store is images.audit_snapshot().built_store:
             raise RuntimeError("injected temporal memo failure")
         original(store, key, value)
 
     monkeypatch.setattr(LedgerDict, "__setitem__", fail_built)
     with pytest.raises(RuntimeError, match="injected"):
         images.step(initial, left, right)
-    assert not images._frames and not images._built
-    assert images.ledger._account(images._frame_owner).entries == 0
-    assert images.ledger._account(images._built_owner).entries == 0
+    _assert_temporal_workspace_empty(images)
 
 
 def test_temporal_image_inventory_and_seal_track_issued_records() -> None:
@@ -606,7 +613,7 @@ def test_temporal_image_inventory_and_seal_track_issued_records() -> None:
     images.step(initial, left, right)
     assert not audit_higher_payloads(images.ledger).invalid
 
-    record = images._nodes[initial.local_id]
+    record = images.resolve(images.handle_for_local_id(initial.local_id))
     object.__setattr__(record.macro, "width", True)
     assert audit_higher_payloads(images.ledger).invalid
 
@@ -772,7 +779,7 @@ def test_provider_rejects_foreign_binding_before_warm_alias() -> None:
         with pytest.raises(ValueError, match="another consumer action"):
             provider.bind(macro.output, binding, actions.identity)
         assert dict(semantics.ledger.counters) == before
-        assert len(provider._bindings) == int(warm)
+        assert len(provider.audit_snapshot().bindings) == int(warm)
     provider.bind(macro.output, binding, primitive)
     assert provider.complete_action(macro.output, primitive) == actions.compose(
         primitive, primitive
@@ -839,10 +846,10 @@ def test_provider_rejects_another_compiled_sources_output() -> None:
     )
     with pytest.raises(ValueError, match="differs from its bound source output"):
         provider.bind(original.output, foreign, primitive)
-    assert not provider._bindings
+    assert not provider.audit_snapshot().bindings
     provider.bind(other.output, foreign, primitive)
     provider.bind(original.output, binding, primitive)
-    assert len(provider._bindings) == 2
+    assert len(provider.audit_snapshot().bindings) == 2
 
 
 @pytest.mark.parametrize("target", ("provider", "composer"))
@@ -861,8 +868,10 @@ def test_empty_provider_and_composer_audits_check_authority(
     assert not audit_higher_payloads(semantics.ledger).invalid
     if target == "provider":
         monkeypatch.setattr(provider, "_validate_binding", lambda *args: None)
-        expected = provider._binding_owner, id(provider._bindings)
+        provider_snapshot = provider.audit_snapshot()
+        expected = provider_snapshot.binding_owner, id(provider_snapshot.binding_store)
     else:
         monkeypatch.setattr(producer, "blank", 0)
-        expected = producer._binding_owner, id(producer._bindings)
+        producer_snapshot = producer.audit_snapshot()
+        expected = producer_snapshot.binding_owner, id(producer_snapshot.binding_store)
     assert expected in audit_higher_payloads(semantics.ledger).invalid

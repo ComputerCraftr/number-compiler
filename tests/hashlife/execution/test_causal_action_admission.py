@@ -1,6 +1,7 @@
 """Run admission remains exact across causal execution and cleanup."""
 
 from dataclasses import replace
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 
@@ -12,9 +13,16 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.polynomials.frobenius_sector import (
     FrobeniusSectorSourceBound,
 )
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    AdvanceSymbolFrame,
+    AnchorFrame,
+    CausalTaskFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_admission import admit_run_actions
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
@@ -26,15 +34,70 @@ from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
 from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
 from number_compiler.resources.causal_workspace import CausalActionAdmission
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.support.tile_kernel import _runtime, _tile
+from number_compiler.resources.stores import LedgerDict
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.resources.causal_workspace import CausalTaskWorkspace
+
+
+def _causal_tasks(scheduler: TileScheduler) -> CausalTaskWorkspace:
+    return scheduler.audit_causal_owners().tasks
+
+
+def _is_primitive_action_store(
+    value: object,
+) -> TypeGuard[LedgerDict[int, PrimitiveTileAction]]:
+    if type(value) is not LedgerDict:
+        return False
+    return all(
+        type(key) is int and type(action) is PrimitiveTileAction
+        for key, action in value.items()
+    )
+
+
+def _primitive_action_store(
+    adapter: PrimitiveTileKernelAdapter,
+) -> LedgerDict[int, PrimitiveTileAction]:
+    snapshot = adapter.audit_snapshot()
+    store = snapshot.ledger.registered_container(snapshot.action_owner)
+    if id(store) != snapshot.action_store_identity or not _is_primitive_action_store(
+        store
+    ):
+        raise AssertionError("primitive action audit lost its registered store")
+    return store
+
+
+def _advance_one_symbol(engine: CausalTileEngine, action: FieldCellActionID) -> int:
+    """Run the admitted one-symbol action used by mutation regressions."""
+    result = engine._run(
+        AdvanceSymbolFrame((action, 0, 0, 1)),
+        tile_result=False,
+    )
+    if type(result) is not int:
+        raise TypeError("one-symbol advance returned a non-integer state")
+    return result
+
+
+def _assert_admission_released(scheduler: TileScheduler) -> None:
+    """Check the complete task and admission cleanup contract after a run."""
+    tasks = _causal_tasks(scheduler)
+    snapshot = tasks.audit_snapshot()
+    assert not tasks.action_pending
+    assert not tasks.action_admitted
+    assert snapshot.action_admission is None
+    assert snapshot.run_token is None
+    assert not tasks.frames
+    assert not tasks.values
 
 
 def test_final_admission_rejects_callback_action_mutation_and_cleans_workspace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     engine = CausalTileEngine(scheduler)
-    record = adapter._actions[action.local_id]
+    record = _primitive_action_store(adapter)[action.local_id]
     original = PrimitiveKernel.advance
 
     def poisoned_advance(
@@ -44,31 +107,25 @@ def test_final_admission_rejects_callback_action_mutation_and_cleans_workspace(
         symbol: int,
     ) -> int:
         result = original(kernel, side, state, symbol)
-        adapter._actions[action.local_id] = replace(record, repetitions=2)
+        _primitive_action_store(adapter)[action.local_id] = replace(
+            record, repetitions=2
+        )
         return result
 
     monkeypatch.setattr(PrimitiveKernel, "advance", poisoned_advance)
     try:
         with pytest.raises(ValueError, match="inconsistent metadata"):
-            engine._run(
-                CausalFrame("advance_symbol", (action, 0, 0, 1)),
-                tile_result=False,
-            )
+            _advance_one_symbol(engine, action)
         assert ledger.counters["tile_causal_action_final_validation_visits"] == 1
-        assert not scheduler._causal_tasks.action_pending
-        assert not scheduler._causal_tasks.action_admitted
-        assert scheduler._causal_tasks._action_admission_token is None
-        assert scheduler._causal_tasks._run_token is None
-        assert not scheduler._causal_tasks.frames
-        assert not scheduler._causal_tasks.values
+        _assert_admission_released(scheduler)
     finally:
-        adapter._actions[action.local_id] = record
+        _primitive_action_store(adapter)[action.local_id] = record
 
 
 def test_detached_admission_snapshot_rejects_signature_redirection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, _tiles, _adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, _tiles, _adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     engine = CausalTileEngine(scheduler)
     original = PrimitiveKernel.advance
 
@@ -79,8 +136,8 @@ def test_detached_admission_snapshot_rejects_signature_redirection(
         symbol: int,
     ) -> int:
         result = original(kernel, side, state, symbol)
-        snapshot = scheduler._causal_tasks.action_admitted[action]
-        scheduler._causal_tasks.action_admitted[action] = (
+        snapshot = _causal_tasks(scheduler).action_admitted[action]
+        _causal_tasks(scheduler).action_admitted[action] = (
             *snapshot[:-1],
             not snapshot[-1],
         )
@@ -88,18 +145,13 @@ def test_detached_admission_snapshot_rejects_signature_redirection(
 
     monkeypatch.setattr(PrimitiveKernel, "advance", redirect_snapshot)
     with pytest.raises(ValueError, match="metadata changed"):
-        engine._run(
-            CausalFrame("advance_symbol", (action, 0, 0, 1)),
-            tile_result=False,
-        )
-    assert not scheduler._causal_tasks.action_admitted
-    assert scheduler._causal_tasks._action_admission_token is None
-    assert scheduler._causal_tasks._run_token is None
+        _advance_one_symbol(engine, action)
+    _assert_admission_released(scheduler)
 
 
 def test_detached_admission_snapshot_rejects_integer_alias() -> None:
-    _ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    _ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    tasks = _causal_tasks(scheduler)
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
     snapshot = tasks.action_admitted[action]
@@ -116,13 +168,12 @@ def test_detached_admission_snapshot_rejects_integer_alias() -> None:
 
 
 def test_action_admission_snapshot_nodes_are_released_after_success() -> None:
-    ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     before = ledger.snapshot()
     engine = CausalTileEngine(scheduler)
-    assert engine._run(
-        CausalFrame("advance_symbol", (action, 0, 0, 1)),
-        tile_result=False,
-    ) == adapter.primitive_law(action).advance(BoundarySide.LEFT, 0, 1)
+    assert _advance_one_symbol(engine, action) == adapter.primitive_law(action).advance(
+        BoundarySide.LEFT, 0, 1
+    )
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
     assert ledger.counters["tile_causal_action_admission_visits"] == 1
@@ -130,27 +181,23 @@ def test_action_admission_snapshot_nodes_are_released_after_success() -> None:
 
 
 def test_action_admission_budget_failure_releases_partial_snapshots() -> None:
-    ledger, _tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, _tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 4)
     before = ledger.snapshot()
     ledger.max_nodes = ledger.nodes + 53
     engine = CausalTileEngine(scheduler)
     with pytest.raises(BlockContextBudgetExceeded, match="node budget"):
-        engine._run(
-            CausalFrame("advance_symbol", (action, 0, 0, 1)),
-            tile_result=False,
-        )
+        _advance_one_symbol(engine, action)
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
-    assert not scheduler._causal_tasks.action_pending
-    assert not scheduler._causal_tasks.action_admitted
-    assert scheduler._causal_tasks._action_admission_token is None
-    assert scheduler._causal_tasks._run_token is None
+    _assert_admission_released(scheduler)
 
 
 def test_stale_and_foreign_action_admission_leases_are_rejected() -> None:
-    _ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    _ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    tasks = _causal_tasks(scheduler)
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
     tasks.clear_action_admission(token)
@@ -159,9 +206,9 @@ def test_stale_and_foreign_action_admission_leases_are_rejected() -> None:
         tasks.admitted_action_metadata(token, adapter, action)
 
     _other_ledger, _other_tiles, other_adapter, other_action, other_scheduler = (
-        _runtime(BaseBlockEffect(3))
+        make_tile_runtime(BaseBlockEffect(3))
     )
-    other_tasks = other_scheduler._causal_tasks
+    other_tasks = _causal_tasks(other_scheduler)
     other_run = other_tasks.begin_run()
     other_token = admit_run_actions(
         other_adapter, other_tasks, other_scheduler.ledger, other_action
@@ -177,35 +224,37 @@ def test_stale_and_foreign_action_admission_leases_are_rejected() -> None:
 def test_final_validation_runs_on_a_causal_task_memo_hit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, _tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, _tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 4)
-    children = adapter._action_record(action).children
+    children = adapter.action_record(action).children
     assert children is not None
     child = children[0]
     engine = CausalTileEngine(scheduler)
     engine._hold_workspace = True
     initial = engine._initial(action, 0)
 
-    def frame() -> CausalFrame:
-        return CausalFrame("anchor", (action, 0, initial))
+    def frame() -> CausalTaskFrame:
+        return AnchorFrame((action, 0, initial))
 
-    record = adapter._actions[child.local_id]
+    record = _primitive_action_store(adapter)[child.local_id]
     try:
         engine._run(frame(), tile_result=False)
         memo_hits = ledger.counters.get("tile_causal_task_memo_hits", 0)
-        original = scheduler._causal_tasks.validate_admitted_actions
+        original = _causal_tasks(scheduler).validate_admitted_actions
 
         def poison_before_final(
-            token: object, authority: PrimitiveTileKernelAdapter
+            token: CausalActionAdmission, authority: PrimitiveTileKernelAdapter
         ) -> None:
-            adapter._actions[child.local_id] = replace(
+            _primitive_action_store(adapter)[child.local_id] = replace(
                 record,
                 repetitions=record.repetitions + 1,
             )
             original(token, authority)
 
         monkeypatch.setattr(
-            scheduler._causal_tasks,
+            _causal_tasks(scheduler),
             "validate_admitted_actions",
             poison_before_final,
         )
@@ -213,7 +262,7 @@ def test_final_validation_runs_on_a_causal_task_memo_hit(
             engine._run(frame(), tile_result=False)
         assert ledger.counters["tile_causal_task_memo_hits"] == memo_hits + 1
     finally:
-        adapter._actions[child.local_id] = record
+        _primitive_action_store(adapter)[child.local_id] = record
         engine._hold_workspace = False
         engine._release_workspace()
 
@@ -221,8 +270,8 @@ def test_final_validation_runs_on_a_causal_task_memo_hit(
 def test_callback_mutation_cannot_publish_a_directed_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    record = adapter._actions[action.local_id]
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    record = _primitive_action_store(adapter)[action.local_id]
     original = PrimitiveKernel.advance
     calls = 0
 
@@ -236,17 +285,18 @@ def test_callback_mutation_cannot_publish_a_directed_parent(
         result = original(kernel, side, state, symbol)
         calls += 1
         if calls == 1:
-            adapter._actions[action.local_id] = replace(record, repetitions=2)
+            _primitive_action_store(adapter)[action.local_id] = replace(
+                record, repetitions=2
+            )
         return result
 
     monkeypatch.setattr(PrimitiveKernel, "advance", poison_first_leaf)
     try:
-        with _tile(tiles, adapter, action, (0, 1, 2, 3)) as source:
+        with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
             engine = CausalTileEngine(scheduler)
             with pytest.raises(ValueError, match="metadata changed"):
                 engine._run(
-                    CausalFrame(
-                        "advance",
+                    AdvanceFrame(
                         (
                             action,
                             0,
@@ -257,16 +307,17 @@ def test_callback_mutation_cannot_publish_a_directed_parent(
                     tile_result=False,
                 )
             assert not any(
-                type(key) is DirectedTransferKey for key in scheduler.results._memo
+                type(key) is DirectedTransferKey
+                for key in scheduler.results.audit_snapshot().memo
             )
     finally:
-        adapter._actions[action.local_id] = record
+        _primitive_action_store(adapter)[action.local_id] = record
 
 
 def test_prepared_directed_request_expires_with_its_run_admission() -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 1)) as source:
-        tasks = scheduler._causal_tasks
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 1)) as source:
+        tasks = _causal_tasks(scheduler)
         run = tasks.begin_run()
         token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
         admission = _prepare_canonical_admission(
@@ -293,43 +344,44 @@ def test_prepared_directed_request_expires_with_its_run_admission() -> None:
 
 
 def test_transient_action_replacement_is_rejected_before_metadata_use() -> None:
-    _ledger, _tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, _tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     power2 = adapter.compose(primitive, primitive)
     power3 = adapter.compose(primitive, power2)
     action = adapter.compose(power2, power2)
     root = adapter.compose(action, power3)
     engine = CausalTileEngine(scheduler)
-    record = adapter._actions[action.local_id]
-    tasks = scheduler._causal_tasks
+    record = _primitive_action_store(adapter)[action.local_id]
+    tasks = _causal_tasks(scheduler)
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, root)
-    engine._action_admission_token = token
+    object.__setattr__(engine, "_action_admission_token", token)
     try:
-        adapter._actions[action.local_id] = replace(
+        _primitive_action_store(adapter)[action.local_id] = replace(
             record, children=(primitive, power3)
         )
-        assert adapter._actions[action.local_id] != record
-        adapter._action_record(action)
+        assert _primitive_action_store(adapter)[action.local_id] != record
         try:
             with pytest.raises(ValueError, match="metadata changed after admission"):
                 engine._children(action)
         finally:
-            adapter._actions[action.local_id] = record
+            _primitive_action_store(adapter)[action.local_id] = record
     finally:
-        engine._action_admission_token = None
+        object.__setattr__(engine, "_action_admission_token", None)
         tasks.clear_action_admission(token)
         tasks.end_run(run)
-    assert adapter._actions[action.local_id] is record
-    assert scheduler._causal_tasks._action_admission_token is None
-    assert scheduler._causal_tasks._run_token is None
+    assert _primitive_action_store(adapter)[action.local_id] is record
+    assert _causal_tasks(scheduler).audit_snapshot().action_admission is None
+    assert _causal_tasks(scheduler).audit_snapshot().run_token is None
 
 
 def test_transient_reverse_sector_integer_alias_is_rejected_before_use(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(10))
+    _ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(10))
     engine = CausalTileEngine(scheduler)
-    record = adapter._actions[action.local_id]
+    record = _primitive_action_store(adapter)[action.local_id]
     plan = record.reverse_frobenius
     assert plan is not None
     sector = plan.sectors[0]
@@ -352,23 +404,23 @@ def test_transient_reverse_sector_integer_alias_is_rejected_before_use(
     monkeypatch.setattr(PrimitiveKernel, "advance", mutate_then_restore)
     with pytest.raises(ValueError, match="metadata changed after admission"):
         engine._run(
-            CausalFrame("advance_symbol", (action, 0, 0, 1)),
+            AdvanceSymbolFrame((action, 0, 0, 1)),
             tile_result=False,
         )
     assert sector.classes == 1
-    assert scheduler._causal_tasks._action_admission_token is None
+    assert _causal_tasks(scheduler).audit_snapshot().action_admission is None
 
 
 def test_transient_reverse_sector_list_is_rejected_before_use() -> None:
-    _ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(10))
+    _ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(10))
     engine = CausalTileEngine(scheduler)
-    plan = adapter._actions[action.local_id].reverse_frobenius
+    plan = _primitive_action_store(adapter)[action.local_id].reverse_frobenius
     assert plan is not None
     sectors = plan.sectors
-    tasks = scheduler._causal_tasks
+    tasks = _causal_tasks(scheduler)
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
-    engine._action_admission_token = token
+    object.__setattr__(engine, "_action_admission_token", token)
     try:
         object.__setattr__(plan, "sectors", list(sectors))
         try:
@@ -377,15 +429,15 @@ def test_transient_reverse_sector_list_is_rejected_before_use() -> None:
         finally:
             object.__setattr__(plan, "sectors", sectors)
     finally:
-        engine._action_admission_token = None
+        object.__setattr__(engine, "_action_admission_token", None)
         tasks.clear_action_admission(token)
         tasks.end_run(run)
     assert plan.sectors is sectors
 
 
 def test_live_inventory_authenticates_every_action_admission_lease_field() -> None:
-    ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    ledger, _tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    tasks = _causal_tasks(scheduler)
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, ledger, action)
     assert type(token) is CausalActionAdmission
@@ -400,13 +452,13 @@ def test_live_inventory_authenticates_every_action_admission_lease_field() -> No
                 assert audit.forbidden_future_payloads > 0
             finally:
                 object.__setattr__(token, field, original)
-        foreign = CausalActionAdmission(tasks, run)
-        tasks._action_admission_token = foreign
+        foreign = CausalActionAdmission(tasks, run, adapter)
+        object.__setattr__(tasks, "_action_admission_token", foreign)
         try:
             audit = audit_registered_payloads(ledger)
             assert audit.forbidden_future_payloads > 0
         finally:
-            tasks._action_admission_token = token
+            object.__setattr__(tasks, "_action_admission_token", token)
     finally:
         tasks.clear_action_admission(token)
         tasks.end_run(run)

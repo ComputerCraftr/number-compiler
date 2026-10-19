@@ -6,11 +6,12 @@ import json
 
 from number_compiler.api.cylinder_observation import observe_collatz
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
+from number_compiler.sequences.collatz.observation_kind import CollatzObservationKind
 from number_compiler.sequences.collatz.power import CollatzEventArena
 
 
 def run_probe() -> dict[str, object]:
-    rows = []
+    rows: list[dict[str, int]] = []
     for level in range(11):
         arena = CollatzEventArena()
         duration = 1 << level
@@ -37,7 +38,10 @@ def run_probe() -> dict[str, object]:
         "modulus": 257,
         "rows": rows,
         "source_derived_rows": [
-            {"seed": seed, **observe_collatz(seed, events, kind="modular")}
+            {
+                "seed": seed,
+                **observe_collatz(seed, events, kind=CollatzObservationKind.MODULAR),
+            }
             for seed in (27, 97, 871)
             for events in (1, 2, 4, 8, 16, 32)
         ],

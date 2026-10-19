@@ -9,22 +9,16 @@ the compiler must supply all components in the finite semantic algebra first.
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
-from dataclasses import dataclass, field, fields
+from dataclasses import fields
 from types import MappingProxyType
-from typing import TypeAlias
 
 from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
-from number_compiler.arithmetic.carry.reverse_sector_transfer import (
-    ReverseCarrySectorTransfer,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
-    FinitePort,
     FunctionSignature,
     SemanticFunctionID,
-    SemanticSort,
     SemanticTerminal,
 )
 from number_compiler.arithmetic.functions.semantic_functions import (
@@ -32,7 +26,6 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
 from number_compiler.hashlife.actions.diamond_actions import (
-    CellID,
     ImageCellArena,
     PortSignatureID,
 )
@@ -65,103 +58,30 @@ from number_compiler.hashlife.interfaces.semantic_structure_validation import (
     require_total_components,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+    DiamondKey,
+    DiamondQuotientID,
+    MacroComponents,
+    MacroInterface,
+    QuotientRecord,
+    SemanticComponent,
     StructureArena,
+    StructureBuilder,
     StructureID,
-    _Builder,
-    _Rewrite,
+    StructureRewrite,
 )
 from number_compiler.resources.closed_interface_workspace import (
     ClosedInterfaceWorkspace,
+)
+from number_compiler.resources.field_image_audit_contracts import (
+    DiamondQuotientAuditSnapshot,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
-
-
-@dataclass(frozen=True, slots=True)
-class LocalInterfaceID(ArenaHandle):
-    """Complete bounded port behavior, separate from a recursive image."""
-
-
-DiamondQuotientID: TypeAlias = LocalInterfaceID
-
-
-COMPONENT_ROLES = (
-    "boundary_left",
-    "boundary_right",
-    "output",
-    "activity",
-    "first_active",
-    "last_active",
-    "extent",
-    "halo_left",
-    "halo_right",
-    "growth",
-    "termination",
-    "normalization",
-    "frame",
-)
-
-
-@dataclass(frozen=True, slots=True)
-class MacroInterface:
-    """Normalized semantic channel contract; no source or occurrence identity."""
-
-    kernel: SemanticIdentity
-    inputs: tuple[FinitePort, ...]
-    outputs: tuple[SemanticSort, ...]
-    admissible: SemanticFunctionID
-    phase_count: int = 1
-    orientations: tuple[int, ...] = (0, 1)
-
-
-SemanticComponent: TypeAlias = (
-    SemanticFunctionID | StructureID | RadixPortFunction | ReversePortFunction
-)
-
-
-@dataclass(frozen=True, slots=True)
-class MacroComponents:
-    boundary_left: SemanticComponent
-    boundary_right: SemanticComponent
-    output: SemanticComponent
-    activity: SemanticComponent
-    first_active: SemanticComponent
-    last_active: SemanticComponent
-    extent: SemanticComponent
-    halo_left: SemanticComponent
-    halo_right: SemanticComponent
-    growth: SemanticComponent
-    termination: SemanticComponent
-    normalization: SemanticComponent
-    frame: SemanticComponent
-    reverse_sectors: ReverseCarrySectorTransfer | None = field(
-        default=None, kw_only=True
-    )
-
-    def functions(self) -> tuple[SemanticComponent, ...]:
-        return tuple(getattr(self, role) for role in COMPONENT_ROLES)
-
-
-@dataclass(frozen=True, slots=True)
-class QuotientRecord:
-    signature: PortSignatureID
-    components: MacroComponents
-
-
-@dataclass(frozen=True, slots=True)
-class DiamondKey:
-    """An occurrence binding to an already canonical complete action."""
-
-    before: DiamondQuotientID
-    after: DiamondQuotientID
-    cell: CellID
-    level: int
-    orientation: int
-    phase: int
-    signature: PortSignatureID
+from number_compiler.resources.stores import LedgerList
 
 
 class DiamondQuotientArena:
@@ -359,9 +279,12 @@ class DiamondQuotientArena:
             node_count=lambda: 0,
             payloads=self._future_snapshots.items,
         )
+        future_work: LedgerList[int] = self.ledger.make_list(
+            self._future_work_owner, nodes_per_entry=0
+        )
         self.ledger.register_container(
             self._future_work_owner,
-            self.ledger.make_list(self._future_work_owner, nodes_per_entry=0),
+            future_work,
             node_count=lambda: 0,
             payloads=lambda: (),
         )
@@ -455,6 +378,40 @@ class DiamondQuotientArena:
             size=len(self._signatures),
         )
         return self._signatures[reference.local_id]
+
+    def audit_snapshot(self) -> DiamondQuotientAuditSnapshot:
+        """Expose exact backing stores through a read-only audit view."""
+        return DiamondQuotientAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._next_node,
+            self._signature_owner,
+            self._signatures,
+            self._signature_key_owner,
+            self._signature_keys,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+            self._normalization_owner,
+            self._normalizations,
+            self._binding_owner,
+            self._parents,
+        )
+
+    def validate_interface_record(self, interface: MacroInterface) -> None:
+        """Validate an interface payload through the issuing quotient arena."""
+        self._validate_interface(interface)
+
+    def validate_quotient_record(self, record: QuotientRecord) -> None:
+        """Validate a complete quotient payload through its semantic owner."""
+        if type(record) is not QuotientRecord:
+            raise TypeError("expected a canonical quotient record")
+        self._validate_components(record.signature, record.components)
+
+    def validate_parent_key(self, key: DiamondKey) -> None:
+        """Validate a source-bound parent request through its issuing arena."""
+        self._validate_key(key)
 
     def resolve(self, reference: DiamondQuotientID) -> QuotientRecord:
         if type(reference) is not DiamondQuotientID:
@@ -823,7 +780,7 @@ class DiamondQuotientArena:
             ),
             interface.admissible,
         )
-        builder = _Builder(self.structures)
+        builder = StructureBuilder(self.structures)
         conversion = StructureConversion(builder)
         boolean_signature = FunctionSignature(interface.inputs, BOOL)
         predicate = builder.tx.map_terminals(
@@ -843,7 +800,7 @@ class DiamondQuotientArena:
             for function in components.functions()
         )
         normalized = tuple(
-            builder.rewrite(_Rewrite(root, mask=predicate)) for root in roots
+            builder.rewrite(StructureRewrite(root, mask=predicate)) for root in roots
         )
         return prepare_structures(builder, normalized)
 

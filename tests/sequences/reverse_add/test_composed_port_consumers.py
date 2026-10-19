@@ -8,8 +8,8 @@ import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_images import (
+    ReverseSourceImageAdapter,
     ReverseSourceImageWorkspace,
-    _ReverseSourceImageAdapter,
 )
 
 
@@ -71,9 +71,7 @@ def test_width_and_random_access_do_not_enter_retired_streams(
         raise AssertionError("point/width demand used a positional replay")
 
     for method in ("iter_second_digits", "iter_primitive_digits", "_carry_and_digit"):
-        monkeypatch.setattr(
-            _ReverseSourceImageAdapter, method, forbidden, raising=False
-        )
+        monkeypatch.setattr(ReverseSourceImageAdapter, method, forbidden, raising=False)
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
     assert workspace.width() == 4
     assert tuple(workspace.digit(i) for i in (3, 0, 2, 1)) == (1, 5, 6, 7)
@@ -105,13 +103,15 @@ def test_no_production_predecessor_cursor_remains() -> None:
     import number_compiler.sequences.reverse_add.source_chamber as chamber
 
     assert not hasattr(chamber, "OriginalSourceCarryCursor")
-    assert not hasattr(_ReverseSourceImageAdapter, "_carry_and_digit")
+    assert not hasattr(ReverseSourceImageAdapter, "_carry_and_digit")
 
 
 def test_projection_rejects_payload_from_different_action() -> None:
     from dataclasses import replace
 
-    from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+    from number_compiler.hashlife.execution.source_image_inventory import (
+        SourceImageDemand,
+    )
 
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
     workspace.width()

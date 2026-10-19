@@ -20,9 +20,9 @@ from number_compiler.resources.metric_keys import (
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_structures import (
         StructureArena,
+        StructureBuilder,
         StructuredNode,
         StructureID,
-        _Builder,
     )
 
 
@@ -110,21 +110,23 @@ class PreparedStructures:
             (arena.key_owner, len(arena.keys) + len(self.nodes), 0),
         ):
             ledger.check_store_capacity(owner, entries, nodes)
-        function_journal = self.functions._publish_stores()
         bit_node_base = len(arena.bits.nodes)
         structure_node_base = len(arena.nodes)
         previous_bits = tuple(
             (record, arena.bits.keys.get(record)) for record in self.bits
         )
         previous_nodes = tuple((node, arena.keys.get(node)) for node in self.nodes)
-        try:
+
+        def publish_extension() -> None:
             for offset, record in enumerate(self.bits):
                 arena.bits.nodes.append(record)
                 arena.bits.keys[record] = self.bit_base + offset
             for offset, node in enumerate(self.nodes):
                 arena.nodes.append(node)
                 arena.keys[node] = self.base + offset
-            self.functions._commit()
+
+        try:
+            self.functions.publish_with_extension(publish_extension)
         except BaseException:
             for node, previous in reversed(previous_nodes):
                 if previous is None:
@@ -132,15 +134,14 @@ class PreparedStructures:
                         del arena.keys[node]
                 else:
                     arena.keys[node] = previous
-            arena.nodes._rollback_unpublished(structure_node_base)
+            arena.nodes.rollback_unpublished(structure_node_base)
             for record, previous in reversed(previous_bits):
                 if previous is None:
                     if record in arena.bits.keys:
                         del arena.bits.keys[record]
                 else:
                     arena.bits.keys[record] = previous
-            arena.bits.nodes._rollback_unpublished(bit_node_base)
-            self.functions._rollback_stores(function_journal)
+            arena.bits.nodes.rollback_unpublished(bit_node_base)
             raise
         ledger.bump(
             _interfaces_keys.SEMANTIC_STRUCTURE_PUBLISHED_NODES,
@@ -152,7 +153,9 @@ class PreparedStructures:
         )
 
 
-def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStructures:
+def prepare_structures(
+    builder: StructureBuilder, roots: tuple[int, ...]
+) -> PreparedStructures:
     """Reduce reachable roots in charged workspace without retaining nodes."""
     from number_compiler.hashlife.interfaces.semantic_structures import StructuredNode
 
@@ -200,7 +203,7 @@ def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStr
             semantic.update((*value.bits, value.valid))
     semantic_roots = tuple(sorted(semantic))
     prepared = prepare_functions(builder.tx, semantic_roots)
-    semantic_ids = dict(zip(semantic_roots, prepared.roots))
+    semantic_ids = dict(zip(semantic_roots, prepared.roots, strict=True))
     bit_ids: dict[int, FactoredFunctionID] = {}
     fresh_bits: dict[FactoredFunction, int] = {}
     for identity in sorted(bits):
@@ -216,7 +219,11 @@ def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStr
         if found is None:
             found = builder.bit_base + len(fresh_bits)
             fresh_bits[record] = found
-        bit_ids[identity] = arena.bits._handle(found)
+        bit_ids[identity] = arena.bits.candidate_handle(
+            found,
+            base=builder.bit_base,
+            candidate_count=len(fresh_bits),
+        )
     structure_ids: dict[int, StructureID] = {}
     fresh_structures: dict[StructuredNode, int] = {}
     for identity in sorted(structures):
@@ -245,7 +252,21 @@ def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStr
         if found is None:
             found = builder.base + len(fresh_structures)
             fresh_structures[structure] = found
-        structure_ids[identity] = arena._handle(found)
+        structure_ids[identity] = arena.candidate_handle(
+            found,
+            base=builder.base,
+            candidate_count=len(fresh_structures),
+        )
+    root_references = tuple(
+        structure_ids[root]
+        if root in structure_ids
+        else arena.candidate_handle(
+            root,
+            base=builder.base,
+            candidate_count=len(fresh_structures),
+        )
+        for root in roots
+    )
     return PreparedStructures(
         arena,
         builder.base,
@@ -253,11 +274,11 @@ def prepare_structures(builder: _Builder, roots: tuple[int, ...]) -> PreparedStr
         prepared,
         tuple(fresh_bits),
         tuple(fresh_structures),
-        tuple(structure_ids.get(root, arena._handle(root)) for root in roots),
+        root_references,
     )
 
 
-def publish_structure(builder: _Builder, root: int) -> StructureID:
+def publish_structure(builder: StructureBuilder, root: int) -> StructureID:
     prepared = None
     try:
         prepared = prepare_structures(builder, (root,))

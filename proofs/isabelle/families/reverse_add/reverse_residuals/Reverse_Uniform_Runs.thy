@@ -13,10 +13,6 @@ fun region_incoming_carries :: "bool \<Rightarrow> carry_domain list \<Rightarro
   "region_incoming_carries c [] = []"
 | "region_incoming_carries c (d#ds) = c # region_incoming_carries (carry_apply d c) ds"
 
-lemma carry_domain_idempotent:
-  "carry_apply d (carry_apply d c) = carry_apply d c"
-  by (cases d) simp_all
-
 lemma region_carry_run_output:
   "region_incoming_carries c (replicate (Suc n) d) =
     c # replicate n (carry_apply d c)"

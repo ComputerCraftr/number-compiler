@@ -53,14 +53,7 @@ from number_compiler.arithmetic.radix_port_functions import (
 )
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondKey,
-    DiamondQuotientArena,
-    DiamondQuotientID,
-    MacroComponents,
-    MacroInterface,
-    QuotientRecord,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BinaryDivision,
     BitFunctionArena,
@@ -68,6 +61,11 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
+    DiamondKey,
+    DiamondQuotientID,
+    MacroComponents,
+    MacroInterface,
+    QuotientRecord,
     StructureArena,
     StructuredNode,
     StructureID,

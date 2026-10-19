@@ -84,8 +84,8 @@ def collect_ledger_metrics(
     )
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
-        LocalInterfaceID,
     )
+    from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
     from number_compiler.hashlife.tiles.tile_boundaries import (
         BoundaryTileOperands,
         BoundaryTileView,
@@ -686,7 +686,7 @@ def collect_ledger_metrics(
                 {view.tile for view in leased_boundary_views}
             ),
             "boundary_tile_leases": sum(
-                root._boundary_lease_count
+                root.audit_snapshot().boundary_lease_count
                 for root in execution_roots
                 if type(root) is CompletedResultArena and root.ledger is ledger
             ),
@@ -695,8 +695,8 @@ def collect_ledger_metrics(
                     type(key) is tuple
                     and len(key) == 5
                     and type(key[1]) is int
-                    and key == root._mirror_key(key[1])
-                    for key in root._keys
+                    and key == root.mirror_key(key[1])
+                    for key in root.audit_snapshot().keys
                 )
                 for root in execution_roots
                 if type(root) is TileArena and root.ledger is ledger

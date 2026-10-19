@@ -27,7 +27,7 @@ from number_compiler.arithmetic.fields.three_power_radix import (
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicImageSummary,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
@@ -496,7 +496,7 @@ class MahlerOccurrenceConsumer:
         )
         self.records: OwnedMemo[
             tuple[int, int],
-            tuple[_SupportNode, MahlerSourceBoundSafetyAction, int],
+            tuple[DyadicReturnSupportRecord, MahlerSourceBoundSafetyAction, int],
         ] = OwnedMemo(ledger, owner, nodes_per_entry=3)
         self.lease: CacheLease | None = None
         cache = get_process_cache() if shared_cache else None
@@ -535,7 +535,9 @@ class MahlerOccurrenceConsumer:
             else (self.records.dispose, self.lease.close)
         )
 
-    def _check(self, node: _SupportNode, action: MahlerSourceBoundSafetyAction) -> None:
+    def _check(
+        self, node: DyadicReturnSupportRecord, action: MahlerSourceBoundSafetyAction
+    ) -> None:
         """Check consumer consistency, not re-prove the issued source recurrence.
 
         The transfer, odd count and ledger minimum originate in the admitted
@@ -570,12 +572,12 @@ class MahlerOccurrenceConsumer:
         width: int,
         residue: int,
         record: object,
-    ) -> tuple[_SupportNode, MahlerSourceBoundSafetyAction, int]:
+    ) -> tuple[DyadicReturnSupportRecord, MahlerSourceBoundSafetyAction, int]:
         """Validate the local memo key as well as its internally consistent payload."""
         if (
             type(record) is not tuple
             or len(record) != 3
-            or type(record[0]) is not _SupportNode
+            or type(record[0]) is not DyadicReturnSupportRecord
             or type(record[1]) is not MahlerSourceBoundSafetyAction
             or type(record[2]) is not int
             or record[2] < 0
@@ -597,7 +599,7 @@ class MahlerOccurrenceConsumer:
 
     def _store(
         self,
-        node: _SupportNode,
+        node: DyadicReturnSupportRecord,
         action: MahlerSourceBoundSafetyAction,
         publisher: int,
     ) -> None:
@@ -636,7 +638,7 @@ class MahlerOccurrenceConsumer:
 
     def lookup(
         self, width: int, residue: int, *, source: int | None = None
-    ) -> _SupportNode | None:
+    ) -> DyadicReturnSupportRecord | None:
         if (
             type(width) is not int
             or width <= 0
@@ -763,7 +765,7 @@ class MahlerOccurrenceConsumer:
                 raise ValueError(
                     "Mahler cached occurrence has another source/action domain"
                 )
-            node = _SupportNode(
+            node = DyadicReturnSupportRecord(
                 width,
                 residue,
                 SkewTransfer(upper, offset, lower),
@@ -820,7 +822,7 @@ class MahlerOccurrenceConsumer:
             raise TypeError("Mahler action publication needs its exact image summary")
         if type(action) is not MahlerSourceBoundSafetyAction:
             raise TypeError("Mahler action publication has another normal form")
-        node = _SupportNode(
+        node = DyadicReturnSupportRecord(
             summary.width,
             summary.residue,
             summary.transfer,
@@ -857,7 +859,7 @@ class MahlerOccurrenceConsumer:
         cap = 6 * transfer.upper + offset
         if cap >= 0:
             raise ValueError("Mahler root cap lost its two-bit failure")
-        node = _SupportNode(
+        node = DyadicReturnSupportRecord(
             summary.width,
             summary.residue,
             transfer,

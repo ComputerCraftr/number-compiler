@@ -12,21 +12,16 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    decimal_pair_word_projection,
+)
+
 if TYPE_CHECKING:
     from .mixed_periodic_bank import MixedFrame
 
 
 def _bands(word: tuple[int, ...]) -> Mapping[str, tuple[int, ...]]:
-    return MappingProxyType(
-        {
-            "lt_low": tuple(int(s <= 4) for s in word),
-            "lt_high": tuple(int(5 <= s <= 8) for s in word),
-            "eq": tuple(int(s == 9) for s in word),
-            "gt_low": tuple(int(10 <= s <= 14) for s in word),
-            "gt_high": tuple(int(15 <= s <= 18) for s in word),
-            "f5": tuple(s % 5 for s in word),
-        }
-    )
+    return MappingProxyType(decimal_pair_word_projection(word).wire_channels())
 
 
 @dataclass(frozen=True, slots=True)

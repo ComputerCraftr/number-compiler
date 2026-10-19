@@ -137,7 +137,7 @@ class CertifiedCarryWord:
         for bank in self._source_banks:
             if type(bank) is not ReverseAddTemporalRingBank:
                 raise ValueError("carry word source is not an issued ring bank")
-            bank._check()
+            bank.validate()
             if bank.certificate is not self.certificate or bank.start != bank_start:
                 raise ValueError("carry word source banks do not cover its horizon")
             if bank.positions != self._source_banks[0].positions:

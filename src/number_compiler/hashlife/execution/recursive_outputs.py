@@ -10,12 +10,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, MutableMapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
+)
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    RecursiveOutputAuditSnapshot,
 )
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
     HigherLocalInterfaceArena,
@@ -27,7 +31,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceBindingID,
     SourceCellID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -250,6 +254,43 @@ class RecursiveCoordinateMorphismArena:
 
     def _handle(self, local_id: int) -> CoordinateOutputMorphismID:
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)
+
+    def handle_for_local_id(self, local_id: int) -> CoordinateOutputMorphismID:
+        """Create a scoped handle only for an already allocated output node."""
+        if type(local_id) is not int or not 0 <= local_id < self._next_id:
+            raise IndexError("recursive output index is outside the arena")
+        return self._handle(local_id)
+
+    def validate_output_action(self, action: FieldCellActionID) -> None:
+        """Validate an action using the configured output-action authority."""
+        validate = self._validate_action
+        if validate is None:
+            raise ValueError("recursive output action validation is not configured")
+        validate(action)
+
+    def validate_output_interface(self, interface: LocalInterfaceID) -> None:
+        """Validate an interface using the configured output-interface authority."""
+        self._validate_temporal_interface(interface)
+
+    def validate_source(self, source: SourceCellID) -> None:
+        """Validate a source cell when this output arena admits source leaves."""
+        validate = self._validate_source
+        if validate is None:
+            raise ValueError("source-backed output support was not configured")
+        validate(source)
+
+    def audit_snapshot(self) -> RecursiveOutputAuditSnapshot:
+        """Return non-creating read-only views of the output interner stores."""
+        return RecursiveOutputAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            node_owner=self._node_owner,
+            nodes=MappingProxyType(self._nodes),
+            node_store=self._nodes,
+            key_owner=self._key_owner,
+            keys=MappingProxyType(self._keys),
+            key_store=self._keys,
+        )
 
     def resolve(
         self,

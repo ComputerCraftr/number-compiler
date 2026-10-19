@@ -311,7 +311,9 @@ def _reverse_orbit(
     tuple[int, int, tuple[int, ...], tuple[object, ...], tuple[int, ...], int, int], ...
 ]:
     value = int(seed)
-    out = []
+    out: list[
+        tuple[int, int, tuple[int, ...], tuple[object, ...], tuple[int, ...], int, int]
+    ] = []
     for step in range(int(steps) + 1):
         digits = digits_lsd(value, base)
         pair = tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
@@ -624,7 +626,7 @@ def reverse_cyclotomic_observer_profile(
                 continue
             divisor = cyclotomic_power_coefficients(order, power)
             for modulus in (2, 4, 8, 16):
-                keys = []
+                keys: list[tuple[object, tuple[int, ...]]] = []
                 for row in orbit:
                     residue = polynomial_remainder_monic(
                         row[2],
@@ -682,8 +684,8 @@ def mersenne_phi_sign_profile(exponent: int) -> MersennePhiSignProfile:
     if p < 2:
         raise ValueError(p)
     modulus = (1 << p) - 1
-    phi_keys = []
-    sign_keys = []
+    phi_keys: list[tuple[int, ...]] = []
+    sign_keys: list[int] = []
     for state in range(modulus):
         digits = digits_lsd(state, 2, p)
         phi_keys.append(
@@ -696,9 +698,9 @@ def mersenne_phi_sign_profile(exponent: int) -> MersennePhiSignProfile:
         )
         sign_keys.append(min(state, (-state) % modulus))
 
-    phi_to_sign: dict[object, object] = {}
-    sign_to_phi: dict[object, object] = {}
-    same = True
+    phi_to_sign: dict[tuple[int, ...], int] = {}
+    sign_to_phi: dict[int, tuple[int, ...]] = {}
+    same: bool = True
     for phi, sign in zip(phi_keys, sign_keys, strict=True):
         if phi in phi_to_sign:
             same &= phi_to_sign[phi] == sign
@@ -710,8 +712,8 @@ def mersenne_phi_sign_profile(exponent: int) -> MersennePhiSignProfile:
             sign_to_phi[sign] = phi
 
     target_ok = next_ok = True
-    outputs: dict[object, bool] = {}
-    successors: dict[object, object] = {}
+    outputs: dict[tuple[int, ...], bool] = {}
+    successors: dict[tuple[int, ...], tuple[int, ...]] = {}
     for state, key in enumerate(phi_keys):
         output = state == 0
         nxt = phi_keys[(state * state - 2) % modulus]

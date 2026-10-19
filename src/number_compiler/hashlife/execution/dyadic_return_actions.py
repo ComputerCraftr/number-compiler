@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnActionID,
+    DyadicReturnActionRecord,
     DyadicReturnImageID,
+    DyadicReturnImageRecord,
+    DyadicReturnSourceID,
+    DyadicReturnSourceRecord,
     DyadicReturnSupportID,
-    _ActionNode,
-    _ImageNode,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 from number_compiler.resources.stores import LedgerDict
 
@@ -56,17 +57,16 @@ def rollback_construction(workspace: DyadicReturnImageWorkspace) -> None:
         workspace.ledger.release(
             snapshot_owner, entries=snapshot_retained, nodes=snapshot_retained
         )
-    workspace.owner = ArenaToken("dyadic-return-images-disposed")
-    workspace._closed = True
+    workspace.invalidate_after_rollback()
 
 
 def dispose(workspace: DyadicReturnImageWorkspace) -> None:
-    if not workspace._closed:
-        workspace._rollback_construction()
+    if not workspace.closed:
+        workspace.rollback_construction()
 
 
 def append_action(
-    workspace: DyadicReturnImageWorkspace, node: _ActionNode
+    workspace: DyadicReturnImageWorkspace, node: DyadicReturnActionRecord
 ) -> DyadicReturnActionID:
     workspace.ledger.reserve_many(
         (
@@ -76,7 +76,7 @@ def append_action(
         )
     )
     identity = DyadicReturnActionID(
-        workspace.owner, workspace._ACTION_KIND, len(workspace.actions)
+        workspace.owner, workspace.ACTION_KIND, len(workspace.actions)
     )
     previous = len(workspace.actions)
     try:
@@ -86,24 +86,60 @@ def append_action(
     except BaseException:
         workspace.by_width.pop(node.width, None)
         workspace.action_snapshots.pop(identity.local_id, None)
-        workspace.actions._rollback_unpublished(previous)
+        workspace.actions.rollback_unpublished(previous)
         workspace.ledger.release(workspace.action_owner, entries=1, nodes=1)
         workspace.ledger.release(workspace.width_owner, entries=1)
         workspace.ledger.release(workspace.action_snapshot_owner, entries=1, nodes=1)
         raise
-    workspace._bump("action_publications")
+    workspace.bump_metric("action_publications")
+    return identity
+
+
+def append_source(
+    workspace: DyadicReturnImageWorkspace, node: DyadicReturnSourceRecord
+) -> DyadicReturnSourceID:
+    """Publish a source row and its tamper-evident snapshot atomically."""
+    workspace.ledger.reserve_many(
+        ((workspace.source_owner, 1, 1), (workspace.source_snapshot_owner, 1, 1))
+    )
+    identity = DyadicReturnSourceID(
+        workspace.owner, workspace.SOURCE_KIND, len(workspace.sources)
+    )
+    previous = len(workspace.sources)
+    try:
+        workspace.sources.append(node)
+        workspace.source_snapshots[identity.local_id] = (
+            node.residue,
+            node.precision,
+            node.lift,
+            node.parent,
+            node.parent_action,
+            node.before_image,
+            node.side,
+            node.exact,
+        )
+    except BaseException:
+        workspace.source_snapshots.pop(identity.local_id, None)
+        workspace.sources.rollback_unpublished(previous)
+        workspace.ledger.release(workspace.source_owner, entries=1, nodes=1)
+        workspace.ledger.release(
+            workspace.source_snapshot_owner,
+            entries=1,
+            nodes=1,
+        )
+        raise
     return identity
 
 
 def build_action(
     workspace: DyadicReturnImageWorkspace, width: int
 ) -> DyadicReturnActionID:
-    workspace._bump("action_requests")
+    workspace.bump_metric("action_requests")
     found = workspace.by_width.get(width)
     if found is not None:
-        workspace._bump("action_hits")
+        workspace.bump_metric("action_hits")
         return found
-    workspace._bump("action_misses")
+    workspace.bump_metric("action_misses")
     if workspace.construction_stack:
         raise RuntimeError("nested dyadic return action construction")
 
@@ -113,7 +149,7 @@ def build_action(
         try:
             workspace.construction_stack.append(value)
         except BaseException:
-            workspace.construction_stack._rollback_unpublished(previous)
+            workspace.construction_stack.rollback_unpublished(previous)
             workspace.ledger.release(workspace.construction_owner, entries=1, nodes=1)
             raise
 
@@ -129,7 +165,7 @@ def build_action(
                 )
                 continue
             if current <= workspace.MAX_LEAF_STEPS:
-                workspace._append_action(_ActionNode(current, None))
+                workspace.append_action(DyadicReturnActionRecord(current, None))
                 continue
             first_width = 1 << ((current - 1).bit_length() - 1)
             last_width = current - first_width
@@ -141,8 +177,8 @@ def build_action(
             if last is None:
                 push(last_width)
                 continue
-            workspace._append_action(_ActionNode(current, (first, last)))
-            workspace._bump("action_compositions")
+            workspace.append_action(DyadicReturnActionRecord(current, (first, last)))
+            workspace.bump_metric("action_compositions")
     finally:
         remaining = len(workspace.construction_stack)
         workspace.construction_stack.clear()
@@ -161,7 +197,7 @@ def rollback_new_publications(
     if image_count:
         for index in range(image_start, len(self.images)):
             self.image_snapshots.pop(index, None)
-        self.images._rollback_unpublished(image_start)
+        self.images.rollback_unpublished(image_start)
         self.ledger.release(self.image_owner, entries=image_count, nodes=image_count)
         self.ledger.release(
             self.image_snapshot_owner, entries=image_count, nodes=image_count
@@ -169,7 +205,7 @@ def rollback_new_publications(
     if support_count:
         for index in range(support_start, len(self.support)):
             self.support_snapshots.pop(index, None)
-        self.support._rollback_unpublished(support_start)
+        self.support.rollback_unpublished(support_start)
         self.ledger.release(
             self.support_owner, entries=support_count, nodes=support_count
         )
@@ -179,13 +215,13 @@ def rollback_new_publications(
 
 
 def append_support(
-    self: DyadicReturnImageWorkspace, node: _SupportNode
+    self: DyadicReturnImageWorkspace, node: DyadicReturnSupportRecord
 ) -> DyadicReturnSupportID:
     previous = len(self.support)
     self.ledger.reserve_many(
         ((self.support_owner, 1, 1), (self.support_snapshot_owner, 1, 1))
     )
-    identity = DyadicReturnSupportID(self.owner, self._SUPPORT_KIND, len(self.support))
+    identity = DyadicReturnSupportID(self.owner, self.SUPPORT_KIND, len(self.support))
     try:
         self.support.append(node)
         self.support_snapshots[identity.local_id] = (
@@ -204,7 +240,7 @@ def append_support(
         )
     except BaseException:
         self.support_snapshots.pop(identity.local_id, None)
-        self.support._rollback_unpublished(previous)
+        self.support.rollback_unpublished(previous)
         self.ledger.release(self.support_owner, entries=1, nodes=1)
         self.ledger.release(self.support_snapshot_owner, entries=1, nodes=1)
         raise
@@ -212,13 +248,13 @@ def append_support(
 
 
 def append_image(
-    self: DyadicReturnImageWorkspace, node: _ImageNode
+    self: DyadicReturnImageWorkspace, node: DyadicReturnImageRecord
 ) -> DyadicReturnImageID:
     previous = len(self.images)
     self.ledger.reserve_many(
         ((self.image_owner, 1, 1), (self.image_snapshot_owner, 1, 1))
     )
-    identity = DyadicReturnImageID(self.owner, self._IMAGE_KIND, len(self.images))
+    identity = DyadicReturnImageID(self.owner, self.IMAGE_KIND, len(self.images))
     try:
         self.images.append(node)
         summary = node.summary
@@ -238,7 +274,7 @@ def append_image(
         )
     except BaseException:
         self.image_snapshots.pop(identity.local_id, None)
-        self.images._rollback_unpublished(previous)
+        self.images.rollback_unpublished(previous)
         self.ledger.release(self.image_owner, entries=1, nodes=1)
         self.ledger.release(self.image_snapshot_owner, entries=1, nodes=1)
         raise

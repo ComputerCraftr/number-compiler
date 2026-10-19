@@ -58,12 +58,12 @@ def _validate_key(arena: CompletedResultArena, key: CausalInterfaceKey) -> None:
         "reverse-output-carry",
     ):
         raise ValueError("causal interface binding has an unsupported observation")
-    arena._validate_base(key.action, key.input, key.wiring)
-    arena._validate_ports(key.wiring.signature, key.ports)
+    arena.validate_base(key.action, key.input, key.wiring)
+    arena.validate_ports(key.wiring.signature, key.ports)
     if key.fusion is None:
         arena._validate_boundaries(key.boundaries, key.input)
     else:
-        arena._validate_fusion(
+        arena.validate_fusion(
             key.action,
             key.fusion,
             key.fusion.consumer,
@@ -217,28 +217,33 @@ def _validate_value(
     _validate_reverse_output_profile(arena, key, value)
     if arena.interfaces.resolve(value.interface).signature != key.wiring.signature:
         raise ValueError("causal interface result has another signature")
-    arena._validate_ports(key.wiring.signature, value.observed_input_ports)
-    arena._validate_ports(key.wiring.signature, value.outgoing_ports)
+    arena.validate_ports(key.wiring.signature, value.observed_input_ports)
+    arena.validate_ports(key.wiring.signature, value.outgoing_ports)
     if value.level != arena.tiles.resolve(key.input).level:
         raise ValueError("causal interface result has another spatial level")
-    authority = arena.action_authority
-    observe = getattr(authority, "_observe", None)
-    if not callable(observe) or getattr(observe, "__self__", None) is not authority:
-        raise ValueError("causal interface result has no bound observation authority")
+    from number_compiler.hashlife.execution.tile_causal_results import (
+        require_causal_authority,
+    )
+
+    authority = require_causal_authority(arena.action_authority)
     expected = (
-        observe(value.interface, "boundary_left", value.observed_input_ports),
-        observe(value.interface, "boundary_right", value.observed_input_ports),
+        authority.observe(value.interface, "boundary_left", value.observed_input_ports),
+        authority.observe(
+            value.interface, "boundary_right", value.observed_input_ports
+        ),
     )
     if value.outgoing_ports != expected:
         raise ValueError(
             "causal interface result disagrees with its boundary functions"
         )
-    active = bool(observe(value.interface, "activity", value.observed_input_ports))
+    active = bool(
+        authority.observe(value.interface, "activity", value.observed_input_ports)
+    )
     if value.active != active:
         raise ValueError("causal interface result disagrees with its activity function")
 
 
-def _validate_published_value(
+def validate_published_causal_interface_value(
     arena: CompletedResultArena,
     key: CausalInterfaceKey,
     value: CompletedInterfaceResult,
@@ -252,10 +257,10 @@ def _validate_published_value(
         raise ValueError("causal interface publication metadata was modified")
     if arena.interfaces.resolve(value.interface).signature != key.wiring.signature:
         raise ValueError("causal interface result has another signature")
-    arena._validate_ports(
+    arena.validate_ports(
         key.wiring.signature, value.observed_input_ports, counted=False
     )
-    arena._validate_ports(key.wiring.signature, value.outgoing_ports, counted=False)
+    arena.validate_ports(key.wiring.signature, value.outgoing_ports, counted=False)
     if value.level != arena.tiles.resolve(key.input).level:
         raise ValueError("causal interface result has another spatial level")
 
@@ -282,7 +287,7 @@ def lookup_causal_interface(
         return None
     if type(found) is not CompletedInterfaceResult:
         raise TypeError("causal interface memo contains another value sort")
-    _validate_published_value(arena, key, found)
+    validate_published_causal_interface_value(arena, key, found)
     arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_EARLY_HITS)
     record_cache_event(
         arena.tiles._cache_metrics,

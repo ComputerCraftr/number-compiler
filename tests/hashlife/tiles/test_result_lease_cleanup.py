@@ -22,8 +22,38 @@ from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
-from tests.support.tile_kernel import _runtime
-from tests.support.tile_results import _incoming_setup, _setup
+from tests.support.tile_kernel import make_tile_runtime
+from tests.support.tile_results import _setup, incoming_setup
+
+
+@pytest.mark.parametrize(
+    "callback_name",
+    (
+        "_validated_signature_for",
+        "_validate_input",
+        "_validate_output",
+        "_validate_fused_action",
+        "_validate_fused_wiring",
+    ),
+)
+def test_result_authority_rejects_replaced_validator(
+    monkeypatch: pytest.MonkeyPatch, callback_name: str
+) -> None:
+    _, _, _, results, source, output, _, _ = _setup()
+
+    def replacement(*_args: object) -> None:
+        raise AssertionError("a replaced validator must not be called")
+
+    try:
+        authority = results.validated_action_authority()
+        with monkeypatch.context() as patch:
+            patch.setattr(results, callback_name, replacement)
+            with pytest.raises(ValueError, match="authority changed"):
+                results.validated_action_authority()
+        assert results.validated_action_authority() is authority
+    finally:
+        output.close()
+        source.close()
 
 
 def _published_with_boundary(
@@ -38,7 +68,7 @@ def _published_with_boundary(
     PoweredResultKey,
     CompletedResult,
 ]:
-    ledger, _, tiles, results, source, output, key, result, boundary = _incoming_setup()
+    ledger, _, tiles, results, source, output, key, result, boundary = incoming_setup()
     if side == "left":
         operands = BoundaryTileOperands(
             BoundaryTileView(boundary.tile, 0, 1),
@@ -66,7 +96,7 @@ def test_result_lease_cleanup_closes_dependencies_before_output(
 
     with monkeypatch.context() as patch:
         close_tile = TileLease.close
-        release_boundary = results._release_boundary_leases
+        release_boundary = results.release_boundary_leases
 
         def tracked_close(lease: TileLease) -> None:
             if lease._id in boundary_ids or lease._id == output_id:
@@ -89,7 +119,7 @@ def test_result_lease_cleanup_closes_dependencies_before_output(
             )
 
         patch.setattr(TileLease, "close", tracked_close)
-        patch.setattr(results, "_release_boundary_leases", tracked_accounting)
+        patch.setattr(results, "release_boundary_leases", tracked_accounting)
         held.close()
 
     expected = [
@@ -109,7 +139,7 @@ def test_result_lease_rejects_binding_change_after_partial_close(
 ) -> None:
     _ledger, _, _, results, source, output, key, result = _setup()
     held = results.publish(key, result)
-    release_boundary = results._release_boundary_leases
+    release_boundary = results.release_boundary_leases
     fail_once = True
 
     def fail_operand_release(
@@ -130,7 +160,7 @@ def test_result_lease_rejects_binding_change_after_partial_close(
             on_operands_mutated=on_operands_mutated,
         )
 
-    monkeypatch.setattr(results, "_release_boundary_leases", fail_operand_release)
+    monkeypatch.setattr(results, "release_boundary_leases", fail_operand_release)
     with pytest.raises(RuntimeError, match="injected operand release failure"):
         held.close()
     assert held._closing is True
@@ -204,7 +234,7 @@ def test_result_arena_clear_retries_unpublished_acquisition_lease(
 def test_causal_workspace_teardown_attempts_later_roots_and_retries_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     engine = CausalTileEngine(scheduler)
     first = tiles.leaf(adapter.alphabet(action), 0)
     failing = tiles.leaf(adapter.alphabet(action), 1)

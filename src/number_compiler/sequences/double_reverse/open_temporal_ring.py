@@ -18,14 +18,20 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
 
-from . import _temporal_bank_authority
 from ._temporal_bank_authority import (
-    _SourceAuthorizedRecord,
     issue_source_record,
+    validate_source_record,
 )
-from .protected_temporal_bank import PERIODIC_CHANNELS, PeriodicBankFrame
+from .protected_temporal_bank import (
+    BANK_CHANNELS,
+    BankChannel,
+    PeriodicBankFrame,
+    SourceAuthorizedFrameWindow,
+    bank_channel_name,
+    parse_bank_channel,
+)
 from .stencil_moore import stencil_cell
-from .temporal_bank_output_morphism import _authorized_frame_at, frame_from_digits
+from .temporal_bank_output_morphism import frame_from_digits
 from .temporal_hashlife import growth_ports
 from .temporal_hashlife_types import UncertifiedPointedStencilError
 
@@ -131,7 +137,7 @@ class OpenRingState:
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedOpenTemporalBank(_SourceAuthorizedRecord):
+class CertifiedOpenTemporalBank(SourceAuthorizedFrameWindow):
     """Exact finite-horizon bank with source-bound input/carry witnesses.
 
     A temporal Moore class is supplied only if the certified ingress word
@@ -153,22 +159,15 @@ class CertifiedOpenTemporalBank(_SourceAuthorizedRecord):
     moore_cycle: int | None
     initial_state: OpenRingState
 
-    @property
-    def pair_count(self) -> int:
-        return len(self.frames)
-
-    def at(self, pair_offset: int) -> PeriodicBankFrame:
-        return _authorized_frame_at(self, self.frames, pair_offset)
-
     def counts(self) -> dict[str, int]:
-        _temporal_bank_authority.validate_source_record(self)
+        validate_source_record(self)
         return {
-            channel: sum(f.scalar(channel) for f in self.frames)
-            for channel in PERIODIC_CHANNELS
+            bank_channel_name(channel): sum(f.scalar(channel) for f in self.frames)
+            for channel in BANK_CHANNELS
         }
 
     def validated_projection(
-        self, channels: tuple[str, ...]
+        self, channels: tuple[str | BankChannel, ...]
     ) -> tuple[dict[str, int], dict[str, OpenOutputWord]]:
         """Return counts and selected words after one source-authority check.
 
@@ -176,35 +175,34 @@ class CertifiedOpenTemporalBank(_SourceAuthorizedRecord):
         from the same immutable, source-issued bank. Individual public accessors
         remain independently validating.
         """
-        if (
-            type(channels) is not tuple
-            or len(channels) > len(PERIODIC_CHANNELS)
-            or any(
-                type(channel) is not str or channel not in PERIODIC_CHANNELS
-                for channel in channels
-            )
-            or len(set(channels)) != len(channels)
-        ):
+        if type(channels) is not tuple or len(channels) > len(BANK_CHANNELS):
             raise ValueError("open temporal projection has invalid channels")
-        _temporal_bank_authority.validate_source_record(self)
-        selected = set(channels)
-        totals = {channel: 0 for channel in PERIODIC_CHANNELS}
-        words: dict[str, list[int]] = {channel: [] for channel in channels}
+        selected = tuple(parse_bank_channel(channel) for channel in channels)
+        if len(set(selected)) != len(selected):
+            raise ValueError("open temporal projection has duplicate channels")
+        validate_source_record(self)
+        totals = {bank_channel_name(channel): 0 for channel in BANK_CHANNELS}
+        words: dict[str, list[int]] = {
+            bank_channel_name(channel): [] for channel in selected
+        }
+        selected_set = set(selected)
         for frame in self.frames:
-            for channel in PERIODIC_CHANNELS:
+            for channel in BANK_CHANNELS:
                 value = frame.scalar(channel)
-                totals[channel] += value
-                if channel in selected:
-                    words[channel].append(value)
+                wire_name = bank_channel_name(channel)
+                totals[wire_name] += value
+                if channel in selected_set:
+                    words[wire_name].append(value)
         return totals, {
             channel: (tuple(values), 1, ()) for channel, values in words.items()
         }
 
-    def output_word(self, channel: str) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
-        _temporal_bank_authority.validate_source_record(self)
-        if channel not in PERIODIC_CHANNELS:
-            raise ValueError("unknown open temporal bank output channel")
-        return (tuple(f.scalar(channel) for f in self.frames), 1, ())
+    def output_word(
+        self, channel: str | BankChannel
+    ) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
+        validate_source_record(self)
+        selected = parse_bank_channel(channel)
+        return (tuple(f.scalar(selected) for f in self.frames), 1, ())
 
 
 def _minimal_certified_period(ports: tuple[OpenRingPorts, ...]) -> int | None:

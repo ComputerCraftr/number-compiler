@@ -27,7 +27,7 @@ from number_compiler.arithmetic.formula.formula import (
     canonical_root_key,
     root_from_values,
 )
-from number_compiler.arithmetic.formula.types import Expr, RadixSpec
+from number_compiler.arithmetic.formula.types import Expr, FormulaMasks, RadixSpec
 
 
 def _pair_value_masks(
@@ -37,12 +37,12 @@ def _pair_value_masks(
         raise ValueError((root.plane_count, spec.plane_count))
     key = ("pair-value-masks", spec.base, canonical_root_key(root, arena))
     cached = arena.metadata_get(key)
-    if isinstance(cached, tuple) and len(cached) == spec.pair_max + 1:
-        return cached
+    if isinstance(cached, FormulaMasks) and len(cached.values) == spec.pair_max + 1:
+        return cached.values
     masks = tuple(
         arena.predicate("EQ", s, root.planes) for s in range(spec.pair_max + 1)
     )
-    arena.metadata_set(key, masks)
+    arena.metadata_set(key, FormulaMasks(masks))
     return masks
 
 

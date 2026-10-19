@@ -104,7 +104,7 @@ def test_audit_rejects_mutated_composite_source_and_stale_image() -> None:
         image,
         "source",
         DyadicReturnSourceID(
-            workspace.owner, workspace._SOURCE_KIND, len(workspace.sources)
+            workspace.owner, workspace.SOURCE_KIND, len(workspace.sources)
         ),
     )
     try:

@@ -7,7 +7,7 @@ from typing import TypeAlias
 
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
-from number_compiler.hashlife.execution.dyadic_return_transport import _low_bits
+from number_compiler.hashlife.execution.dyadic_return_transport import low_bits
 from number_compiler.resources.ledger import ResourceLedger, ResourceScope
 from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.physical_support_payload_audit import (
@@ -36,7 +36,7 @@ def _balanced_saturated_audit(
     # The audit has no ledger-owned retention: its short local postorder stack
     # is charged as transient work, and every classification/join is counted.
     stack: list[tuple[int, int, AuditEffect | None]] = []
-    span, residue = width, _low_bits(source, width)
+    span, residue = width, low_bits(source, width)
     while True:
         if span <= 64:
             state = residue
@@ -72,7 +72,7 @@ def _balanced_saturated_audit(
                 span.bit_length() + residue.bit_length(),
             )
             span = 1 << ((span - 1).bit_length() - 1)
-            residue = _low_bits(residue, span)
+            residue = low_bits(residue, span)
             continue
 
         while stack:
@@ -96,7 +96,7 @@ def _balanced_saturated_audit(
                 numerator = result[0].upper * parent_residue + result[0].offset
                 if numerator % result[0].lower:
                     raise ArithmeticError("audited dyadic seam was not integral")
-                residue = _low_bits(numerator // result[0].lower, span)
+                residue = low_bits(numerator // result[0].lower, span)
                 break
             right = result
             transfer = left[0].then(right[0], multiply=mul, add=add)

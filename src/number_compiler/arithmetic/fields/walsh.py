@@ -103,6 +103,18 @@ def walsh64_mod5(mask: int) -> tuple[int, ...]:
     return tuple(value % 5 for value in walsh64(mask))
 
 
+def walsh64_signed(mask: int) -> tuple[int, ...]:
+    """Transform the signed word ``1 - 2*bit`` using the common butterfly.
+
+    The constant word contributes only to the zero-frequency coefficient.
+    Input admission is identical to the Boolean-word transform.
+    """
+    return tuple(
+        (LOW_WALSH_WIDTH if frequency == 0 else 0) - 2 * coefficient
+        for frequency, coefficient in enumerate(walsh64(mask))
+    )
+
+
 def walsh_h5_at_offset(mask: int, width: int, offset: int) -> WalshH5:
     """Observe an H5 mask at an absolute bit offset, without its length phase."""
     if type(offset) is not int or offset < 0:

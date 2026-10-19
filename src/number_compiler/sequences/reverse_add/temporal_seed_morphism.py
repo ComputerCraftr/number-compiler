@@ -158,6 +158,31 @@ class Q19WordFiber:
     def center_width(self) -> int:
         return len(self.center)
 
+    def audit_binding(self) -> tuple[object, ...]:
+        """Return a fresh read-only field tuple for cache integrity audits."""
+        return (
+            self.occurrence,
+            self.generation,
+            self.root,
+            self.width,
+            self.pair_width,
+            self.center,
+            self.residue99,
+            self.residue198,
+            self.exterior99,
+            self.exterior198,
+            self.carry_into_center,
+            self.carry_out_of_center,
+            self.carry_out_of_pairs,
+            self.leading_carry_digit,
+            self.first_pair_sum,
+            self.border_pairs,
+            self.low_border_carry,
+            self.middle_carry_map,
+            self.upper_border_ingress,
+            self.first_non9_from_upper,
+        )
+
 
 def _fiber(
     owner: ReversePairQ19OutputOwner,
@@ -174,7 +199,7 @@ def _fiber(
             or len(cached) != 2
             or type(cached[0]) is not Q19WordFiber
             or cached[0].occurrence is not occurrence
-            or cached[1] != _fiber_snapshot(cached[0])
+            or cached[1] != cached[0].audit_binding()
         ):
             owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_FAILED_WORK)
             raise ValueError("cached Q19 word fiber failed its source binding")
@@ -188,7 +213,7 @@ def _fiber(
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_FAILED_WORK)
         raise
     try:
-        memo[key] = (result, _fiber_snapshot(result))
+        memo[key] = (result, result.audit_binding())
     except BlockContextBudgetExceeded:
         # The fiber is an optional observation cache. Its exact cold result is
         # still valid when the ledger cannot retain another memo entry.
@@ -196,32 +221,6 @@ def _fiber(
     else:
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_PUBLICATIONS)
     return result
-
-
-def _fiber_snapshot(fiber: Q19WordFiber) -> tuple[object, ...]:
-    """Flat cache seal for the immutable projection and its source occurrence."""
-    return (
-        fiber.occurrence,
-        fiber.generation,
-        fiber.root,
-        fiber.width,
-        fiber.pair_width,
-        fiber.center,
-        fiber.residue99,
-        fiber.residue198,
-        fiber.exterior99,
-        fiber.exterior198,
-        fiber.carry_into_center,
-        fiber.carry_out_of_center,
-        fiber.carry_out_of_pairs,
-        fiber.leading_carry_digit,
-        fiber.first_pair_sum,
-        fiber.border_pairs,
-        fiber.low_border_carry,
-        fiber.middle_carry_map,
-        fiber.upper_border_ingress,
-        fiber.first_non9_from_upper,
-    )
 
 
 def _compute_fiber(
@@ -465,8 +464,8 @@ class CertifiedReverseAddSeedMorphism:
             self._owner,
             self.seed,
             self.horizon,
-            _fiber_snapshot(self.first),
-            _fiber_snapshot(self.last),
+            self.first.audit_binding(),
+            self.last.audit_binding(),
             self.q19_block_applications,
             self.temporal_square_operations,
             self.physical_repeat_certified,

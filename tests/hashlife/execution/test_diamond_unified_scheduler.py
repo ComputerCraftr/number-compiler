@@ -11,6 +11,10 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
 from number_compiler.hashlife.execution.continuations.diamond_tasks import PairSummary
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_query import oracle
 from tests.support.diamond_runtime import build
 
@@ -27,7 +31,9 @@ def test_point_and_width_never_enter_standalone_context_or_pair_drivers(
     source: tuple[int, int, int, int] | tuple[int, int, int],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = build(effect, source, 8, 4)
+    runtime, action = build(
+        effect, source, 8, 4, family_hooks=collatz_tile_hooks_for_effect(effect)
+    )
     application = DiamondApplication(runtime, action)
     expected = oracle(effect, source, 8, 4)
 
@@ -51,7 +57,9 @@ def test_point_and_width_never_enter_standalone_context_or_pair_drivers(
 def test_warm_pair_and_context_parents_are_probed_before_any_program_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 8, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 8, 2
+    )
     application = DiamondApplication(runtime, action)
     application.point(5)
     arena = runtime.pair_macros

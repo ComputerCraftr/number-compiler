@@ -4,6 +4,7 @@ import pytest
 
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_0563,
     ENTRY_421,
@@ -15,6 +16,7 @@ from number_compiler.sequences.collatz.boundary_macros import (
     select_admitted_boundary_macro,
     validate_admitted_boundary_macro_plan,
 )
+from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
@@ -148,6 +150,91 @@ def test_optional_border_preflight_preserves_scratch_for_exact_fallback() -> Non
         assert action.source == state.current
         assert action.physical_ticks == fallback.physical_ticks
         validate_admitted_boundary_macro_plan(fallback)
+
+
+def test_named_boundary_consumer_reuses_its_pointed_pair_certificate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
+    width_spine = CollatzWidthSpineAccumulator(ledger, requested=False)
+    state = MixedRunExecutorState(164, 100, 0, 0, 0, 0, 0, 0, None, None)
+    plan = admit_routed_boundary_macro_plan(state.current, state.remaining)
+    assert plan is not None
+
+    def reject_duplicate_point_puncture(
+        _joined: GuardedPortJoin, _source: int, *, check_last: bool = True
+    ) -> object:
+        raise AssertionError("named consumer rebuilt its certified pointed pair")
+
+    monkeypatch.setattr(
+        GuardedPortJoin, "require_pointed", reject_duplicate_point_puncture
+    )
+    with (
+        scratch.scope(),
+        BoundaryActionTemplateMemo(ledger) as templates,
+        CollatzJointTemporalBuilder(
+            ledger, scratch, state.current, requested=True, shared_cache=False
+        ) as joint_builder,
+    ):
+        next_state, boundary, _ = consume_named_boundary(
+            state,
+            plan,
+            seed=state.current,
+            ledger=ledger,
+            scratch=scratch,
+            control_bits=0,
+            templates=templates,
+            include_joint=True,
+            width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=None,
+            macros=None,
+            prior_lookup_enabled=False,
+        )
+
+    assert next_state.current == boundary.endpoint
+    assert ledger.counters[collatz_keys.COLLATZ_POINTED_PAIR_CERTIFICATE_REUSES] == 1
+
+
+def test_border_return_consumer_reuses_its_pointed_pair_certificate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
+    width_spine = CollatzWidthSpineAccumulator(ledger, requested=False)
+    state = MixedRunExecutorState(30, 9, 0, 0, 0, 0, 0, 0, None, None)
+
+    def reject_duplicate_point_puncture(
+        _joined: GuardedPortJoin, _source: int, *, check_last: bool = True
+    ) -> object:
+        raise AssertionError("border-return consumer rebuilt its pointed pair")
+
+    monkeypatch.setattr(
+        GuardedPortJoin, "require_pointed", reject_duplicate_point_puncture
+    )
+    with (
+        scratch.scope(),
+        CollatzJointTemporalBuilder(
+            ledger, scratch, state.current, requested=True, shared_cache=False
+        ) as joint_builder,
+    ):
+        next_state, border = consume_border_return(
+            state,
+            seed=state.current,
+            ledger=ledger,
+            scratch=scratch,
+            control_bits=0,
+            include_joint=True,
+            width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=None,
+            macros=None,
+        )
+
+    assert next_state is not None and border is not None
+    assert next_state.current == border.endpoint
+    assert ledger.counters[collatz_keys.COLLATZ_POINTED_PAIR_CERTIFICATE_REUSES] == 1
 
 
 @pytest.mark.parametrize(

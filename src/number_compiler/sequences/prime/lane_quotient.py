@@ -242,6 +242,9 @@ def compile_prime_block_lane_quotient(
     zero_digit: PrimaryJetBlock | None
     one_digit: PrimaryJetBlock | None
     empty_jet: PrimaryJetBlock | None
+    empty_cyclotomic: tuple[CyclotomicDigitBlock, ...]
+    zero_cyclotomic: tuple[CyclotomicDigitBlock, ...]
+    one_cyclotomic: tuple[CyclotomicDigitBlock, ...]
     empty_binomial: BinomialMomentBlock | None
     zero_binomial: BinomialMomentBlock | None
     one_binomial: BinomialMomentBlock | None
@@ -272,7 +275,9 @@ def compile_prime_block_lane_quotient(
         )
     else:
         empty_binomial = zero_binomial = one_binomial = None
-        empty_cyclotomic = zero_cyclotomic = one_cyclotomic = ()
+        empty_cyclotomic = ()
+        zero_cyclotomic = ()
+        one_cyclotomic = ()
 
     def partition_interface(
         interface: ResidualDivisorInterface,
@@ -435,7 +440,7 @@ def compile_prime_block_lane_quotient(
         child_specs = pending_children.get(key)
         if child_specs is None:
             child_interfaces = partition_interface(interface, size=size, base=base)
-            built = []
+            built: list[tuple[int, int, int, ResidualDivisorInterface]] = []
             for digit, child_interface in enumerate(child_interfaces):
                 child_offset = digit * child_size
                 child_valid = max(0, min(child_size, valid - child_offset))
@@ -461,7 +466,7 @@ def compile_prime_block_lane_quotient(
         summary = PrimeBlockSummary.empty()
         jet = empty_jet
         binomial = empty_binomial
-        cyclotomic = empty_cyclotomic
+        cyclotomic: tuple[CyclotomicDigitBlock, ...] = empty_cyclotomic
         for child_key in child_keys:
             child_node, child_summary, child_jet, child_binomial, child_cyclotomic = (
                 interface_cache[child_key]
@@ -477,7 +482,7 @@ def compile_prime_block_lane_quotient(
                 binomial = binomial.then(child_binomial)
                 projection_field_calls += 1
                 cyclotomic = tuple(
-                    a.then(b) for a, b in zip(cyclotomic, child_cyclotomic)
+                    a.then(b) for a, b in zip(cyclotomic, child_cyclotomic, strict=True)
                 )
                 projection_field_calls += len(cyclotomic)
 

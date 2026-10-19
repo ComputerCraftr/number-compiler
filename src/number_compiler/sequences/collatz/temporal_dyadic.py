@@ -314,7 +314,7 @@ class D8TemporalTable:
             ):
                 raise ValueError("D8 lifecycle found another retained store")
             for key, value in tuple(store.items()):
-                if not store._rollback_unpublished(key, value):
+                if not store.rollback_unpublished(key, value):
                     raise ValueError("D8 lifecycle lost a reserved row")
 
     def _select_row(self, source: int) -> D8Row:
@@ -561,7 +561,7 @@ class D8TemporalTable:
         )
         return advanced, ones, residue, origin, width, transition
 
-    def _width_summary_for_transition(
+    def width_summary_for_transition(
         self,
         frame: D8CylinderFrame,
         advanced: D8CylinderFrame,
@@ -728,7 +728,7 @@ class D8TemporalTable:
         ):
             raise ValueError("D8 width spine is malformed")
         shift = frame.consumed + 8
-        widths = []
+        widths: list[int] = []
         if source_width is None:
             divisor = 1 << 0
             numerator = prefixes[0][0] * local + prefixes[0][1]

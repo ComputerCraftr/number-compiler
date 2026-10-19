@@ -193,7 +193,7 @@ def test_fixed_physical_kernel_source_views_all_phases(
             hasattr(projection, item) for item in ("_programs", "_ranges", "_transfers")
         )
         assert projection._fused is None
-        assert term._ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
+        assert term.resource_ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
         if projection._native_source is not None:
             for encoding in projection._native_source.sources.values():
                 assert encoding.binary_start == 0
@@ -214,14 +214,14 @@ def test_suffix_source_audit_rejects_geometry_alias() -> None:
     assert collatz_radix_digit(term, 3, 3) == ((3 * 404987 + 1) // 2) // 27 % 3
     arena = term._radix_projections[3]._native_source
     assert arena is not None
-    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
+    assert collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads == 0
     key, encoding = next(iter(arena.sources.items()))
     wrong = OriginalRadixKey(key.construction, key.radix, key.binary_start + 1)
     del arena.sources[key]
     arena.sources[wrong] = encoding
-    before = term._ledger.snapshot()
-    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads > 0
-    assert term._ledger.snapshot() == before
+    before = term.resource_ledger.snapshot()
+    assert collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads > 0
+    assert term.resource_ledger.snapshot() == before
 
 
 @pytest.mark.parametrize("radix", (5, 7, 10, 36, (1 << 63) - 25))
@@ -248,8 +248,10 @@ def test_fixed_two_step_radix_uses_only_original_source_and_finite_carry(
         assert not any(
             hasattr(projection, item) for item in ("_programs", "_ranges", "_transfers")
         )
-        assert term._ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
-        assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
+        assert term.resource_ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
+        assert (
+            collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads == 0
+        )
 
 
 @pytest.mark.parametrize("radix", (2, 10, (1 << 63) - 25))
@@ -268,7 +270,7 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
     monkeypatch.setattr(OriginalRadixArena, "shifted_width", forbidden)
     arena: OriginalRadixArena | None = None
     if radix == 2:
-        binary_arena = OriginalRadixArena(term._ledger)
+        binary_arena = OriginalRadixArena(term.resource_ledger)
         arena = binary_arena
         encoding = binary_arena.encode(term._source_construction, radix)
 
@@ -300,30 +302,35 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
     assert len(summary.shift_tree) == len(summary.carry_tree) == 2 * summary.size
     assert not hasattr(summary, "digits") and not hasattr(summary, "carries")
     encoding = next(iter(arena.sources.values()))
-    assert term._ledger.counters["radix_original_affine_carry_cells"] == len(
+    assert term.resource_ledger.counters["radix_original_affine_carry_cells"] == len(
         encoding.digits
     )
-    prefix_before = term._ledger.counters.get(
+    prefix_before = term.resource_ledger.counters.get(
         "original_affine_prefix_summary_visits", 0
     )
-    shift_before = term._ledger.counters.get("original_affine_shift_summary_visits", 0)
+    shift_before = term.resource_ledger.counters.get(
+        "original_affine_shift_summary_visits", 0
+    )
     middle = len(digits) // 2
     assert read_digit(middle) == digits[middle]
     summary_visits = (
-        term._ledger.counters.get("original_affine_prefix_summary_visits", 0)
+        term.resource_ledger.counters.get("original_affine_prefix_summary_visits", 0)
         - prefix_before
-        + term._ledger.counters.get("original_affine_shift_summary_visits", 0)
+        + term.resource_ledger.counters.get("original_affine_shift_summary_visits", 0)
         - shift_before
     )
     assert summary_visits <= 2 * summary.size.bit_length()
-    source_cells = term._ledger.counters["original_affine_summary_source_cells"]
+    source_cells = term.resource_ledger.counters["original_affine_summary_source_cells"]
     for index, digit in enumerate(digits):
         assert read_digit(index) == digit
-    assert term._ledger.counters["original_affine_summary_source_cells"] == source_cells
-    assert term._ledger.counters["original_affine_summary_hits"] > 0
+    assert (
+        term.resource_ledger.counters["original_affine_summary_source_cells"]
+        == source_cells
+    )
+    assert term.resource_ledger.counters["original_affine_summary_hits"] > 0
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.forbidden_future_payloads == 0
     assert report.resource_accounting_mismatch == 0
 
@@ -389,6 +396,6 @@ def test_all_shifted_queries_retain_only_the_complete_original_number() -> None:
             assert (
                 sum(digit * radix**i for i, digit in enumerate(encoding.digits)) == seed
             )
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term.resource_ledger)
     assert report.forbidden_future_payloads == 0
     assert report.resource_accounting_mismatch == 0

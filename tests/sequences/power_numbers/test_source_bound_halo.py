@@ -54,9 +54,9 @@ def test_radix_ports_match_literal_source_algebra(family: str, parameter: int) -
 
 
 def test_sparse_nonadjacent_digits_and_typed_source_spec_adapters() -> None:
-    for family, parameter, spec in (
-        ("fermat", 20, FermatNumberSpec(20)),
-        ("mersenne", 1 << 20, MersenneNumberSpec(1 << 20)),
+    for family, spec in (
+        ("fermat", FermatNumberSpec(20)),
+        ("mersenne", MersenneNumberSpec(1 << 20)),
     ):
         level, base, positions = 14, 3, (0, 2, 7, 11)
         expected = literal_power_number_sparse_digits(family, level, base, positions)

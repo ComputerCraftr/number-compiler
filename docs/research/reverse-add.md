@@ -1,6 +1,9 @@
 # Reverse/add source-bound temporal construction
 
-Status: **component arithmetic and restricted clauses are checked; the generic powered constructor is not complete**.
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
+Scope: **component arithmetic and restricted clauses do not establish unrestricted temporal closure**.
 
 This synthesis is the maintained research account for decimal reverse/add and
 the powered 196 cutover. It keeps source authority, forcing bases, carry
@@ -559,11 +562,11 @@ cleanup, but they are separate from powered-output acceptance.
 
 ### Current production boundary
 
-The repository now contains exact arithmetic owners for source carry,
-innovation transport, radial sections, event normalization, modular signs under
-a supplied bound, and compressed carry transduction. The generic scheduler does
-not yet receive a complete source-derived forcing grammar. Consequently the
-canonical powered 196 cutover remains deliberately red.
+Source carry, innovation transport, radial sections, event normalization,
+modular signs under a supplied bound and compressed carry transduction are
+separate obligations from unrestricted source-derived temporal closure. Passing
+bounded production cases does not prove that every future packet stays in a
+finite grammar. Current CLI and P0 disposition belongs to the release table.
 
 The restricted clauses should be retained as proved building blocks. Their
 assumptions must remain visible in code and documentation so a chamber theorem
@@ -632,10 +635,11 @@ cutover.
 
 ## CLI construction-cost boundary
 
-The pair-SLP reference remains research-only: it calls one spatial successor
-per temporal step. Five-trial 16–1024 measurements show roughly fourfold work
-on horizon doubling, despite small final roots. This does not satisfy the
-source-bound publication, complete-consumer or construction-cost gates.
+A reference that calls one spatial successor per temporal step does not
+establish temporal powering, even when its final roots are small. Construction
+work and demanded output work must be measured separately; retained size alone
+is not a cost bound. Historical measurements of the pair-SLP reference do not
+describe later production owners.
 
 [Dated evidence](../sprints/week-of-2026-09-20/reverse-add.md#reverse-cli-re-entry-measurements).
 
@@ -829,7 +833,7 @@ obligation, not a counterexample to the complete cylinder proposal.
 Run the exact executable checks (including validation-marked assertions):
 
 ```console
-python -m pytest -o addopts='' tests/validation/proofs/test_reverse_generic_range_constructor.py tests/validation/proofs/test_reverse_temporal_publisher_cutover.py
+python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_reverse_generic_range_constructor.py --select tests/validation/proofs/test_reverse_temporal_publisher_cutover.py
 ```
 
 ## Demand-specific forcing retention
@@ -875,7 +879,7 @@ context-free recoding rule, not a complete source-bound cylinder.
 Reproduce the interface and authority checks with:
 
 ```console
-python -m pytest -q -o addopts='' tests/arithmetic/functions/test_complete_finite_transform.py tests/sequences/reverse_add/test_active_output_morphisms.py tests/sequences/reverse_add/test_threshold_cocycle.py
+python -m devtools.checks.release --suite unit --select tests/arithmetic/functions/test_complete_finite_transform.py --select tests/sequences/reverse_add/test_active_output_morphisms.py --select tests/sequences/reverse_add/test_threshold_cocycle.py
 isabelle build -d proofs/isabelle Temporal_Clock_Jumps
 ```
 
@@ -901,19 +905,11 @@ isabelle build -d proofs/isabelle Temporal_Clock_Jumps
 
 ## Published-action reuse versus cold construction
 
-The downloaded `196_pattern_temporal_quotient.patch` adds a recursive
-occurrence-application path after a complete interface has been published.
-Its poison tests distinguish this warm reuse from initial compilation:
-poisoning the interface compiler before publication still prevents
-construction. This is a useful improvement over re-opening that compiler for
-every application, but does not supply cold temporal normalization.
-
-The earlier quadratic measurements remain historical measurements of their
-specific owners, not lower bounds on all carry-cylinder implementations.
-Pattern/diagonal experiments using a supplied orbit do not establish a
-source-derived constructor. The newer patch's warm path and the earlier
-research-only Frobenius patch are different inputs and must not be attributed
-the same scope.
+Reusing an already published complete interface can avoid reconstruction on a
+warm application. It does not establish the cold constructor's cost. A poison
+test must distinguish publication from consumption; a supplied orbit likewise
+does not establish source-derived temporal normalization. The dated integration
+record owns patch comparisons and their measurements.
 
 [Selective integration audit](../sprints/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration).
 
@@ -922,8 +918,8 @@ the same scope.
 
 An exact terminal observer must derive its result from the admitted output
 morphism. Validating an image before independently powering the original seed
-does not establish that consumer refinement. The all-level Q11 observer candidate
-reproduces bounded 196 endpoints, but its new executor still performs one cold
-pair projection per represented step and retains uncharged global state. A
-converter-level repeated-word ordering defect is separately scoped from the
-Q11 leaf factorization. See the [integration audit and exact witnesses](../sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit).
+does not establish that consumer refinement. Cold source discovery and retained
+ownership must be charged separately from terminal emission. Concrete defects
+in earlier observer candidates are recorded in the
+[integration audit](../sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit),
+not treated as current production failures here.

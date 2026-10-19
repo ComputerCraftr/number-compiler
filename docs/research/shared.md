@@ -1,5 +1,8 @@
 # Shared actions, cylinders, and resource ownership
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 Status: **the shared algebra and ownership rules are in production; no one
 shared action proves every family-specific publisher**.
 
@@ -86,8 +89,9 @@ and the complete consumer declaration. Publication seals and generation-bound
 leases authenticate reuse independently of memo keys. A projection hit cannot
 authorize a successor image, and resetting a cache invalidates its authority.
 
-The September audit corrected identity and lifecycle defects. It did not prove
-a new temporal quotient or eliminate the retained construction failures.
+Identity and lifecycle correctness does not by itself prove a temporal
+quotient or a constructor work bound. The dated record describes the concrete
+audit and repairs.
 
 [Implementation and validation record](../sprints/week-of-2026-09-20/shared.md#memo-authority-and-accounting-audit).
 
@@ -101,7 +105,7 @@ a new temporal quotient or eliminate the retained construction failures.
 Run the exact executable checks (including validation-marked assertions):
 
 ```console
-python -m pytest -o addopts='' tests/hashlife/execution/test_source_bound_images.py tests/arithmetic/fields/test_consumer_pullback.py
+python -m devtools.checks.release --suite unit --select tests/hashlife/execution/test_source_bound_images.py --select tests/arithmetic/fields/test_consumer_pullback.py
 ```
 ## Eager-work audit scope
 

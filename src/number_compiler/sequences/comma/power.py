@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.radix import iter_digits_lsd
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageID,
 )
@@ -44,11 +44,11 @@ from number_compiler.sequences.comma.image_adapter import (
     SEMANTIC_VERSION,
     SOURCE,
     BoundaryPrefixCursor,
+    CommaImageAdapter,
     CommaImagePayload,
     CommaOccurrenceID,
     CommaSource,
     UnresolvedCommaBranch,
-    _CommaImageAdapter,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +74,18 @@ class CommaTerm:
     The public API must require a checked prefix certificate before exposing
     any value as OEIS A367620.
     """
+
+    index: int
+    max_states: int
+    max_work: int
+    certificate_version: str
+    shared_cache: bool
+    ledger: ResourceLedger
+    arena: CommaActionArena
+    scheduler: TileScheduler
+    adapter: CommaImageAdapter
+    _current_index: int
+    _current_value: int
 
     def __init__(
         self,
@@ -128,7 +140,7 @@ class CommaTerm:
         self._future_provider_lease: SemanticFutureProviderLease | None = None
         self._future_provider_lock = RLock()
         self.scheduler = TileScheduler.source_only(self.ledger)
-        self.adapter = _CommaImageAdapter(self.arena, self.scheduler)
+        self.adapter = CommaImageAdapter(self.arena, self.scheduler)
         self.adapter._term = self
         self.scheduler.register_source_image_adapter(self.adapter)
         self._image: SourceImageID | None = None
@@ -249,7 +261,7 @@ class CommaTerm:
         except (PermissionError, RuntimeError, TypeError):
             return False
 
-    def _global_future_provider_for_prefix_admission(
+    def global_future_provider_for_prefix_admission(
         self,
     ) -> SemanticFutureProviderLease | None:
         """Return only this term's lease after rechecking global authority."""
@@ -260,6 +272,48 @@ class CommaTerm:
             ):
                 return None
             return self._require_global_future_provider()
+
+    def require_certified_public_prefix(self) -> None:
+        """Authenticate the current public index against its release authority."""
+        from number_compiler.sequences.comma.certificates import (
+            CERTIFICATE_ID,
+            UnresolvedCommaTerm,
+            require_certified_index,
+        )
+
+        provider = self.global_future_provider_for_prefix_admission()
+        if self.certificate_version != CERTIFICATE_ID and provider is None:
+            raise UnresolvedCommaTerm(
+                self.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
+            )
+        require_certified_index(
+            self.index,
+            self.ledger,
+            self.max_work,
+            shared_cache=self.shared_cache,
+            memo=self.certificate_memo,
+            global_provider=provider,
+        )
+
+    @property
+    def retained_global_future_provider(self) -> SemanticFutureProviderLease | None:
+        """Return an already retained release lease without staging or charging."""
+        from number_compiler.sequences.comma.future_provider import (
+            registered_global_release_artifact_sha256,
+        )
+
+        with self._future_provider_lock:
+            lease = self._future_provider_lease
+            expected_digest = registered_global_release_artifact_sha256()
+            if (
+                lease is None
+                or expected_digest is None
+                or not lease.matches_global_release_binding(
+                    self.ledger, expected_digest
+                )
+            ):
+                return None
+            return lease
 
     def _require_global_future_provider(
         self, artifact_sha256: str | None = None
@@ -445,6 +499,81 @@ class CommaTerm:
         self._current_index = payload.absolute_index
         return payload.value
 
+    def _continue_boundary_occurrence(self, remaining: int) -> tuple[int, int]:
+        """Consume one authenticated boundary prefix or complete guarded return."""
+        from number_compiler.sequences.comma.occurrence import (
+            BoundaryOccurrence,
+        )
+
+        source = self._boundary_occurrence
+        if (
+            type(source) is not BoundaryOccurrence
+            or self._boundary_occurrence_owner is not self._source
+        ):
+            raise ValueError("comma boundary occurrence lost its source lease")
+        source._validate()
+        provider = self._require_global_future_provider()
+        template = self.arena._boundary_template(source.state)
+        prefix_steps = template.weight.evaluate(
+            source.exponent,
+            charge_bits=self.arena.charge_bits,
+        )
+        self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_LOCATOR_REQUESTS)
+        if remaining <= prefix_steps:
+            action = self.arena._boundary_prefix_occurrence(source, remaining)
+            prior_index = self._current_index
+            value = self._publish(action)
+            consumed = self._current_index - prior_index
+            if consumed != remaining:
+                raise ValueError("comma partial boundary locator changed its weight")
+            return value, 0
+        if template.outcome != "fork":
+            raise UnresolvedCommaBranch(
+                f"comma boundary at index {self._current_index} is a landmine"
+            )
+        selection = provider.select_unique_unranked_child(
+            source.state,
+            charge_work=self.arena.charge,
+        )
+        from number_compiler.sequences.comma.future_provider import (
+            UnrankedChildSelection,
+        )
+        from number_compiler.sequences.comma.semantic_branch import (
+            _validate_selection_class_bindings,
+        )
+
+        if type(selection) is not UnrankedChildSelection:
+            raise ValueError("comma provider returned a malformed child selection")
+        _validate_selection_class_bindings(
+            source.state,
+            template.ordered_children,
+            selection,
+            provider,
+            charge_work=self.arena.charge,
+        )
+        if (
+            selection.source != source.state
+            or selection.selected_slot not in (0, 1)
+            or selection.fork_coefficient != template.destination_a
+        ):
+            raise ValueError("comma provider selected another macro control")
+        target_state = template.ordered_children[selection.selected_slot]
+        target = BoundaryOccurrence(
+            target_state,
+            source.exponent + template.exponent_delta,
+        )
+        action = self.arena._global_boundary_return(
+            source.state,
+            target_state,
+            provider.artifact_sha256,
+        )
+        prior_index = self._current_index
+        value = self._publish(action, next_boundary=target)
+        consumed = self._current_index - prior_index
+        if consumed != prefix_steps + 1 or consumed > remaining:
+            raise ValueError("comma completed weighted return changed its extent")
+        return value, remaining - consumed
+
     def _resolve(self) -> int:
         if self._value is not None:
             return self._value
@@ -452,85 +581,7 @@ class CommaTerm:
         remaining = self.index - self._current_index
         while remaining:
             if self._boundary_occurrence is not None:
-                from number_compiler.sequences.comma.occurrence import (
-                    BoundaryOccurrence,
-                )
-
-                source = self._boundary_occurrence
-                if (
-                    type(source) is not BoundaryOccurrence
-                    or self._boundary_occurrence_owner is not self._source
-                ):
-                    raise ValueError("comma boundary occurrence lost its source lease")
-                source._validate()
-                provider = self._require_global_future_provider()
-                template = self.arena._boundary_template(source.state)
-                prefix_steps = template.weight.evaluate(
-                    source.exponent,
-                    charge_bits=self.arena.charge_bits,
-                )
-                self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_LOCATOR_REQUESTS)
-                if remaining <= prefix_steps:
-                    action = self.arena._boundary_prefix_occurrence(source, remaining)
-                    prior_index = self._current_index
-                    value = self._publish(action)
-                    consumed = self._current_index - prior_index
-                    if consumed != remaining:
-                        raise ValueError(
-                            "comma partial boundary locator changed its weight"
-                        )
-                    remaining = 0
-                    continue
-                if template.outcome != "fork":
-                    raise UnresolvedCommaBranch(
-                        f"comma boundary at index {self._current_index} is a landmine"
-                    )
-                selection = provider.select_unique_unranked_child(
-                    source.state,
-                    charge_work=self.arena.charge,
-                )
-                from number_compiler.sequences.comma.future_provider import (
-                    UnrankedChildSelection,
-                )
-                from number_compiler.sequences.comma.semantic_branch import (
-                    _validate_selection_class_bindings,
-                )
-
-                if type(selection) is not UnrankedChildSelection:
-                    raise ValueError(
-                        "comma provider returned a malformed child selection"
-                    )
-                _validate_selection_class_bindings(
-                    source.state,
-                    template.ordered_children,
-                    selection,
-                    provider,
-                    charge_work=self.arena.charge,
-                )
-                if (
-                    selection.source != source.state
-                    or selection.selected_slot not in (0, 1)
-                    or selection.fork_coefficient != template.destination_a
-                ):
-                    raise ValueError("comma provider selected another macro control")
-                target_state = template.ordered_children[selection.selected_slot]
-                target = BoundaryOccurrence(
-                    target_state,
-                    source.exponent + template.exponent_delta,
-                )
-                action = self.arena._global_boundary_return(
-                    source.state,
-                    target_state,
-                    provider.artifact_sha256,
-                )
-                prior_index = self._current_index
-                value = self._publish(action, next_boundary=target)
-                consumed = self._current_index - prior_index
-                if consumed != prefix_steps + 1 or consumed > remaining:
-                    raise ValueError(
-                        "comma completed weighted return changed its extent"
-                    )
-                remaining -= consumed
+                value, remaining = self._continue_boundary_occurrence(remaining)
                 continue
             self._charge()
             self.arena.charge_bits(8 * value.bit_length() + 4 * remaining.bit_length())
@@ -608,9 +659,6 @@ class CommaTerm:
                     SOURCE20_FIRST_FORK_INDEX,
                     SOURCE20_FIRST_FORK_VALUE,
                     SOURCE20_SELECTED_CHILD_INDEX,
-                )
-                from number_compiler.sequences.comma.occurrence import (
-                    BoundaryOccurrence,
                 )
                 from number_compiler.sequences.comma.semantic_branch import (
                     bind_source20_first_child_entry,

@@ -127,7 +127,7 @@ def test_numeric_aliases_reject_before_warm_lookup_or_retirement(
         operations: tuple[Callable[[], object], ...] = (
             lambda: arena.resolve(handle),
             lambda: arena.retain(handle),
-            lambda: arena._release_lease(cast("int", alias)),
+            lambda: arena.release_lease(cast("int", alias)),
             lambda: arena.leaf(alphabet, cast("int", alias)),
             lambda: arena.point(first.tile, cast("int", alias)),
         )
@@ -274,7 +274,7 @@ def test_independent_tile_audit_detects_corrupted_content_and_ownership(
     elif corruption == "mirror":
         with arena.mirror(parent.tile):
             pass
-        arena._keys[arena._mirror_key(parent.tile.local_id)] = leaf.tile.local_id
+        arena._keys[arena.mirror_key(parent.tile.local_id)] = leaf.tile.local_id
     else:
         arena._next_tile = True
     _, invalid = audit_tiles(arena, dict(ledger.iter_containers()))

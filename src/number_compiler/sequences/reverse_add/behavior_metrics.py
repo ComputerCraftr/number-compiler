@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 def reverse_behavior_metrics(term: ReverseAddPoweredTerm) -> HashLifeBehaviorMetrics:
     """Do not start discovery or mistake refusal for a completed cutover."""
-    report = collect_ledger_metrics(term._ledger, audit_payloads=False)
+    report = collect_ledger_metrics(term.resource_ledger, audit_payloads=False)
     result = HashLifeBehaviorMetrics(
         effect_exponent=term.generation,
         logical_width_bound=term.maximum_width,

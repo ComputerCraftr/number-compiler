@@ -7,17 +7,28 @@ from typing import TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.field_image_domains import (
-    _DomainLookupKey,
-    _FieldImageDomain,
-    _InterfaceAuthority,
-    _OutputAuthority,
+    FieldImageDomain,
+    FieldImageDomainKey,
+    FieldImageInterfaceAuthority,
+    FieldImageOutputAuthority,
 )
-from number_compiler.hashlife.execution.field_images import RecursiveFieldImageArena
+from number_compiler.hashlife.execution.field_images import (
+    FieldImageID,
+    FieldImageRecord,
+    FieldImageSemanticKey,
+    ImageRequestKey,
+    RecursiveFieldImageArena,
+)
+from number_compiler.resources.field_image_audit_contracts import (
+    RecursiveFieldImageAuditSnapshot,
+)
+from number_compiler.resources.ledger import ResourceLedger
 
 
 def audit_field_image_domains(
     root: RecursiveFieldImageArena,
-    ledger: object,
+    state: RecursiveFieldImageAuditSnapshot,
+    ledger: ResourceLedger,
     containers: Mapping[int, object],
 ) -> tuple[bool, set[int], set[tuple[int, int]]]:
     """Validate role indexes, authorities, and their retained callbacks."""
@@ -25,13 +36,14 @@ def audit_field_image_domains(
     invalid: set[tuple[int, int]] = set()
     roots = tuple(root.ledger.iter_execution_roots())
     valid_root = (
-        root.ledger is ledger
-        and containers.get(root._domain_owner) is root._domains
-        and bool(root._domains)
+        state.ledger is ledger
+        and state.owner is root.owner
+        and containers.get(state.domain_owner) is state.domains
+        and bool(state.domains)
     )
     action_domains = 0
-    for key, record in root._domains.items():
-        valid = valid_root and type(key) is _DomainLookupKey
+    for key, record in state.domains.items():
+        valid = valid_root and type(key) is FieldImageDomainKey
         if valid:
             valid &= (
                 type(key.role) is str
@@ -40,9 +52,9 @@ def audit_field_image_domains(
                 and type(key.kind) is str
                 and bool(key.kind)
             )
-        if type(record) is _FieldImageDomain:
+        if type(record) is FieldImageDomain:
             action_domains += 1
-            valid &= key == _DomainLookupKey(
+            valid &= key == FieldImageDomainKey(
                 "action",
                 record.action_owner,
                 record.action_kind,
@@ -52,27 +64,27 @@ def audit_field_image_domains(
                 and callable(record.action_validate)
                 and callable(record.output_validate)
                 and callable(record.signature_for)
-                and root._domains.get(
-                    _DomainLookupKey(
+                and state.domains.get(
+                    FieldImageDomainKey(
                         "interface",
                         record.interfaces.owner,
                         record.interfaces.interface_kind,
                     )
                 )
-                == _InterfaceAuthority(
+                == FieldImageInterfaceAuthority(
                     record.interfaces,
                     record.signature_kind,
                 )
             )
-            output = root._domains.get(
-                _DomainLookupKey(
+            output = state.domains.get(
+                FieldImageDomainKey(
                     "output",
                     record.output_owner,
                     record.output_kind,
                 )
             )
-            valid &= type(output) is _OutputAuthority
-            if type(output) is _OutputAuthority:
+            valid &= type(output) is FieldImageOutputAuthority
+            if type(output) is FieldImageOutputAuthority:
                 valid &= getattr(output.validate, "__self__", None) is getattr(
                     record.output_validate, "__self__", None
                 ) and getattr(output.validate, "__func__", output.validate) is getattr(
@@ -92,10 +104,10 @@ def audit_field_image_domains(
                 and getattr(record.signature_for, "__self__", None)
                 is record.signature_authority
             )
-        elif type(record) is _InterfaceAuthority:
+        elif type(record) is FieldImageInterfaceAuthority:
             valid &= (
                 key
-                == _DomainLookupKey(
+                == FieldImageDomainKey(
                     "interface",
                     record.arena.owner,
                     record.arena.interface_kind,
@@ -104,8 +116,8 @@ def audit_field_image_domains(
                 and type(record.signature_kind) is str
                 and bool(record.signature_kind)
             )
-        elif type(record) is _OutputAuthority:
-            valid &= key == _DomainLookupKey("output", record.owner, record.kind)
+        elif type(record) is FieldImageOutputAuthority:
+            valid &= key == FieldImageDomainKey("output", record.owner, record.kind)
             valid &= callable(record.validate)
             valid &= (
                 record.authority is not None
@@ -118,14 +130,114 @@ def audit_field_image_domains(
         if valid:
             approved.update((id(key), id(record)))
         else:
-            invalid.add((root._domain_owner, id(key)))
+            invalid.add((state.domain_owner, id(key)))
     valid_root &= action_domains > 0 and not invalid
     if valid_root:
-        approved.add(id(root._domains))
+        approved.add(id(state.domains))
     return valid_root, approved, invalid
 
 
-__all__ = ["audit_field_image_domains"]
+def audit_recursive_field_images(
+    root: RecursiveFieldImageArena,
+    state: RecursiveFieldImageAuditSnapshot,
+    ledger: ResourceLedger,
+    containers: Mapping[int, object],
+) -> tuple[bool, set[int], set[tuple[int, int]]]:
+    """Validate retained recursive images and both directions of their indexes."""
+    stores = (
+        (state.domain_owner, state.domains),
+        (state.node_owner, state.nodes),
+        (state.key_owner, state.keys),
+        (state.binding_owner, state.bindings),
+    )
+    valid_root = (
+        state.ledger is ledger
+        and state.owner is root.owner
+        and all(containers.get(owner) is store for owner, store in stores)
+    )
+    domains_valid, approved, invalid = audit_field_image_domains(
+        root, state, ledger, containers
+    )
+    valid_root &= domains_valid
+    valid_root &= type(state.next_id) is int and state.next_id >= 0
+    for index, record in state.nodes.items():
+        valid = valid_root and type(index) is int and type(record) is FieldImageRecord
+        try:
+            record.__post_init__()
+            valid &= (
+                root.resolve(FieldImageID(state.owner, state.image_kind, index))
+                is record
+            )
+            root.resolve_interface(record.interface)
+            geometry = root.geometries.resolve(record.geometry)
+            valid &= geometry.spatial_level == record.level
+            root.validate_output(record.output)
+            if record.left is not None and record.right is not None:
+                valid &= record.left.local_id < index
+                valid &= record.right.local_id < index
+                if valid:
+                    left_record = root.resolve(record.left)
+                    right_record = root.resolve(record.right)
+                    valid &= left_record.level < record.level
+                    valid &= right_record.level < record.level
+            else:
+                valid &= record.left is record.right is None
+            semantic = FieldImageSemanticKey(
+                record.level,
+                record.left,
+                record.right,
+                record.interface,
+                record.output,
+                record.geometry,
+                record.summary,
+            )
+            valid &= state.keys.get(semantic) == index
+        except (TypeError, ValueError, IndexError, AttributeError):
+            valid = False
+        if valid:
+            approved.add(id(record))
+        else:
+            invalid.add((state.node_owner, id(record)))
+    for request, reference in state.bindings.items():
+        valid = type(request) is ImageRequestKey
+        try:
+            root.validate_request(request)
+            record = root.resolve(reference)
+            valid &= (
+                root.resolve_interface(record.interface).signature == request.signature
+            )
+        except (TypeError, ValueError, IndexError, AttributeError):
+            valid = False
+        if valid:
+            approved.add(id(request))
+        else:
+            invalid.add((state.binding_owner, id(request)))
+    for semantic, index in state.keys.items():
+        valid = type(semantic) is FieldImageSemanticKey and type(index) is int
+        valid &= index in state.nodes
+        if valid:
+            record = state.nodes[index]
+            expected = FieldImageSemanticKey(
+                record.level,
+                record.left,
+                record.right,
+                record.interface,
+                record.output,
+                record.geometry,
+                record.summary,
+            )
+            valid &= semantic == expected
+        if valid:
+            approved.add(id(semantic))
+        else:
+            invalid.add((state.key_owner, id(semantic)))
+    image_owners = {state.node_owner, state.key_owner, state.binding_owner}
+    if valid_root and not any(owner in image_owners for owner, _ in invalid):
+        approved.update(id(store) for _, store in stores)
+    return valid_root, approved, invalid
+
+
+__all__ = ["audit_field_image_domains", "audit_recursive_field_images"]
 
 
 _Record = TypeVar("_Record")

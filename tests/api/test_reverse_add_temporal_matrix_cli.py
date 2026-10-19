@@ -52,7 +52,7 @@ def test_modular_reverse_matrix_never_materializes_the_endpoint(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", _no_render)
+    monkeypatch.setattr(cli_render, "render_value", _no_render)
     monkeypatch.setattr(ReverseAddPoweredTerm, "temporal_matrix", _no_render)
     assert (
         cli.main(

@@ -9,7 +9,7 @@ from number_compiler.arithmetic.carry.tripling_transfer import (
 )
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
-    _carry_h5,
+    carry_h5,
 )
 from number_compiler.sequences.power_numbers.three_power_inward_phase_bank import (
     _certified_temporal_signal_periods,
@@ -64,10 +64,10 @@ def test_real_source_digits_carries_and_h5_exact_small_levels() -> None:
                 carry = (3 * digit + carry) // base
                 assert port.carry_out == carry
                 assert port.transfer == digit_transfer(base, digit)
-                assert (port.low_carry_h5, port.high_carry_h5) == _carry_h5((carry,), j)
+                assert (port.low_carry_h5, port.high_carry_h5) == carry_h5((carry,), j)
             assert bank.transfer_between(0, depth) == transfer
             assert bank.exact_ingress_at(depth) == carry
-            assert bank.carry_h5 == _carry_h5(bank.carry_vector, 0)
+            assert bank.carry_h5 == carry_h5(bank.carry_vector, 0)
 
 
 def test_f4_f5_inward_temporal_separators() -> None:
@@ -156,7 +156,7 @@ def test_carry_and_walsh_equal_does_not_determine_signed_fold() -> None:
             carry = (3 * bit + carry) // 2
             carries.append(carry)
         harmonic = tuple(
-            (p.phi2, p.phi3_a, p.phi3_b) for p in _carry_h5(tuple(carries), 0)
+            (p.phi2, p.phi3_a, p.phi3_b) for p in carry_h5(tuple(carries), 0)
         )
         signature = (action, carry, harmonic)
         prior = signatures.get(signature)
@@ -302,3 +302,35 @@ def test_harmonic_snapshot_preflights_children_and_checks_flat_node_count(
         snapshot.retained_bytes,
     )
     assert not authority.harmonic_snapshot_matches(payload, inconsistent_count)
+
+
+def test_harmonic_snapshot_does_not_alias_mutated_enum_payload() -> None:
+    from enum import Enum
+
+    from number_compiler.sequences.power_numbers._harmonic_authority import (
+        harmonic_snapshot_matches,
+        snapshot_harmonic_payload,
+    )
+
+    class Clock(Enum):
+        DECIMAL = (100, 40)
+
+    payload = (Clock.DECIMAL,)
+    snapshot = snapshot_harmonic_payload(payload)
+    assert harmonic_snapshot_matches(payload, snapshot)
+    object.__setattr__(Clock.DECIMAL, "_value_", (1000, 400))
+    assert not harmonic_snapshot_matches(payload, snapshot)
+
+
+def test_harmonic_snapshot_rejects_mutable_enum_values() -> None:
+    from enum import Enum
+
+    from number_compiler.sequences.power_numbers._harmonic_authority import (
+        snapshot_harmonic_payload,
+    )
+
+    class MutableClock(Enum):
+        DECIMAL = [100, 40]
+
+    with pytest.raises(TypeError, match="unsupported value"):
+        snapshot_harmonic_payload((MutableClock.DECIMAL,))

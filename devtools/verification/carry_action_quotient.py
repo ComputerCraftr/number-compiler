@@ -700,9 +700,9 @@ def analyze_carry_action_quotient(
     rows: list[tuple[int, ...]] = []
     from number_compiler.arithmetic.carry.event_memory import pair_step
 
-    for __1 in range(horizon):
+    for _ in range(horizon):
         rows.append(carry_field(pair, base=base))
-        pair, __1 = pair_step(pair, base)
+        pair, _ = pair_step(pair, base)
     live = LiveCarryItinerary.seed(rows, base=base)
     arena = CarryActionQuotientArena()
     counts: list[int] = []

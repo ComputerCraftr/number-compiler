@@ -6,6 +6,7 @@ import pytest
 
 from number_compiler.api import cli
 from number_compiler.api.cli_requests import parse_request
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add import boundary_window
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_workspace import (
@@ -132,28 +133,29 @@ def test_boundary_observer_rejects_foreign_request_in_same_ledger(
     seed: int, steps: int
 ) -> None:
     term = ReverseAddPoweredTerm(12345, 1)
-    workspace = ReverseSourceImageWorkspace(term._ledger, seed, steps)
+    workspace = ReverseSourceImageWorkspace(term.resource_ledger, seed, steps)
     with pytest.raises(ValueError, match="another request"):
         boundary_window.ReverseBoundaryWindowObserver(
-            12345, 1, term._ledger, source_workspace=workspace
+            12345, 1, term.resource_ledger, source_workspace=workspace
         )
 
 
 def test_boundary_warm_result_rejects_disposed_source_workspace() -> None:
-    term = ReverseAddPoweredTerm(12345, 1)
-    assert term.observe_boundary_macro().status == "available"
-    workspace = term._workspace
-    assert workspace is not None
+    ledger = ResourceLedger()
+    workspace = ReverseSourceImageWorkspace(ledger, 12345, 1)
+    observer = boundary_window.ReverseBoundaryWindowObserver(
+        12345, 1, ledger, source_workspace=workspace
+    )
     workspace.dispose()
     with pytest.raises(ValueError, match="disposed reverse source workspace"):
-        term.observe_boundary_macro()
+        observer.observe(seed=12345, generation=1, base=10)
 
 
 def test_value_then_boundary_decodes_original_source_once() -> None:
     term = ReverseAddPoweredTerm(12345, 1)
     assert term.digits() == (6, 6, 6, 6, 6)
     assert term.observe_boundary_macro().prefix == "66"
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["reverse_source_original_digit_decodes"] == 5
     assert counters.get("reverse_boundary_window_source_digit_decodes", 0) == 0
     assert counters.get("reverse_boundary_window_source_inner_scan_reads", 0) == 0

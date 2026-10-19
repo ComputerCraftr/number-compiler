@@ -132,13 +132,18 @@ def test_projection_exposes_no_stage_zero_replay_adapter() -> None:
 def test_new_digit_uses_one_provider_observation_without_stage_replay() -> None:
     term = PoweredCollatzTerm(140137, 11)
     assert collatz_radix_digit(term, 3, 5) == 2
-    evaluations = term._ledger.counters["radix_provider_digit_evaluations"]
+    evaluations = term.resource_ledger.counters["radix_provider_digit_evaluations"]
     assert collatz_radix_digit(term, 3, 6) == 0
-    assert term._ledger.counters["radix_provider_digit_evaluations"] == evaluations + 1
-    assert term._ledger.counters.get("radix_microblock_stage_evaluations", 0) == 0
-    assert term._ledger.counters.get("radix_microblock_source_fills", 0) == 0
-    assert term._ledger.counters["radix_provider_digit_requests"] == 2
-    assert term._ledger.counters.get("radix_provider_digit_early_hits", 0) == 0
+    assert (
+        term.resource_ledger.counters["radix_provider_digit_evaluations"]
+        == evaluations + 1
+    )
+    assert (
+        term.resource_ledger.counters.get("radix_microblock_stage_evaluations", 0) == 0
+    )
+    assert term.resource_ledger.counters.get("radix_microblock_source_fills", 0) == 0
+    assert term.resource_ledger.counters["radix_provider_digit_requests"] == 2
+    assert term.resource_ledger.counters.get("radix_provider_digit_early_hits", 0) == 0
 
 
 @pytest.mark.parametrize("radix", (3, 6, 10, 12))

@@ -10,8 +10,8 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageID,
     DyadicReturnSourceID,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageBinding
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageBinding
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointRunAction,
 )
@@ -161,7 +161,7 @@ def audit_image_binding(
         summary.transfer.lower,
         summary.odd_steps,
     )
-    valid_port = _typed_equal(ordinary, expected_transfer_port)
+    valid_port = typed_payload_equal(ordinary, expected_transfer_port)
     if cycle is not None:
         expected_cycle_port = (
             root.law.descriptor,
@@ -172,7 +172,7 @@ def audit_image_binding(
             cycle.remainder,
             cycle.terminal_phase,
         )
-        valid_port = valid_port or _typed_equal(ordinary, expected_cycle_port)
+        valid_port = valid_port or typed_payload_equal(ordinary, expected_cycle_port)
     if not valid_port:
         raise ValueError("Collatz image transfer/cycle port is inconsistent")
 
@@ -256,12 +256,14 @@ def audit_image_binding(
             or type(payload[0]) is not int
             or payload[0] < 0
             or type(payload[1]) is not tuple
-            or not _typed_equal(payload, root._first_boundary_macro_snapshot)
+            or not typed_payload_equal(payload, root._first_boundary_macro_snapshot)
         ):
             raise ValueError("Collatz boundary macro is not producer-issued")
         start_tick = payload[0]
         macro = root._retained_boundary_macro()
-        if macro is None or not _typed_equal(macro.structural_payload(), payload[1]):
+        if macro is None or not typed_payload_equal(
+            macro.structural_payload(), payload[1]
+        ):
             raise ValueError("Collatz boundary macro occurrence was altered")
         if start_tick + macro.physical_ticks > root.steps:
             raise ValueError("Collatz boundary macro exceeds its source action")
@@ -282,8 +284,8 @@ def audit_image_binding(
             type(image_handle) is not DyadicReturnImageID
             or type(modulus) is not int
             or modulus != root._innovation_modulus
-            or not _typed_equal(image_handle, payload)
-            or not _typed_equal(image_handle, root.root_payload)
+            or not typed_payload_equal(image_handle, payload)
+            or not typed_payload_equal(image_handle, root.root_payload)
         ):
             raise ValueError("Collatz innovation port has another root image handle")
         root.validate_payload(image_handle)
@@ -302,7 +304,7 @@ def audit_image_binding(
         if (
             type(observation) is not InnovationTapeObservation
             or not observation.producer_issued
-            or not _typed_equal(
+            or not typed_payload_equal(
                 observation.structural_payload(),
                 root._innovation_observation_snapshot,
             )

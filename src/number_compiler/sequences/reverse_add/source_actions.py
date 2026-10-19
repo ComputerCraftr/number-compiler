@@ -12,6 +12,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.stores import LedgerList
 
 
@@ -21,7 +22,7 @@ class ReverseSource(ArenaHandle):
 
 
 @dataclass(frozen=True, slots=True)
-class _ReverseSourceRecord:
+class ReverseSourceRecord:
     exact: ExactSource
 
 
@@ -36,6 +37,27 @@ class ReverseActionNode:
     before: ReverseActionID | None
     after: ReverseActionID | None
     depth: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseActionArenaAuditSnapshot:
+    """Fresh read-only owner/store bindings for reverse workspace audits."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    closed: bool
+    kind: str
+    source_kind: str
+    identity: ReverseActionID
+    primitive: ReverseActionID
+    nodes: OwnedMemoAuditSnapshot[int, ReverseActionNode]
+    normal: OwnedMemoAuditSnapshot[int, ReverseActionID]
+    sources: OwnedMemoAuditSnapshot[int, ReverseSourceRecord]
+    workspace: object
+    workspace_owner: int
+    source_authority: (
+        tuple[ReverseSourceRecord, ExactSource, tuple[int, ...], int] | None
+    )
 
 
 class ReverseActionArena:
@@ -60,7 +82,7 @@ class ReverseActionArena:
             ledger.register(prefix + "-normal", "reverse_source_action_normal_form"),
             composition_entries=True,
         )
-        self._sources = OwnedMemo[int, _ReverseSourceRecord](
+        self._sources = OwnedMemo[int, ReverseSourceRecord](
             ledger,
             ledger.register(prefix + "-sources", "reverse_original_source"),
             nodes_per_entry=1,
@@ -78,7 +100,7 @@ class ReverseActionArena:
             payloads=lambda: self._workspace,
         )
         self._source_authority: (
-            tuple[_ReverseSourceRecord, ExactSource, tuple[int, ...], int] | None
+            tuple[ReverseSourceRecord, ExactSource, tuple[int, ...], int] | None
         ) = None
         self._closed = False
         try:
@@ -97,6 +119,24 @@ class ReverseActionArena:
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed reverse action arena")
+
+    def audit_snapshot(self) -> ReverseActionArenaAuditSnapshot:
+        """Expose fresh read-only bindings for independent resource audits."""
+        return ReverseActionArenaAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._closed,
+            self._KIND,
+            self._SOURCE_KIND,
+            self.identity,
+            self.primitive,
+            self._nodes.audit_snapshot(),
+            self._normal.audit_snapshot(),
+            self._sources.audit_snapshot(),
+            self._workspace,
+            self._workspace_owner,
+            self._source_authority,
+        )
 
     def _append(self, node: ReverseActionNode) -> ReverseActionID:
         local_id = len(self._nodes)
@@ -163,7 +203,7 @@ class ReverseActionArena:
             _reverse_add_keys.REVERSE_SOURCE_ORIGINAL_DIGIT_DECODES, len(digits)
         )
         exact = ExactSource(tuple(digits), base, orbit="reverse-add")
-        record = _ReverseSourceRecord(exact)
+        record = ReverseSourceRecord(exact)
         handle = ReverseSource(self.owner, self._SOURCE_KIND, 0)
         self._sources[0] = record
         self._source_authority = record, exact, exact.digits, exact.base

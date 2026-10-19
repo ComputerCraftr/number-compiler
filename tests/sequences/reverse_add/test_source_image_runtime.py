@@ -54,7 +54,7 @@ def test_reverse_runtime_image_matches_oracle_and_replays_without_republication(
     expected = literal_reverse_add(seed, steps)
     expected_low = expected % term.base
     assert term.digit(0) == expected_low
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     metrics = term.metrics()
     behavior = term.behavior_metrics()
     assert behavior.temporal_quotient_family == "reverse-add-source-cylinder"
@@ -64,9 +64,9 @@ def test_reverse_runtime_image_matches_oracle_and_replays_without_republication(
     assert metrics.retained_unbounded_future_integers == 0
     expected_digits = tuple(map(int, reversed(str(expected))))
     assert term.digits() == expected_digits
-    replay_counters = dict(term._ledger.counters)
+    replay_counters = dict(term.resource_ledger.counters)
     assert term.digits() == expected_digits
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
     assert_source_image_replay_stable(replay_counters, after)
 
 
@@ -74,18 +74,18 @@ def test_reverse_runtime_image_matches_oracle_and_replays_without_republication(
 @pytest.mark.accounting
 def test_metrics_are_snapshot_only_for_a_not_yet_constructed_reverse_image() -> None:
     term = ReverseAddPoweredTerm(196, 20)
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
-    before = term._ledger.snapshot()
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
+    before = term.resource_ledger.snapshot()
     report = term.behavior_metrics()
-    after = term._ledger.snapshot()
+    after = term.resource_ledger.snapshot()
     assert before == after
     assert report.resource_audit_complete == 1
     assert report.resource_accounting_mismatch == 0
     assert term._workspace is None
 
-    owner = term._ledger.register("metrics-snapshot-invalidation", "query_memo")
-    store: LedgerDict[str, int] = term._ledger.make_dict(owner)
-    term._ledger.reserve(owner, entries=1)
+    owner = term.resource_ledger.register("metrics-snapshot-invalidation", "query_memo")
+    store: LedgerDict[str, int] = term.resource_ledger.make_dict(owner)
+    term.resource_ledger.reserve(owner, entries=1)
     store["probe"] = 1
     changed = term.behavior_metrics()
     assert changed.resource_audit_complete == 0

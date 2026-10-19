@@ -19,6 +19,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     QuotientRecord,
 )
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection

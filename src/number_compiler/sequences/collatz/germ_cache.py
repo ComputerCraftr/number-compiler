@@ -101,6 +101,11 @@ class CollatzGermTransitionCache:
     valuations and meeting later in ``CollatzEventArena``.
     """
 
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Read the resource owner, including for closed-state inspection."""
+        return self._ledger
+
     __slots__ = (
         "__weakref__",
         "_allow_power",

@@ -153,3 +153,21 @@ def test_stream_budget_failure_cleans_up_before_any_digit() -> None:
     with pytest.raises(ValueError, match="stream work budget"):
         next(stream)
     assert workspace == [(0, 0)]
+
+
+def test_conditional_endpoint_rows_preserve_every_lower_inlet() -> None:
+    assert radix.compose_radix_endpoint_rows(
+        (3, 6, 0), (8, 2, 5), lower_modulus=3, inlet_residue=0
+    ) == (2, 5, 8)
+    with pytest.raises(ArithmeticError, match="lower inlet"):
+        radix.compose_radix_endpoint_rows(
+            (3, 7, 0), (8, 2, 5), lower_modulus=3, inlet_residue=0
+        )
+    with pytest.raises(ArithmeticError, match="outside its radix"):
+        radix.compose_radix_endpoint_rows(
+            (3, 9, 0), (8, 2, 5), lower_modulus=3, inlet_residue=0
+        )
+    with pytest.raises(ValueError, match="row domains"):
+        radix.compose_radix_endpoint_rows(
+            (0, 3), (8, 2, 5), lower_modulus=3, inlet_residue=0
+        )

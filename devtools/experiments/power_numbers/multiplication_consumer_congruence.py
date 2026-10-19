@@ -316,7 +316,9 @@ def _first_conflict(
         conflicts += 1
         if witness is None:
             multiplier = next(
-                i for i, pair in enumerate(zip(previous, row)) if pair[0] != pair[1]
+                i
+                for i, pair in enumerate(zip(previous, row, strict=True))
+                if pair[0] != pair[1]
             )
             witness = MultiplicationRefinementWitness(
                 previous_source,

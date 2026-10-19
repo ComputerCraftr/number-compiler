@@ -18,7 +18,18 @@ from collections.abc import (
     ValuesView,
 )
 from operator import index as as_index
-from typing import TYPE_CHECKING, Never, Self, SupportsIndex, TypeVar, cast, overload
+from sys import getsizeof
+from typing import (
+    TYPE_CHECKING,
+    Generic,
+    Never,
+    Protocol,
+    Self,
+    SupportsIndex,
+    TypeVar,
+    cast,
+    overload,
+)
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
@@ -26,57 +37,167 @@ if TYPE_CHECKING:
 
 K = TypeVar("K")
 V = TypeVar("V")
+V_co = TypeVar("V_co", covariant=True)
 T = TypeVar("T")
+NodeT = TypeVar("NodeT")
+NodeKeyT = TypeVar("NodeKeyT")
+UpdateK = TypeVar("UpdateK")
+UpdateV = TypeVar("UpdateV")
+UpdateV_contra = TypeVar("UpdateV_contra", contravariant=True)
 
 
-def _update_values(args: tuple[object, ...], kwargs: Mapping[str, V]) -> dict[K, V]:
-    """Normalize the standard mapping/iterable update input before mutation."""
-    if len(args) > 1:
-        raise TypeError("update accepts at most one positional mapping")
-    values: dict[K, V] = {}
-    if args:
-        source = args[0]
-        if isinstance(source, (Mapping, Iterable)):
-            values.update(source)
-        else:
-            raise TypeError("update requires a mapping or key-value pairs")
-    for name, value in kwargs.items():
-        values[cast(K, name)] = value
-    return values
+class _SupportsKeysAndGetItem(Protocol[K, V_co]):
+    """Mapping-like input accepted by the standard mapping update contract."""
+
+    def keys(self) -> Iterable[K]: ...
+
+    def __getitem__(self, key: K, /) -> V_co: ...
 
 
-class _TrackedDict(dict[K, V]):
+class _MappingUpdateTarget(Protocol[UpdateK, UpdateV_contra]):
+    """Typed mutation seam shared by the two tracked-map owners."""
+
+    def apply_update(self, values: Mapping[UpdateK, UpdateV_contra]) -> None: ...
+
+
+class TrackedDict(dict[K, V]):
     """Backing map that invalidates audits even through adversarial test access."""
 
     def __init__(self, ledger: ResourceLedger) -> None:
         super().__init__()
         self._ledger = ledger
 
+    def belongs_to(self, ledger: ResourceLedger) -> bool:
+        """Check ledger identity without exposing the mutation hook owner."""
+        return self._ledger is ledger
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Return the exact ledger that owns this tracked store."""
+        return self._ledger
+
     def __setitem__(self, key: K, value: V) -> None:
+        existed = key in self
+        previous: dict[K, V] = {}
+        if existed:
+            previous[key] = dict[K, V].__getitem__(self, key)
         super().__setitem__(key, value)
-        self._ledger.note_store_mutation()
+        try:
+            self._ledger.note_store_mutation()
+        except BaseException:
+            if existed:
+                dict[K, V].__setitem__(self, key, previous[key])
+            else:
+                dict[K, V].__delitem__(self, key)
+            try:
+                self._ledger.note_store_mutation()
+            except BaseException:
+                pass
+            raise
 
     def __delitem__(self, key: K) -> None:
+        previous = dict[K, V].__getitem__(self, key)
         super().__delitem__(key)
-        self._ledger.note_store_mutation()
+        try:
+            self._ledger.note_store_mutation()
+        except BaseException:
+            dict[K, V].__setitem__(self, key, previous)
+            try:
+                self._ledger.note_store_mutation()
+            except BaseException:
+                pass
+            raise
 
     def clear(self) -> None:
         if self:
+            previous = dict[K, V].copy(self)
             super().clear()
-            self._ledger.note_store_mutation()
+            try:
+                self._ledger.note_store_mutation()
+            except BaseException:
+                dict[K, V].update(self, previous)
+                try:
+                    self._ledger.note_store_mutation()
+                except BaseException:
+                    pass
+                raise
 
     def setdefault(self, key: K, default: V | None = None) -> V:
         if key in self:
             return self[key]
         result = super().setdefault(key, cast(V, default))
-        self._ledger.note_store_mutation()
+        try:
+            self._ledger.note_store_mutation()
+        except BaseException:
+            dict[K, V].__delitem__(self, key)
+            try:
+                self._ledger.note_store_mutation()
+            except BaseException:
+                pass
+            raise
         return result
 
-    def update(self, *args: object, **kwargs: V) -> None:
-        values: dict[K, V] = _update_values(args, kwargs)
+    @overload
+    def update(self, other: _SupportsKeysAndGetItem[K, V], /) -> None: ...
+
+    @overload
+    def update(
+        self,
+        other: Iterable[tuple[K, V]],
+        /,
+    ) -> None: ...
+
+    @overload
+    def update(
+        self: TrackedDict[str, V],
+        other: _SupportsKeysAndGetItem[str, V],
+        /,
+        **kwargs: V,
+    ) -> None: ...
+
+    @overload
+    def update(
+        self: TrackedDict[str, V],
+        other: Iterable[tuple[str, V]],
+        /,
+        **kwargs: V,
+    ) -> None: ...
+
+    @overload
+    def update(self: TrackedDict[str, V], /, **kwargs: V) -> None: ...
+
+    def update(
+        self: _MappingUpdateTarget[UpdateK, UpdateV],
+        other: _SupportsKeysAndGetItem[UpdateK, UpdateV]
+        | Iterable[tuple[UpdateK, UpdateV]] = (),
+        /,
+        **kwargs: UpdateV,
+    ) -> None:
+        self.apply_update(dict[UpdateK, UpdateV](other, **kwargs))
+
+    def apply_update(self, values: Mapping[K, V]) -> None:
         if values:
+            previous: dict[K, V] = {}
+            new_keys: set[K] = set()
+            for key in values:
+                if key in self:
+                    previous[key] = dict[K, V].__getitem__(self, key)
+                else:
+                    new_keys.add(key)
             super().update(values)
-            self._ledger.note_store_mutation()
+            try:
+                self._ledger.note_store_mutation()
+            except BaseException:
+                for key in values:
+                    if key in new_keys:
+                        dict[K, V].__delitem__(self, key)
+                    else:
+                        dict[K, V].__setitem__(self, key, previous[key])
+                try:
+                    self._ledger.note_store_mutation()
+                except BaseException:
+                    pass
+                raise
 
 
 class _TrackedList(list[T]):
@@ -92,9 +213,44 @@ class _TrackedList(list[T]):
         self._mutation_version += 1
         self._ledger.note_store_mutation()
 
+    @property
+    def mutation_stamp(self) -> tuple[object, int]:
+        """Expose mutation authority without leaking its protected fields."""
+        return self._mutation_identity, self._mutation_version
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Return the exact ledger that owns this tracked store."""
+        return self._ledger
+
+    def __iter__(self) -> Iterator[T]:
+        return list[T].__iter__(self)
+
     def append(self, value: T) -> None:
-        super().append(value)
-        self._changed()
+        original_length = len(self)
+        appended = False
+        try:
+            super().append(value)
+            appended = True
+            self._changed()
+        except BaseException:
+            if (
+                appended
+                and len(self) > original_length
+                and self[original_length] is value
+            ):
+                # _changed may fail after the list itself has accepted the
+                # value. Roll back only this exact append slot; a concurrent
+                # or otherwise legitimate suffix must not be discarded.
+                list[T].__delitem__(self, original_length)
+                self._mutation_version += 1
+                try:
+                    self._ledger.note_store_mutation()
+                except BaseException:
+                    # Keep the publication error authoritative. The mutation
+                    # stamp still changed, so local cached observations expire.
+                    pass
+            raise
 
     def extend(self, values: Iterable[T]) -> None:
         pending = tuple(values)
@@ -116,8 +272,10 @@ class _TrackedList(list[T]):
         self._changed()
 
     def __delitem__(self, key: SupportsIndex | slice) -> None:
-        super().__delitem__(key)
-        self._changed()
+        if isinstance(key, slice):
+            self.__setitem__(key, ())
+        else:
+            self.pop(key)
 
     def clear(self) -> None:
         if self:
@@ -192,7 +350,7 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
     ) -> None:
         if getattr(self, "_sealed", False):
             raise TypeError("retained stores cannot be reinitialized")
-        self._data: dict[K, V] = _TrackedDict(ledger)
+        self._data: dict[K, V] = TrackedDict(ledger)
         self.ledger, self.owner, self.nodes_per_entry = ledger, owner, nodes_per_entry
         self.write_once = write_once
         self._sealed = True
@@ -223,13 +381,96 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
     def values(self) -> ValuesView[V]:
         return self._data.values()
 
+    @property
+    def sealed(self) -> bool:
+        """Expose immutable initialization state to read-only auditors."""
+        return self._sealed
+
+    @property
+    def backing_store(self) -> Mapping[K, V]:
+        """Expose the exact backing identity through a read-only mapping view."""
+        return self._data
+
+    @property
+    def backing_bytes(self) -> int:
+        """Return the backing map's measured capacity from its owning wrapper."""
+        from sys import getsizeof
+
+        return getsizeof(self._data)
+
+    def rollback_failed_write(
+        self, key: K, attempted_value: V, restored_value: V
+    ) -> None:
+        """Restore one exact value after a mutation hook failed post-write.
+
+        This is reserved for transaction cleanup. It does not change ledger
+        reservations; the transaction owner remains responsible for those.
+        """
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
+        self._check(len(self))
+        missing = object()
+        current: object = self._data.get(key, missing)
+        if current is missing:
+            raise RuntimeError("failed-write rollback found no store value")
+        if current is restored_value:
+            return
+        if current is not attempted_value:
+            raise RuntimeError("failed-write rollback found another store value")
+        dict[K, V].__setitem__(self._data, key, restored_value)
+        try:
+            self.ledger.note_store_mutation()
+        except BaseException:
+            # Preserve the publication failure while the backing store is
+            # already restored; the ledger mutation generation is monotone.
+            pass
+
+    def rollback_inserted_value(self, key: K, expected_value: V) -> bool:
+        """Remove one exact partial insertion without releasing its reservation."""
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
+        self._check(len(self))
+        return self._remove_exact_value(key, expected_value)
+
+    def restore_deleted_value(self, key: K, value: V) -> None:
+        """Restore one removed value after a transaction's mutation hook fails."""
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
+        if self.write_once:
+            raise TypeError("write-once mappings cannot restore a deleted value")
+        self._check(len(self) + 1)
+        if key in self._data:
+            raise RuntimeError("store rollback found a replacement value")
+        dict[K, V].__setitem__(self._data, key, value)
+        try:
+            self.ledger.note_store_mutation()
+        except BaseException:
+            # The owner is restoring state after another mutation failure. The
+            # ledger generation has already been invalidated by that attempt.
+            pass
+
+    def _remove_exact_value(self, key: K, expected_value: V) -> bool:
+        """Remove exactly one expected object while preserving its reservation."""
+        sentinel = object()
+        current: object = self._data.get(key, sentinel)
+        if current is sentinel:
+            return False
+        if current is not expected_value:
+            raise RuntimeError("store rollback found another object")
+        dict[K, V].__delitem__(self._data, key)
+        try:
+            self.ledger.note_store_mutation()
+        except BaseException:
+            pass
+        return True
+
     def __setitem__(self, key: K, value: V) -> None:
         if self.write_once and key in self._data:
             raise TypeError("canonical mapping entries are write-once")
         self._check(len(self) + int(key not in self))
         self._data[key] = value
 
-    def _rollback_unpublished(self, key: K, expected: V) -> bool:
+    def rollback_unpublished(self, key: K, expected: V) -> bool:
         """Remove one exact object inserted by a failed publication transaction.
 
         Normal write-once mutation rules remain unchanged. The caller must
@@ -242,13 +483,9 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
             raise RuntimeError("retained stores require their ledger factory")
         if not self.write_once:
             raise TypeError("unpublished rollback requires a write-once mapping")
-        try:
-            current = self._data[key]
-        except KeyError:
+        removed = self._remove_exact_value(key, expected)
+        if not removed:
             return False
-        if current is not expected:
-            raise RuntimeError("unpublished rollback found a different object")
-        del self._data[key]
         self.ledger.release(self.owner, entries=1, nodes=self.nodes_per_entry)
         return True
 
@@ -264,14 +501,51 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         self._check(len(self))
         self._data.clear()
 
-    def update(self, *args: object, **kwargs: V) -> None:
-        values: dict[K, V] = _update_values(args, kwargs)
+    @overload
+    def update(self, other: _SupportsKeysAndGetItem[K, V], /) -> None: ...
+
+    @overload
+    def update(
+        self,
+        other: Iterable[tuple[K, V]],
+        /,
+    ) -> None: ...
+
+    @overload
+    def update(
+        self: LedgerDict[str, V],
+        other: _SupportsKeysAndGetItem[str, V],
+        /,
+        **kwargs: V,
+    ) -> None: ...
+
+    @overload
+    def update(
+        self: LedgerDict[str, V],
+        other: Iterable[tuple[str, V]],
+        /,
+        **kwargs: V,
+    ) -> None: ...
+
+    @overload
+    def update(self: LedgerDict[str, V], /, **kwargs: V) -> None: ...
+
+    def update(
+        self: _MappingUpdateTarget[UpdateK, UpdateV],
+        other: _SupportsKeysAndGetItem[UpdateK, UpdateV]
+        | Iterable[tuple[UpdateK, UpdateV]] = (),
+        /,
+        **kwargs: UpdateV,
+    ) -> None:
+        self.apply_update(dict[UpdateK, UpdateV](other, **kwargs))
+
+    def apply_update(self, values: Mapping[K, V]) -> None:
         if self.write_once and any(key in self._data for key in values):
             raise TypeError("canonical mapping entries are write-once")
         self._check(len(self) + sum(key not in self for key in values))
         self._data.update(values)
 
-    def __ior__(self, other: object) -> LedgerDict[K, V]:
+    def __ior__(self, other: Mapping[K, V] | Iterable[tuple[K, V]]) -> LedgerDict[K, V]:
         self.update(other)
         return self
 
@@ -319,8 +593,13 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
                 "canonical arena identities are append-only and cannot be recycled"
             )
 
-    def _rollback_unpublished(self, size: int) -> None:
-        """Remove a journaled unpublished suffix without recycling a live ID."""
+    def rollback_unpublished(self, size: int) -> None:
+        """Remove a journaled unpublished suffix without recycling a live ID.
+
+        This checked transaction operation is for an owner that reserved and
+        journaled the suffix before publication. It does not authorize reuse of
+        any ID whose value escaped to a consumer.
+        """
         if type(size) is not int or not 0 <= size <= len(self._data):
             raise ValueError("unpublished rollback requires a valid prior size")
         if size < len(self._data):
@@ -328,6 +607,11 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
 
     def __len__(self) -> int:
         return len(self._data)
+
+    @property
+    def backing_size_bytes(self) -> int:
+        """Report the exact backing-list allocation without exposing it."""
+        return getsizeof(self._data)
 
     def __iter__(self) -> Iterator[T]:
         # A native list_iterator exposes its backing list through __reduce__.
@@ -347,6 +631,13 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         return tuple(self._data)
 
     @property
+    def backing_bytes(self) -> int:
+        """Return measured list capacity without exposing the backing list."""
+        from sys import getsizeof
+
+        return getsizeof(self._data)
+
+    @property
     def mutation_stamp(self) -> tuple[object, int]:
         """Opaque backing authority and revision, without exposing its values.
 
@@ -354,7 +645,7 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         as the ledger-wide audit revision. Unrelated stores do not invalidate
         a consumer's checked prefix of this sequence.
         """
-        return self._data._mutation_identity, self._data._mutation_version
+        return self._data.mutation_stamp
 
     @overload
     def __getitem__(self, key: SupportsIndex) -> T: ...
@@ -363,8 +654,14 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
     def __getitem__(self, key: SupportsIndex | slice) -> T | list[T]:
         return self._data[key]
 
+    def _equality_backing(self) -> object:
+        """Borrow the list backing through an element-type-independent view."""
+        return self._data
+
     def __eq__(self, other: object) -> bool:
-        return self._data == (other._data if isinstance(other, LedgerList) else other)
+        return self._data == (
+            other._equality_backing() if isinstance(other, LedgerList) else other
+        )
 
     def append(self, value: T) -> None:
         self._check(len(self) + 1)
@@ -394,7 +691,7 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         if isinstance(key, slice):
             if not isinstance(value, Iterable):
                 raise TypeError("slice assignment requires an iterable")
-            pending = tuple(value)
+            pending = tuple(cast(Iterable[T], value))
             self._check(len(self) - len(self[key]) + len(pending))
             self._data[key] = pending
         else:
@@ -467,25 +764,41 @@ def reserve_indexed_id(
     return next_id, next_id + 1
 
 
-def register_dense_index(
-    ledger: ResourceLedger,
-    node_owner: int,
-    key_owner: int,
-    nodes: MutableSequence[T],
-    keys: MutableMapping[K, int],
-) -> None:
-    """Register the payload roots of an existing dense node/interner pair."""
-    ledger.register_container(
-        node_owner, nodes, node_count=lambda: len(nodes), payloads=lambda: nodes
-    )
-    ledger.register_container(key_owner, keys, payloads=keys.items)
+class NodeIndexFactory(Generic[NodeT, NodeKeyT]):
+    """Typed constructors for the two canonical ledgered arena index shapes."""
 
+    @staticmethod
+    def dense(
+        ledger: ResourceLedger,
+        node_owner: int,
+        key_owner: int,
+    ) -> tuple[LedgerList[NodeT], LedgerDict[NodeKeyT, int]]:
+        """Create an append-only node sequence and its entry-only reverse index."""
+        nodes: LedgerList[NodeT] = ledger.make_list(node_owner)
+        keys: LedgerDict[NodeKeyT, int] = ledger.make_dict(key_owner)
+        ledger.register_container(
+            node_owner, nodes, node_count=lambda: len(nodes), payloads=lambda: nodes
+        )
+        ledger.register_container(key_owner, keys, payloads=keys.items)
+        return nodes, keys
 
-def make_node_index(
-    ledger: ResourceLedger, node_owner: int, key_owner: int
-) -> tuple[MutableMapping[int, T], MutableMapping[K, int]]:
-    """Create a sparse node store and its semantic index under separate owners."""
-    return ledger.make_dict(node_owner, nodes_per_entry=1), ledger.make_dict(key_owner)
+    @staticmethod
+    def sparse(
+        ledger: ResourceLedger,
+        node_owner: int,
+        key_owner: int,
+    ) -> tuple[LedgerDict[int, NodeT], LedgerDict[NodeKeyT, int]]:
+        """Create a node-counted sparse map and an entry-only semantic index."""
+        nodes: LedgerDict[int, NodeT] = ledger.make_dict(node_owner, nodes_per_entry=1)
+        keys: LedgerDict[NodeKeyT, int] = ledger.make_dict(key_owner)
+        ledger.register_container(
+            node_owner,
+            nodes,
+            node_count=lambda: len(nodes),
+            payloads=nodes.items,
+        )
+        ledger.register_container(key_owner, keys, payloads=keys.items)
+        return nodes, keys
 
 
 def record_indexed_node(
@@ -497,13 +810,3 @@ def record_indexed_node(
     """Install an admitted sparse node and its matching semantic reverse index."""
     nodes[local_id] = record
     keys[record] = local_id
-
-
-def make_dense_index(
-    ledger: ResourceLedger, node_owner: int, key_owner: int
-) -> tuple[MutableSequence[T], MutableMapping[K, int]]:
-    """Create and register a dense arena's node/index pair as one operation."""
-    nodes: MutableSequence[T] = ledger.make_list(node_owner)
-    keys: MutableMapping[K, int] = ledger.make_dict(key_owner)
-    register_dense_index(ledger, node_owner, key_owner, nodes, keys)
-    return nodes, keys

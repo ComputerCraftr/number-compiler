@@ -274,7 +274,7 @@ def negacyclic_pair_advance(
     ev = negacyclic_class_sums(event, classes, modulus)
     if growth == 0:
         return _doubled_event(state, ev, modulus)
-    out = []
+    out: list[int] = []
     for i in range(classes):
         shifted = -state[-1] if i == 0 else state[i - 1]
         out.append((state[i] + shifted + ev[i]) % modulus)

@@ -8,9 +8,17 @@ one node per symbol.
 from __future__ import annotations
 
 import weakref
-from collections.abc import Callable, Generator, Iterable, Iterator, MutableSequence
+from collections.abc import (
+    Callable,
+    Generator,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableSequence,
+)
 from dataclasses import dataclass
 from itertools import count
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
@@ -829,6 +837,34 @@ _NORMALIZE_RUN_CAP: weakref.WeakValueDictionary[tuple[int, int, int], CanonicalW
 )
 
 
+@dataclass(frozen=True, slots=True)
+class ProgramWordCacheSnapshot:
+    """Read-only views of the canonical word owner's weak memo tables."""
+
+    runs: Mapping[tuple[int, int], CanonicalWord]
+    leaves: Mapping[int, CanonicalWord]
+    concats: Mapping[tuple[int, int], CanonicalWord]
+    slices: Mapping[tuple[int, int, int], CanonicalWord]
+    joins: Mapping[tuple[int, int], CanonicalWord]
+    normalize_run_caps: Mapping[tuple[int, int, int], CanonicalWord]
+    reversals: Mapping[int, CanonicalWord]
+    suffixes: Mapping[tuple[int, int], SourceWordSuffix]
+
+
+def program_word_cache_snapshot() -> ProgramWordCacheSnapshot:
+    """Expose current memo entries without retaining weakly-owned results."""
+    return ProgramWordCacheSnapshot(
+        MappingProxyType(_RUNS),
+        MappingProxyType(_LEAVES),
+        MappingProxyType(_CONCATS),
+        MappingProxyType(_SLICE),
+        MappingProxyType(_JOIN),
+        MappingProxyType(_NORMALIZE_RUN_CAP),
+        MappingProxyType(_REVERSE),
+        MappingProxyType(_SUFFIXES),
+    )
+
+
 def cap_symbol_runs(word: CanonicalWord, symbol: int, cap: int) -> CanonicalWord:
     """Canonical quotient under a proved synchronizing ``symbol**cap`` law."""
     _validate_word(word)
@@ -880,15 +916,15 @@ def clear_transient_program_word_caches() -> None:
     The explicit clear remains available for compatibility and deterministic
     research epochs.
     """
-    global _NEXT_PRUNE_SIZE
-    _NEXT_PRUNE_SIZE = 256
+    global _next_prune_size
+    _next_prune_size = 256
     _SLICE.clear()
     _JOIN.clear()
     _NORMALIZE_RUN_CAP.clear()
     _SUFFIXES.clear()
 
 
-_NEXT_PRUNE_SIZE = 256
+_next_prune_size = 256
 
 
 def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
@@ -901,11 +937,11 @@ def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
     Explicit callers retain immediate cleanup. Return the number of keys visited
     so cleanup work is visible independently of semantic construction.
     """
-    global _NEXT_PRUNE_SIZE
+    global _next_prune_size
     if type(amortized) is not bool:
         raise TypeError("memo cleanup policy must be a boolean")
     population = len(_SLICE) + len(_JOIN) + len(_NORMALIZE_RUN_CAP) + len(_REVERSE)
-    if amortized and population < _NEXT_PRUNE_SIZE:
+    if amortized and population < _next_prune_size:
         return 0
     visited = 0
     for slice_key in tuple(_SLICE):
@@ -925,13 +961,14 @@ def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
         if reverse_key not in _WORD_WATCHES:
             _REVERSE.pop(reverse_key, None)
     survivors = len(_SLICE) + len(_JOIN) + len(_NORMALIZE_RUN_CAP) + len(_REVERSE)
-    _NEXT_PRUNE_SIZE = max(256, 2 * survivors)
+    _next_prune_size = max(256, 2 * survivors)
     return visited
 
 
 __all__ = [
     "EMPTY",
     "CanonicalWord",
+    "ProgramWordCacheSnapshot",
     "RunTraversalMetrics",
     "SourceWord",
     "SourceWordSuffix",
@@ -948,6 +985,7 @@ __all__ = [
     "last_run",
     "leaf",
     "prune_stale_program_word_memos",
+    "program_word_cache_snapshot",
     "reverse",
     "run",
     "slice_runs",

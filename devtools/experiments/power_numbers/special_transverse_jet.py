@@ -243,8 +243,6 @@ class SpecialJetIntervalBlock:
         return cls(spec, slot, 1, spec.slot_value(slot) % spec.modulus, 1, 0, 0)
 
     def then(self, other: SpecialJetIntervalBlock) -> SpecialJetIntervalBlock:
-        if not isinstance(other, SpecialJetIntervalBlock):
-            raise TypeError(type(other))
         if self.spec != other.spec or other.start != self.start + self.span:
             raise ValueError((self, other))
         return SpecialJetIntervalBlock(

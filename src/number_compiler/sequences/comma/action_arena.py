@@ -25,7 +25,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
     MacroTemplate,
-    _boundary_state_signature,
+    boundary_state_signature,
     construct_macro,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -413,7 +413,7 @@ class CommaActionArena:
         """
         if type(state) is not BoundaryState:
             raise TypeError("comma boundary state must be exact")
-        _boundary_state_signature(state)
+        boundary_state_signature(state)
         found = self._boundary_templates.get(state)
         if found is not None:
             self.charge()
@@ -560,7 +560,7 @@ class CommaActionArena:
         """
         if type(state) is not BoundaryState:
             raise TypeError("comma boundary state must be exact")
-        _boundary_state_signature(state)
+        boundary_state_signature(state)
         representative = state.exponent_residue
         if representative < 5:
             representative += PERIOD
@@ -616,7 +616,7 @@ class CommaActionArena:
         """
         if type(state) is not BoundaryState:
             raise TypeError("comma boundary prefix state must be exact")
-        _boundary_state_signature(state)
+        boundary_state_signature(state)
         if type(transitions) is not int or transitions < 0:
             raise ValueError("comma boundary prefix length must be nonnegative")
         return self._intern(
@@ -642,8 +642,8 @@ class CommaActionArena:
         """
         if type(source) is not BoundaryState or type(target) is not BoundaryState:
             raise TypeError("comma future return needs exact boundary states")
-        _boundary_state_signature(source)
-        _boundary_state_signature(target)
+        boundary_state_signature(source)
+        boundary_state_signature(target)
         from number_compiler.sequences.comma.future_authority import (
             _valid_artifact_digest,
         )

@@ -35,14 +35,33 @@ def main() -> None:
         ("mersenne", 11, 23),
         ("mersenne", 11, 89),
     ]
-    local = []
+    local: list[dict[str, object]] = []
     for fam, par, q in local_cases:
         chunk = prime_decision_chunk_spec(terminal_threshold_spec(fam, par))
         row = local_frobenius_wreath_audit(fam, par, chunk.start_level, chunk.span, q)
         local.append(
-            row.__dict__
-            if hasattr(row, "__dict__")
-            else {field: getattr(row, field) for field in row.__dataclass_fields__}
+            {
+                "family": row.family,
+                "parameter": row.parameter,
+                "supplied_prime_factor": row.supplied_prime_factor,
+                "start_level": row.start_level,
+                "span": row.span,
+                "reaches_start_boundary": row.reaches_start_boundary,
+                "stride_quotient": row.stride_quotient,
+                "root_permutation": row.root_permutation,
+                "left_section_stride": row.left_section_stride,
+                "right_section_stride": row.right_section_stride,
+                "next_boundary_stride": row.next_boundary_stride,
+                "direct_next_boundary_stride": row.direct_next_boundary_stride,
+                "conditional_section_formula_exact": (
+                    row.conditional_section_formula_exact
+                ),
+                "identity_on_span": row.identity_on_span,
+                "chunk_all_pass": row.chunk_all_pass,
+                "tree_nodes_materialized": row.tree_nodes_materialized,
+                "one_level_replays": row.one_level_replays,
+                "factor_truth_only": row.factor_truth_only,
+            }
         )
 
     projective_cases = [
@@ -51,17 +70,29 @@ def main() -> None:
         ("mersenne", 13, 11),
         ("mersenne", 11, 9),
     ]
-    projective = []
+    projective: list[dict[str, object]] = []
     for fam, par, steps in projective_cases:
         projective_row = projective_lucas_audit(fam, par, steps)
         projective.append(
             {
-                field: getattr(projective_row, field)
-                for field in projective_row.__dataclass_fields__
+                "family": projective_row.family,
+                "parameter": projective_row.parameter,
+                "modulus": projective_row.modulus,
+                "initial_pair": projective_row.initial_pair,
+                "initial_trace": projective_row.initial_trace,
+                "steps_checked": projective_row.steps_checked,
+                "cayley_commutes": projective_row.cayley_commutes,
+                "difference_clock_exact": projective_row.difference_clock_exact,
+                "proper_target_gcds": projective_row.proper_target_gcds,
+                "terminal_target_gcd": projective_row.terminal_target_gcd,
+                "polynomial_terms_materialized": (
+                    projective_row.polynomial_terms_materialized
+                ),
+                "factor_enumeration": projective_row.factor_enumeration,
             }
         )
 
-    structural = []
+    structural: list[dict[str, object]] = []
     for fam, par in (("fermat", 16), ("mersenne", 10007)):
         spec = terminal_threshold_spec(fam, par)
         chunk = prime_decision_chunk_spec(spec)

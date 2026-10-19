@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
@@ -32,7 +32,7 @@ def _completed_output_buffer(
     *,
     ledger: ResourceLedger,
     scratch: LedgerList[int],
-) -> Iterator[LedgerList[int]]:
+) -> Generator[LedgerList[int], None, None]:
     """Reserve and release one complete output for mirrored-coordinate queries.
 
     Powered output is supplied in least-significant-first order. Its transient

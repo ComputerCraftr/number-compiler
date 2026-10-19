@@ -25,13 +25,13 @@ def test_radix_powers_use_one_source_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called: list[tuple[str, int, int]] = []
-    original = source_matrix._source_residue
+    original = source_matrix.source_residue
 
     def spy(family: str, level: int, modulus: int) -> tuple[int, SmallModulusWork]:
         called.append((family, level, modulus))
         return original(family, level, modulus)
 
-    monkeypatch.setattr(source_matrix, "_source_residue", spy)
+    monkeypatch.setattr(source_matrix, "source_residue", spy)
     t = 15
     for base, places in ((2, 12), (5, 6), (7, 5), (10, 5), (27, 4)):
         output = FermatNumberSpec(4).demand_three_power_multiradix_port(t, base, places)

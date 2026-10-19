@@ -20,10 +20,12 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.hashlife.interfaces.border_macros import BorderWireValue
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
+    BOUNDARY_SELECTOR_IDENTITIES,
     CYCLE_26847,
     ENTRY_0563,
     ENTRY_89_AT_NINE,
@@ -36,6 +38,7 @@ from number_compiler.sequences.collatz.border_identity import (
     BoundaryPathKind,
     CycleEntryPhase,
     GuardedBorderPath,
+    MixedParityMotif,
     cycle_phase,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -43,7 +46,7 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 )
 from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 
-COLLATZ_BOUNDARY_MACRO_ACTION_TAG: Final[str] = "collatz-boundary-macro-v1"
+COLLATZ_BOUNDARY_MACRO_ACTION_TAG: Final[str] = "collatz-boundary-macro-v2"
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.position_cycle_harmonics import (
@@ -53,18 +56,8 @@ if TYPE_CHECKING:
         CollatzF5AffineAction,
     )
 
-BoundaryTemplateName = BoundaryActionIdentity | tuple[int, ...]
-_BOUNDARY_PLAN_IDENTITIES = frozenset(
-    (
-        ENTRY_421,
-        ENTRY_4721,
-        ENTRY_0563,
-        *ENTRY_26847_PHASES,
-        ENTRY_89_AT_NINE,
-        PATH_630,
-        PATH_305,
-    )
-)
+BoundaryTemplateIdentity = BoundaryActionIdentity | MixedParityMotif
+_BOUNDARY_PLAN_IDENTITIES = frozenset(BOUNDARY_SELECTOR_IDENTITIES)
 _BOUNDARY_METRIC_SUFFIXES: dict[BoundaryActionIdentity, str] = {
     ENTRY_421: "421",
     ENTRY_4721: "4721",
@@ -97,6 +90,13 @@ def boundary_metric_suffix(identity: BoundaryActionIdentity) -> str:
         raise ValueError("boundary identity has no family counter") from error
 
 
+def boundary_metric_key(
+    identity: BoundaryActionIdentity, metric: _collatz_keys.BoundaryMacroMetric
+) -> str:
+    """Serialize one measured event without using its spelling as an action ID."""
+    return f"collatz_physical_boundary_{boundary_metric_suffix(identity)}_macro_{metric.value}"
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class CollatzBoundaryMacro:
     identity: BoundaryActionIdentity
@@ -112,35 +112,6 @@ class CollatzBoundaryMacro:
 
     def __init__(self) -> None:
         raise TypeError("Collatz boundary macros are issued by the guarded selector")
-
-    @classmethod
-    def _issue(
-        cls,
-        identity: BoundaryActionIdentity,
-        source: int,
-        repetitions: int,
-        maximum_repetitions: int,
-        physical_ticks: int,
-        odd_symbols: int,
-        endpoint: int,
-        fields: DyadicTerminalFieldAction,
-        width_blank: BlankLedger,
-    ) -> CollatzBoundaryMacro:
-        macro = object.__new__(cls)
-        for name, value in (
-            ("identity", identity),
-            ("source", source),
-            ("repetitions", repetitions),
-            ("maximum_repetitions", maximum_repetitions),
-            ("physical_ticks", physical_ticks),
-            ("odd_symbols", odd_symbols),
-            ("endpoint", endpoint),
-            ("fields", fields),
-            ("width_blank", width_blank),
-            ("_issuer", _BOUNDARY_MACRO_ISSUER),
-        ):
-            object.__setattr__(macro, name, value)
-        return macro
 
     @property
     def normalized_symbols(self) -> int:
@@ -173,10 +144,10 @@ class CollatzBoundaryMacro:
     def f5_action(self) -> CollatzF5AffineAction:
         """Project the authenticated integer endpoint action onto F5."""
         from number_compiler.sequences.collatz.temporal_f5_observer import (
-            _project_dyadic_fields_f5,
+            project_dyadic_fields_f5,
         )
 
-        return _project_dyadic_fields_f5(self.fields)
+        return project_dyadic_fields_f5(self.fields)
 
     def observation(self) -> dict[str, object]:
         return {
@@ -193,7 +164,7 @@ class CollatzBoundaryMacro:
             "scope": "authenticated physical boundary prefix, not a global action ID",
         }
 
-    def structural_payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[BorderWireValue, ...]:
         """Return the immutable, authority-free shape used by image ports."""
         fields = self.fields
         return (
@@ -244,7 +215,20 @@ class AdmittedBoundaryMacroPlan:
     maximum_repetitions: int
     repetitions: int
     _issuer: object = field(repr=False, compare=False, init=False)
-    _issued_values: tuple[object, ...] = field(repr=False, compare=False, init=False)
+    _issued_values: tuple[int, int, int, BoundaryActionIdentity, int, int] = field(
+        repr=False, compare=False, init=False
+    )
+
+    def issuance_matches(self) -> bool:
+        """Check the retained issuance snapshot without exposing its mutable slot."""
+        return self._issued_values == (
+            self.source,
+            self.available_physical_ticks,
+            self.minimum_repetitions,
+            self.identity,
+            self.maximum_repetitions,
+            self.repetitions,
+        )
 
     @property
     def normalized_symbols(self) -> int:
@@ -280,32 +264,68 @@ class AdmittedBoundaryMacroPlan:
             return 2 * self.repetitions
         raise ValueError("boundary plan has an unknown family")
 
-    @classmethod
-    def _issue(
-        cls,
-        source: int,
-        available_physical_ticks: int,
-        minimum_repetitions: int,
-        identity: BoundaryActionIdentity,
-        maximum_repetitions: int,
-        repetitions: int,
-    ) -> AdmittedBoundaryMacroPlan:
-        plan = object.__new__(cls)
-        values = (
-            ("source", source),
-            ("available_physical_ticks", available_physical_ticks),
-            ("minimum_repetitions", minimum_repetitions),
-            ("identity", identity),
-            ("maximum_repetitions", maximum_repetitions),
-            ("repetitions", repetitions),
-            ("_issuer", _BOUNDARY_PLAN_ISSUER),
-        )
-        for name, value in values:
-            object.__setattr__(plan, name, value)
-        object.__setattr__(
-            plan, "_issued_values", tuple(value for _, value in values[:-1])
-        )
-        return plan
+
+def _issue_boundary_macro(
+    identity: BoundaryActionIdentity,
+    source: int,
+    repetitions: int,
+    maximum_repetitions: int,
+    physical_ticks: int,
+    odd_symbols: int,
+    endpoint: int,
+    fields: DyadicTerminalFieldAction,
+    width_blank: BlankLedger,
+) -> CollatzBoundaryMacro:
+    macro = object.__new__(CollatzBoundaryMacro)
+    for name, value in (
+        ("identity", identity),
+        ("source", source),
+        ("repetitions", repetitions),
+        ("maximum_repetitions", maximum_repetitions),
+        ("physical_ticks", physical_ticks),
+        ("odd_symbols", odd_symbols),
+        ("endpoint", endpoint),
+        ("fields", fields),
+        ("width_blank", width_blank),
+        ("_issuer", _BOUNDARY_MACRO_ISSUER),
+    ):
+        object.__setattr__(macro, name, value)
+    return macro
+
+
+def _issue_boundary_plan(
+    source: int,
+    available_physical_ticks: int,
+    minimum_repetitions: int,
+    identity: BoundaryActionIdentity,
+    maximum_repetitions: int,
+    repetitions: int,
+) -> AdmittedBoundaryMacroPlan:
+    plan = object.__new__(AdmittedBoundaryMacroPlan)
+    values = (
+        ("source", source),
+        ("available_physical_ticks", available_physical_ticks),
+        ("minimum_repetitions", minimum_repetitions),
+        ("identity", identity),
+        ("maximum_repetitions", maximum_repetitions),
+        ("repetitions", repetitions),
+        ("_issuer", _BOUNDARY_PLAN_ISSUER),
+    )
+    for name, value in values:
+        object.__setattr__(plan, name, value)
+    object.__setattr__(
+        plan,
+        "_issued_values",
+        (
+            source,
+            available_physical_ticks,
+            minimum_repetitions,
+            identity,
+            maximum_repetitions,
+            repetitions,
+        ),
+    )
+    return plan
 
 
 _BOUNDARY_PLAN_ISSUER = object()
@@ -346,7 +366,7 @@ def admit_boundary_macro_plan(
         identity = ENTRY_4721
     elif family == ENTRY_0563:
         identity = ENTRY_0563
-    elif family in ENTRY_26847_PHASES:
+    elif family is not None and family in ENTRY_26847_PHASES:
         identity = family
     elif family == PATH_630:
         identity = PATH_630
@@ -380,7 +400,7 @@ def admit_boundary_macro_plan(
         return None
     if repetitions < minimum_repetitions:
         return None
-    return AdmittedBoundaryMacroPlan._issue(
+    return _issue_boundary_plan(
         source,
         available_physical_ticks,
         minimum_repetitions,
@@ -402,7 +422,7 @@ def admit_routed_boundary_macro_plan(
     if plan is None:
         return plan
     if plan.repetitions >= 2:
-        return AdmittedBoundaryMacroPlan._issue(
+        return _issue_boundary_plan(
             plan.source,
             plan.available_physical_ticks,
             2,
@@ -422,7 +442,7 @@ def admit_routed_boundary_macro_plan(
 
 
 def _build_boundary_action_template(
-    identity: BoundaryTemplateName, repetitions: int
+    identity: BoundaryTemplateIdentity, repetitions: int
 ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
     """Intern the *full parity action*, including accumulator coefficients.
 
@@ -432,16 +452,16 @@ def _build_boundary_action_template(
     """
     if type(repetitions) is not int or repetitions < 1:
         raise ValueError("guarded boundary action needs a positive repeat count")
-    if isinstance(identity, tuple):
+    if isinstance(identity, MixedParityMotif):
         fields = DyadicTerminalFieldAction.zero_run(0)
-        for bit in identity:
+        for bit in identity.bits:
             fields = fields.then(
                 DyadicTerminalFieldAction.one_run(1)
                 if bit
                 else DyadicTerminalFieldAction.zero_run(1)
             )
         fields = fields.power(repetitions)
-        odd = sum(identity) * repetitions
+        odd = sum(identity.bits) * repetitions
         ticks = fields.steps + odd
     elif identity == ENTRY_421:
         motif = DyadicTerminalFieldAction.one_run(1).then(
@@ -656,9 +676,9 @@ class BoundaryActionTemplateMemo:
         self._scratch_owner: int | None = None
         self._templates: (
             OwnedMemo[
-                tuple[BoundaryTemplateName, int],
+                tuple[BoundaryTemplateIdentity, int],
                 tuple[
-                    BoundaryTemplateName,
+                    BoundaryTemplateIdentity,
                     int,
                     tuple[DyadicTerminalFieldAction, int, int, int],
                 ],
@@ -700,9 +720,11 @@ class BoundaryActionTemplateMemo:
     def _memo(
         self,
     ) -> OwnedMemo[
-        tuple[BoundaryTemplateName, int],
+        tuple[BoundaryTemplateIdentity, int],
         tuple[
-            BoundaryTemplateName, int, tuple[DyadicTerminalFieldAction, int, int, int]
+            BoundaryTemplateIdentity,
+            int,
+            tuple[DyadicTerminalFieldAction, int, int, int],
         ],
     ]:
         if self._templates is None:
@@ -713,9 +735,9 @@ class BoundaryActionTemplateMemo:
                 )
 
                 def template_cost(
-                    _key: tuple[BoundaryTemplateName, int],
+                    _key: tuple[BoundaryTemplateIdentity, int],
                     value: tuple[
-                        BoundaryTemplateName,
+                        BoundaryTemplateIdentity,
                         int,
                         tuple[DyadicTerminalFieldAction, int, int, int],
                     ],
@@ -725,8 +747,8 @@ class BoundaryActionTemplateMemo:
                     return (
                         8
                         + (
-                            len(value[0])
-                            if isinstance(value[0], tuple)
+                            2 + len(value[0].bits)
+                            if isinstance(value[0], MixedParityMotif)
                             else len(value[0].cycle.digits)
                             if isinstance(value[0], CycleEntryPhase)
                             else 1
@@ -764,27 +786,20 @@ class BoundaryActionTemplateMemo:
                 ):
                     self.ledger.bump(f"collatz_boundary_template_{counter}", 0)
             self._templates = templates
-        templates = self._templates
-        if templates is None:
-            raise RuntimeError("boundary template memo construction did not publish")
-        return templates
+        return self._templates
 
     def get(
-        self, identity: BoundaryTemplateName, repetitions: int
+        self, identity: BoundaryTemplateIdentity, repetitions: int
     ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
         if self._closed or self._closing:
             raise RuntimeError("boundary action template memo is closed")
         if (
-            type(identity) not in (CycleEntryPhase, GuardedBorderPath, tuple)
+            type(identity) not in (CycleEntryPhase, GuardedBorderPath, MixedParityMotif)
             or type(repetitions) is not int
         ):
             raise TypeError("boundary action template key is malformed")
-        if isinstance(identity, tuple) and (
-            not 2 <= len(identity) <= 64
-            or any(type(bit) is not int or bit not in (0, 1) for bit in identity)
-            or not 0 < sum(identity) < len(identity)
-        ):
-            raise ValueError("mixed boundary motif requires 2..64 Boolean symbols")
+        if isinstance(identity, MixedParityMotif):
+            identity.require_valid()
         if isinstance(identity, (CycleEntryPhase, GuardedBorderPath)) and (
             identity not in _BOUNDARY_PLAN_IDENTITIES
         ):
@@ -827,8 +842,8 @@ class BoundaryActionTemplateMemo:
             self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_HITS)
             return template
         self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_MISSES)
-        if isinstance(identity, tuple):
-            width = len(identity) * repetitions
+        if isinstance(identity, MixedParityMotif):
+            width = len(identity.bits) * repetitions
             with self.scratch(nodes=128 + 32 * ((2 * width + 63) // 64)):
                 self.ledger.bump(
                     _collatz_keys.COLLATZ_MIXED_CLOCK_COEFFICIENT_CONSTRUCTIONS
@@ -903,7 +918,7 @@ def select_admitted_boundary_macro(
     if remainder or endpoint <= 0:
         raise AssertionError("guarded Collatz endpoint is not exact")
     blank = _boundary_width_blank(identity, source, endpoint)
-    return CollatzBoundaryMacro._issue(
+    return _issue_boundary_macro(
         identity,
         source,
         repetitions,
@@ -927,15 +942,7 @@ def validate_admitted_boundary_macro_plan(plan: AdmittedBoundaryMacroPlan) -> No
         or type(plan.identity) not in (CycleEntryPhase, GuardedBorderPath)
         or type(plan.maximum_repetitions) is not int
         or type(plan.repetitions) is not int
-        or plan._issued_values
-        != (
-            plan.source,
-            plan.available_physical_ticks,
-            plan.minimum_repetitions,
-            plan.identity,
-            plan.maximum_repetitions,
-            plan.repetitions,
-        )
+        or not plan.issuance_matches()
     ):
         raise ValueError("boundary macro plan has no valid admission authority")
     maximum = plan.maximum_repetitions
@@ -957,6 +964,7 @@ __all__ = [
     "boundary_macro_26847_phase",
     "boundary_macro_plan",
     "boundary_metric_suffix",
+    "boundary_metric_key",
     "select_admitted_boundary_macro",
     "select_boundary_macro",
     "validate_admitted_boundary_macro_plan",

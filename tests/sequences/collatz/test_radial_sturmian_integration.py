@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from number_compiler.api.cylinder_observation import (
     observe_collatz,
     observe_physical_clock,
@@ -13,6 +15,9 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
+from number_compiler.sequences.collatz.observation_kind import (
+    CollatzObservationKind,
+)
 from number_compiler.sequences.collatz.power import CollatzEventArena
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
@@ -21,6 +26,17 @@ from number_compiler.sequences.collatz.unified_skew_chain import (
     select_unified_skew_chain,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
+
+
+def _string_object_mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise AssertionError("expected an object-valued radial packet")
+    result: dict[str, object] = {}
+    for key, item in value.items():
+        if type(key) is not str:
+            raise AssertionError("radial packet keys must be strings")
+        result[key] = item
+    return result
 
 
 def test_guarded_collatz_macro_and_event_observers_share_radial_factor() -> None:
@@ -36,9 +52,10 @@ def test_guarded_collatz_macro_and_event_observers_share_radial_factor() -> None
         packet = chain.radial_leading_binary(e, 8)
         assert packet == chain.clock.radial_leading_binary(e, 8)
         observation = chain.observation(radial_evaluator=e)
-        radial = observation["radial_sturmian"]
-        assert isinstance(radial, dict)
-        assert radial["prefix_value"] == packet.prefix_value
+        radial = _string_object_mapping(observation["radial_sturmian"])
+        prefix_value = radial["prefix_value"]
+        assert type(prefix_value) is int
+        assert prefix_value == packet.prefix_value
         assert chain.clock.radial_sturmian_clock.scale == HomogeneousGrowthScale(
             chain.odd_symbols, chain.normalized_symbols
         )
@@ -79,10 +96,20 @@ def test_existing_collatz_clock_api_publishes_typed_rotation() -> None:
     physical = observe_physical_clock(
         13, 9, max_ticks=40, max_digits=32, _include_metrics=False
     )["value"]
-    accelerated = observe_collatz(13, 2, kind="clock", _include_metrics=False)["value"]
-    assert physical["radial_sturmian"] == accelerated["radial_sturmian"]
-    assert physical["radial_sturmian"]["prefix_value"] == 144
-    assert physical["radial_sturmian"]["scope"].startswith("homogeneous multiplier")
+    accelerated = observe_collatz(
+        13, 2, kind=CollatzObservationKind.CLOCK, _include_metrics=False
+    )["value"]
+    physical_value = _string_object_mapping(physical)
+    accelerated_value = _string_object_mapping(accelerated)
+    physical_radial = _string_object_mapping(physical_value["radial_sturmian"])
+    accelerated_radial = _string_object_mapping(accelerated_value["radial_sturmian"])
+    assert physical_radial == accelerated_radial
+    prefix_value = physical_radial["prefix_value"]
+    scope = physical_radial["scope"]
+    assert type(prefix_value) is int
+    assert prefix_value == 144
+    assert isinstance(scope, str)
+    assert scope.startswith("homogeneous multiplier")
 
 
 def test_full_source_bound_temporal_quotient_keeps_its_own_radial_clock() -> None:

@@ -192,10 +192,10 @@ def _build_rows(
         observed_low = term.digit(0)
         if observed_low != expected_low:
             raise AssertionError((family, seed, generation, observed_low, expected_low))
-        before_replay = dict(term._ledger.counters)
+        before_replay = dict(term.resource_ledger.counters)
         if term.digit(0) != observed_low:
             raise AssertionError(("runtime-image-replay-mismatch", family, generation))
-        after_replay = term._ledger.counters
+        after_replay = term.resource_ledger.counters
         m = term.behavior_metrics()
         replay_publications_stable = after_replay.get(
             "source_image_publications", 0

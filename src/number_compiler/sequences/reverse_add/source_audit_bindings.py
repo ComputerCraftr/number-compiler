@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
-from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 
 
@@ -24,58 +21,56 @@ def source_audit_owners(roots: tuple[object, ...]) -> set[int]:
 
     for root in roots:
         if type(root) is SourceCarryPorts:
-            add_store(root._cache)
+            add_store(root.audit_snapshot().cache_identity)
         elif type(root) is ReverseSourceImageWorkspace:
-            actions = root.actions
+            state = root.audit_snapshot()
+            actions = state.actions.audit_snapshot()
             for store in (
-                actions._nodes,
-                actions._normal,
-                actions._sources,
-                actions._workspace,
-                root.adapter._recursive_occurrences,
-                root._pointed_gt_banks,
+                actions.nodes,
+                actions.normal,
+                actions.sources,
+                state.actions.audit_snapshot().workspace,
+                state.adapter.audit_snapshot().recursive_occurrences,
+                state.pointed_gt_banks,
             ):
                 add_store(store)
-            recursive = root.adapter._recursive
+            recursive = state.adapter.audit_snapshot().recursive
             if recursive is not None:
-                for nested_store in (
-                    recursive.adapter._composers,
-                    recursive.adapter._signatures,
-                ):
-                    add_store(nested_store)
+                recursive_adapter = recursive.adapter.audit_snapshot()
+                add_store(recursive_adapter.composers)
+                add_store(recursive_adapter.signatures)
     return owners
 
 
 def _nested_stores(
     root: object,
-) -> tuple[tuple[OwnedMemo[object, object], str, str], ...]:
+) -> tuple[tuple[int, object, str, str], ...]:
     from number_compiler.sequences.reverse_add.source_workspace import (
         ReverseSourceImageWorkspace,
     )
 
     if type(root) is not ReverseSourceImageWorkspace:
         return ()
-    recursive = root.adapter._recursive
+    state = root.audit_snapshot()
+    recursive = state.adapter.audit_snapshot().recursive
     if recursive is None:
         return ()
-    adapter = recursive.adapter
+    adapter = recursive.adapter.audit_snapshot()
     nested = (
         (
-            adapter._composers,
+            adapter.composers.owner,
+            adapter.composers.container,
             "_audit_recursive_composers",
             "reverse_recursive_composer_memo",
         ),
         (
-            adapter._signatures,
+            adapter.signatures.owner,
+            adapter.signatures.container,
             "_audit_recursive_signatures",
             "reverse_recursive_signature_memo",
         ),
     )
-    return tuple(
-        (cast(OwnedMemo[object, object], store), attribute, role)
-        for store, attribute, role in nested
-        if type(store) is OwnedMemo
-    )
+    return nested
 
 
 def bind_nested_source_stores(
@@ -83,9 +78,9 @@ def bind_nested_source_stores(
 ) -> tuple[PayloadAuditStoreBinding, ...]:
     """Expose exact recursive memo containers as authenticated root bindings."""
     bindings: list[PayloadAuditStoreBinding] = []
-    for store, attribute, role in _nested_stores(root):
-        setattr(root, attribute, store._data)
-        bindings.append(PayloadAuditStoreBinding(store.owner, attribute, role))
+    for owner, container, attribute, role in _nested_stores(root):
+        setattr(root, attribute, container)
+        bindings.append(PayloadAuditStoreBinding(owner, attribute, role))
     return tuple(bindings)
 
 
@@ -94,9 +89,9 @@ def nested_source_store_bindings(
 ) -> tuple[PayloadAuditStoreBinding, ...]:
     """Describe nested stores only while their exact root aliases remain valid."""
     bindings: list[PayloadAuditStoreBinding] = []
-    for store, attribute, role in _nested_stores(root):
-        if getattr(root, attribute, None) is store._data:
-            bindings.append(PayloadAuditStoreBinding(store.owner, attribute, role))
+    for owner, container, attribute, role in _nested_stores(root):
+        if getattr(root, attribute, None) is container:
+            bindings.append(PayloadAuditStoreBinding(owner, attribute, role))
     return tuple(bindings)
 
 

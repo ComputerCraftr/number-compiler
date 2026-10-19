@@ -150,7 +150,7 @@ class SpaceTimeProjection:
             head, time = self._run(ports, port, count, head, time, copies)
         return head, time
 
-    def _section_key(self, a: int, b: int) -> tuple[int, int]:
+    def section_key(self, a: int, b: int) -> tuple[int, int]:
         """A demanded image class, never a source or successor identity.
 
         Sweep images repeat after P*M indices. M repetitions of that cycle
@@ -184,7 +184,7 @@ class SpaceTimeProjection:
         )
         return samples
 
-    def _section(self, a: int, b: int) -> tuple[tuple[tuple[int, ...], ...], int]:
+    def section_image(self, a: int, b: int) -> tuple[tuple[tuple[int, ...], ...], int]:
         ports = [[0] * (self.width * self.time_width) for _ in range(12)]
         samples = self._accumulate_section(ports, a, b, 0, 0)
         return tuple(tuple(row) for row in ports), samples
@@ -237,7 +237,7 @@ class SpaceTimeProjection:
         spatial_phase = self.width * (2 if self.sign == -1 else 1)
         temporal_phase = self.time_width * (2 if self.time_sign == -1 else 1)
         return ProjectionFragmentKey(
-            self.result._term.segment_owner,
+            self.result.source_term.segment_owner,
             self.result.requested,
             start,
             (
@@ -289,7 +289,7 @@ class SpaceTimeProjection:
                     result.ledger.bump(
                         _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_EVALUATIONS
                     )
-                self._shift(ports, fragment.typed_ports, record.head, record.time)
+                self.shift_image(ports, fragment.typed_ports, record.head, record.time)
                 result.ledger.bump(
                     _antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_TRANSLATIONS
                 )
@@ -299,7 +299,7 @@ class SpaceTimeProjection:
             driver.cursor.clear()
         return families
 
-    def _shift(
+    def shift_image(
         self,
         ports: list[list[int]],
         image: tuple[tuple[int, ...], ...],
@@ -328,7 +328,7 @@ class SpaceTimeProjection:
                     ports[port][target] + orientation * copies * image[port][index]
                 ) % self.modulus
 
-    def _flush_section_classes(
+    def flush_section_classes(
         self,
         ports: list[list[int]],
         classes: dict[tuple[tuple[int, int], int, int], int],
@@ -348,7 +348,7 @@ class SpaceTimeProjection:
                 continue
             image = cache.images.get(key)
             if image is None:
-                image, samples = self._section(*key)
+                image, samples = self.section_image(*key)
                 families += samples
                 self.result.ledger.bump(
                     _antihydra_keys.SPACETIME_SECTION_IMAGE_EVALUATIONS
@@ -357,7 +357,7 @@ class SpaceTimeProjection:
                     cache.put(key, image, capacity)
             else:
                 self.result.ledger.bump(_antihydra_keys.SPACETIME_SECTION_IMAGE_HITS)
-            self._shift(ports, image, head, time, copies)
+            self.shift_image(ports, image, head, time, copies)
             self.result.ledger.bump(
                 _antihydra_keys.SPACETIME_SECTION_TRANSLATION_BATCHES
             )
@@ -423,18 +423,18 @@ class SpaceTimeProjection:
                     if not use_images:
                         families += self._accumulate_section(ports, a, b, head, time)
                         continue
-                    key = self._section_key(a, b)
+                    key = self.section_key(a, b)
                     translated = key, head % spatial_phase, time % temporal_phase
                     classes[translated] = (
                         classes.get(translated, 0) + 1
                     ) % self.modulus
                     ledger.bump(_antihydra_keys.SPACETIME_SECTION_CLASS_UPDATES)
                     if len(classes) == batch_capacity:
-                        families += self._flush_section_classes(
+                        families += self.flush_section_classes(
                             ports, classes, cache, capacity
                         )
                 if classes:
-                    families += self._flush_section_classes(
+                    families += self.flush_section_classes(
                         ports, classes, cache, capacity
                     )
 

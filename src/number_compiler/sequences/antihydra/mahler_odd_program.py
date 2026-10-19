@@ -169,10 +169,13 @@ class MahlerOddSourceProgram:
         steps: int = 4,
         initial_ledger: int | None = None,
         include_rows: bool = False,
+        trace: bool = False,
     ) -> dict[str, object]:
         """Demand a finite center transfer within this program's recorded horizon."""
         if type(include_rows) is not bool:
             raise TypeError("center matrix row demand must be Boolean")
+        if type(trace) is not bool:
+            raise TypeError("center matrix trace demand must be Boolean")
         from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
             MahlerCertifiedCenterDepthTransfer,
         )
@@ -181,7 +184,7 @@ class MahlerOddSourceProgram:
             self, tick, steps, initial_ledger=initial_ledger
         )
         return {
-            **certificate.packet(include_rows=include_rows),
+            **certificate.packet(include_rows=include_rows, trace=trace),
             "origin_tick": tick,
         }
 

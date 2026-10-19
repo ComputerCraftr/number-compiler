@@ -125,9 +125,11 @@ def test_direct_parametric_queries_block_exact_construction_inside_callbacks(
     )
     from number_compiler.arithmetic.fields.dyadic_tile import leaf, tile_arena_metrics
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from tests.support.diamond_query import build
+    from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 
-    app = build(CollatzPhysicalBlockEffect(), (1, 0, 1), 8, 2)
+    app = build_collatz_diamond_application(
+        CollatzPhysicalBlockEffect(), (1, 0, 1), 8, 2
+    )
 
     def query() -> int:
         return (

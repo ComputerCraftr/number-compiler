@@ -80,13 +80,13 @@ def demanded_pointed_path_pair_packet(
         WeightedPairMatrix,
         upper_numerator_f5,
     )
-    from number_compiler.sequences.collatz.cross_family_port_power import (
-        MacroTraceGrammar,
-    )
     from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
     from number_compiler.sequences.collatz.guarded_radix6_bridge import (
         certify_guarded_radix6_bridge,
         certify_return_trace_radix6_bridge,
+    )
+    from number_compiler.sequences.collatz.source_closed_port_action import (
+        MacroTraceGrammar,
     )
 
     endpoint = pointed.action.endpoint(pointed_source)

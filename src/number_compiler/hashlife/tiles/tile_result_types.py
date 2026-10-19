@@ -6,7 +6,7 @@ from typing import TypeAlias, TypeGuard
 
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     BoundaryConcatKey,
@@ -21,17 +21,17 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     NormalizedRegionResult,
     PoweredInterfaceKey,
     PoweredResultKey,
+    ResultDependencyHead,
+    ResultDependencyLinks,
+    ResultDependencyMember,
     ReverseBoundOutputKey,
     ReverseThresholdSummaryKey,
     RootMatchResult,
     SourceRootMatchKey,
     SpatialInterfaceKey,
-    _ReverseHead,
-    _ReverseLinks,
-    _ReverseMember,
 )
 
-ReverseKey: TypeAlias = _ReverseHead | _ReverseMember
+ReverseKey: TypeAlias = ResultDependencyHead | ResultDependencyMember
 ExecutionKey: TypeAlias = (
     PoweredResultKey
     | PoweredInterfaceKey
@@ -58,7 +58,7 @@ ExecutionValue: TypeAlias = (
     | ReverseBoundOutput
     | RootMatchResult
 )
-ReverseValue: TypeAlias = ExecutionKey | _ReverseLinks
+ReverseValue: TypeAlias = ExecutionKey | ResultDependencyLinks
 
 
 def is_execution_key(value: object) -> TypeGuard[ExecutionKey]:

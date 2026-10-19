@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from itertools import product
 
+import pytest
+
 from number_compiler.sequences.double_reverse.boundary_cycles import (
     CANDIDATE_COMPONENTS,
     BoundaryStep,
@@ -94,12 +96,30 @@ def test_exact_9000_state_boundary_graph_has_four_cyclic_components() -> None:
     assert exits == [0, 1, 2, 2]
 
 
-def test_every_five_digit_source_agrees_with_relation_and_width_law() -> None:
-    for number in range(10_000, 100_000):
+@pytest.mark.parametrize(
+    "exhaustive", [False, pytest.param(True, marks=pytest.mark.validation)]
+)
+def test_every_five_digit_source_agrees_with_relation_and_width_law(
+    exhaustive: bool,
+) -> None:
+    # Threshold edges on both sides of each carry gate and both inward carries.
+    sources = (
+        range(10_000, 100_000)
+        if exhaustive
+        else (
+            10000 * a + 1000 * b + 100 * c + 10 * y + z
+            for a, b, c, y, z in product(
+                (1, 4, 5, 9), (0, 4, 5, 9), (0, 9), (0, 4, 5, 9), (0, 1, 4, 5, 9)
+            )
+        )
+    )
+    outcomes = set()
+    for number in sources:
         source = str(number)
         successor = 2 * int(source[::-1])
         assert len(str(successor)) - 5 == width_change(source)
         relation = boundary_steps(edge_from_digits(source))
+        outcomes.add((relation.shrinking_frontier, len(str(successor)) - 5 > 0))
         if relation.shrinking_frontier:
             assert not relation.steps
             assert len(str(successor)) < len(source)
@@ -107,6 +127,8 @@ def test_every_five_digit_source_agrees_with_relation_and_width_law() -> None:
             assert (edge_from_digits(str(successor)), len(str(successor)) - 5) in {
                 (step.target, step.width_delta) for step in relation.steps
             }
+
+    assert outcomes == {(True, False), (False, False), (False, True)}
 
 
 def test_normalized_square_handles_shrinking_source_examples() -> None:

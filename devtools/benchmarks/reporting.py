@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 
-def write_json_report(path: Path, payload: Any) -> None:
+def write_json_report(path: Path, payload: object) -> None:
     """Create ``path``'s parent, persist a readable JSON payload, and print it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -19,7 +18,7 @@ def write_json_report(path: Path, payload: Any) -> None:
 
 
 def write_markdown_json_report(
-    markdown_path: Path, json_path: Path, markdown: str, payload: Any
+    markdown_path: Path, json_path: Path, markdown: str, payload: object
 ) -> None:
     """Persist a paired Markdown/JSON probe report and echo the Markdown."""
     markdown_path.write_text(markdown)

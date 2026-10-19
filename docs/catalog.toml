@@ -126,7 +126,7 @@ path = "docs/release-status.md"
 kind = "status"
 topic = "release-status"
 status = "current"
-date = "2026-09-20"
+date = "2026-10-18"
 
 [[document]]
 id = "history"
@@ -478,3 +478,19 @@ kind = "sprint-topic"
 topic = "nc17-source-rings"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-18-readme"
+path = "docs/sprints/week-of-2026-10-18/README.md"
+kind = "sprint"
+topic = "readme"
+status = "current"
+week_start = "2026-10-18"
+
+[[document]]
+id = "sprint-2026-10-18-strict-toolchain-macro-identities"
+path = "docs/sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md"
+kind = "sprint-topic"
+topic = "strict-toolchain-macro-identities"
+status = "current"
+week_start = "2026-10-18"

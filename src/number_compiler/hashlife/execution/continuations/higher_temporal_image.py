@@ -11,11 +11,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
+)
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    HigherTemporalImageAuditSnapshot,
 )
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
     HigherMacroDeclaration,
@@ -34,7 +38,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputBranch,
     RecursiveOutputLeaf,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -182,7 +186,8 @@ class HigherTemporalImageArena:
         )
         self.ledger.register_execution_root(self)
 
-    def _check_authority(self) -> None:
+    def validate_authority(self) -> None:
+        """Recheck the issued consumer, stores and source authority."""
         expected = self._arena_authority
         actual = (
             self.owner,
@@ -235,8 +240,53 @@ class HigherTemporalImageArena:
     def _handle(self, local_id: int) -> HigherTemporalImageID:
         return HigherTemporalImageID(self.owner, self._KIND, local_id)
 
+    def handle_for_local_id(self, local_id: int) -> HigherTemporalImageID:
+        """Return a scoped handle only for an allocated temporal image."""
+        if type(local_id) is not int or not 0 <= local_id < len(self._nodes):
+            raise IndexError("higher temporal image index is outside the arena")
+        return self._handle(local_id)
+
+    def seal_matches(
+        self,
+        record: HigherTemporalImage,
+        published_seal: tuple[object, ...],
+    ) -> bool:
+        """Compare an image record with its exact immutable publication seal."""
+        if type(record) is not HigherTemporalImage or type(published_seal) is not tuple:
+            return False
+        return self._seal(record) == published_seal
+
+    def audit_snapshot(self) -> HigherTemporalImageAuditSnapshot:
+        """Expose only read-only image indexes and workspace emptiness data."""
+        return HigherTemporalImageAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            node_owner=self._node_owner,
+            nodes=tuple(self._nodes),
+            node_store=self._nodes,
+            key_owner=self._key_owner,
+            keys=MappingProxyType(self._keys),
+            key_store=self._keys,
+            seal_owner=self._seal_owner,
+            seals=tuple(self._seals),
+            seal_store=self._seals,
+            frame_owner=self._frame_owner,
+            frame_store=self._frames,
+            frame_count=len(self._frames),
+            built_owner=self._built_owner,
+            built_store=self._built,
+            built_count=len(self._built),
+            source_frame_owner=self._source_frame_owner,
+            source_frame_store=self._source_frames,
+            source_frame_count=len(self._source_frames),
+            source_summary_owner=self._source_summary_owner,
+            source_summary_store=self._source_summaries,
+            source_summary_count=len(self._source_summaries),
+            running=self._running,
+        )
+
     def resolve(self, image: HigherTemporalImageID) -> HigherTemporalImage:
-        self._check_authority()
+        self.validate_authority()
         if type(image) is not HigherTemporalImageID:
             raise TypeError("expected a higher temporal image ID")
         image.validate(self.owner, self._KIND, size=len(self._nodes))
@@ -305,7 +355,7 @@ class HigherTemporalImageArena:
             record.predecessor.validate(self.owner, self._KIND, size=len(self._nodes))
 
     def _intern(self, record: HigherTemporalImage) -> HigherTemporalImageID:
-        self._check_authority()
+        self.validate_authority()
         found = self._keys.get(record)
         if found is not None:
             result = self._handle(found)
@@ -326,8 +376,8 @@ class HigherTemporalImageArena:
             self._keys[record] = local_id
         except BaseException:
             self._keys.pop(record, None)
-            self._nodes._rollback_unpublished(local_id)
-            self._seals._rollback_unpublished(local_id)
+            self._nodes.rollback_unpublished(local_id)
+            self._seals.rollback_unpublished(local_id)
             self.ledger.release(self._node_owner, entries=1, nodes=1)
             self.ledger.release(self._key_owner, entries=1)
             self.ledger.release(self._seal_owner, entries=1)
@@ -387,7 +437,7 @@ class HigherTemporalImageArena:
         right: HigherExpressionID,
     ) -> HigherTemporalImageID:
         """Bind the first published image to its exact live source occurrence."""
-        self._check_authority()
+        self.validate_authority()
         if producer.ledger is not self.ledger or producer.outputs is not self.outputs:
             raise ValueError("initial temporal image belongs to another runtime")
         producer.validate_binding(source, macro)
@@ -552,7 +602,7 @@ class HigherTemporalImageArena:
         is constructed from logarithmically many distinct symbolic nodes and
         never expands or observes the provider word.
         """
-        self._check_authority()
+        self.validate_authority()
         if type(width) is not int or width < 1:
             raise ValueError("temporal blank macro requires a positive width")
         self.ledger.reserve(self._frame_owner, entries=1, nodes=1)
@@ -617,7 +667,7 @@ class HigherTemporalImageArena:
         right: HigherExpressionID,
     ) -> HigherTemporalImageID:
         """Apply this arena's primitive action to one completed provider image."""
-        self._check_authority()
+        self.validate_authority()
         if self._running:
             raise RuntimeError("higher temporal image construction is not reentrant")
         prior = self.resolve(provider)
@@ -678,12 +728,7 @@ class HigherTemporalImageArena:
                         source_extent=int(frame.origin < prior.active_extent),
                     )
                 elif type(node) is RecursiveOutputBranch:
-                    if (
-                        node.left_width < 1
-                        or node.left_width >= frame.width
-                        or self.outputs.resolve(node.left) is None
-                        or self.outputs.resolve(node.right) is None
-                    ):
+                    if node.left_width < 1 or node.left_width >= frame.width:
                         raise ValueError(
                             "temporal branch has invalid recursive geometry"
                         )

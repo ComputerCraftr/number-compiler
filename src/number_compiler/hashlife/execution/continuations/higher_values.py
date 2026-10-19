@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -14,6 +15,9 @@ from number_compiler.resources.metric_keys import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+        RuntimeValueAuditSnapshot,
+    )
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
         HigherSummaryID,
     )
@@ -248,6 +252,51 @@ class RuntimeValueArena:
         if self._function_validate not in (None, validate):
             raise ValueError("runtime values already use another semantic arena")
         self._function_validate = validate
+
+    def value_id(self, local_id: int) -> RuntimeValueID:
+        """Return an allocated runtime-value ID for an exact local index."""
+        if (
+            type(local_id) is not int
+            or not 0 <= local_id < self._next_value
+            or local_id not in self._records
+        ):
+            raise IndexError("runtime value index is outside the arena")
+        return RuntimeValueID(self.owner, self._KIND, local_id)
+
+    def audit_snapshot(self) -> RuntimeValueAuditSnapshot:
+        """Expose immutable views of retained values and their exact stores."""
+        from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+            RuntimeValueAuditSnapshot,
+        )
+
+        return RuntimeValueAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            record_owner=self._record_owner,
+            records=MappingProxyType(self._records),
+            record_store=self._records,
+            key_owner=self._key_owner,
+            keys=MappingProxyType(self._keys),
+            key_store=self._keys,
+            environment_owner=self._environment_owner,
+            environments=MappingProxyType(self._environments),
+            environment_store=self._environments,
+            environment_key_owner=self._environment_key_owner,
+            environment_keys=MappingProxyType(self._environment_keys),
+            environment_key_store=self._environment_keys,
+            memo_owner=self._memo_owner,
+            evaluations=MappingProxyType(self.evaluations),
+            evaluation_store=self.evaluations,
+            operation_owner=self._operation_owner,
+            operations=MappingProxyType(self.operations),
+            operation_store=self.operations,
+            projection_owner=self._projection_owner,
+            projections=MappingProxyType(self._projections),
+            projection_store=self._projections,
+            projection_pattern_owner=self._projection_pattern_owner,
+            projection_patterns=MappingProxyType(self._projection_patterns),
+            projection_pattern_store=self._projection_patterns,
+        )
 
     def _validate_function(self, function: HigherFunctionID) -> None:
         from number_compiler.hashlife.execution.continuations.higher_types import (

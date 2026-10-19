@@ -11,6 +11,7 @@ from typing import cast
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -325,8 +326,10 @@ def _longest_repeat(
     limit: int,
     templates: BoundaryActionTemplateMemo,
 ) -> int:
+    identity = MixedParityMotif(motif)
+
     def admitted(repeats: int) -> bool:
-        action = templates.get(motif, repeats)[0]
+        action = templates.get(identity, repeats)[0]
         templates.ledger.bump(_collatz_keys.COLLATZ_MIXED_CLOCK_CYLINDER_CHECKS)
         templates.ledger.bump(
             _collatz_keys.COLLATZ_MIXED_CLOCK_OPERAND_BITS,
@@ -357,7 +360,7 @@ def _width_summary(
 ) -> BlankLedger:
     # A positive affine motif has a monotone orbit. Each physical prefix is
     # also increasing in its entry, so extrema occur in the first/last copy.
-    base = templates.get(motif, 1)[0]
+    base = templates.get(MixedParityMotif(motif), 1)[0]
     last, remainder = divmod((endpoint << len(motif)) - base.offset, base.gain)
     if remainder:
         raise AssertionError("admitted mixed motif has a nonintegral predecessor")
@@ -451,7 +454,7 @@ def select_mixed_clock_macro(
         if best is None:
             return None
         motif, repetitions = best
-        action = templates.get(motif, repetitions)[0]
+        action = templates.get(MixedParityMotif(motif), repetitions)[0]
         endpoint = action.endpoint(source)
         width = _width_summary(source, endpoint, motif, templates)
         macro = _issue_macro(source, motif, repetitions, action, endpoint, width)

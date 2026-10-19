@@ -69,7 +69,9 @@ def temporal_carry_safety_for_term(root: DoubleReverseTerm) -> CarrySafetyResult
     trailing_zeros = root._adapter._trailing_zero_count(analysis_root)
     least_nonzero = symbol_at(root._arena, analysis_root, width - trailing_zeros - 1)
     exact_width_change = -trailing_zeros + int(least_nonzero >= 5)
-    with root._ledger.reservation(root._scratch_owner, entries=9000, nodes=9000):
+    with root.resource_ledger.reservation(
+        root._scratch_owner, entries=9000, nodes=9000
+    ):
         layers = tuple(_component_layers(index) for index in range(4))
         component = candidate_component(lifted.edge)
         safety = _source_carry_safety_from_layers(

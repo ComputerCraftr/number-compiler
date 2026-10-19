@@ -6,16 +6,46 @@ from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from dataclasses import fields, is_dataclass
 from types import MappingProxyType
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeGuard, TypeVar, cast
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.automata.slp import SLPArena
 
 _Key = TypeVar("_Key")
 _Value = TypeVar("_Value")
-_Record = TypeVar("_Record", bound="_SourceAuthorizedRecord")
+_Record = TypeVar("_Record", bound="SourceAuthorizedRecord")
 _AUTHORITY_SEAL = object()
 _MAX_SNAPSHOT_WORK = 1_000_000
+
+
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    """Narrow an inspected packet mapping to read-only object values."""
+    return isinstance(value, Mapping)
+
+
+def _is_object_sequence(
+    value: object,
+) -> TypeGuard[tuple[object, ...] | list[object]]:
+    return isinstance(value, (tuple, list))
+
+
+def _is_object_set(value: object) -> TypeGuard[set[object] | frozenset[object]]:
+    return isinstance(value, (set, frozenset))
+
+
+def _supported_packet_shape(value: object) -> bool:
+    return (
+        _is_object_mapping(value)
+        or _is_object_sequence(value)
+        or _is_object_set(value)
+        or (is_dataclass(value) and not isinstance(value, type))
+    )
+
+
+def _is_source_authorized_record(
+    value: object,
+) -> TypeGuard[SourceAuthorizedRecord]:
+    return isinstance(value, SourceAuthorizedRecord)
 
 
 class FrozenMap(Mapping[_Key, _Value], Generic[_Key, _Value]):
@@ -40,13 +70,13 @@ class FrozenMap(Mapping[_Key, _Value], Generic[_Key, _Value]):
         return copied
 
 
-class _SourceAuthorizedRecord:
+class SourceAuthorizedRecord:
     """Dataclass base whose authority slot is deliberately absent from fields."""
 
     __slots__ = ("_source_authority",)
 
 
-class _SourceAuthority:
+class SourceRecordAuthority:
     __slots__ = (
         "_arena_ref",
         "_arena_strong",
@@ -65,8 +95,8 @@ class _SourceAuthority:
         arena: SLPArena,
         root: int,
         root_node: object,
-        record: _SourceAuthorizedRecord,
-        parent: _SourceAuthority | None,
+        record: SourceAuthorizedRecord,
+        parent: SourceRecordAuthority | None,
         source_generation: int,
         snapshot: tuple[object, ...],
     ) -> None:
@@ -110,9 +140,7 @@ def _snapshot_value(value: object) -> object:
             if type(current) in scalar_types:
                 values.append(("scalar", type(current), current))
                 continue
-            if not isinstance(current, (Mapping, tuple, list, set, frozenset)) and not (
-                is_dataclass(current) and not isinstance(current, type)
-            ):
+            if not _supported_packet_shape(current):
                 raise TypeError("temporal packet contains an unsupported value shape")
             identity = id(current)
             if identity in active:
@@ -120,10 +148,12 @@ def _snapshot_value(value: object) -> object:
             if identity in node_indices:
                 values.append(("node", node_indices[identity]))
                 continue
-            if isinstance(current, Mapping):
+            if _is_object_mapping(current):
                 if 2 * len(current) > _MAX_SNAPSHOT_WORK - work:
                     raise ValueError("temporal packet snapshot exceeds its work budget")
-                children = [part for pair in current.items() for part in pair]
+                children: list[object] = [
+                    part for pair in current.items() for part in pair
+                ]
                 kind = "mapping"
                 descriptor: object = len(children) // 2
             elif is_dataclass(current) and not isinstance(current, type):
@@ -131,13 +161,13 @@ def _snapshot_value(value: object) -> object:
                 children = [getattr(current, member.name) for member in members]
                 kind = "dataclass"
                 descriptor = tuple(member.name for member in members)
-            elif isinstance(current, (set, frozenset)):
+            elif _is_object_set(current):
                 if len(current) > _MAX_SNAPSHOT_WORK - work:
                     raise ValueError("temporal packet snapshot exceeds its work budget")
                 children = list(current)
                 kind = "set"
                 descriptor = len(children)
-            elif isinstance(current, (tuple, list)):
+            elif _is_object_sequence(current):
                 if len(current) > _MAX_SNAPSHOT_WORK - work:
                     raise ValueError("temporal packet snapshot exceeds its work budget")
                 children = list(current)
@@ -184,7 +214,7 @@ def _snapshot_value(value: object) -> object:
     return ("snapshot", values[0], tuple(nodes))
 
 
-def _public_snapshot(record: _SourceAuthorizedRecord) -> tuple[object, ...]:
+def _public_snapshot(record: SourceAuthorizedRecord) -> tuple[object, ...]:
     if not is_dataclass(record):
         raise TypeError("source authority requires a dataclass record")
     return tuple(
@@ -198,7 +228,7 @@ def issue_source_record(
     arena: SLPArena,
     root: int,
     *,
-    parent: _SourceAuthority | None = None,
+    parent: SourceRecordAuthority | None = None,
     source_generation: int = 0,
 ) -> _Record:
     """Bind an immutable packet to the exact source root and public snapshot."""
@@ -214,7 +244,7 @@ def issue_source_record(
             or parent.source_generation != source_generation
         ):
             raise ValueError("child packet source differs from its authority parent")
-    authority = _SourceAuthority(
+    authority = SourceRecordAuthority(
         arena=arena,
         root=root,
         root_node=arena.nodes[root],
@@ -227,12 +257,15 @@ def issue_source_record(
     return record
 
 
-def validate_source_record(record: object) -> _SourceAuthority:
+def validate_source_record(record: object) -> SourceRecordAuthority:
     """Reject direct construction, mutation, and cross-root packet reuse."""
-    if not isinstance(record, _SourceAuthorizedRecord):
+    if not isinstance(record, SourceAuthorizedRecord):
         raise TypeError("temporal packet has no source authority")
     authority = getattr(record, "_source_authority", None)
-    if not isinstance(authority, _SourceAuthority) or authority.record is not record:
+    if (
+        not isinstance(authority, SourceRecordAuthority)
+        or authority.record is not record
+    ):
         raise ValueError("temporal packet source authority is invalid")
     pending = [authority]
     visited: set[int] = set()
@@ -244,7 +277,7 @@ def validate_source_record(record: object) -> _SourceAuthority:
         arena = current.arena
         if (
             current.seal is not _AUTHORITY_SEAL
-            or not isinstance(current.record, _SourceAuthorizedRecord)
+            or not _is_source_authorized_record(current.record)
             or arena is None
             or not 0 <= current.root < len(arena.nodes)
             or arena.nodes[current.root] is not current.root_node
@@ -261,7 +294,9 @@ def validate_source_record(record: object) -> _SourceAuthority:
     return authority
 
 
-def require_same_source(first: _SourceAuthority, second: _SourceAuthority) -> None:
+def require_same_source(
+    first: SourceRecordAuthority, second: SourceRecordAuthority
+) -> None:
     """Require exact arena/root identity, not equal width or prefix metadata."""
     if (
         first.arena is None
@@ -274,7 +309,7 @@ def require_same_source(first: _SourceAuthority, second: _SourceAuthority) -> No
         raise ValueError("temporal packets have different source roots or generations")
 
 
-def require_source_arena(authority: _SourceAuthority) -> SLPArena:
+def require_source_arena(authority: SourceRecordAuthority) -> SLPArena:
     """Return the still-live arena of a previously validated authority."""
     arena = authority.arena
     if arena is None:
@@ -284,6 +319,7 @@ def require_source_arena(authority: _SourceAuthority) -> SLPArena:
 
 __all__ = [
     "FrozenMap",
+    "SourceRecordAuthority",
     "issue_source_record",
     "require_same_source",
     "require_source_arena",

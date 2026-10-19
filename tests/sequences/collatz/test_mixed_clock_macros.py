@@ -5,6 +5,7 @@ from dataclasses import fields
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -50,7 +51,7 @@ def test_mixed_cylinder_matches_literal_endpoint_and_all_widths(
 ) -> None:
     ledger = ResourceLedger()
     with BoundaryActionTemplateMemo(ledger) as memo:
-        action = memo.get(motif, copies)[0]
+        action = memo.get(MixedParityMotif(motif), copies)[0]
         seed = action.source_residue + (5 << action.steps)
         ticks = (len(motif) + sum(motif)) * copies
         macro = select_mixed_clock_macro(seed, ticks, templates=memo)
@@ -87,7 +88,7 @@ def test_mixed_authority_and_short_requests() -> None:
         validate_mixed_clock_macro(object.__new__(MixedClockMacro))
     with BoundaryActionTemplateMemo(ResourceLedger()) as memo:
         assert select_mixed_clock_macro(27, 15, templates=memo) is None
-        action = memo.get((1, 0, 0), 8)[0]
+        action = memo.get(MixedParityMotif((1, 0, 0)), 8)[0]
         seed = action.source_residue + (5 << action.steps)
         macro = select_mixed_clock_macro(seed, 32, templates=memo)
         assert macro is not None
@@ -103,7 +104,7 @@ def test_warm_mixed_guard_does_not_recompute_modular_inverse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with BoundaryActionTemplateMemo(ResourceLedger()) as memo:
-        action = memo.get((1, 0, 0), 8)[0]
+        action = memo.get(MixedParityMotif((1, 0, 0)), 8)[0]
         seed = action.source_residue + (5 << action.steps)
         assert select_mixed_clock_macro(seed, 32, templates=memo) is not None
 

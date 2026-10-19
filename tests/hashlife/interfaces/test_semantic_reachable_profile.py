@@ -24,7 +24,7 @@ from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_query import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -42,7 +42,9 @@ def setup() -> tuple[
     StructureArena,
     ReachableCodec,
 ]:
-    app = build(PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1)
+    app = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
+    )
     runtime, primitive = app.runtime, app.root
     runtime.kernel(primitive)
     pair = runtime.actions.compose(primitive, primitive)
@@ -167,7 +169,7 @@ def test_exhausted_decode_cache_preflight_and_warm_hit(
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("warm decoder rebuilt a finite table")
 
-    monkeypatch.setattr(module, "_Builder", forbidden)
+    monkeypatch.setattr(module, "StructureBuilder", forbidden)
     assert arena.component(codec, 0, structures) == anchor
 
 
@@ -197,7 +199,9 @@ def test_profile_loader_failure_releases_reservations(
 ) -> None:
     import number_compiler.sequences.collatz.physical_pair_certificate as certificate
 
-    app = build(PhysicalCollatzFourBlockEffect(), (0,), 8, 1)
+    app = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0,), 8, 1
+    )
     pair = app.runtime.actions.compose(app.root, app.root)
     arena = SemanticProfileArena(app.runtime)
 
@@ -226,19 +230,19 @@ def test_fixed_subtable_is_reused_before_boolean_decisions(
     from number_compiler.arithmetic.functions.semantic_function_transactions import (
         _Transaction,
     )
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+    from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
     from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
         _FixedTableLookup,
     )
 
     runtime, arena, _, structures, _ = setup()
     port = FinitePort(PortVariable(0, 0, "fixed-test-column", 0), 16)
-    circuit = _Circuit(structures.functions, (port,))
+    circuit = BooleanCircuit(structures.functions, (port,))
     lookup = _FixedTableLookup(arena, circuit, port, 2)
     values = (0, 1, 2, 3) * 4
     roots = lookup.compile(values)
     signature = FunctionSignature((port,), AtomSort("column", 4))
-    result = structures.bits._publish(
+    result = structures.bits.publish_circuit(
         circuit, (circuit.normalized(signature, roots, circuit.admitted()),)
     )[0]
     for value in range(16):

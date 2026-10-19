@@ -12,7 +12,11 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     SpatialSummary,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_runtime import build
 
 
@@ -30,7 +34,9 @@ def test_complete_parent_observes_every_boundary_without_children(
     side: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = build(effect, source, 4, 1)
+    runtime, action = build(
+        effect, source, 4, 1, family_hooks=collatz_tile_hooks_for_effect(effect)
+    )
     cell = runtime.cells.source(0, 2)
     task = SpatialSummary(action, cell, side)
     summary = runtime.execute(task)
@@ -61,8 +67,12 @@ def test_complete_parent_observes_every_boundary_without_children(
 
 
 def test_invalid_primitive_summary_scope_rejects_before_warm_lookup() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 1), 4, 1)
-    foreign, other = build(CollatzPhysicalBlockEffect(), (1, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1), 4, 1
+    )
+    foreign, other = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1), 4, 1
+    )
     request = SpatialSummary(action, runtime.cells.source(0, 2), 0)
     runtime.execute(request)
     for invalid in (

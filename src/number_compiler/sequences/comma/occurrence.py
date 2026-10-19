@@ -24,8 +24,8 @@ from .boundary_quotient import (
     BoundaryState,
     MacroTemplate,
     _affine_weight_signature,
-    _boundary_state_signature,
     _macro_template_component_seal,
+    boundary_state_signature,
 )
 from .carry_generator import (
     BitsCharge,
@@ -230,7 +230,7 @@ def _macro_prefix_arithmetic(
     value, scale, source_high, _source_low, _source_phase = _source_coordinates(
         source, charge_work=charge_work, charge_bits=charge_bits
     )
-    if _boundary_state_signature(template.source) != _boundary_state_signature(
+    if boundary_state_signature(template.source) != boundary_state_signature(
         source.state
     ):
         raise ValueError("macro template is bound to another boundary occurrence")
@@ -398,7 +398,7 @@ def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
     if type(template) is not MacroTemplate:
         raise ValueError("macro template changed after construction")
     component_seal = _macro_template_component_seal(template)
-    source = _boundary_state_signature(template.source)
+    source = boundary_state_signature(template.source)
     if (
         type(template.outcome) is not str
         or template.outcome not in ("fork", "landmine")
@@ -411,7 +411,7 @@ def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
         raise ValueError("macro template destination has a noncanonical type")
     children: list[tuple[str, int, int]] = []
     for child in template.ordered_children:
-        children.append(_boundary_state_signature(child))
+        children.append(boundary_state_signature(child))
     if template.outcome == "fork":
         if (
             type(template.destination_a) is not int

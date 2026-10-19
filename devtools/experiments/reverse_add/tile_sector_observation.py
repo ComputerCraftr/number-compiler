@@ -30,9 +30,9 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 from number_compiler.hashlife.execution.tile_causal_results import PrimitiveCausalPorts
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
-    _aligned_reverse_interval_forcing,
+    aligned_reverse_interval_forcing,
 )
 from number_compiler.hashlife.tiles.reverse_threshold_summary import (
     reverse_current_growth,
@@ -107,7 +107,7 @@ def _initial_sector_summary(
     source_width: int,
     active_width: int,
 ) -> ReverseCarrySectorTransfer:
-    interface = adapter._compile_interface(primitive, source, adapter.wiring(primitive))
+    interface = adapter.compile_interface(primitive, source, adapter.wiring(primitive))
     initial = _sector_summary(adapter, interface)
     if initial.width != source_width or initial.active_width != active_width:
         raise ValueError("reverse sector source does not match its carry transfer")
@@ -131,10 +131,8 @@ def _existing_interface_payload(
         )
 
     from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
-        _payload,
-        _validate_key,
-        _validate_published_value,
         causal_interface_key,
+        lookup_causal_interface,
     )
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
@@ -145,21 +143,12 @@ def _existing_interface_payload(
         application.wiring,
     )
     arena = application.scheduler.results
-    interface_key = causal_interface_key(key)
-    _validate_key(arena, interface_key)
-    found = arena._memo.get(interface_key)
-    if found is None:
+    payload = lookup_causal_interface(arena, causal_interface_key(key))
+    if payload is None:
         raise ValueError(
             "powered reverse sector observation requires a prior interface request"
         )
-    from number_compiler.hashlife.tiles.tile_result_records import (
-        CompletedInterfaceResult,
-    )
-
-    if type(found) is not CompletedInterfaceResult:
-        raise TypeError("powered reverse observation found another interface record")
-    _validate_published_value(arena, interface_key, found)
-    return _payload(found, interface_key)
+    return payload
 
 
 def _source_is_symmetric(
@@ -405,7 +394,7 @@ def _observe_reverse_interval_forcing(
             application=application.identity,
         )
         try:
-            interface = adapter._compile_interface(
+            interface = adapter.compile_interface(
                 application.action,
                 prefix.tile,
                 application.wiring,
@@ -424,7 +413,7 @@ def _observe_reverse_interval_forcing(
             if growth:
                 predecessor, predecessor_lease = payload(origin - 1)
             try:
-                return _aligned_reverse_interval_forcing(
+                return aligned_reverse_interval_forcing(
                     adapter,
                     primary,
                     reflected,

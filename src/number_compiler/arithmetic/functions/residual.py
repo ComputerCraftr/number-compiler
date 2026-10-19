@@ -185,8 +185,8 @@ def minimize_bimachine(
     # Exact left residuals: functions right_state -> output word.
     lobs: dict[tuple[int, int], int] = {}
     lclasses = _Interner()
-    for li, left_state in enumerate(machine.left.states):
-        for ai, a in enumerate(A):
+    for left_state in machine.left.states:
+        for a in A:
             residual = output.cofactor({0: left_state, 1: a})
             shape = decision.tropical_length_shape(residual)
             lobs[left_state, a] = lclasses.intern((shape, residual))
@@ -195,8 +195,8 @@ def minimize_bimachine(
     # Exact right residuals: functions left_state -> output word.
     robs: dict[tuple[int, int], int] = {}
     rclasses = _Interner()
-    for ri, r in enumerate(machine.right.states):
-        for ai, a in enumerate(A):
+    for r in machine.right.states:
+        for a in A:
             residual = output.cofactor({1: a, 2: r})
             shape = decision.tropical_length_shape(residual)
             robs[r, a] = rclasses.intern((shape, residual))

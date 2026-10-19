@@ -8,7 +8,9 @@ from typing import cast
 
 import pytest
 
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.reverse_source_payload_audit import (
     audit_reverse_source_payloads,
@@ -260,23 +262,28 @@ def test_partial_q19_stream_releases_scratch_and_disposes_cleanly() -> None:
     stream.close()
     workspace = term._workspace
     assert workspace is not None
-    assert term._ledger.counters.get("reverse_output_stream_cancellations", 0) == 1
-    assert term._ledger.counters.get("recursive_output_stream_emitted_digits", 0) == 1
+    assert (
+        term.resource_ledger.counters.get("reverse_output_stream_cancellations", 0) == 1
+    )
+    assert (
+        term.resource_ledger.counters.get("recursive_output_stream_emitted_digits", 0)
+        == 1
+    )
     scratch = next(
         item
-        for item in term._ledger.inventory()
+        for item in term.resource_ledger.inventory()
         if item.role == "reverse_pair_output_workspace"
     )
     assert scratch.entries == scratch.nodes == 0
     audit = audit_reverse_source_payloads(
-        term._ledger,
-        tuple(term._ledger.iter_execution_roots()),
-        dict(term._ledger.iter_containers()),
+        term.resource_ledger,
+        tuple(term.resource_ledger.iter_execution_roots()),
+        dict(term.resource_ledger.iter_containers()),
     )
     assert audit.valid(workspace)
     assert not audit.invalid
     workspace.dispose()
-    assert term._ledger.entries == term._ledger.nodes == 0
+    assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
 
 
 def test_q19_stream_resumed_after_owner_disposal_releases_walk_tasks() -> None:
@@ -290,7 +297,7 @@ def test_q19_stream_resumed_after_owner_disposal_releases_walk_tasks() -> None:
     with pytest.raises(ValueError, match="disposed Q19"):
         next(stream)
 
-    assert term._ledger.entries == term._ledger.nodes == 0
+    assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
 
 
 @pytest.mark.parametrize("store_name", ("terminal", "concat", "issued"))

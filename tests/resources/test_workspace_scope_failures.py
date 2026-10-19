@@ -82,10 +82,10 @@ def test_dyadic_stack_append_failure_rolls_back_its_reservation(
     with monkeypatch.context() as patch:
         patch.setattr(LedgerList, "append", fail_append)
         with pytest.raises(MemoryError, match="stack append failed"):
-            workspace._action(256)
+            workspace.action_for_extent(256)
     assert (ledger.entries, ledger.nodes) == before
     assert len(stack) == 0
-    workspace._action(256)
+    workspace.action_for_extent(256)
     workspace.dispose()
     assert ledger.entries == ledger.nodes == 0
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
 from number_compiler.hashlife.tiles.ordered_boolean_support import (
@@ -26,14 +26,13 @@ if TYPE_CHECKING:
         DiamondRuntime,
     )
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.hashlife.execution.tile_causal_tasks import CausalPrefix
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
+    from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
     from number_compiler.hashlife.tiles.tile_context import (
         ChildContext,
         PrimitiveTileResult,
@@ -46,6 +45,7 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.tiles.tile_results import ResultLease
     from number_compiler.hashlife.tiles.tiles import TileID
+    from number_compiler.resources.causal_types import CausalPrefix
     from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -84,6 +84,18 @@ class FinitePairTransferFactory(ABC):
     @abstractmethod
     def create(self, ledger: ResourceLedger) -> FinitePairTransfer:
         """Create a ledger-owned transfer adapter."""
+
+
+def is_finite_pair_transfer(value: object) -> TypeGuard[FinitePairTransfer]:
+    """Retain runtime ABC admission while narrowing an untrusted input."""
+    return isinstance(value, FinitePairTransfer)
+
+
+def is_finite_pair_transfer_factory(
+    value: object,
+) -> TypeGuard[FinitePairTransferFactory]:
+    """Retain runtime factory admission while narrowing an untrusted input."""
+    return isinstance(value, FinitePairTransferFactory)
 
 
 @dataclass(frozen=True, slots=True)
@@ -601,4 +613,9 @@ class TileExecutionAdapter(Protocol):
     ) -> bool: ...
 
 
-__all__ = ["FamilyTileHooks", "TileExecutionAdapter"]
+__all__ = [
+    "FamilyTileHooks",
+    "TileExecutionAdapter",
+    "is_finite_pair_transfer",
+    "is_finite_pair_transfer_factory",
+]

@@ -7,6 +7,7 @@ binding in one ledger operation. No callback can publish a partial result.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.functions.finite_function_types import (
@@ -154,7 +155,7 @@ class PreparedFunctions:
                     del self.arena.keys[node]
             else:
                 self.arena.keys[node] = previous_identity
-        self.arena.nodes._rollback_unpublished(journal.node_base)
+        self.arena.nodes.rollback_unpublished(journal.node_base)
 
     def _commit(self) -> None:
         assert self.transaction is not None
@@ -183,13 +184,18 @@ class PreparedFunctions:
         self.converted = ()
         self.staged_entries = self.staged_nodes = 0
 
-    def publish_reserved(self) -> None:
+    def publish_with_extension(self, extension: Callable[[], None]) -> None:
+        """Publish function nodes and one adjacent owner extension atomically."""
         journal = self._publish_stores()
         try:
+            extension()
             self._commit()
         except BaseException:
             self._rollback_stores(journal)
             raise
+
+    def publish_reserved(self) -> None:
+        self.publish_with_extension(lambda: None)
 
 
 def prepare_functions(
@@ -241,7 +247,7 @@ def prepare_functions(
             )
         ordered = sorted(reachable)
         mapped = {old: transaction.base + offset for offset, old in enumerate(ordered)}
-        nodes = []
+        nodes: list[SemanticNode] = []
         for old in ordered:
             node = transaction.node(old)
             terminal = node.terminal
@@ -269,21 +275,50 @@ def prepare_functions(
         for arguments in sorted(transaction.choice_requests):
             if len(reductions) >= capacity:
                 break
+            if any(
+                identity >= transaction.base and identity not in mapped
+                for identity in arguments
+            ):
+                continue
             result = transaction.choices[arguments]
             if result >= transaction.base and result not in mapped:
                 continue
+            mapped_arguments = tuple(
+                mapped.get(identity, identity) for identity in arguments
+            )
             request = SemanticRequest(
                 "construction-ite",
-                tuple(arena._handle(identity) for identity in arguments),
+                tuple(
+                    arena.candidate_handle(
+                        identity, base=transaction.base, candidate_count=len(nodes)
+                    )
+                    for identity in mapped_arguments
+                ),
             )
             if request == transaction.request or request in arena.memo:
                 continue
-            reductions.append((request, arena._handle(mapped.get(result, result))))
+            reductions.append(
+                (
+                    request,
+                    arena.candidate_handle(
+                        mapped.get(result, result),
+                        base=transaction.base,
+                        candidate_count=len(nodes),
+                    ),
+                )
+            )
         return PreparedFunctions(
             arena,
             transaction.base,
             tuple(nodes),
-            tuple(arena._handle(mapped.get(root, root)) for root in roots),
+            tuple(
+                arena.candidate_handle(
+                    mapped.get(root, root),
+                    base=transaction.base,
+                    candidate_count=len(nodes),
+                )
+                for root in roots
+            ),
             tuple(reductions),
             transaction,
             preparation_bound,

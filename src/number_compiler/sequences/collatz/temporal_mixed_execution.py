@@ -32,7 +32,7 @@ from number_compiler.sequences.collatz.tape_width import CollatzWidthSpineAccumu
 from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable
 from number_compiler.sequences.collatz.temporal_f5_observer import (
     CollatzF5AffineAction,
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.terminal_run_execution import (
     consume_terminal_power_two,
@@ -491,7 +491,7 @@ def _consume_mixed_macro(
             raise ValueError("mixed action lacks its demanded exact width summary")
         width_spine.record(macro.width_blank)
     if normalized_f5 is not None and physical_f5 is not None:
-        f5 = _project_dyadic_fields_f5(macro.fields)
+        f5 = project_dyadic_fields_f5(macro.fields)
         normalized_f5 = normalized_f5.then(f5)
         physical_f5 = physical_f5.then(f5)
     if macros is not None:

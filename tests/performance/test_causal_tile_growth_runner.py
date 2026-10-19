@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, fields, replace
 from pathlib import Path
-from typing import Never, cast
+from typing import Never
 
 import pytest
 
@@ -13,6 +14,13 @@ import devtools.benchmarks.causal_tile_growth_runner as runner
 from devtools.benchmarks.causal_tile_growth_probe import CausalGrowthRow
 from devtools.checks.process_guard import GuardResult
 from devtools.git_source import GitSource
+
+
+def _output_path(arguments: Mapping[str, object]) -> Path:
+    output = arguments.get("output")
+    if not isinstance(output, Path):
+        raise AssertionError("guarded runner did not receive a Path output")
+    return output
 
 
 def _guard(outcome: str, returncode: int = 0) -> GuardResult:
@@ -56,7 +64,7 @@ def _row() -> CausalGrowthRow:
         boundary_output_failures=0,
         boundary_output_piece_normalizations=0,
     )
-    row = runner._parse_row(values)
+    row = runner.parse_causal_growth_row(values)
     assert row is not None
     return row
 
@@ -72,13 +80,17 @@ def test_worker_timeout_remains_missing_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = GitSource("commit", "tree", "sha1", False)
-    monkeypatch.setattr(runner, "git_source", lambda _root: source)
+
+    def source_for_root(_root: Path) -> GitSource:
+        return source
+
+    monkeypatch.setattr(runner, "git_source", source_for_root)
 
     def timed_out(command: tuple[str, ...], **kwargs: object) -> GuardResult:
         assert kwargs["timeout"] == 60
         assert kwargs["memory_bytes"] == 4 * 1024**3
         assert kwargs["cwd"] == runner.ROOT
-        cast(Path, kwargs["output"]).write_text("partial")
+        _output_path(kwargs).write_text("partial")
         return _guard("timeout", -9)
 
     monkeypatch.setattr(runner, "run_guarded", timed_out)
@@ -115,7 +127,7 @@ def test_worker_fingerprint_is_checked_before_row_payload(
 
     def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
         assert kwargs["cwd"] == runner.ROOT
-        cast(Path, kwargs["output"]).write_text(json.dumps(payload))
+        _output_path(kwargs).write_text(json.dumps(payload))
         return _guard("completed")
 
     monkeypatch.setattr(runner, "run_guarded", completed)
@@ -123,9 +135,9 @@ def test_worker_fingerprint_is_checked_before_row_payload(
     def forbidden(_value: object) -> Never:
         raise AssertionError("row decoded before source identity was validated")
 
-    monkeypatch.setattr(runner, "_parse_row", forbidden)
+    monkeypatch.setattr(runner, "parse_causal_growth_row", forbidden)
     source = GitSource("commit", "tree", "sha1", False)
-    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, source)
+    result = runner.run_causal_growth_trial(("fixed-width", 4, 4, 1), 0, source)
     assert result["status"] == "failed"
     assert result.get("failure_reason") == "worker Git state differed from parent"
 
@@ -134,7 +146,7 @@ def test_completed_worker_without_memory_sample_is_missing_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
-        cast(Path, kwargs["output"]).write_text("{}")
+        _output_path(kwargs).write_text("{}")
         return GuardResult(
             schema=1,
             outcome="completed",
@@ -150,7 +162,7 @@ def test_completed_worker_without_memory_sample_is_missing_evidence(
         )
 
     monkeypatch.setattr(runner, "run_guarded", completed)
-    result = runner._one_trial(
+    result = runner.run_causal_growth_trial(
         ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
     )
     assert result["status"] == "failed"
@@ -171,11 +183,11 @@ def test_successful_trial_retains_memory_evidence(
     }
 
     def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
-        cast(Path, kwargs["output"]).write_text(json.dumps(payload))
+        _output_path(kwargs).write_text(json.dumps(payload))
         return _guard("completed")
 
     monkeypatch.setattr(runner, "run_guarded", completed)
-    result = runner._one_trial(
+    result = runner.run_causal_growth_trial(
         ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
     )
     assert result.get("sampled_peak_bytes") == 1024
@@ -185,7 +197,7 @@ def test_successful_trial_retains_memory_evidence(
 
 def test_trial_aggregation_reports_median_spread_and_stable_counters() -> None:
     row = _row()
-    trials = []
+    trials: list[runner.TrialRecord] = []
     for trial, seconds in enumerate((0.3, 0.1, 0.2)):
         trials.append(
             {
@@ -195,7 +207,9 @@ def test_trial_aggregation_reports_median_spread_and_stable_counters() -> None:
                 "process_wall_seconds": seconds + 0.05,
             }
         )
-    representative, report = runner._aggregate(("fixed-width", 4, 4, 1), trials, 3)
+    representative, report = runner.aggregate_causal_growth_trials(
+        ("fixed-width", 4, 4, 1), trials, 3
+    )
     assert representative is not None and representative.cold_seconds == 0.2
     assert report["status"] == "MEASURED"
     assert report["timing_seconds"]["cold_seconds"] == {
@@ -208,7 +222,7 @@ def test_trial_aggregation_reports_median_spread_and_stable_counters() -> None:
 
 def test_trial_counter_instability_is_not_collapsed_into_a_median() -> None:
     row = _row()
-    trials = [
+    trials: list[runner.TrialRecord] = [
         {"status": "passed", "row": asdict(row), "process_wall_seconds": 0.3},
         {
             "status": "passed",
@@ -216,7 +230,9 @@ def test_trial_counter_instability_is_not_collapsed_into_a_median() -> None:
             "process_wall_seconds": 0.3,
         },
     ]
-    representative, report = runner._aggregate(("fixed-width", 4, 4, 1), trials, 2)
+    representative, report = runner.aggregate_causal_growth_trials(
+        ("fixed-width", 4, 4, 1), trials, 2
+    )
     assert representative is None
     assert report["status"] == "RED"
     assert report["release_blockers"] == [
@@ -226,15 +242,24 @@ def test_trial_counter_instability_is_not_collapsed_into_a_median() -> None:
 
 def test_worker_row_rejects_negative_counters_and_nonfinite_time() -> None:
     row = _row()
-    assert runner._parse_row(asdict(replace(row, causal_frames=-1))) is None
-    assert runner._parse_row(asdict(replace(row, cold_seconds=float("nan")))) is None
+    assert (
+        runner.parse_causal_growth_row(asdict(replace(row, causal_frames=-1))) is None
+    )
+    assert (
+        runner.parse_causal_growth_row(asdict(replace(row, cold_seconds=float("nan"))))
+        is None
+    )
 
 
 def test_passing_subset_remains_red_for_missing_release_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = GitSource("commit", "tree", "sha1", False)
-    monkeypatch.setattr(runner, "git_source", lambda _root: source)
+
+    def source_for_root(_root: Path) -> GitSource:
+        return source
+
+    monkeypatch.setattr(runner, "git_source", source_for_root)
 
     def passed(
         request: tuple[str, int, int, int],
@@ -267,7 +292,7 @@ def test_passing_subset_remains_red_for_missing_release_manifest(
             "status": "passed",
         }
 
-    monkeypatch.setattr(runner, "_one_trial", passed)
+    monkeypatch.setattr(runner, "run_causal_growth_trial", passed)
     result = runner.run_fresh_process_probe(
         horizons=(4, 8),
         spatial_widths=(4, 8),
@@ -286,7 +311,7 @@ def test_passing_subset_remains_red_for_missing_release_manifest(
 
 
 def test_exact_default_protocol_is_required_for_release_measurement() -> None:
-    required = runner._manifest(
+    required = runner.build_causal_growth_manifest(
         runner.HORIZONS,
         runner.HORIZONS,
         runner.RELEASE_FIXED_WIDTH,

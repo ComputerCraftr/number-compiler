@@ -127,7 +127,7 @@ def _gaussian_sub(left: tuple[int, int], right: tuple[int, int]) -> tuple[int, i
     return left[0] - right[0], left[1] - right[1]
 
 
-def _gaussian_norm(value: tuple[int, int]) -> int:
+def gaussian_norm(value: tuple[int, int]) -> int:
     return value[0] * value[0] + value[1] * value[1]
 
 
@@ -150,7 +150,7 @@ def _gaussian_quotient(
     """Coordinatewise nearest Gaussian integer to alpha/beta."""
     a, b = alpha
     c, d = beta
-    denominator = _gaussian_norm(beta)
+    denominator = gaussian_norm(beta)
     if not denominator:
         raise ZeroDivisionError(beta)
     real = a * c + b * d
@@ -170,7 +170,7 @@ def _gaussian_mul_i_power(value: tuple[int, int], exponent: int) -> tuple[int, i
     return ((a, b), (-b, a), (-a, -b), (b, -a))[int(exponent) & 3]
 
 
-def _gaussian_primary(value: tuple[int, int]) -> bool:
+def gaussian_primary(value: tuple[int, int]) -> bool:
     a, b = value
     return not (b & 1) and (a + b) % 4 == 1
 
@@ -179,12 +179,12 @@ def _gaussian_make_primary(value: tuple[int, int]) -> tuple[tuple[int, int], int
     # Return gamma / i^n, exactly matching the reciprocity recurrence.
     for n in range(4):
         candidate = _gaussian_mul_i_power(value, -n)
-        if _gaussian_primary(candidate):
+        if gaussian_primary(candidate):
             return candidate, n
     raise AssertionError(("no-primary-associate", value))
 
 
-def _quartic_jacobi_gaussian(
+def quartic_jacobi_gaussian(
     alpha: tuple[int, int],
     beta: tuple[int, int],
     *,
@@ -197,7 +197,7 @@ def _quartic_jacobi_gaussian(
     We additionally retain gcd(N, Norm(remainder)) at every step; this is a
     legal natural reduction witness and is never used to choose a factor.
     """
-    if not _gaussian_primary(beta):
+    if not gaussian_primary(beta):
         raise ValueError(("primary-denominator-required", beta))
     N = int(rational_modulus)
     if N <= 1:
@@ -214,7 +214,7 @@ def _quartic_jacobi_gaussian(
         remainder = _gaussian_sub(current_alpha, _gaussian_mul(quotient, current_beta))
         if remainder == (0, 0):
             return None, tuple(steps), tuple(sorted(gcds))
-        norm_gcd = gcd(_gaussian_norm(remainder), N)
+        norm_gcd = gcd(gaussian_norm(remainder), N)
         if 1 < norm_gcd < N:
             gcds.add(norm_gcd)
 
@@ -269,9 +269,9 @@ def fermat_gaussian_quartic_reciprocity_audit(
     A = 1 << (1 << (n - 1))
     modulus = A * A + 1
     beta = (1, -A)
-    if not _gaussian_primary(beta) or _gaussian_norm(beta) != modulus:
+    if not gaussian_primary(beta) or gaussian_norm(beta) != modulus:
         raise AssertionError((n, beta, modulus))
-    phase, steps, gcds = _quartic_jacobi_gaussian(
+    phase, steps, gcds = quartic_jacobi_gaussian(
         (int(numerator), 0),
         beta,
         rational_modulus=modulus,
@@ -380,7 +380,7 @@ class FermatSecondLiftNormSearchAudit:
         return self.found and self.norm_value == self.target
 
 
-def _zeta8_mul(
+def zeta8_multiply(
     left: tuple[int, int, int, int],
     right: tuple[int, int, int, int],
 ) -> tuple[int, int, int, int]:
@@ -394,7 +394,7 @@ def _zeta8_mul(
     return temporary[0], temporary[1], temporary[2], temporary[3]
 
 
-def _zeta8_sub(
+def zeta8_subtract(
     left: tuple[int, int, int, int],
     right: tuple[int, int, int, int],
 ) -> tuple[int, int, int, int]:
@@ -441,10 +441,10 @@ def fermat_second_lift_norm_search(
     squares: dict[tuple[int, int, int, int], tuple[int, int, int, int]] = {}
     count = 0
     for u in _coefficient_vectors(bound):
-        squares.setdefault(_zeta8_mul(u, u), u)
+        squares.setdefault(zeta8_multiply(u, u), u)
         count += 1
     for v in _coefficient_vectors(bound):
-        sv2 = _zeta8_mul(sqrt2, _zeta8_mul(v, v))
+        sv2 = zeta8_multiply(sqrt2, zeta8_multiply(v, v))
         required_u2 = (
             target[0] + sv2[0],
             target[1] + sv2[1],
@@ -455,7 +455,7 @@ def fermat_second_lift_norm_search(
         match = squares.get(required_u2)
         if match is not None:
             u = match
-            value = _zeta8_sub(_zeta8_mul(u, u), sv2)
+            value = zeta8_subtract(zeta8_multiply(u, u), sv2)
             return FermatSecondLiftNormSearchAudit(
                 n,
                 first.modulus,

@@ -7,6 +7,9 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.sequences.antihydra.mahler_border_identity import (
+    MahlerOddMotifSignature,
+)
 from number_compiler.sequences.antihydra.mahler_mixed_harmonic_ring import (
     MahlerMixedOddHarmonicRing,
 )
@@ -81,7 +84,10 @@ def test_persistent_mixed_run_reuses_one_compressed_source_fragment(
 
 
 def test_any_forged_harmonic_capacity_is_refused_at_creation() -> None:
-    ring = MahlerMixedOddHarmonicRing.from_source(source_for_motif((1, 2), 8), (1, 2))
+    signature = MahlerOddMotifSignature((1, 2))
+    ring = MahlerMixedOddHarmonicRing.from_source(
+        source_for_motif((1, 2), 8), signature
+    )
     with pytest.raises(ValueError, match="capacity"):
         replace(ring, capacity=ring.capacity + 1)
     with pytest.raises(ValueError, match="defect"):
@@ -89,7 +95,7 @@ def test_any_forged_harmonic_capacity_is_refused_at_creation() -> None:
     with pytest.raises(ValueError):
         replace(ring, source=ring.source + 2)
     with pytest.raises(ValueError):
-        replace(ring, exponents=(2, 1))
+        replace(ring, macro_identity=MahlerOddMotifSignature((2, 1)).identity)
 
 
 def test_early_ledger_failure_and_unsupported_clock_are_not_silently_skipped() -> None:

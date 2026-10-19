@@ -91,10 +91,7 @@ from number_compiler.hashlife.interfaces.diamond_output import (
     DiamondOutputFunctions,
     _expression,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
-    DiamondQuotientID,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.diamond_resets import RightResetCertificates
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
@@ -113,6 +110,7 @@ from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroObservation,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
+    DiamondQuotientID,
     StructureArena,
     StructureID,
 )

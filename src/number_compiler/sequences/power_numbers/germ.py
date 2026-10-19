@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import gcd
 
+from number_compiler.arithmetic.contracts.input_validation import require_instance
 from number_compiler.arithmetic.fields.morphism_core import (
     binary_power_composition_count,
 )
@@ -64,8 +65,7 @@ class SpecialGermConstraintState:
     candidate_derived: bool = True
 
     def __post_init__(self) -> None:
-        if not isinstance(self.mask, SpecialBranchMask):
-            raise TypeError(type(self.mask))
+        require_instance(self.mask, SpecialBranchMask)
         checks, pullbacks = int(self.checks), int(self.pullbacks)
         if checks < 0 or pullbacks < 0:
             raise ValueError((checks, pullbacks))
@@ -73,7 +73,7 @@ class SpecialGermConstraintState:
         object.__setattr__(self, "pullbacks", pullbacks)
         method = str(self.method)
         object.__setattr__(self, "method", method)
-        if not isinstance(self.candidate_derived, bool):
+        if type(self.candidate_derived) is not bool:
             raise TypeError("candidate_derived must be bool")
 
         modulus, support = self.support_modulus, self.support_gcd
@@ -104,8 +104,7 @@ class SpecialGermConstraintState:
         method: str,
         candidate_derived: bool = True,
     ) -> SpecialGermConstraintState:
-        if not isinstance(mask, SpecialBranchMask):
-            raise TypeError(type(mask))
+        require_instance(mask, SpecialBranchMask)
         mask.require_possible()
         return cls(
             mask=mask,
@@ -145,8 +144,7 @@ class SpecialGermConstraintState:
         Candidate CRT components are likewise preserved as components, so
         support ideals intersect by gcd.
         """
-        if not isinstance(downstream, SpecialGermConstraintState):
-            raise TypeError(type(downstream))
+        require_instance(downstream, SpecialGermConstraintState)
         mask = self.mask.intersect(downstream.mask)
         if mask.impossible:
             raise ValueError("adjacent germ constraints eliminate every theorem sheet")
@@ -215,8 +213,7 @@ class SpecialGermConstraintState:
         but the candidate-derived bit is reserved for a separate source-bound
         verification at the plan probe boundary.
         """
-        if not isinstance(spec, SpecialFrobeniusChunkSpec):
-            raise TypeError(type(spec))
+        require_instance(spec, SpecialFrobeniusChunkSpec)
         method = (
             "constraint-pullback:" + self.method
             if self.method
@@ -298,10 +295,8 @@ class SpecialGermPlan:
     root_tree_nodes: int = 0
 
     def __post_init__(self) -> None:
-        if not isinstance(self.spec, SpecialFrobeniusChunkSpec):
-            raise TypeError(type(self.spec))
-        if not isinstance(self.constraints, SpecialGermConstraintState):
-            raise TypeError(type(self.constraints))
+        require_instance(self.spec, SpecialFrobeniusChunkSpec)
+        require_instance(self.constraints, SpecialGermConstraintState)
         if (
             self.transfer.family != self.spec.family
             or self.transfer.span != self.spec.span
@@ -372,8 +367,7 @@ class SpecialGermPlan:
 
     def then(self, downstream: SpecialGermPlan) -> SpecialGermPlan:
         """Compose adjacent constrained blocks with exact evidence pullback."""
-        if not isinstance(downstream, SpecialGermPlan):
-            raise TypeError(type(downstream))
+        require_instance(downstream, SpecialGermPlan)
         spec = self.spec.then(downstream.spec)
         return SpecialGermPlan(
             spec,
@@ -447,8 +441,7 @@ class SpecialGermPlan:
 
 def build_special_germ_plan(spec: SpecialFrobeniusChunkSpec) -> SpecialGermPlan:
     """Build the canonical logarithmic transport with an unconstrained sheet."""
-    if not isinstance(spec, SpecialFrobeniusChunkSpec):
-        raise TypeError(type(spec))
+    require_instance(spec, SpecialFrobeniusChunkSpec)
     transfer = SquareTileAction.atom(spec.family).power_block(spec.span)
     expected = binary_power_composition_count(spec.span)
     if transfer.compositions != expected:
@@ -463,10 +456,11 @@ def compose_support_packets(
     method: str = "support-ideal-intersection",
 ) -> SpecialFrobeniusDefectPacket:
     """Compose adjacent zero/unit defect packets by candidate-ring gcd."""
-    if not isinstance(left, SpecialFrobeniusDefectPacket) or not isinstance(
-        right, SpecialFrobeniusDefectPacket
-    ):
-        raise TypeError((type(left), type(right)))
+    try:
+        require_instance(left, SpecialFrobeniusDefectPacket)
+        require_instance(right, SpecialFrobeniusDefectPacket)
+    except TypeError:
+        raise TypeError((type(left), type(right))) from None
     a, b = left.spec, right.spec
     if left.modulus != right.modulus:
         raise ValueError((left.modulus, right.modulus))

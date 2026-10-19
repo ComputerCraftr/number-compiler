@@ -43,7 +43,7 @@ from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianCloc
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.power_numbers.source_matrix import (
     MAX_SOURCE_LEVEL_BITS,
-    _source_residue,
+    source_residue,
 )
 from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
     DEFAULT_RADIX_DEMANDS,
@@ -197,7 +197,7 @@ class SourceTerminalDemand:
         if self.last_four_source_levels[0] < 0:
             raise ValueError("Mersenne source lacks four predecessor levels")
         rows = tuple(
-            tuple(_source_residue("mersenne", level, modulus)[0] for modulus in moduli)
+            tuple(source_residue("mersenne", level, modulus)[0] for modulus in moduli)
             for level in self.last_four_source_levels
         )
         return MersenneTerminalSourceObservations(self, moduli, rows)
@@ -566,7 +566,7 @@ class MersenneTerminalSourceObservations:
             if len(residues) != len(self.moduli):
                 raise ValueError("incomplete Mersenne prime-radix ports")
             for modulus, residue in zip(self.moduli, residues, strict=True):
-                if residue != _source_residue("mersenne", level, modulus)[0]:
+                if residue != source_residue("mersenne", level, modulus)[0]:
                     raise ValueError(
                         "source trace does not match powered norm-one matrix"
                     )

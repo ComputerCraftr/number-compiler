@@ -23,6 +23,8 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
 from number_compiler.hashlife.execution.field_images import FieldImageID
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
@@ -30,9 +32,10 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.construction_scope import RuntimeConstruction
-from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairOutputOccurrence,
     ReversePairQ19OutputOwner,
@@ -93,7 +96,23 @@ REVERSE_SOURCE_IMAGE_SEMANTIC_VERSION: Final[str] = (
 )
 
 
-class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
+@dataclass(frozen=True, slots=True)
+class ReverseSourceImageAdapterAuditSnapshot:
+    """Read-only current authority for source-image payload audits."""
+
+    ledger: ResourceLedger
+    actions: ReverseActionArena
+    ports: SourceCarryPorts | None
+    recursive: ReverseRecursiveTemporalCutover | None
+    recursive_construction: OriginalSourceConstruction | None
+    recursive_maximum_steps: int
+    recursive_source: ExactSource | None
+    recursive_occurrences: OwnedMemoAuditSnapshot[int, ReverseRecursiveOccurrence]
+    q19_owner: ReversePairQ19OutputOwner | None
+    q19_source: ExactSource | None
+
+
+class ReverseSourceImageAdapter(SourceBoundImageAdapter):
     family = "reverse-add"
     semantic_version = REVERSE_SOURCE_IMAGE_SEMANTIC_VERSION
 
@@ -124,6 +143,26 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             self._ports = ports
         ports.check_source(source)
         return ports
+
+    @property
+    def published_ports(self) -> SourceCarryPorts | None:
+        """Read the already-published source-bound port owner without creating it."""
+        return self._ports
+
+    def audit_snapshot(self) -> ReverseSourceImageAdapterAuditSnapshot:
+        """Return the current source/occurrence owners without constructing them."""
+        return ReverseSourceImageAdapterAuditSnapshot(
+            ledger=self.ledger,
+            actions=self.actions,
+            ports=self._ports,
+            recursive=self._recursive,
+            recursive_construction=self._recursive_construction,
+            recursive_maximum_steps=self._recursive_maximum_steps,
+            recursive_source=self._recursive_source,
+            recursive_occurrences=self._recursive_occurrences.audit_snapshot(),
+            q19_owner=self._q19_owner,
+            q19_source=self._q19_source,
+        )
 
     def prepare_recursive_authority(
         self,
@@ -954,5 +993,6 @@ __all__ = [
     "ReverseActionNode",
     "ReverseCylinderConstructionUnavailable",
     "ReverseSource",
+    "ReverseSourceImageAdapter",
     "ReverseSourceImageWorkspace",
 ]

@@ -141,38 +141,11 @@ proof -
 qed
 
 text \<open>
-Comma carries reuse the already-proved `carry_domain` monoid and its
-existing constructors Below, Equal and Above.
-Composition has the convention `carry_then after before`.
+Comma uses the shared `carry_domain` algebra from
+`Shared_Carry_Dynamics.Shared_Carry_Domain`. Its identity, repeated-action,
+and reset laws are family-independent; the polarity distinction below is
+retained because it is observable by this family's richer state.
 \<close>
-
-fun comma_schur_carry_power :: "carry_domain \<Rightarrow> nat \<Rightarrow> carry_domain" where
-  "comma_schur_carry_power a 0 = Equal"
-| "comma_schur_carry_power a (Suc n) =
-    carry_then a (comma_schur_carry_power a n)"
-
-lemma comma_schur_I_power:
-  "comma_schur_carry_power Equal n = Equal"
-  by (induction n) (simp_all add: carry_then_def)
-
-lemma comma_schur_reset_absorbs_prefix:
-  assumes reset: "r = Below \<or> r = Above"
-  shows "carry_then r prefix = r"
-  using reset by (cases r) (simp_all add: carry_then_def)
-
-lemma comma_schur_reset_after_neutral_run:
-  assumes reset: "r = Below \<or> r = Above"
-  shows "carry_then r (comma_schur_carry_power Equal n) = r"
-  using comma_schur_reset_absorbs_prefix[OF reset, of
-      "comma_schur_carry_power Equal n"]
-    by (simp add: comma_schur_I_power)
-
-lemma comma_schur_last_non_neutral_reset_wins:
-  assumes earlier: "r0 = Below \<or> r0 = Above"
-      and later: "r1 = Below \<or> r1 = Above"
-  shows "carry_then r1 (carry_then r0 prefix) = r1"
-  using comma_schur_reset_absorbs_prefix[OF later,
-      of "carry_then r0 prefix"] .
 
 lemma comma_schur_reset_polarities_are_distinct:
   "carry_apply Below False \<noteq>
@@ -191,9 +164,6 @@ ML \<open>
   val checked = @{thms comma_schur_decimal_split comma_schur_split_ranges
     comma_schur_exact_quotient comma_schur_split_exact_quotient
     comma_schur_construct_refines
-    comma_schur_I_power comma_schur_reset_absorbs_prefix
-    comma_schur_reset_after_neutral_run
-    comma_schur_last_non_neutral_reset_wins
     comma_schur_reset_polarities_are_distinct};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Schur carry proof depends on an oracle";

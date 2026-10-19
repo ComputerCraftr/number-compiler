@@ -374,14 +374,14 @@ def test_public_root_term_consumes_complete_conditional_parent(shared: bool) -> 
         # The cold conditional bridge is mandatory only for the uncached route.
         if not shared:
             assert (
-                term._ledger.counters.get(
+                term.resource_ledger.counters.get(
                     "collatz_conditional_scheduler_certified_actions"
                 )
                 == 1
             )
         # A completed parent must survive the exact source-image root scope.
         assert (
-            term._ledger.counters.get(
+            term.resource_ledger.counters.get(
                 "collatz_physical_temporal_run_quotient_compilations"
             )
             == 1
@@ -483,7 +483,7 @@ def test_shared_root_skips_unhelpful_partial_compilation() -> None:
     try:
         assert term.materialize(max_bits=8192) == scalar_physical(source, 700)
         assert (
-            term._ledger.counters.get(
+            term.resource_ledger.counters.get(
                 "collatz_conditional_scheduler_discovery_attempts", 0
             )
             == 0
@@ -612,7 +612,7 @@ def test_same_source_memo_hit_uses_issued_observer_payload_without_rebuilding() 
 def test_same_source_memo_hit_rejects_mutated_nested_carry_counts() -> None:
     import copy
 
-    from number_compiler.sequences.collatz.cross_family_port_power import (
+    from number_compiler.sequences.collatz.source_closed_port_action import (
         MacroTraceGrammar,
     )
     from number_compiler.sequences.collatz.source_cylinder_cache import (

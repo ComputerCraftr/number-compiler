@@ -4,136 +4,39 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Final, Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import Protocol, runtime_checkable
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.hashlife.execution.source_bound_image_audit import (
+    SourceBoundSchedulerCoreAuditSnapshot,
+    SourceImageApplyFrameAuditRecord,
+    SourceImageWorkspaceAuditSnapshot,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageBinding,
+    SourceImageCandidate,
+    SourceImageDemand,
+    SourceImageID,
+    SourceImageInventoryMixin,
+    SourceImageNodeView,
+    SourceImageProjection,
+    SourceImageView,
+)
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeal,
     PublicationSeals,
-    _require_immutable_key,
-    _typed_equal,
-    _TypedKey,
+    TypedPayloadKey,
     publication_matches,
     publication_seal,
+    require_immutable_key,
+    typed_payload_equal,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.stores import LedgerDict, LedgerList
-
-SOURCE_IMAGE_CANDIDATE_VERSION: Final[str] = "candidate-v1"
-
-
-@dataclass(frozen=True, slots=True)
-class SourceImageID(ArenaHandle):
-    """Scheduler-scoped identity of one admitted reachable image."""
-
-
-@dataclass(frozen=True, slots=True)
-class SourceImageBinding:
-    """Complete semantic and geometric authority for a reachable image."""
-
-    family: str
-    semantic_version: str
-    source: Hashable
-    action: Hashable
-    extent: int
-    boundary_ports: tuple[Hashable, ...] = ()
-    orientation: int = 1
-    radix: int = 2
-    precision: int | None = None
-
-    def __post_init__(self) -> None:
-        if type(self.family) is not str or not self.family:
-            raise ValueError("source image family must be a nonempty string")
-        if type(self.semantic_version) is not str or not self.semantic_version:
-            raise ValueError("source image semantic version must be nonempty")
-        _require_immutable_key(self.source, "source image source")
-        _require_immutable_key(self.action, "source image action")
-        if type(self.extent) is not int or self.extent < 0:
-            raise ValueError("source image extent must be a nonnegative integer")
-        if type(self.boundary_ports) is not tuple:
-            raise TypeError("source image boundary ports must be immutable keys")
-        for port in self.boundary_ports:
-            _require_immutable_key(port, "source image boundary port")
-        if type(self.orientation) is not int or self.orientation not in (-1, 1):
-            raise ValueError("source image orientation must be -1 or 1")
-        if type(self.radix) is not int or self.radix < 2:
-            raise ValueError("source image radix must be at least two")
-        if self.precision is not None and (
-            type(self.precision) is not int or self.precision < 0
-        ):
-            raise ValueError("source image precision must be nonnegative")
-
-
-@dataclass(frozen=True, slots=True)
-class SourceImageCandidate:
-    payload: Hashable
-    extent: int
-    boundary_ports: tuple[Hashable, ...] = ()
-    orientation: int = 1
-    radix: int = 2
-    precision: int | None = None
-    failure_prefix: int | None = None
-
-    def __post_init__(self) -> None:
-        _require_immutable_key(self.payload, "source image payload")
-        SourceImageBinding(
-            "candidate",
-            SOURCE_IMAGE_CANDIDATE_VERSION,
-            self.payload,
-            self.payload,
-            self.extent,
-            self.boundary_ports,
-            self.orientation,
-            self.radix,
-            self.precision,
-        )
-        if self.failure_prefix is not None and (
-            type(self.failure_prefix) is not int or self.failure_prefix < 0
-        ):
-            raise ValueError("source image failure prefix must be nonnegative")
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class SourceImageDemand:
-    name: str
-    parameters: tuple[Hashable, ...] = ()
-
-    def __post_init__(self) -> None:
-        if type(self.name) is not str or not self.name:
-            raise ValueError("source image demand name must be nonempty")
-        if type(self.parameters) is not tuple:
-            raise TypeError("source image demand parameters must be immutable")
-        for value in self.parameters:
-            _require_immutable_key(value, "source image demand parameter")
-
-    def __hash__(self) -> int:
-        return hash((self.name, _TypedKey(self.parameters)))
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            type(other) is SourceImageDemand
-            and self.name == other.name
-            and _TypedKey(self.parameters) == _TypedKey(other.parameters)
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class SourceImageProjection:
-    value: Hashable
-
-    def __post_init__(self) -> None:
-        _require_immutable_key(self.value, "source image projection")
-
-
-@dataclass(frozen=True, slots=True)
-class SourceImageView:
-    identity: SourceImageID
-    binding: SourceImageBinding
-    payload: Hashable
-    failure_prefix: int | None
 
 
 class SourceBoundImageAdapter(Protocol):
@@ -276,7 +179,7 @@ class SourceBoundCompositeAdapter(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class _ImageRecord:
+class SourceImageRecord:
     adapter_key: tuple[str, str]
     adapter: SourceBoundImageAdapter
     binding_audit_required: bool
@@ -292,7 +195,7 @@ _IMAGE_RECORD_SEAL = object()
 
 
 @dataclass(frozen=True, slots=True)
-class _ProjectionRecord:
+class SourceImageProjectionRecord:
     image: SourceImageID
     demand: SourceImageDemand
     projection: SourceImageProjection
@@ -301,25 +204,25 @@ class _ProjectionRecord:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class _ApplyKey:
+class SourceImageApplyKey:
     adapter_key: tuple[str, str]
     source: SourceImageID
     action: Hashable
 
     def __hash__(self) -> int:
-        return hash((self.adapter_key, self.source, _TypedKey(self.action)))
+        return hash((self.adapter_key, self.source, TypedPayloadKey(self.action)))
 
     def __eq__(self, other: object) -> bool:
         return (
-            type(other) is _ApplyKey
+            type(other) is SourceImageApplyKey
             and self.adapter_key == other.adapter_key
             and self.source == other.source
-            and _TypedKey(self.action) == _TypedKey(other.action)
+            and TypedPayloadKey(self.action) == TypedPayloadKey(other.action)
         )
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class _RelativeKey:
+class SourceImageRelativeKey:
     adapter_key: tuple[str, str]
     action: Hashable
     admitted_input: Hashable
@@ -328,34 +231,35 @@ class _RelativeKey:
         return hash(
             (
                 self.adapter_key,
-                _TypedKey(self.action),
-                _TypedKey(self.admitted_input),
+                TypedPayloadKey(self.action),
+                TypedPayloadKey(self.admitted_input),
             )
         )
 
     def __eq__(self, other: object) -> bool:
         return (
-            type(other) is _RelativeKey
+            type(other) is SourceImageRelativeKey
             and self.adapter_key == other.adapter_key
-            and _TypedKey(self.action) == _TypedKey(other.action)
-            and _TypedKey(self.admitted_input) == _TypedKey(other.admitted_input)
+            and TypedPayloadKey(self.action) == TypedPayloadKey(other.action)
+            and TypedPayloadKey(self.admitted_input)
+            == TypedPayloadKey(other.admitted_input)
         )
 
 
 @dataclass(frozen=True, slots=True)
-class _RelativeApplication:
+class SourceImageRelativeApplication:
     source: SourceImageID
     result: SourceImageID
 
 
 @dataclass(slots=True)
-class _ApplyFrame:
+class SourceImageApplyFrame:
     source: SourceImageID
     action: Hashable
     stage: int = 0
     children: tuple[Hashable, Hashable] | None = None
     before: SourceImageID | None = None
-    relative_key: _RelativeKey | None = None
+    relative_key: SourceImageRelativeKey | None = None
     before_source: SourceImageID | None = None
     after_source: SourceImageID | None = None
 
@@ -375,16 +279,16 @@ class _SourceImageWorkspace:
         return len(self._storage)
 
     @property
-    def frames(self) -> tuple[_ApplyFrame, ...]:
+    def frames(self) -> tuple[SourceImageApplyFrame, ...]:
         return tuple(self._frame(index) for index in range(self._frame_count))
 
     @property
     def values(self) -> tuple[SourceImageID, ...]:
         return tuple(self._value(index) for index in range(self._value_count))
 
-    def _frame(self, index: int) -> _ApplyFrame:
+    def _frame(self, index: int) -> SourceImageApplyFrame:
         frame = self._storage["frame", index]
-        if type(frame) is not _ApplyFrame:
+        if type(frame) is not SourceImageApplyFrame:
             raise AssertionError("source image workspace contains another frame sort")
         return frame
 
@@ -394,11 +298,11 @@ class _SourceImageWorkspace:
             raise AssertionError("source image workspace contains another value sort")
         return value
 
-    def push_frame(self, frame: _ApplyFrame) -> None:
+    def push_frame(self, frame: SourceImageApplyFrame) -> None:
         self._storage["frame", self._frame_count] = frame
         self._frame_count += 1
 
-    def pop_frame(self) -> _ApplyFrame:
+    def pop_frame(self) -> SourceImageApplyFrame:
         if not self._frame_count:
             raise IndexError("pop from empty source image frame stack")
         index = self._frame_count - 1
@@ -431,7 +335,33 @@ class _SourceImageWorkspace:
 
     @staticmethod
     def _active_key(action: tuple[str, str, Hashable]) -> tuple[str, object]:
-        return "active", (action[0], action[1], _TypedKey(action[2]))
+        return "active", (action[0], action[1], TypedPayloadKey(action[2]))
+
+    def audit_snapshot(self) -> SourceImageWorkspaceAuditSnapshot:
+        """Return typed retained state without counters or cache mutation."""
+        return SourceImageWorkspaceAuditSnapshot(
+            owner=self._storage.owner,
+            running=self.running,
+            frame_count=self._frame_count,
+            value_count=self._value_count,
+            frames=tuple(
+                SourceImageApplyFrameAuditRecord(
+                    identity=id(frame),
+                    source=frame.source,
+                    action=frame.action,
+                    stage=frame.stage,
+                    children=frame.children,
+                    before=frame.before,
+                    relative_key=frame.relative_key,
+                    before_source=frame.before_source,
+                    after_source=frame.after_source,
+                )
+                for frame in self.frames
+            ),
+            values=self.values,
+            entries=MappingProxyType(self._storage.backing_store),
+            store_identity=self._storage,
+        )
 
     def contains_active(self, action: tuple[str, str, Hashable]) -> bool:
         return self._active_key(action) in self._storage
@@ -455,7 +385,9 @@ class _SourceImageWorkspace:
         self.running = False
 
 
-class SourceBoundSchedulerCore:
+class SourceBoundSchedulerCore(
+    SourceImageInventoryMixin[SourceImageRecord, SourceBoundImageAdapter]
+):
     _KIND = "source-bound-image"
 
     def __init__(self, ledger: ResourceLedger) -> None:
@@ -510,20 +442,20 @@ class SourceBoundSchedulerCore:
         self._adapters: LedgerDict[tuple[str, str], SourceBoundImageAdapter] = (
             self.ledger.make_dict(self._adapter_owner)
         )
-        self._nodes: LedgerList[_ImageRecord] = self.ledger.make_list(
+        self._nodes: LedgerList[SourceImageRecord] = self.ledger.make_list(
             self._node_owner, append_only=False
         )
-        self._origins: LedgerDict[tuple[tuple[str, str], _TypedKey], SourceImageID] = (
-            self.ledger.make_dict(self._origin_owner)
-        )
-        self._applications: LedgerDict[_ApplyKey, SourceImageID] = (
+        self._origins: LedgerDict[
+            tuple[tuple[str, str], TypedPayloadKey], SourceImageID
+        ] = self.ledger.make_dict(self._origin_owner)
+        self._applications: LedgerDict[SourceImageApplyKey, SourceImageID] = (
             self.ledger.make_dict(self._apply_owner)
         )
-        self._relative: LedgerDict[_RelativeKey, _RelativeApplication] = (
-            self.ledger.make_dict(self._relative_owner)
-        )
+        self._relative: LedgerDict[
+            SourceImageRelativeKey, SourceImageRelativeApplication
+        ] = self.ledger.make_dict(self._relative_owner)
         self._projections: LedgerDict[
-            tuple[SourceImageID, SourceImageDemand], _ProjectionRecord
+            tuple[SourceImageID, SourceImageDemand], SourceImageProjectionRecord
         ] = self.ledger.make_dict(self._projection_owner, nodes_per_entry=1)
         self._publication_seals = PublicationSeals(self.ledger, prefix)
         self.ledger.register_execution_root(self)
@@ -567,6 +499,47 @@ class SourceBoundSchedulerCore:
             raise ValueError("source image adapter belongs to another ledger")
         return key
 
+    def audit_snapshot(
+        self,
+    ) -> SourceBoundSchedulerCoreAuditSnapshot[
+        SourceImageRecord, SourceBoundImageAdapter
+    ]:
+        """Expose retained source state through non-creating read-only views."""
+        base = super().audit_snapshot()
+        return SourceBoundSchedulerCoreAuditSnapshot(
+            ledger=base.ledger,
+            owner=base.owner,
+            kind=base.kind,
+            closed=base.closed,
+            nodes=base.nodes,
+            node_store=base.node_store,
+            adapters=base.adapters,
+            adapter_store=base.adapter_store,
+            origins=MappingProxyType(self._origins.backing_store),
+            origin_store=self._origins,
+            applications=MappingProxyType(self._applications.backing_store),
+            application_store=self._applications,
+            relative=MappingProxyType(self._relative.backing_store),
+            relative_store=self._relative,
+            projections=MappingProxyType(self._projections.backing_store),
+            projection_store=self._projections,
+            image_seals=SourceImageNodeView(self._publication_seals.images),
+            image_seal_store=self._publication_seals.images,
+            projection_seals=MappingProxyType(
+                self._publication_seals.projections.backing_store
+            ),
+            projection_seal_store=self._publication_seals.projections,
+            node_owner=self._node_owner,
+            adapter_owner=self._adapter_owner,
+            origin_owner=self._origin_owner,
+            application_owner=self._apply_owner,
+            relative_owner=self._relative_owner,
+            projection_owner=self._projection_owner,
+            image_seal_owner=self._publication_seals.images.owner,
+            projection_seal_owner=self._publication_seals.projections.owner,
+            workspace=self._workspace.audit_snapshot(),
+        )
+
     def clear(self) -> None:
         """Drop query images and invalidate every previously issued image ID."""
         if self._closed:
@@ -608,16 +581,16 @@ class SourceBoundSchedulerCore:
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_SCHEDULER_DISPOSALS)
 
     def _validate_key(self, value: object, label: str) -> None:
-        work = _require_immutable_key(value, label)
+        work = require_immutable_key(value, label)
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_KEY_VALIDATION_WORK, work)
 
-    def resolve(self, image: SourceImageID) -> _ImageRecord:
+    def resolve(self, image: SourceImageID) -> SourceImageRecord:
         if type(image) is not SourceImageID:
             raise TypeError("expected a source-bound image ID")
         image.validate(self.owner, self._KIND, size=len(self._nodes))
         record = self._nodes[image.local_id]
         if (
-            type(record) is not _ImageRecord
+            type(record) is not SourceImageRecord
             or record.publication_owner is not _IMAGE_RECORD_SEAL
             or record.publication_snapshot
             is not self._publication_seals.images[image.local_id]
@@ -652,8 +625,23 @@ class SourceBoundSchedulerCore:
         record = self.resolve(image)
         return self._view_record(image, record)
 
+    def view_for_adapter(
+        self, adapter: SourceBoundImageAdapter, image: SourceImageID
+    ) -> SourceImageView:
+        """Return an issued image view only through its registered adapter."""
+        if adapter.ledger is not self.ledger:
+            raise ValueError("source image adapter belongs to another ledger")
+        record = self.resolve(image)
+        if (
+            record.adapter_key != self._adapter_key(adapter)
+            or record.adapter is not adapter
+            or self._adapters.get(record.adapter_key) is not adapter
+        ):
+            raise ValueError("source image was not issued for this adapter")
+        return self._view_record(image, record)
+
     def _view_record(
-        self, image: SourceImageID, record: _ImageRecord
+        self, image: SourceImageID, record: SourceImageRecord
     ) -> SourceImageView:
         adapter = self._adapters[record.adapter_key]
         adapter.validate_source(record.binding.source)
@@ -705,7 +693,7 @@ class SourceBoundSchedulerCore:
             ),
             self.ledger,
         )
-        record = _ImageRecord(
+        record = SourceImageRecord(
             adapter_key,
             adapter,
             callable(getattr(adapter, "audit_image_binding", None)),
@@ -733,17 +721,19 @@ class SourceBoundSchedulerCore:
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_PUBLICATIONS)
         return SourceImageID(self.owner, self._KIND, local_id)
 
-    def _origin(
+    def origin(
         self, adapter: SourceBoundImageAdapter, source: Hashable
     ) -> SourceImageID:
         key = self._registered(adapter)
         self._validate_key(source, "source image source")
         adapter.validate_source(source)
-        origin_key = key, _TypedKey(source)
+        origin_key = key, TypedPayloadKey(source)
         found = self._origins.get(origin_key)
         if found is not None:
             found_view = self.view(found)
-            if not _typed_equal(found_view.binding.source, source) or not _typed_equal(
+            if not typed_payload_equal(
+                found_view.binding.source, source
+            ) or not typed_payload_equal(
                 found_view.binding.action, adapter.identity_action(source)
             ):
                 raise ValueError("source image origin binding was altered")
@@ -816,12 +806,12 @@ class SourceBoundSchedulerCore:
 
     def _publish_application_result(
         self,
-        key: _ApplyKey,
+        key: SourceImageApplyKey,
         source: Hashable,
         cumulative_action: Hashable,
         candidate: SourceImageCandidate,
         *,
-        relative_key: _RelativeKey | None,
+        relative_key: SourceImageRelativeKey | None,
     ) -> SourceImageID:
         if key in self._applications:
             raise ValueError("source image application was concurrently published")
@@ -852,7 +842,9 @@ class SourceBoundSchedulerCore:
             self._applications[key] = image
             if publish_relative:
                 assert relative_key is not None
-                self._relative[relative_key] = _RelativeApplication(key.source, image)
+                self._relative[relative_key] = SourceImageRelativeApplication(
+                    key.source, image
+                )
         except BaseException:
             self._applications.pop(key, None)
             if image is not None and image.local_id == len(self._nodes) - 1:
@@ -872,10 +864,10 @@ class SourceBoundSchedulerCore:
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS)
         return image
 
-    def _validate_application_binding(
+    def validate_application_binding(
         self,
         adapter: SourceBoundImageAdapter,
-        key: _ApplyKey,
+        key: SourceImageApplyKey,
         image: SourceImageID,
     ) -> None:
         source = self.view(key.source)
@@ -884,8 +876,8 @@ class SourceBoundSchedulerCore:
         if (
             result.binding.family != key.adapter_key[0]
             or result.binding.semantic_version != key.adapter_key[1]
-            or not _typed_equal(result.binding.source, source.binding.source)
-            or not _typed_equal(result.binding.action, expected)
+            or not typed_payload_equal(result.binding.source, source.binding.source)
+            or not typed_payload_equal(result.binding.action, expected)
         ):
             raise ValueError("source image application binding was altered")
 
@@ -908,7 +900,7 @@ class SourceBoundSchedulerCore:
         found = self._projections.get(key)
         if found is not None:
             if (
-                type(found) is not _ProjectionRecord
+                type(found) is not SourceImageProjectionRecord
                 or found.publication_owner is not _IMAGE_RECORD_SEAL
                 or found.image != image
                 or found.demand != demand
@@ -951,7 +943,7 @@ class SourceBoundSchedulerCore:
         self.ledger.reserve(self._projection_owner, entries=1, nodes=1)
         try:
             self._publication_seals.put_projection(key, snapshot)
-            self._projections[key] = _ProjectionRecord(
+            self._projections[key] = SourceImageProjectionRecord(
                 image,
                 demand,
                 projected,

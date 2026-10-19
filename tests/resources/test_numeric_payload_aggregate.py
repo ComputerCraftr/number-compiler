@@ -9,9 +9,11 @@ from typing import cast
 
 import pytest
 
-from devtools.verification.lazy_collatz import (
+from devtools.verification.collatz_carry_ranges import (
     CarryRangeSummary,
     CarryRangeTransfer,
+)
+from devtools.verification.lazy_collatz import (
     Mul3Carry,
     _Mul3Port,
 )
@@ -115,7 +117,7 @@ def test_an_arbitrary_symbolic_anchor_cannot_hide_nested_numeric_limbs() -> None
 def test_numeric_pieces_are_rejected_as_joint_port_components() -> None:
     arena = FinitePortActionArena()
     ports = tuple(PortVariable(i, 0, "carry", 0) for i in range(4))
-    for port, piece in zip(ports, limbs()):
+    for port, piece in zip(ports, limbs(), strict=True):
         with pytest.raises(ValueError, match="transfer handles"):
             PortComponent(port, cast("TransferSummaryID", piece))
     with pytest.raises(ValueError, match="symbolic port"):

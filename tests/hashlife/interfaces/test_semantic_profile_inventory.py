@@ -26,7 +26,10 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     ReachableDecodeKey,
     SemanticProfileArena,
 )
-from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    StructureArena,
+    StructureID,
+)
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.physical_kernel import (
@@ -36,7 +39,7 @@ from number_compiler.sequences.collatz.physical_pair_certificate import (
     C4PairLeftCertificate,
 )
 from tests.support.assertions import assert_forbidden_payloads_read_only
-from tests.support.diamond_query import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -55,7 +58,9 @@ def setup() -> tuple[
     StructureArena,
     ReachableCodec,
 ]:
-    app = build(PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1)
+    app = build_collatz_diamond_application(
+        PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
+    )
     runtime = app.runtime
     runtime.kernel(app.root)
     pair = runtime.actions.compose(app.root, app.root)
@@ -70,49 +75,76 @@ def setup() -> tuple[
     return app, arena, profile, structures, codec
 
 
-@pytest.mark.parametrize("component", (None, 0, 1, 2))
-def test_actual_profile_tables_and_lazy_decoders_have_read_only_inventory(
-    monkeypatch: pytest.MonkeyPatch, component: None | int
+def _assert_read_only_profile_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    runtime: DiamondRuntime,
+    arena: SemanticProfileArena,
+    structures: StructureArena,
+    expected_decoder_entries: int,
 ) -> None:
-    app, arena, _, structures, codec = setup()
-    runtime = app.runtime
-    if component is not None:
-        assert arena is not None
-        arena.decode(codec, structures) if component == 2 else arena.component(
-            codec, component, structures
-        )
-
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("independent inventory executed a producer")
 
-    for name in ("resolve", "ports", "validate_codec", "component", "decode"):
-        monkeypatch.setattr(arena, name, forbidden)
-    monkeypatch.setattr(runtime, "execute", forbidden)
-    monkeypatch.setattr(structures, "evaluate_atom", forbidden)
-    monkeypatch.setattr(structures.functions, "evaluate", forbidden)
-    before = runtime.ledger.snapshot()
-    report = collect_ledger_metrics(runtime.ledger)
-    assert runtime.ledger.snapshot() == before
-    assert report.representation_boundary_complete == 1
-    assert report.forbidden_future_payloads == 0
-    expected = sum(
-        row.observed_nodes or 0
-        for row in report.resource_inventory
-        if row.role
-        in (
-            "semantic_port_signature",
-            "semantic_state_codec",
-            "semantic_reachable_profile",
-            "semantic_reachable_codec",
+    with monkeypatch.context() as observers_blocked:
+        for name in ("resolve", "ports", "validate_codec", "component", "decode"):
+            observers_blocked.setattr(arena, name, forbidden)
+        observers_blocked.setattr(runtime, "execute", forbidden)
+        observers_blocked.setattr(structures, "evaluate_atom", forbidden)
+        observers_blocked.setattr(structures.functions, "evaluate", forbidden)
+        before = runtime.ledger.snapshot()
+        report = collect_ledger_metrics(runtime.ledger)
+        assert runtime.ledger.snapshot() == before
+        assert report.representation_boundary_complete == 1
+        assert report.forbidden_future_payloads == 0
+        expected = sum(
+            row.observed_nodes or 0
+            for row in report.resource_inventory
+            if row.role
+            in (
+                "semantic_port_signature",
+                "semantic_state_codec",
+                "semantic_reachable_profile",
+                "semantic_reachable_codec",
+            )
         )
-    )
-    assert report.semantic_signature_nodes == expected >= 2
-    assert report.reachable_profile_definition_records == 1
-    assert report.reachable_profile_definition_integer_slots == 2 + 921 * 90 + 1234 * 7
-    assert report.reachable_profile_codec_records == 1
-    assert report.reachable_profile_decoder_cache_entries == (
-        0 if component is None else 3 if component == 2 else 1
-    )
+        assert report.semantic_signature_nodes == expected >= 2
+        assert report.reachable_profile_definition_records == 1
+        assert (
+            report.reachable_profile_definition_integer_slots == 2 + 921 * 90 + 1234 * 7
+        )
+        assert report.reachable_profile_codec_records == 1
+        assert (
+            report.reachable_profile_decoder_cache_entries == expected_decoder_entries
+        )
+
+
+def test_actual_profile_tables_and_lazy_decoders_have_read_only_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, arena, _, structures, codec = setup()
+    runtime = app.runtime
+    assert arena is not None
+
+    # Exercise the empty and first-component cache states on one immutable
+    # graph, avoiding duplicate application setup while keeping each audit.
+    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 0)
+    arena.component(codec, 0, structures)
+    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 1)
+    arena.component(codec, 1, structures)
+    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 2)
+
+
+def test_cold_full_profile_decode_is_read_only_to_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, arena, _, structures, codec = setup()
+    runtime = app.runtime
+    assert arena is not None
+
+    # Keep this cold: decode must construct both components itself before the
+    # read-only inventory sees all three decoder entries.
+    arena.decode(codec, structures)
+    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 3)
 
 
 def test_profile_audit_checks_action_once_and_rejects_stale_action_before_load() -> (
@@ -199,20 +231,18 @@ def test_profile_or_codec_forgery_is_not_a_kernel_definition_exemption(
         other = SemanticProfileArena(runtime)
         foreign = other.source_initial_profile(codec.request.action)
         assert arena is not None
-        arena.records._data[key] = replace(codec, profile=foreign)
+        arena.records[key] = replace(codec, profile=foreign)
     elif fault == "wrong-side":
         assert arena is not None
-        arena.records._data[key] = replace(
-            codec, request=replace(codec.request, side=1)
-        )
+        arena.records[key] = replace(codec, request=replace(codec.request, side=1))
     elif fault == "extra-structure":
         assert arena is not None
-        arena.records._data[key] = replace(
+        arena.records[key] = replace(
             codec, structure=arena.component(codec, 0, structures)
         )
     else:
         assert arena is not None
-        arena.records._data[key] = replace(
+        arena.records[key] = replace(
             codec, ports=(replace(codec.ports[0], cardinality=2048),)
         )
     before = runtime.ledger.snapshot()
@@ -231,7 +261,7 @@ def test_same_signature_wrong_decoder_is_rejected_without_observation() -> None:
     wrong = structures.atom(function)
     key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), 0)
     assert arena is not None
-    arena.decodes._data[key] = wrong
+    arena.decodes[key] = wrong
     before = runtime.ledger.snapshot()
     assert collect_ledger_metrics(runtime.ledger).forbidden_future_payloads > 0
     assert runtime.ledger.snapshot() == before
@@ -273,12 +303,12 @@ def test_function_decoder_parent_validity_is_not_inferred_from_body() -> None:
     app.runtime.ledger.reserve_many(
         ((structures.node_owner, 1, 1), (structures.key_owner, 1, 0))
     )
-    forged = structures._handle(len(structures.nodes))
+    forged = StructureID(structures.token, "semantic-structure", len(structures.nodes))
     structures.nodes.append(malformed)
     structures.keys[malformed] = forged.local_id
     key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), 1)
     assert arena is not None
-    arena.decodes._data[key] = forged
+    arena.decodes[key] = forged
     assert_forbidden_payloads_read_only(app.runtime.ledger)
 
 

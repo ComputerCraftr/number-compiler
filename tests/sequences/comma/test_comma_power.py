@@ -8,7 +8,9 @@ from typing import cast
 import pytest
 
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.sequences.comma import certificates
 from number_compiler.sequences.comma.arithmetic import (
     DecimalSector,

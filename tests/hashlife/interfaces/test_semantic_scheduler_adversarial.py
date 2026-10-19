@@ -12,7 +12,7 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     CompileStructuredExpression,
     StructuredExpressionTask,
 )
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 if TYPE_CHECKING:
     import typing
@@ -28,7 +28,7 @@ class _HashPayload:
 
 
 def test_structured_parameter_admission_precedes_duplicate_hashing() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     parameter = arena.variable(arena.state_sort(action, 0), "input")
     payload = _HashPayload()
@@ -42,7 +42,7 @@ def test_structured_parameter_admission_precedes_duplicate_hashing() -> None:
 
 
 def test_structured_publication_admits_environment_before_unpacking_payload() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     parameter = arena.variable(arena.state_sort(action, 0), "input")
     compiler = runtime.semantic_compiler

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from sys import getsizeof
 from typing import cast
 
 import number_compiler.resources.tile_causal_workspace_inventory as causal_inventory
@@ -26,13 +25,6 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
 from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
 )
-from number_compiler.hashlife.execution.tile_application_authority import (
-    audit_tile_application_registry,
-)
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    CausalPrefix,
-)
 from number_compiler.hashlife.execution.tile_fused_kernel import LeafProductKey
 from number_compiler.hashlife.execution.tile_kernel import (
     PrimitiveTileKernelAdapter,
@@ -45,7 +37,11 @@ from number_compiler.hashlife.execution.tile_scheduler import (
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
+from number_compiler.hashlife.interfaces.tile_interface_compilation import (
+    input_ports_for_kernel,
+    output_sorts_for_kernel,
+)
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_result_records import (
@@ -76,12 +72,8 @@ from number_compiler.hashlife.tiles.tiles import (
     TileLease,
 )
 from number_compiler.resources.causal_workspace import (
-    CausalFrameStack,
-    CausalResultStack,
     CausalSpatialWorkspace,
     CausalTaskWorkspace,
-    CausalValueStack,
-    SpatialReferenceBuffer,
 )
 from number_compiler.resources.fused_traversal_inventory import (
     audit_fused_traversal_workspace,
@@ -104,6 +96,11 @@ from number_compiler.resources.tile_runtime_validation import (
 )
 
 
+def _has_distinct_identity(left: object, right: object) -> bool:
+    """Preserve exact store-separation checks across unrelated generic types."""
+    return left is not right
+
+
 def _matches_alphabet(
     adapter: PrimitiveTileKernelAdapter, expected: TileAlphabet, tile: TileID
 ) -> bool:
@@ -123,11 +120,12 @@ def audit_tile_runtime(
     adapters = tuple(root for root in roots if type(root) is PrimitiveTileKernelAdapter)
     schedulers = tuple(root for root in roots if type(root) is TileScheduler)
     physical_schedulers = tuple(
-        scheduler for scheduler in schedulers if not scheduler._source_only
+        scheduler for scheduler in schedulers if not scheduler.is_source_only
     )
     applications = tuple(root for root in roots if type(root) is TileApplication)
 
     for adapter in adapters:
+        state = adapter.audit_snapshot()
         adapter_scheduler = next(
             (
                 scheduler
@@ -137,33 +135,36 @@ def audit_tile_runtime(
             None,
         )
         stores = (
-            (adapter._action_owner, adapter._actions),
-            (adapter._action_key_owner, adapter._action_keys),
-            (adapter._leaf_owner, adapter._leaf_records),
-            (adapter._compose_owner, adapter._compositions),
+            (state.action_owner, state.action_store_identity),
+            (state.action_key_owner, state.action_key_store_identity),
+            (state.leaf_owner, state.leaf_store_identity),
+            (state.compose_owner, state.compose_store_identity),
         )
         valid_root = (
             adapter.ledger is ledger
             and adapter.tiles.ledger is ledger
             and adapter.kernels.ledger is ledger
             and adapter.quotients.ledger is ledger
-            and all(containers.get(owner) is store for owner, store in stores)
-            and type(adapter._next_action) is int
-            and adapter._next_action >= 0
+            and state.ledger is ledger
+            and state.owner is adapter.owner
+            and all(id(containers.get(owner)) == store_id for owner, store_id in stores)
+            and type(state.next_action) is int
+            and state.next_action >= 0
         )
         fused_approved, fused_invalid = audit_fused_traversal_workspace(
             adapter,
             containers,
+            state.fused_workspace,
         )
         approved.update(fused_approved)
         invalid.update(fused_invalid)
         valid_root &= not fused_invalid
         signatures: dict[PortSignatureID, set[int]] = {}
         expected_keys: dict[int, ActionSemanticKey] = {}
-        for index, record in adapter._actions.items():
+        for index, record in state.actions.items():
             valid = valid_root and type(index) is int and type(record) is _Action
             try:
-                if not 0 <= index < adapter._next_action:
+                if not 0 <= index < state.next_action:
                     raise ValueError("action index lies outside its arena")
                 action = FieldCellActionID(
                     adapter.owner,
@@ -177,8 +178,8 @@ def audit_tile_runtime(
                 declaration.kernel.validate()
                 valid &= (
                     declaration.kernel.behavior == behavior
-                    and declaration.inputs == adapter._ports(kernel)
-                    and declaration.outputs == adapter._output_sorts(kernel)
+                    and declaration.inputs == input_ports_for_kernel(kernel)
+                    and declaration.outputs == output_sorts_for_kernel(kernel)
                     and declaration.phase_count == 1
                     and declaration.orientations == (0,)
                 )
@@ -242,8 +243,8 @@ def audit_tile_runtime(
                         and 0 <= after.local_id < index
                         and record.repetitions >= 2
                     )
-                    first = adapter._actions[before.local_id]
-                    second = adapter._actions[after.local_id]
+                    first = state.actions[before.local_id]
+                    second = state.actions[after.local_id]
                     homogeneous = (
                         first.kernel == second.kernel
                         and first.signature == second.signature
@@ -285,7 +286,7 @@ def audit_tile_runtime(
                         and blank_context_metadata(record)
                         == blank_context_metadata(first, second)
                     )
-                mapped = adapter._action_keys.get(expected_key)
+                mapped = state.action_keys.get(expected_key)
                 valid &= type(mapped) is int and mapped == index
                 admissible = adapter.quotients.functions.resolve(
                     declaration.admissible,
@@ -312,8 +313,8 @@ def audit_tile_runtime(
                         id(sector) for sector in record.reverse_frobenius.sectors
                     )
             else:
-                invalid.add((adapter._action_owner, id(record)))
-        for semantic_key, index in adapter._action_keys.items():
+                invalid.add((state.action_owner, id(record)))
+        for semantic_key, index in state.action_keys.items():
             valid = (
                 valid_root
                 and type(semantic_key) is tuple
@@ -336,8 +337,8 @@ def audit_tile_runtime(
                     )
                 )
                 and type(index) is int
-                and 0 <= index < adapter._next_action
-                and adapter._actions.get(index) is not None
+                and 0 <= index < state.next_action
+                and state.actions.get(index) is not None
             )
             try:
                 if semantic_key[0] == "power":
@@ -351,23 +352,23 @@ def audit_tile_runtime(
             if valid:
                 approved.add(id(semantic_key))
             else:
-                invalid.add((adapter._action_key_owner, id(semantic_key)))
-        for composition_key, index in adapter._compositions.items():
+                invalid.add((state.action_key_owner, id(semantic_key)))
+        for composition_key, index in state.compositions.items():
             valid = (
                 valid_root
                 and type(composition_key) is tuple
                 and len(composition_key) == 2
                 and all(type(item) is FieldCellActionID for item in composition_key)
                 and type(index) is int
-                and 0 <= index < adapter._next_action
+                and 0 <= index < state.next_action
             )
             try:
                 before, after = composition_key
                 adapter.validate_action(before)
                 adapter.validate_action(after)
-                record = adapter._actions[index]
-                first = adapter._actions[before.local_id]
-                second = adapter._actions[after.local_id]
+                record = state.actions[index]
+                first = state.actions[before.local_id]
+                second = state.actions[after.local_id]
                 homogeneous = (
                     first.kernel == second.kernel
                     and expected_keys.get(before.local_id, (None,))[0] == "power"
@@ -400,9 +401,9 @@ def audit_tile_runtime(
             if valid:
                 approved.add(id(composition_key))
             else:
-                invalid.add((adapter._compose_owner, id(composition_key)))
+                invalid.add((state.compose_owner, id(composition_key)))
         expected_leaf_reverse: dict[LocalInterfaceID, int] = {}
-        for interface, blank in adapter._leaf_records.items():
+        for interface, blank in state.leaf_records.items():
             if type(interface) is LeafProductKey:
                 valid = type(blank) is LocalInterfaceID
                 leaf_kernel: PrimitiveKernel | None = None
@@ -416,15 +417,15 @@ def audit_tile_runtime(
                         == (TILE_KERNEL_CONTRACT, _effect_key(leaf_kernel.effect))
                         and leaf_kernel.blank
                         in signatures.get(interface.signature, set())
-                        and declaration.inputs == adapter._ports(leaf_kernel)
-                        and declaration.outputs == adapter._output_sorts(leaf_kernel)
+                        and declaration.inputs == input_ports_for_kernel(leaf_kernel)
+                        and declaration.outputs == output_sorts_for_kernel(leaf_kernel)
                         and declaration.phase_count == 1
                         and declaration.orientations == (0,)
                         and type(blank) is LocalInterfaceID
                         and adapter.quotients.resolve(blank).signature
                         == interface.signature
-                        and type(adapter._leaf_records.get(blank)) is int
-                        and adapter._leaf_records.get(blank) == leaf_kernel.blank
+                        and type(state.leaf_records.get(blank)) is int
+                        and state.leaf_records.get(blank) == leaf_kernel.blank
                     )
                 except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                     valid = False
@@ -434,15 +435,15 @@ def audit_tile_runtime(
                     assert leaf_kernel is not None
                     expected_leaf_reverse[blank] = leaf_kernel.blank
                 else:
-                    invalid.add((adapter._leaf_owner, id(interface)))
+                    invalid.add((state.leaf_owner, id(interface)))
                 continue
             if type(interface) is not LocalInterfaceID:
-                invalid.add((adapter._leaf_owner, id(interface)))
-        for interface, blank in adapter._leaf_records.items():
+                invalid.add((state.leaf_owner, id(interface)))
+        for interface, blank in state.leaf_records.items():
             if type(interface) is LeafProductKey:
                 continue
             if type(interface) is not LocalInterfaceID:
-                invalid.add((adapter._leaf_owner, id(interface)))
+                invalid.add((state.leaf_owner, id(interface)))
                 continue
             valid = type(blank) is int
             try:
@@ -456,29 +457,36 @@ def audit_tile_runtime(
             if valid:
                 approved.add(id(interface))
             else:
-                invalid.add((adapter._leaf_owner, id(interface)))
+                invalid.add((state.leaf_owner, id(interface)))
         if adapter.results is not None:
-            for key, result in adapter.results._memo.items():
+            result_state = adapter.results.audit_snapshot()
+            if (
+                result_state.ledger is not ledger
+                or id(containers.get(result_state.memo_owner))
+                != result_state.memo_store_identity
+            ):
+                invalid.add((result_state.memo_owner, id(adapter.results)))
+            for key, result in result_state.memo.items():
                 if type(key) is SpatialInterfaceKey:
                     continue
                 if type(key) is NormalizedRegionKey:
                     if type(result) is not NormalizedRegionResult:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                     continue
                 if type(key) is BoundaryConcatKey:
                     if type(result) is not BoundaryConcatResult:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                     continue
                 if type(key) is SourceRootMatchKey:
                     valid = type(result) is RootMatchResult and (
                         valid_source_root_match_record(adapter, key, result)
                     )
                     if not valid:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                     continue
                 if type(key) is ReverseThresholdSummaryKey:
                     if type(result) is not BlockSummary:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                         continue
                     valid = True
                     try:
@@ -504,12 +512,12 @@ def audit_tile_runtime(
                     ):
                         valid = False
                     if not valid:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                     continue
                 if type(key) is ReverseBoundOutputKey:
                     valid = valid_reverse_bound_output(adapter.results, key, result)
                     if not valid:
-                        invalid.add((adapter.results._memo_owner, id(key)))
+                        invalid.add((result_state.memo_owner, id(key)))
                     continue
                 execution_key = cast(
                     PoweredResultKey
@@ -530,7 +538,7 @@ def audit_tile_runtime(
                 )
                 try:
                     kernel = adapter.kernels.kernel(
-                        adapter._action(execution_key.action).kernel,
+                        adapter.action_record(execution_key.action).kernel,
                     )
                     expected = TileAlphabet(
                         kernel.blank + 1,
@@ -560,18 +568,21 @@ def audit_tile_runtime(
                 except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                     valid = False
                 if not valid:
-                    invalid.add((adapter.results._memo_owner, id(execution_key)))
+                    invalid.add((result_state.memo_owner, id(execution_key)))
         if valid_root and not any(
             owner == item[0] for item in invalid for owner, _ in stores
         ):
             approved.update(id(store) for _, store in stores)
 
     def valid_tile_lease(lease: object, tiles: TileArena, *, open_: bool) -> bool:
-        if type(lease) is not TileLease or lease._arena is not tiles:
+        if type(lease) is not TileLease:
             return False
-        if type(lease._closed) is not bool or lease._closed is open_:
+        snapshot = lease.audit_snapshot()
+        if snapshot.arena is not tiles:
             return False
-        if type(lease._id) is not int:
+        if type(snapshot.closed) is not bool or snapshot.closed is open_:
+            return False
+        if type(snapshot.identity) is not int:
             return False
         if not open_:
             return True
@@ -586,36 +597,39 @@ def audit_tile_runtime(
         scheduler: TileScheduler,
         key: PoweredResultKey,
     ) -> bool:
-        if type(lease) is not ResultLease or type(lease._result) is not CompletedResult:
+        if type(lease) is not ResultLease:
+            return False
+        snapshot = lease.audit_snapshot()
+        if type(snapshot.result) is not CompletedResult:
             return False
         if (
-            lease._issuer is not scheduler.results
-            or type(lease._key) is not PoweredResultKey
+            snapshot.issuer is not scheduler.results
+            or type(snapshot.key) is not PoweredResultKey
         ):
             return False
-        if lease._key != key:
+        if snapshot.key != key:
             return False
         if not valid_request(scheduler, key) or not valid_tile_lease(
-            lease._tile, scheduler.tiles, open_=True
+            snapshot.tile, scheduler.tiles, open_=True
         ):
             return False
         try:
-            result = lease._result
+            result = snapshot.result
             result.__post_init__()
             output = scheduler.tiles.resolve(result.output)
-            if scheduler.results._validate_output is not None:
-                scheduler.results._validate_output(key.action, result.output)
+            scheduler.results.validate_output(key.action, result.output)
             outgoing = scheduler.results.interfaces.resolve(result.outgoing)
-            boundary_ids = scheduler.results._result_tile_ids(result)[1:]
+            boundary_ids = scheduler.results.result_tile_ids(result)[1:]
             return (
-                lease._closed is False
-                and lease._tile.tile == result.output
-                and type(lease._boundary_tiles) is tuple
+                snapshot.closed is False
+                and snapshot.tile.tile == result.output
+                and type(snapshot.boundary_tiles) is tuple
                 and all(
                     valid_tile_lease(value, scheduler.tiles, open_=True)
-                    for value in lease._boundary_tiles
+                    for value in snapshot.boundary_tiles
                 )
-                and tuple(value.tile for value in lease._boundary_tiles) == boundary_ids
+                and tuple(value.tile for value in snapshot.boundary_tiles)
+                == boundary_ids
                 and result.relative_extent == output.extent
                 and result.relative_extent <= output.width
                 and outgoing.signature == key.wiring.signature
@@ -639,56 +653,60 @@ def audit_tile_runtime(
 
     application_by_scheduler: dict[TileScheduler, dict[int, TileApplication]] = {}
     for application in applications:
-        scheduler = application.scheduler
+        snapshot = application.audit_snapshot()
+        scheduler = snapshot.scheduler
+        scheduler_state = scheduler.audit_snapshot()
         valid = (
             type(scheduler) is TileScheduler
             and scheduler in physical_schedulers
-            and type(application.identity) is int
-            and 0 <= application.identity < scheduler._next_application
-            and type(application._closed) is bool
+            and type(snapshot.identity) is int
+            and type(scheduler_state.next_application) is int
+            and 0 <= snapshot.identity < scheduler_state.next_application
+            and type(snapshot.closed) is bool
         )
         try:
-            if application._closed:
+            if snapshot.closed:
                 valid &= valid_tile_lease(
-                    application._input, scheduler.tiles, open_=False
+                    snapshot.input_lease, scheduler.tiles, open_=False
                 )
-                if application._root is not None:
+                if snapshot.root_lease is not None:
                     valid &= (
-                        type(application._root) is ResultLease
-                        and application._root._closed is True
+                        type(snapshot.root_lease) is ResultLease
+                        and snapshot.root_lease.audit_snapshot().closed is True
                     )
             else:
                 valid &= valid_tile_lease(
-                    application._input, scheduler.tiles, open_=True
+                    snapshot.input_lease, scheduler.tiles, open_=True
                 )
-                source = application._input.tile
+                source = snapshot.input_lease.tile
                 key = PoweredResultKey(
-                    application.action,
+                    snapshot.action,
                     source,
-                    application.ports,
-                    application.wiring,
+                    snapshot.ports,
+                    snapshot.wiring,
                 )
                 valid &= valid_request(scheduler, key)
-                if application._root is not None:
-                    valid &= valid_result_lease(application._root, scheduler, key)
-                    approved.add(id(application._root))
+                if snapshot.root_lease is not None:
+                    valid &= valid_result_lease(snapshot.root_lease, scheduler, key)
+                    approved.add(id(snapshot.root_lease))
         except (TypeError, ValueError, KeyError, AttributeError, IndexError):
             valid = False
         if valid:
             previous = application_by_scheduler.setdefault(scheduler, {}).get(
-                application.identity,
+                snapshot.identity,
             )
             if previous is not None and previous is not application:
                 valid = False
             else:
-                application_by_scheduler[scheduler][application.identity] = application
+                application_by_scheduler[scheduler][snapshot.identity] = application
         if valid:
             approved.add(id(application))
         else:
             invalid.add((-1, id(application)))
 
     for scheduler in schedulers:
-        if scheduler._source_only:
+        scheduler_state = scheduler.audit_snapshot()
+        if scheduler_state.source_only:
             valid_source_root, source_core = (
                 scheduler_support.valid_source_only_scheduler(
                     scheduler, ledger, containers, roots
@@ -701,53 +719,66 @@ def audit_tile_runtime(
             else:
                 invalid.add((-1, id(scheduler)))
             continue
-        spatial = scheduler._causal_workspace
-        tasks = scheduler._causal_tasks
+        owners = scheduler.audit_causal_owners()
+        spatial, tasks = owners.spatial, owners.tasks
+        spatial_state = scheduler_state.causal_workspace
+        task_state = scheduler_state.causal_tasks
+        if spatial_state is None or task_state is None:
+            invalid.add((-1, id(scheduler)))
+            continue
         valid_root = (
             scheduler.ledger is ledger
             and scheduler.tiles.ledger is ledger
             and scheduler.results.ledger is ledger
-            and containers.get(scheduler._pin_owner) is scheduler._pins
+            and scheduler_state.ledger is ledger
+            and scheduler_state.pin_owner is not None
+            and scheduler_state.pin_store is not None
+            and id(containers.get(scheduler_state.pin_owner))
+            == id(scheduler_state.pin_store)
             and type(spatial) is CausalSpatialWorkspace
             and spatial.ledger is ledger
-            and containers.get(spatial.owner) is spatial._refs
-            and containers.get(spatial.buffer_owner) is spatial._buffers
+            and spatial_state.owner == spatial.owner
+            and id(containers.get(spatial_state.owner))
+            == id(spatial_state.reference_store)
+            and id(containers.get(spatial_state.buffer_owner))
+            == id(spatial_state.buffer_store)
             and type(tasks) is CausalTaskWorkspace
             and tasks.ledger is ledger
-            and containers.get(tasks.memo_owner) is tasks.memo
-            and containers.get(tasks.active_owner) is tasks.active
-            and containers.get(tasks.action_pending_owner) is tasks.action_pending
-            and containers.get(tasks.action_admitted_owner) is tasks.action_admitted
-            and type(tasks.frames) is CausalFrameStack
-            and tasks.frames.ledger is ledger
-            and containers.get(tasks.frames.owner) is tasks.frames._frames
-            and type(tasks.values) is CausalResultStack
-            and tasks.values.ledger is ledger
-            and containers.get(tasks.values.owner) is tasks.values._values
-            and type(tasks.directed_frames) is CausalFrameStack
-            and tasks.directed_frames.ledger is ledger
-            and containers.get(tasks.directed_frames.owner)
-            is tasks.directed_frames._frames
-            and type(tasks.directed_values) is CausalValueStack
-            and tasks.directed_values.ledger is ledger
-            and containers.get(tasks.directed_values.owner)
-            is tasks.directed_values._values
-            and scheduler.results._causal_tasks is tasks
-            and type(scheduler._next_application) is int
-            and scheduler._next_application >= 0
+            and task_state.workspace is tasks
+            and id(containers.get(task_state.memo_owner)) == id(task_state.memo_store)
+            and id(containers.get(task_state.active_owner))
+            == id(task_state.active_store)
+            and id(containers.get(task_state.action_pending_owner))
+            == id(task_state.pending_store)
+            and id(containers.get(task_state.action_admitted_owner))
+            == id(task_state.admitted_store)
+            and id(containers.get(task_state.frames.owner))
+            == id(task_state.frames.store)
+            and id(containers.get(task_state.summary_frames.owner))
+            == id(task_state.summary_frames.store)
+            and task_state.frames.owner != task_state.summary_frames.owner
+            and _has_distinct_identity(
+                task_state.frames.store,
+                task_state.summary_frames.store,
+            )
+            and id(containers.get(task_state.values.owner))
+            == id(task_state.values.store)
+            and id(containers.get(task_state.directed_frames.owner))
+            == id(task_state.directed_frames.store)
+            and id(containers.get(task_state.directed_values.owner))
+            == id(task_state.directed_values.store)
+            and scheduler.results.causal_tasks is tasks
+            and type(scheduler_state.next_application) is int
+            and scheduler_state.next_application >= 0
         )
         live = application_by_scheduler.get(scheduler, {})
-        registry_approved, registry_invalid = audit_tile_application_registry(
-            scheduler._applications,
-            containers,
+        registry_approved, registry_invalid = scheduler.audit_application_registry(
+            containers
         )
         approved.update(registry_approved)
         invalid.update(registry_invalid)
-        valid_root &= set(scheduler._applications.records) == set(live) and all(
-            cleanup.application() is live[identity]
-            for identity, cleanup in scheduler._applications.records.items()
-        )
-        for binding, lease in scheduler._pins.items():
+        valid_root &= scheduler.audit_application_bindings(live)
+        for binding, lease in scheduler_state.pins.items():
             valid = valid_root and type(binding) is tuple and len(binding) == 2
             try:
                 application_id, key = binding
@@ -755,7 +786,7 @@ def audit_tile_runtime(
                     type(application_id) is int
                     and type(key) is PoweredResultKey
                     and application_id in live
-                    and not live[application_id]._closed
+                    and not live[application_id].audit_snapshot().closed
                     and valid_result_lease(lease, scheduler, key)
                 )
             except (TypeError, ValueError, KeyError, AttributeError, IndexError):
@@ -763,133 +794,15 @@ def audit_tile_runtime(
             if valid:
                 approved.update((id(binding), id(lease)))
             else:
-                invalid.add((scheduler._pin_owner, id(binding)))
-        expected_refs: set[tuple[int, int]] = set()
-        capacities = object_bytes = 0
-        for identity, buffer in spatial._buffers.items():
-            valid = (
-                valid_root
-                and type(identity) is int
-                and type(buffer) is SpatialReferenceBuffer
-            )
-            try:
-                valid &= (
-                    buffer.workspace is spatial
-                    and buffer.identity == identity
-                    and type(buffer.capacity) is int
-                    and type(buffer.used) is int
-                    and 0 <= buffer.used <= buffer.capacity
-                    and type(buffer.closed) is bool
-                    and not buffer.closed
-                    and type(buffer.backing_bytes) is int
-                    and buffer.backing_bytes
-                    == getsizeof(buffer) + buffer.capacity * getsizeof((0, 0))
-                )
-                capacities += buffer.capacity
-                object_bytes += buffer.backing_bytes
-                for index in range(buffer.capacity):
-                    ref_key = (identity, index)
-                    expected_refs.add(ref_key)
-                    value = spatial._refs[ref_key]
-                    valid_value = value is None and index >= buffer.used
-                    if index < buffer.used and type(value) is int:
-                        valid_value = value >= 0
-                    elif index < buffer.used and type(value) is TileID:
-                        scheduler.tiles.resolve(value)
-                        valid_value = True
-                    elif index < buffer.used and type(value) is CausalPrefix:
-                        scheduler.adapter.validate_action(value.action)
-                        valid_value = (
-                            type(value.side) is int
-                            and value.side in (0, 1)
-                            and type(value.producer_seed) is int
-                            and value.producer_seed >= 0
-                            and type(value.consumer_seed) is int
-                            and value.consumer_seed >= 0
-                            and type(value.explicit_edge) is bool
-                        )
-                        for view in (value.view, value.consumer_view):
-                            if view is not None:
-                                view.__post_init__()
-                                tile_record = scheduler.tiles.resolve(view.tile)
-                                valid_value &= (
-                                    view.source_offset + view.relative_extent
-                                    <= tile_record.width
-                                )
-                    valid &= valid_value
-                    if valid_value:
-                        approved.update((id(ref_key), id(value)))
-            except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                valid = False
-            if valid:
-                approved.update((id(identity), id(buffer)))
-            else:
-                invalid.add((spatial.buffer_owner, id(buffer)))
-        valid_root &= (
-            set(spatial._refs) == expected_refs
-            and spatial.slots == capacities
-            and spatial._object_bytes == object_bytes
-            and type(spatial._next) is int
-            and spatial._next >= 0
-            and all(identity < spatial._next for identity in spatial._buffers)
+                invalid.add((scheduler_state.pin_owner or -1, id(binding)))
+        workspace_approved, workspace_invalid = causal_inventory.audit_task_workspace(
+            scheduler,
+            spatial,
+            tasks,
+            valid_root,
         )
-        if not valid_root:
-            invalid.add((spatial.owner, id(spatial)))
-
-        task_approved, task_invalid = causal_inventory.audit_task_payloads(
-            scheduler, tasks, valid_root
-        )
-        approved.update(task_approved)
-        invalid.update(task_invalid)
-        frame_references = 0
-        for frame in tasks.frames._frames:
-            valid = (
-                valid_root
-                and type(frame) is CausalFrame
-                and type(frame.op) is str
-                and frame.op in scheduler_support.CAUSAL_FRAME_OPS
-                and type(frame.args) is tuple
-                and len(frame.args) <= 8
-                and type(frame.saved) is tuple
-                and len(frame.saved) <= 3
-                and type(frame.stage) is int
-                and frame.stage >= -1
-                and type(frame.memoized) is bool
-                and causal_inventory.valid_frame_value(scheduler, frame.args, approved)
-                and causal_inventory.valid_frame_value(scheduler, frame.saved, approved)
-            )
-            frame_references += len(frame.args) + len(frame.saved)
-            if valid:
-                approved.add(id(frame))
-            else:
-                invalid.add((tasks.frames.owner, id(frame)))
-        valid_root &= tasks.frames.payload_references == frame_references
-        if not valid_root:
-            invalid.add((tasks.frames.owner, id(tasks.frames)))
-        for value in tasks.values._values:
-            if valid_root and causal_inventory.valid_frame_value(
-                scheduler, value, approved
-            ):
-                approved.add(id(value))
-            else:
-                invalid.add((tasks.values.owner, id(value)))
-        if valid_root:
-            approved.update(
-                (
-                    id(scheduler),
-                    id(scheduler._pins),
-                    id(spatial),
-                    id(spatial._refs),
-                    id(spatial._buffers),
-                    id(tasks),
-                    id(tasks.memo),
-                    id(tasks.active),
-                    id(tasks.frames),
-                    id(tasks.frames._frames),
-                    id(tasks.values),
-                    id(tasks.values._values),
-                )
-            )
+        approved.update(workspace_approved)
+        invalid.update(workspace_invalid)
 
     from number_compiler.resources.tile_radix_inventory import (
         audit_tile_radix_runtime,
@@ -906,16 +819,19 @@ def audit_tile_runtime(
     invalid.update(radix_invalid)
     for root in roots:
         if type(root) is LazyProjection:
+            projection_snapshot = root.audit_snapshot()
             valid = (
-                root.ledger is ledger
-                and type(root.scheduler) is TileScheduler
-                and root.scheduler in physical_schedulers
-                and type(root._application) is TileApplication
-                and root._application.scheduler is root.scheduler
-                and type(root._logical_extent) is int
-                and root._logical_extent >= 1
-                and type(root._closed) is bool
-                and root._closed == root._application._closed
+                projection_snapshot.ledger is ledger
+                and type(projection_snapshot.scheduler) is TileScheduler
+                and projection_snapshot.scheduler in physical_schedulers
+                and type(projection_snapshot.application) is TileApplication
+                and projection_snapshot.application.scheduler
+                is projection_snapshot.scheduler
+                and type(projection_snapshot.logical_extent) is int
+                and projection_snapshot.logical_extent >= 1
+                and type(projection_snapshot.closed) is bool
+                and projection_snapshot.closed
+                == projection_snapshot.application.audit_snapshot().closed
             )
             if valid:
                 approved.add(id(root))

@@ -7,7 +7,7 @@ from typing import TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.actions.diamond_actions import CellID
-from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientID
+from number_compiler.hashlife.interfaces.semantic_structures import DiamondQuotientID
 
 
 @dataclass(frozen=True, slots=True)

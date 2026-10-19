@@ -453,11 +453,11 @@ class _Transaction:
                 )
                 low_key = tuple(
                     n.low if n.variable == variable else identity
-                    for n, identity in zip((c, a, b), key)
+                    for n, identity in zip((c, a, b), key, strict=True)
                 )
                 high_key = tuple(
                     n.high if n.variable == variable else identity
-                    for n, identity in zip((c, a, b), key)
+                    for n, identity in zip((c, a, b), key, strict=True)
                 )
                 split_choice(pending, children, key, variable, low_key, high_key)
         return self.choices[root]
@@ -642,11 +642,11 @@ class _Transaction:
                 )
                 low = tuple(
                     node.low if node.variable == variable else identity
-                    for node, identity in zip(nodes, key)
+                    for node, identity in zip(nodes, key, strict=True)
                 )
                 high = tuple(
                     node.high if node.variable == variable else identity
-                    for node, identity in zip(nodes, key)
+                    for node, identity in zip(nodes, key, strict=True)
                 )
                 children[key] = variable, low, high
                 pending.extend(((key, True), (high, False), (low, False)))

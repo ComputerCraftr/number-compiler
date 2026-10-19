@@ -33,7 +33,7 @@ def test_reverse_fused_parent_bypasses_retired_provider_and_higher_point_routes(
     workspace, occurrence = assert_q19_output_authority(term)
     assert occurrence.temporal_steps == 64
     assert occurrence.output_width == 31
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert (
         2 * counters.get("reverse_q19_punctured_t2_applications", 0)
         + 4 * counters.get("reverse_q19_punctured_t4_applications", 0)

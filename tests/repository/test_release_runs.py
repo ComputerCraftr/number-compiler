@@ -42,6 +42,7 @@ def test_python_tool_versions_do_not_probe_foreign_path_installations(
 
     monkeypatch.setattr(shutil, "which", locate)
     monkeypatch.setattr(subprocess, "run", no_subprocess)
+    monkeypatch.delenv("NUMBER_COMPILER_NODE", raising=False)
     monkeypatch.setattr(runs, "version", lambda _name: "pinned-version")
     tools = runs.tool_versions()
     assert tools["ruff"] == "pinned-version"
@@ -572,6 +573,7 @@ def test_release_quality_retains_failures_and_attempts_later_checks(
     with EvidenceRun(root=tmp_path) as run:
         assert not release.quality(run)
     assert calls == [
+        "dependency-consistency",
         "mypy",
         "ruff",
         "format",

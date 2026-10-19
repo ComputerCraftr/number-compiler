@@ -213,6 +213,28 @@ class BinaryBooleanCarryAction:
             self._xor_masks[incoming],
         )
 
+    def structural_snapshot(
+        self,
+    ) -> tuple[
+        int,
+        int,
+        tuple[int, int],
+        tuple[int, int],
+        tuple[WalshH5, WalshH5],
+        tuple[int, int] | None,
+        tuple[int, int] | None,
+    ]:
+        """Expose the complete immutable action for source-integrity audits."""
+        return (
+            self.modulus,
+            self.length,
+            self.next_carries,
+            self.deltas,
+            self.harmonics,
+            self._output_words,
+            self._xor_masks,
+        )
+
     @property
     def semantic_id(self) -> tuple[object, ...]:
         """Exact right-congruence key for carry, signed-fold and H5 outputs."""

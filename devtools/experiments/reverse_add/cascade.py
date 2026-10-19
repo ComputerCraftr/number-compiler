@@ -118,7 +118,7 @@ class DependencyCascadeArena:
     EMPTY = 0
     FULL = 1
 
-    def __init__(self, arity: int):
+    def __init__(self, arity: int) -> None:
         arity = int(arity)
         if arity <= 0:
             raise ValueError(arity)
@@ -273,7 +273,7 @@ class GroupedDependencyCascadeArena:
         arity: int,
         domains: Sequence[int] | None = None,
         order: Sequence[int] | None = None,
-    ):
+    ) -> None:
         arity = int(arity)
         if arity <= 0:
             raise ValueError(arity)
@@ -358,7 +358,10 @@ class GroupedDependencyCascadeArena:
         # containing it already exists.
         keep: list[tuple[int, ...]] = []
         for box in sorted(work, key=lambda b: -sum(m.bit_count() for m in b)):
-            if any(all((m & ~k) == 0 for m, k in zip(box, outer)) for outer in keep):
+            if any(
+                all((m & ~k) == 0 for m, k in zip(box, outer, strict=True))
+                for outer in keep
+            ):
                 continue
             keep.append(box)
         work = keep

@@ -12,17 +12,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAdd,
+    InnovationAtom,
+    InnovationCharted,
     InnovationID,
+    InnovationInterval,
+    InnovationRadial,
+    InnovationScale,
+    InnovationZero,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _Add,
-    _Atom,
-    _Charted,
-    _Interval,
-    _Radial,
-    _Scale,
-    _Zero,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -123,16 +125,16 @@ def _children(
 ) -> tuple[tuple[int, _Context], ...]:
     node = arena.resolve(state.reference)
     chart, radial = state.chart, state.radial
-    if isinstance(node, _Add):
+    if isinstance(node, InnovationAdd):
         return (
             (1, _Context(node.left, chart, radial)),
             (1, _Context(node.right, chart, radial)),
         )
-    if isinstance(node, _Scale):
+    if isinstance(node, InnovationScale):
         return ((node.coefficient, _Context(node.child, chart, radial)),)
-    if isinstance(node, _Charted):
+    if isinstance(node, InnovationCharted):
         return ((1, _Context(node.child, chart.then(node.chart), radial)),)
-    if isinstance(node, _Radial):
+    if isinstance(node, InnovationRadial):
         # R_d (1+z)^r = (1+z)^r R_(d-r); translation commutes.
         if chart.slope == -1:
             chart = CylinderChart(-1, chart.offset - node.multiplier.growth)
@@ -143,9 +145,9 @@ def _children(
 def _emit(work: _EventWork, state: _Context, weight: int, difference: bool) -> None:
     arena = work.arena
     node = arena.resolve(state.reference)
-    if isinstance(node, _Zero):
+    if isinstance(node, InnovationZero):
         return
-    if isinstance(node, _Interval):
+    if isinstance(node, InnovationInterval):
         chart, length = state.chart, node.length
         start = -chart.offset if chart.slope == 1 else chart.offset - length + 1
         if difference:
@@ -167,7 +169,7 @@ def _emit(work: _EventWork, state: _Context, weight: int, difference: bool) -> N
                 weight,
             )
         return
-    if not isinstance(node, _Atom):
+    if not isinstance(node, InnovationAtom):
         raise TypeError("event normalization encountered a nonterminal expression")
     work.add(work.terms, state, weight)
     if difference:

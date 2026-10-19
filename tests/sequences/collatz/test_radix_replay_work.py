@@ -36,7 +36,7 @@ def test_former_134m_request_fixture_is_bounded_block_work() -> None:
             except IndexError:
                 digits.append("exterior")
     assert digits == [2, 2, 2, 2, 1, 2, 0, 0, 0, 0, 0, 0, 1, "exterior"]
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters.get("radix_microblock_source_bits", 0) == 0
     assert counters.get("radix_microblock_division_bits", 0) == 0
     assert counters.get("radix_division_input_bits_covered", 0) == 0
@@ -57,15 +57,15 @@ def test_former_134m_request_fixture_is_bounded_block_work() -> None:
     assert counters.get("source_image_primitive_applications", 0) > 0
     assert counters.get("microblock_entry_high_water", 0) <= 64
     assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 def test_repeat_digit_is_a_microblock_hit_without_stage_replay() -> None:
     term = PoweredCollatzTerm(140137, 11)
     assert collatz_radix_digit(term, 3, 12) == 1
-    before = term._ledger.counters.copy()
+    before = term.resource_ledger.counters.copy()
     assert collatz_radix_digit(term, 3, 12) == 1
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
     assert after.get("radix_provider_digit_evaluations", 0) == before.get(
         "radix_provider_digit_evaluations", 0
     )

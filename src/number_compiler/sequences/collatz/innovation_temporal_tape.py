@@ -16,7 +16,7 @@ the active query ledger and are released with that observer scope.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Self, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -30,6 +30,7 @@ from number_compiler.arithmetic.functions.finite_observer import (
 )
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.payload_cost import retained_payload_node_count
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_89_AT_NINE,
     ENTRY_421,
@@ -38,11 +39,12 @@ from number_compiler.sequences.collatz.border_identity import (
     CycleEntryPhase,
     GuardedBorderPath,
 )
-
-NORMALIZED_INNOVATION_TAPE_TAG: Final[str] = "normalized-innovation-v1"
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol as _exact_source_symbol,
 )
+
+NORMALIZED_INNOVATION_TAPE_TAG: Final[str] = "normalized-innovation-v1"
+
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.boundary_macros import (
@@ -64,28 +66,6 @@ _MISSING = object()
 _MemoValue = TypeVar("_MemoValue")
 _ISSUED_CLOCK = object()
 _UNISSUED = object()
-
-
-def _retained_node_count(value: object) -> int:
-    """Count retained tuple/dataclass slots and scalar payloads iteratively."""
-    pending = [value]
-    count = 0
-    while pending:
-        current = pending.pop()
-        if type(current) is int:
-            count += max(1, (current.bit_length() + 63) // 64)
-        elif type(current) is str:
-            count += max(1, (len(current.encode("utf-8")) + 7) // 8)
-        else:
-            count += 1
-        if isinstance(current, (tuple, list)):
-            count += len(current)
-            pending.extend(current)
-        elif is_dataclass(current) and not isinstance(current, type):
-            attributes = fields(current)
-            count += len(attributes)
-            pending.extend(getattr(current, attribute.name) for attribute in attributes)
-    return count
 
 
 class InnovationObserverMemo:
@@ -119,7 +99,7 @@ class InnovationObserverMemo:
             self._memo: OwnedMemo[tuple[object, ...], object] = OwnedMemo(
                 ledger,
                 self._owner,
-                node_cost=lambda key, item: _retained_node_count((key, item)),
+                node_cost=lambda key, item: retained_payload_node_count((key, item)),
                 evictable=True,
             )
             self._closed = False

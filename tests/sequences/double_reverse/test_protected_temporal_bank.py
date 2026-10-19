@@ -9,17 +9,30 @@ import pytest
 
 from number_compiler.api import cli, cli_render
 from number_compiler.arithmetic.automata.slp import SLPArena
+from number_compiler.arithmetic.fields.decimal_pair_partition import DecimalPairBand
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_keys.double_reverse import (
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS,
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
     DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES,
 )
+from number_compiler.sequences.double_reverse import (
+    protected_temporal_bank as protected_temporal_bank_module,
+)
+from number_compiler.sequences.double_reverse._temporal_bank_authority import (
+    SourceRecordAuthority,
+)
+from number_compiler.sequences.double_reverse._temporal_bank_authority import (
+    validate_source_record as validate_source_record_owner,
+)
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
-    PERIODIC_CHANNELS,
+    BANK_CHANNELS,
     ProtectedPeriodicBank,
+    TemporalBankChannel,
+    bank_channel_name,
     certified_periodic_region,
+    parse_bank_channel,
     protected_periodic_bank,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
@@ -32,6 +45,28 @@ def literal_t(x: int) -> int:
     return 2 * int(str(x)[::-1])
 
 
+def test_bank_channel_wire_spellings_parse_to_owner_identities() -> None:
+    assert parse_bank_channel("gt_high") is DecimalPairBand.GT_HIGH
+    assert parse_bank_channel("carry_xor") is TemporalBankChannel.CARRY_XOR
+    assert tuple(bank_channel_name(channel) for channel in BANK_CHANNELS) == (
+        "lt_low",
+        "lt_high",
+        "eq",
+        "gt_low",
+        "gt_high",
+        "f5",
+        "carry_left",
+        "carry_right",
+        "carry_xor",
+        "borrow_left_0",
+        "borrow_left_1",
+        "borrow_right_0",
+        "borrow_right_1",
+        "growth_left",
+        "growth_right",
+    )
+
+
 @pytest.mark.parametrize(
     "upper,lower,phase",
     [("17", "88", 0), ("17", "42", 1), ("48", "42", 2), ("48", "88", 3)],
@@ -40,7 +75,12 @@ def literal_t(x: int) -> int:
     "word,period", [("48", 2), ("59", 2), ("90", 2), ("01", 2), ("123", 3), ("3", 1)]
 )
 def test_periodic_bank_matches_literally_evolved_symmetric_rays(
-    upper: str, lower: str, phase: int, word: str, period: int
+    upper: str,
+    lower: str,
+    phase: int,
+    word: str,
+    period: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     middle = word * (60 // len(word))
     seed = int(upper + middle + lower)
@@ -54,9 +94,33 @@ def test_periodic_bank_matches_literally_evolved_symmetric_rays(
         bank = term.protected_temporal_bank(coordinate, period=period)
         assert bank.represented_steps == f_steps
         assert bank.physical_prefix == 0
-        assert set(bank.counts()) == set(PERIODIC_CHANNELS)
+        original_validate = validate_source_record_owner
+        validations = 0
+
+        def counted_validate(record: object) -> SourceRecordAuthority:
+            nonlocal validations
+            validations += 1
+            return original_validate(record)
+
+        monkeypatch.setattr(
+            protected_temporal_bank_module,
+            "validate_source_record",
+            counted_validate,
+        )
+        selected_frames, authority = bank.authorized_frames(2, 3)
+        monkeypatch.setattr(
+            protected_temporal_bank_module,
+            "validate_source_record",
+            original_validate,
+        )
+        assert validations == 1
+        assert selected_frames == tuple(bank.at(tick) for tick in range(2, 5))
+        assert authority.record is bank
+        assert set(bank.counts()) == {
+            bank_channel_name(channel) for channel in BANK_CHANNELS
+        }
         value = seed
-        expected_counts = dict.fromkeys(PERIODIC_CHANNELS, 0)
+        expected_counts = {bank_channel_name(channel): 0 for channel in BANK_CHANNELS}
         for tick in range(f_steps):
             frame = bank.at(tick)
             source = str(value)
@@ -88,8 +152,8 @@ def test_periodic_bank_matches_literally_evolved_symmetric_rays(
                 int(15 <= pair <= 18),
             )
             assert frame.carry_xor == ((actual[0] >= 5) ^ (actual[1] >= 5))
-            for channel in PERIODIC_CHANNELS:
-                expected_counts[channel] += frame.scalar(channel)
+            for channel in BANK_CHANNELS:
+                expected_counts[bank_channel_name(channel)] += frame.scalar(channel)
             value = literal_t(literal_t(value))
             next_s = str(value)
             next_left, next_right = growth_ports(phase, tick + 1)
@@ -115,7 +179,7 @@ def test_periodic_bank_matches_literally_evolved_symmetric_rays(
             assert frame.growth == next_birth_left + next_birth_right
         assert bank.counts() == expected_counts
         assert term._image is None
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 def test_periodicity_guard_uses_exact_slp_repeat_without_expansion() -> None:
@@ -217,7 +281,7 @@ def test_prefix_to_cylinder_closed_form_is_explicit_not_fabricated() -> None:
         assert form.target == (
             form.suffix_affine_gain * form.entry_value + form.suffix_affine_shift
         )
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     with DoubleReverseTerm(196, 64) as term:
         form = term.temporal_closed_form(modulus=97)
         assert form.prefix_steps == 16
@@ -240,7 +304,7 @@ def test_temporal_grammar_cli_does_not_build_endpoint(
         raise AssertionError("periodic temporal bank rebuilt the complete endpoint")
 
     monkeypatch.setattr(DoubleReverseTerm, "prepare_endpoint", forbid)
-    monkeypatch.setattr(cli_render, "_render_value", forbid)
+    monkeypatch.setattr(cli_render, "render_value", forbid)
     seed = "17" + "48" * 30 + "88"
     assert (
         cli.main(
@@ -325,7 +389,10 @@ def test_exact_pair_oracle_matches_full_term_without_materializing_it() -> None:
                     assert pair.gt_high == int(pair_sum >= 15)
                     assert pair.eq == int(pair_sum == 9)
                 assert term._image is None
-                assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+                assert (
+                    collect_ledger_metrics(term.resource_ledger).resource_audit_complete
+                    == 1
+                )
 
 
 def test_pointed_pairs_reuse_the_owner_issued_prefix_without_endpoint(

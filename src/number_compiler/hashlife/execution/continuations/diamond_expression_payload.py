@@ -32,7 +32,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     FunctionSort,
     StateSort,
     SymbolSort,
-    _port_order,
+    port_order,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -244,11 +244,7 @@ class ExpressionPayloadRegistry:
                 return False
             arenas = self.arenas if arena is None else (arena,)
             return any(
-                any(
-                    node.kind != "identity"
-                    and (node.base, node.blank) == (value.base, value.blank)
-                    for node in scope.actions._nodes
-                )
+                scope.actions.contains_alphabet(value.base, value.blank)
                 for scope in arenas
             )
         if type(value) is FunctionSort:
@@ -355,7 +351,7 @@ class ExpressionPayloadRegistry:
             else tuple(
                 sorted(
                     {port for child in children for port in child.free_ports},
-                    key=_port_order,
+                    key=port_order,
                 )
             )
         )
@@ -535,9 +531,9 @@ class ExpressionPayloadRegistry:
             set(record.support)
         ) != len(record.support):
             return False
-        ports = []
-        roles = []
-        for index, handle in enumerate(record.parameters):
+        ports: list[FormalPort] = []
+        roles: list[str] = []
+        for handle in record.parameters:
             node = arena.nodes[handle.local_id]
             if node.kind != "port" or type(node.sort) is not StateSort:
                 return False
@@ -638,29 +634,27 @@ class ExpressionPayloadRegistry:
             if bit in checked:
                 continue
             checked.add(bit)
-            node = functions._nodes[bit.local_id]
+            node = functions.node(bit)
             if node.variable is not None:
                 if (
                     type(node.variable) is not PortVariable
                     or node.variable not in allowed
                 ):
                     return False
-                pending.extend(
-                    (functions._handle(node.low), functions._handle(node.high))
-                )
+                pending.extend((node.low, node.high))
         for code in range((1 << width) if normalized else domain):
             output = 0
             for bit_number, bit in enumerate(expression.bits):
-                index = bit.local_id
-                while index >= 2:
-                    node = functions._nodes[index]
+                current = bit
+                while current.local_id >= 2:
+                    node = functions.node(current)
                     assert node.variable is not None
-                    index = (
+                    current = (
                         node.high
                         if code & (1 << (width - 1 - node.variable.bit + port.bit))
                         else node.low
                     )
-                output |= index << bit_number
+                output |= current.local_id << bit_number
             if (code < domain and output >= codomain) or (
                 code >= domain and output != 0
             ):

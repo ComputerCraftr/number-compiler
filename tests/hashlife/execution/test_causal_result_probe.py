@@ -16,17 +16,21 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
-from tests.support.tile_kernel import _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 
 def test_atomic_probe_rejects_malformed_key_before_memo_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     tasks = scheduler._causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
-    source = _tile(tiles, adapter, action, (0,))
+    source = make_tile_from_symbols(tiles, adapter, action, (0,))
     original_getitem = LedgerDict.__getitem__
 
     def forbidden_getitem(self: LedgerDict[object, object], key: object) -> object:
@@ -55,11 +59,11 @@ def test_atomic_probe_rejects_malformed_key_before_memo_access(
 def test_atomic_probe_rejects_changed_admitted_action_before_memo_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     tasks = scheduler._causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
-    source = _tile(tiles, adapter, action, (0,))
+    source = make_tile_from_symbols(tiles, adapter, action, (0,))
     record = adapter._actions[action.local_id]
     ports = adapter.initial_ports(action)
     wiring = adapter.wiring(action)
@@ -96,7 +100,7 @@ def test_public_causal_lookup_retains_deep_action_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ledger, _unused_tiles_binding, adapter, action, scheduler, source = (
-        _runtime_source(BaseBlockEffect(3), (0,))
+        make_tile_runtime_source(BaseBlockEffect(3), (0,))
     )
     key = causal_result_key(
         scheduler.results,
@@ -127,11 +131,11 @@ def test_public_causal_lookup_retains_deep_action_validation(
 def test_probe_counter_failure_precedes_lookup_and_acquires_no_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     tasks = scheduler._causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, ledger, action)
-    source = _tile(tiles, adapter, action, (0,))
+    source = make_tile_from_symbols(tiles, adapter, action, (0,))
     ports = adapter.initial_ports(action)
     wiring = adapter.wiring(action)
     original_bump = ResourceLedger.bump

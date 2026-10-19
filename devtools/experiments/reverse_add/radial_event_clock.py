@@ -17,11 +17,13 @@ from number_compiler.arithmetic.fields.event_innovation import (
     _Context,
     normalize_event_sum,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
+    InnovationInterval,
+    InnovationZero,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _Interval,
-    _Zero,
 )
 
 
@@ -111,9 +113,9 @@ def expression_packets(
             pending.extend((weight * c, child) for c, child in edges)
             continue
         node = arena.resolve(state.reference)
-        if isinstance(node, _Zero):
+        if isinstance(node, InnovationZero):
             continue
-        if not isinstance(node, _Interval) or node.length != 1:
+        if not isinstance(node, InnovationInterval) or node.length != 1:
             raise ValueError("radial clock needs resolved scalar event atoms")
         if len(packets) >= limits.max_packets:
             raise ValueError("radial clock packet budget exhausted")

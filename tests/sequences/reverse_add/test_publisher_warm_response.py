@@ -9,9 +9,9 @@ def test_public_196_point_reuses_authenticated_scalar_without_replaying_image() 
     term = ReverseAddPoweredTerm(196, 8)
     position = term.maximum_width // 3
     expected = term.digit(position)
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
     assert term.digit(position) == expected
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
 
     assert (
         after.get("source_image_projection_requests", 0)
@@ -46,7 +46,7 @@ def test_cold_196_point_reports_published_runtime_image_work() -> None:
     for _ in range(8):
         expected += int(str(expected)[::-1])
     assert term.digits() == tuple(map(int, reversed(str(expected))))
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     metrics = term.metrics()
     behavior = term.behavior_metrics()
     workspace, occurrence = assert_q19_output_authority(term)

@@ -15,15 +15,15 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseImagePayload,
+    ReverseSourceImageAdapter,
     ReverseSourceImageWorkspace,
-    _ReverseSourceImageAdapter,
 )
 from tests.support.reference_arithmetic import literal_reverse_add_digits
 
@@ -233,7 +233,7 @@ def test_failed_preparation_disposes_the_unregistered_adapter(
     ledger = ResourceLedger()
 
     def failed_preparation(
-        adapter: _ReverseSourceImageAdapter,
+        adapter: ReverseSourceImageAdapter,
         source: ExactSource,
         steps: int,
         construction: OriginalSourceConstruction | None = None,
@@ -243,7 +243,7 @@ def test_failed_preparation_disposes_the_unregistered_adapter(
         raise LookupError("preparation failed before adapter registration")
 
     monkeypatch.setattr(
-        _ReverseSourceImageAdapter, "prepare_recursive_authority", failed_preparation
+        ReverseSourceImageAdapter, "prepare_recursive_authority", failed_preparation
     )
     with pytest.raises(LookupError, match="before adapter registration"):
         ReverseSourceImageWorkspace(ledger, 1, 16, base=3)

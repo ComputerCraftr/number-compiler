@@ -35,11 +35,13 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
-    SymbolicInnovationArena,
     SymbolicRadialInnovation,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
+    SymbolicInnovationArena,
 )
 
 

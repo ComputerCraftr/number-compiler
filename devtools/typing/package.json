@@ -1,0 +1,9 @@
+{
+  "name": "number-compiler-typing-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned Pyright installation for number-compiler validation",
+  "devDependencies": {
+    "pyright": "1.1.414"
+  }
+}

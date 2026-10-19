@@ -67,7 +67,6 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
         CompileStructuredExpression,
         StructuredExpressionTask,
@@ -76,7 +75,10 @@ if TYPE_CHECKING:
         PrimitiveMacroKey,
         PrimitiveMacroObservation,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        LocalInterfaceID,
+        StructureID,
+    )
 
 
 @pytest.mark.parametrize("side", [0, 1])
@@ -103,7 +105,8 @@ def test_unknown_paired_continuation_uses_every_original_component(side: int) ->
     for values in product(range(codec.continuation_cardinality), repeat=count):
         inputs = {port.variable: 0 for port in codec.ports}
         inputs.update(
-            (port.variable, value) for port, value in zip(codec.component_ports, values)
+            (port.variable, value)
+            for port, value in zip(codec.component_ports, values, strict=True)
         )
         assert compiler.structures is not None
         assert (

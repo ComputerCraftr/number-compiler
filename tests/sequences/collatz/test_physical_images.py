@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnActionRecord,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
@@ -35,7 +38,7 @@ def test_source_image_matches_fixed_physical_recurrence(steps: int) -> None:
     assert workspace.endpoint() == expected
     assert workspace.odd_steps() == odd
     assert_branch_segments(workspace, branches)
-    assert workspace.scheduler._source_only
+    assert workspace.scheduler.is_source_only
 
 
 def test_composed_images_do_not_construct_a_causal_engine(
@@ -53,19 +56,10 @@ def test_composed_images_do_not_construct_a_causal_engine(
 
 def test_leaf_kernel_rejects_an_unbounded_primitive() -> None:
     workspace = CollatzPhysicalImageWorkspace(ResourceLedger(), 27, 0)
-    action = workspace._append_action(
-        workspace.actions[workspace.identity.local_id].__class__(65, None)
-    )
-    source = workspace._append_source(
-        workspace.sources[workspace.root_source.local_id].__class__(
-            27, 65, 0, None, None, None, 0
-        )
-    )
-    origin = workspace.scheduler._source_image_core()._origin(workspace, source)
+    action = workspace.append_action(DyadicReturnActionRecord(65, None))
+    root_view = workspace.scheduler.source_image_view(workspace, workspace.root_image)
     with pytest.raises(ValueError, match="bounded leaf"):
-        workspace.apply_primitive(
-            action, workspace.scheduler._source_image_core().view(origin)
-        )
+        workspace.apply_primitive(action, root_view)
 
 
 def test_publication_uses_ledger_owned_support_and_reports_policy_audit() -> None:
@@ -102,22 +96,19 @@ def test_composed_action_applies_to_recursive_source_and_publishes_complete_targ
 
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 0)
-    parent_action = workspace._action(514)
+    parent_action = workspace.action_for_extent(514)
     children = workspace.action_node(parent_action).children
     assert children is not None
     before, after = children
     assert workspace.action_node(before).width == 512
     assert workspace.action_node(before).children is not None
 
-    source_type = workspace.sources[workspace.root_source.local_id].__class__
-    parent_source = workspace._append_source(
-        source_type(27, 514, 0, None, None, None, 0, True)
-    )
-    core = workspace.scheduler._source_image_core()
-    parent_origin = core._origin(workspace, parent_source)
+    parent_source = workspace.admitted_source(27, 514)
+    parent_origin = workspace.scheduler.source_image_origin(workspace, parent_source)
+    parent_view = workspace.scheduler.source_image_view(workspace, parent_origin)
     child_source = workspace.first_child_source(
         parent_action,
-        core.view(parent_origin),
+        parent_view,
         before,
         after,
     )
@@ -142,7 +133,7 @@ def test_composed_action_applies_to_recursive_source_and_publishes_complete_targ
     monkeypatch.setattr(workspace, "compose_chronological", forbidden)
 
     image = workspace.scheduler.source_image(workspace, child_source, before)
-    view = core.view(image)
+    view = workspace.scheduler.source_image_view(workspace, image)
     assert view.binding.source == child_source
     assert view.binding.action == before
     payload = view.payload
@@ -178,17 +169,19 @@ def test_saturated_support_demand_recovers_after_budget_refusal() -> None:
     seed = (1 << 256) | 0xABCD12345
     term = PoweredCollatzTerm(seed, steps)
     term.digit(0)
-    workspace = term._workspace
+    snapshot = term.audit_snapshot()
+    workspace = snapshot.workspace
     assert workspace is not None
     assert len(workspace.support) == 1
-    before = (term._ledger.nodes, term._ledger.entries)
-    term._ledger.max_nodes = term._ledger.nodes + 3
+    ledger = snapshot.ledger
+    before = (ledger.nodes, ledger.entries)
+    ledger.max_nodes = ledger.nodes + 3
     try:
         with pytest.raises(BlockContextBudgetExceeded):
             list(workspace.segments())
     finally:
-        term._ledger.max_nodes = None
-    assert (term._ledger.nodes, term._ledger.entries) == before
+        ledger.max_nodes = None
+    assert (ledger.nodes, ledger.entries) == before
     assert len(workspace.support) == 1
     assert not workspace.macros and not workspace.macro_stack
     assert not workspace.balanced_stack and not workspace.demanded_support

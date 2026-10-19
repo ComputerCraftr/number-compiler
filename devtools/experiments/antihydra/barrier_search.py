@@ -200,7 +200,7 @@ def main() -> None:
             )
         )
         return
-    records = []
+    records: list[dict[str, object]] = []
     for bits in range(args.precision, args.precision + 2 * args.rounds, 2):
         record = candidate_failure(bits, args.depth, args.max_nodes)
         records.append(record)
@@ -234,7 +234,7 @@ def tail_refinement(depth: int, max_nodes: int) -> dict[str, object]:
     try:
         frontier: tuple[SourceBlockID, ...] = (workspace.cylinder(0, 0),)
         for horizon in range(1, depth + 1):
-            next_frontier = []
+            next_frontier: list[SourceBlockID] = []
             positive = nonpositive = 0
             for parent in frontier:
                 for child in workspace.refine_tail(parent):
@@ -292,7 +292,7 @@ def fractional_refinement(rounds: int, max_nodes: int) -> dict[str, object]:
         frontier: tuple[SourceBlockID, ...] = (workspace.cylinder(0, 0),)
         for stage in range(1, rounds + 1):
             start = perf_counter()
-            survivors = []
+            survivors: list[SourceBlockID] = []
             for first in frontier:
                 for second in bank:
                     joint = workspace.compose(first, second)
@@ -342,7 +342,7 @@ def grammar_refinement(
         frontier: tuple[SourceBlockID, ...] = (grammar.root,)
         for depth in range(1, rounds + 1):
             start = perf_counter()
-            survivors = []
+            survivors: list[SourceBlockID] = []
             cycle_count = 0
             empty_count = 0
             for parent in frontier:

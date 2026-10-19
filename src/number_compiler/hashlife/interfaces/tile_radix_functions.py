@@ -12,7 +12,7 @@ from number_compiler.arithmetic.radix_port_functions import (
     DivisionCarry,
     RadixPortFunction,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import MacroComponents
+from number_compiler.hashlife.interfaces.semantic_structures import MacroComponents
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,

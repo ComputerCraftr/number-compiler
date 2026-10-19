@@ -65,12 +65,12 @@ def test_collatz_query_eviction_preserves_canonical_temporal_compositions() -> N
     """Eviction reuses the authenticated source image and powered action DAG."""
     term = PoweredCollatzTerm(27, 16)
     expected = term.digit(0)
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
     assert before.get("source_image_publications", 0) > 0
 
-    term._ledger.evict_query_memos()
+    term.resource_ledger.evict_query_memos()
     assert term.digit(0) == expected
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
 
     assert after.get("source_image_publications", 0) == before.get(
         "source_image_publications", 0
@@ -95,7 +95,7 @@ def test_collatz_source_image_metrics_do_not_report_proof_sizes_as_runtime_class
     assert metrics.local_interface_nodes == metrics.field_action_nodes == 0
     assert metrics.canonical_tile_nodes == 0
     assert metrics.bounded_application_exact_endpoint_entries == 0
-    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
+    assert collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads == 0
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.resource_work_counters["source_image_publications"] > 0
     assert metrics.resource_work_counters["source_image_projection_publications"] > 0
@@ -105,10 +105,10 @@ def test_exact_spatial_population_does_not_add_work_visits_to_retained_nodes() -
     term = PoweredCollatzTerm(27, 16)
     term.digit(0)
     before = term.metrics()
-    before_inventory = term._ledger.snapshot().inventory
-    term._ledger.bump("source_leaf_reads", 101)
+    before_inventory = term.resource_ledger.snapshot().inventory
+    term.resource_ledger.bump("source_leaf_reads", 101)
     after = term.metrics()
-    after_inventory = term._ledger.snapshot().inventory
+    after_inventory = term.resource_ledger.snapshot().inventory
     assert after.source_leaf_visits == before.source_leaf_visits + 101
     before_images = sum(
         row.observed_nodes or 0

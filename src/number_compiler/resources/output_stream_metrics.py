@@ -51,7 +51,7 @@ def _close_output_iterator(
 
 
 @contextmanager
-def closing_output_stream(source: Iterable[_T]) -> Iterator[Iterator[_T]]:
+def closing_output_stream(source: Iterable[_T]) -> Generator[Iterator[_T], None, None]:
     """Close partially consumed output on conversion/consumer exceptions too."""
     stream = iter(source)
     try:

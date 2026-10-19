@@ -1,6 +1,22 @@
 # Development
 
-Install the project and development dependencies with `python -m pip install -e '.[dev]'`.
+Create a virtual environment in `.venv` and install the exact development tools
+from `pyproject.toml`. The reproducible validation environment targets CPython
+3.14 on macOS arm64:
+
+```bash
+.venv/bin/python -m pip install -c devtools/typing/constraints-py314-macos.txt -e '.[dev,profile]'
+npm ci --prefix devtools/typing --ignore-scripts
+.venv/bin/python -m pip check
+```
+
+The constraints file includes transitive dependencies; it is generated from a
+clean resolution of the declared extras. Other validation platforms need their
+own clean resolution. The package still supports Python 3.11 and newer, checked
+separately by installing the wheel with the minimum interpreter. The existing
+installed-distribution checker accepts `--python-executable /path/to/python3.11`
+for that smoke check; it remains subject to the normal command guard.
+
 Use the environment's tools from the repository root:
 
 ```bash
@@ -12,7 +28,22 @@ python -m devtools.checks.isabelle_proof_index
 python -m devtools.checks.release --suite unit
 ```
 
-Strict mypy checks the configured maintained roots `src`, `tests`, and `devtools`.
+Strict mypy and strict Pyright check `src`, `tests`, and `devtools`.
+The quality runner invokes the repository-private Pyright installation in
+serial, deterministic batches of at most 25 authored files, including
+nonignored untracked sources. Each batch has the standard command guard and a
+2-GiB Node heap; incomplete output or a failed batch fails the gate. Imported
+modules remain analyzed. Put Node on PATH or set `NUMBER_COMPILER_NODE` to its
+executable. No global or ephemeral `npx` installation is used. The quality preflight checks
+every locked Python package and runs `pip check`. Acceptance installs the private
+npm lock before analysis; put npm on PATH or set `NUMBER_COMPILER_NPM` to its
+JavaScript CLI entrypoint. Shell wrappers are not used by the runner.
+
+VS Code uses `.venv`, strict Pylance and open-file background diagnostics to
+limit editor memory. The guarded sweep supplies whole-repository coverage.
+Evidence records the Pylance extension version separately; a CLI Pyright pass
+does not certify editor diagnostics. Ruff enables `E4`, `E7`, `E9`, `F`, `I`,
+`UP`, `B`, `ANN` and `RUF100`, with preview disabled.
 Maintained executable reproductions live under `devtools`; reviewed weekly records live under `docs/sprints`. New raw evidence goes to ignored `results/runs`; old local logs and scripts remain historical evidence, not maintained launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 
@@ -320,32 +351,34 @@ not create another versioned microtask report.
 
 ### Documentation placement
 
+- **Release status:** one current disposition per gate, a short remaining
+  requirement and a link to its evidence owner. Do not copy run counts, timing
+  tables, receipt lists or previous dispositions into this page.
+- **Weekly sprints:** the owning topic records changes and the evidence needed
+  to assess them. Keep one scoped result and receipt per check; replace
+  superseded checkpoints in an active topic instead of appending every failed
+  attempt and successful rerun. Retain a baseline only when it supports a real
+  before/after comparison, and a failure only while it explains an unresolved
+  obligation or a useful rejected approach. Do not repeat receipt details in
+  multiple sections. Completed dated records remain historical, not current gates.
 - **Research papers:** definitions, propositions, assumptions, proof sketches,
-  exact counterexample scope and open constructions. Keep a short production
-  connection and a canonical reproduction command. Update the existing account
-  when a result changes rather than appending another implementation milestone.
-- **Weekly sprints:** dated changes, patch provenance, cache fixes, rejected
-  implementations, benchmark tables, validation counts and source provenance.
-  Weeks run Sunday–Saturday. Keep `README.md` as a short topic index; append
-  records to the relevant family or shared-infrastructure file, not the index.
-  Give each record its actual date or date range. File cross-week work once in
-  its completion week and state the full range. Do not guess missing dates;
-  retain undated aggregate history as explicitly labeled retrospectives.
-  Preserve original fingerprints and evidence limits. Use the existing topic
-  categories; register new categories in the catalog; `docs/sprints/` accepts new topic files
-  without `.gitignore` exceptions.
-- **Architecture and API guides:** current module responsibilities, interfaces
-  and user-visible behavior. Keep implementation history in the sprint.
-- **Release ledger and proof index:** current gate disposition and formal
-  statement/assumption/build references, respectively. Neither a historical
-  pass nor a documentation edit closes a current construction obligation.
+  counterexamples and open mathematical constructions. Link to sprint evidence
+  and release status. Do not duplicate test tallies, operational failure logs or
+  patch-by-patch implementation histories. A theorem's hypothesis or a genuine
+  counterexample remains relevant even after an implementation bug is fixed.
+- **Architecture and API guides:** current responsibilities and user-visible
+  behavior. The proof index owns formal statements, assumptions and build
+  references; the validation guide owns commands and execution limits.
 
-Link a research result to its dated evidence instead of copying the full run
-report. A superseded status belongs in history; the maintained paper should
-state the current scope once. Keep raw logs local or in CI and externally
-supplied archived documents unchanged. Register maintained pages in
-`docs/catalog.toml` and run `python -m devtools.checks.docs_index` after moving
-sections so local links and heading references remain valid.
+Weeks run Sunday–Saturday. File a topic once in its completion week and state
+its actual date range; keep the weekly index short. Use Git for prior versions
+and ignored run artifacts for detailed diagnostics. Removing a superseded
+summary does not require creating another history page or deleting raw evidence.
+Externally supplied archived documents retain their original text.
+
+Register maintained pages in `docs/catalog.toml`. Check links and headings with
+`devtools.checks.docs_index` through the guarded validation runner after edits.
+A documentation change cannot close a failing execution or proof gate.
 
 Generated run payloads under `results/` are local or CI artifacts and are ignored
 by Git. Commit reviewed weekly Markdown summaries under `docs/sprints/`; keep executable reproductions under `devtools` and independent oracles under `tests/support`;

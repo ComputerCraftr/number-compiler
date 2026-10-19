@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
+from random import Random
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.mixed_periodic_bank import (
+    required_protected_halo,
+)
 from number_compiler.sequences.reverse_add.q19_border_control import (
     CertifiedBorderGrowth,
 )
@@ -20,22 +24,56 @@ from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
     ReverseAddSpatialBankMorphism,
 )
 
-from .reverse_add_sources import periodic_reverse_add_source
+from .reverse_add_sources import (
+    periodic_reverse_add_source,
+    reverse_add_source_from_pair_sums,
+)
+
+
+def _compact_temporal_source() -> int:
+    """Build only the source window needed by the temporal bank fixture.
+
+    The spatial-bank fixtures intentionally keep a wide repeated source. The
+    temporal-only consumer needs a protected neighbourhood around pair 200,
+    not hundreds of additional periodic cells on either side.
+    """
+    period = (5, 16)
+    steps = 8
+    coordinate = 200
+    halo = required_protected_halo(len(period), steps) + 2
+    half_width = coordinate + halo + 1
+    rng = Random(9323)
+    pair_sums = [rng.randrange(1, 19)] + [
+        rng.randrange(19) for _ in range(half_width - 1)
+    ]
+    for pair_position in range(coordinate - halo, coordinate + halo + 1):
+        # Q19 pair coordinate p is the p-th generated half-word cell. The
+        # original fixture starts this period at pair 96, so pair 200 is its
+        # 105th cell and carries the first symbol, 5.
+        pair_sums[pair_position] = period[(pair_position - coordinate) % len(period)]
+
+    return reverse_add_source_from_pair_sums(pair_sums, rng=rng)
 
 
 @contextmanager
 def _source_guarded_periodic_context(
     *, include_spatial: bool
-) -> Iterator[
+) -> Generator[
     tuple[
         ResourceLedger,
         ReversePairQ19OutputOwner,
         CertifiedBorderGrowth,
         SourceGuardedGTBankAction,
         ReverseAddSpatialBankMorphism | None,
-    ]
+    ],
+    None,
+    None,
 ]:
-    seed = periodic_reverse_add_source((5, 16), seed=9323)
+    seed = (
+        periodic_reverse_add_source((5, 16), seed=9323)
+        if include_spatial
+        else _compact_temporal_source()
+    )
     ledger = ResourceLedger()
     owner = ReversePairQ19OutputOwner(ledger, digits_lsd(seed, 10), base=10)
     try:
@@ -68,14 +106,16 @@ def _source_guarded_periodic_context(
 
 
 @contextmanager
-def source_guarded_periodic_banks() -> Iterator[
+def source_guarded_periodic_banks() -> Generator[
     tuple[
         ResourceLedger,
         ReversePairQ19OutputOwner,
         CertifiedBorderGrowth,
         SourceGuardedGTBankAction,
         ReverseAddSpatialBankMorphism,
-    ]
+    ],
+    None,
+    None,
 ]:
     with _source_guarded_periodic_context(include_spatial=True) as parts:
         ledger, owner, certificate, bank, spatial = parts
@@ -84,13 +124,15 @@ def source_guarded_periodic_banks() -> Iterator[
 
 
 @contextmanager
-def source_guarded_periodic_temporal_bank() -> Iterator[
+def source_guarded_periodic_temporal_bank() -> Generator[
     tuple[
         ResourceLedger,
         ReversePairQ19OutputOwner,
         CertifiedBorderGrowth,
         SourceGuardedGTBankAction,
-    ]
+    ],
+    None,
+    None,
 ]:
     with _source_guarded_periodic_context(include_spatial=False) as parts:
         ledger, owner, certificate, bank, _spatial = parts

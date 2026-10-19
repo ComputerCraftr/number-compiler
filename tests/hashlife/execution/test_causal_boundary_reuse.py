@@ -8,15 +8,19 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    AdvanceSymbolFrame,
+    OutputBoundaryFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
     primitive_advance,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def _warm_boundary(
@@ -39,7 +43,7 @@ def _same_boundary(
 def test_cold_literal_transition_does_not_construct_a_tile(
     monkeypatch: pytest.MonkeyPatch, side: int
 ) -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     law = adapter.primitive_law(action)
     count = law.right_count if side else law.left_count
     expected = {
@@ -52,12 +56,12 @@ def test_cold_literal_transition_does_not_construct_a_tile(
         raise AssertionError("finite transition constructed a tile or interface")
 
     monkeypatch.setattr(tiles, "leaf", forbidden)
-    monkeypatch.setattr(adapter, "_compile_interface", forbidden)
+    monkeypatch.setattr(adapter, "compile_interface", forbidden)
     engine = CausalTileEngine(scheduler)
     for (state, symbol), outgoing in expected.items():
         assert (
             engine._run(
-                CausalFrame("advance_symbol", (action, side, state, symbol)),
+                AdvanceSymbolFrame((action, side, state, symbol)),
                 tile_result=False,
             )
             == outgoing
@@ -69,7 +73,7 @@ def test_cold_literal_transition_does_not_construct_a_tile(
 def test_parametric_parent_transfer_serves_all_states_before_descending(
     monkeypatch: pytest.MonkeyPatch, side: int
 ) -> None:
-    ledger, tiles, adapter, action, _ = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, _ = make_tile_runtime(BaseBlockEffect(3))
     law = adapter.primitive_law(action)
     symbols = (0, 2, 3, 4)
     count = law.right_count if side else law.left_count
@@ -79,8 +83,8 @@ def test_parametric_parent_transfer_serves_all_states_before_descending(
         for symbol in reversed(symbols) if side else symbols:
             state = law.advance(BoundarySide(side), state, symbol)
         expected.append(state)
-    with _tile(tiles, adapter, action, symbols) as source:
-        adapter._compile_interface(action, source.tile, adapter.wiring(action))
+    with make_tile_from_symbols(tiles, adapter, action, symbols) as source:
+        adapter.compile_interface(action, source.tile, adapter.wiring(action))
         view = BoundaryTileView(source.tile, 0, 4, side)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -99,14 +103,14 @@ def test_primitive_parent_goes_directly_to_validated_transfer_memo(
     monkeypatch: pytest.MonkeyPatch,
     side: int,
 ) -> None:
-    ledger, tiles, adapter, action, _ = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, _ = make_tile_runtime(BaseBlockEffect(3))
     symbols = (0, 2, 3, 4)
     law = adapter.primitive_law(action)
     incoming = adapter.initial_ports(action)[side]
     expected = incoming
     for symbol in symbols if not side else reversed(symbols):
         expected = law.advance(BoundarySide(side), expected, symbol)
-    with _tile(tiles, adapter, action, symbols) as source:
+    with make_tile_from_symbols(tiles, adapter, action, symbols) as source:
         view = BoundaryTileView(source.tile, 0, 4, side)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -128,8 +132,8 @@ def test_primitive_parent_goes_directly_to_validated_transfer_memo(
 def test_direct_parent_rejects_numeric_state_alias_before_warm_hit(
     invalid: object,
 ) -> None:
-    ledger, tiles, adapter, action, _ = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 1, 2, 3)) as source:
+    ledger, tiles, adapter, action, _ = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
         view = BoundaryTileView(source.tile, 0, 4)
         primitive_advance(adapter, action, 0, 0, view)
         before = ledger.snapshot()
@@ -140,8 +144,8 @@ def test_direct_parent_rejects_numeric_state_alias_before_warm_hit(
 
 
 def test_direct_parent_warm_hit_revalidates_action_metadata() -> None:
-    ledger, tiles, adapter, action, _ = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 1, 2, 3)) as source:
+    ledger, tiles, adapter, action, _ = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
         view = BoundaryTileView(source.tile, 0, 4)
         primitive_advance(adapter, action, 0, 0, view)
         record = adapter._actions[action.local_id]
@@ -159,15 +163,15 @@ def test_direct_parent_warm_hit_revalidates_action_metadata() -> None:
 def test_direct_parent_keeps_concrete_opposite_port_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 1, 2, 3)) as source:
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
         view = BoundaryTileView(source.tile, 0, 4)
         primitive_advance(adapter, action, 0, 0, view)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise ValueError("injected opposite-port admission failure")
 
-        monkeypatch.setattr(type(scheduler.results), "_validate_ports", forbidden)
+        monkeypatch.setattr(type(scheduler.results), "validate_ports", forbidden)
         with pytest.raises(ValueError, match="opposite-port"):
             primitive_advance(adapter, action, 0, 0, view)
 
@@ -177,15 +181,14 @@ def test_transfer_task_identity_ignores_nonsemantic_relative_origin(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         engine = CausalTileEngine(scheduler)
         engine._hold_workspace = True
 
         def advance(origin: int) -> object:
             return engine._run(
-                CausalFrame(
-                    "advance",
+                AdvanceFrame(
                     (
                         primitive,
                         0,
@@ -216,15 +219,14 @@ def test_transfer_task_identity_ignores_nonsemantic_relative_origin(
 def test_transfer_origin_numeric_alias_rejects_before_warm_memo_hit(
     alias: object,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1)) as source:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         engine = CausalTileEngine(scheduler)
         engine._hold_workspace = True
         valid = BoundaryTileView(source.tile, 0, 2)
         try:
             engine._run(
-                CausalFrame(
-                    "advance",
+                AdvanceFrame(
                     (primitive, 0, engine._initial(primitive, 0), valid),
                 ),
                 tile_result=False,
@@ -235,8 +237,7 @@ def test_transfer_origin_numeric_alias_rejects_before_warm_memo_hit(
             object.__setattr__(forged, "relative_origin", alias)
             with pytest.raises(TypeError, match="origin"):
                 engine._run(
-                    CausalFrame(
-                        "advance",
+                    AdvanceFrame(
                         (primitive, 0, engine._initial(primitive, 0), forged),
                     ),
                     tile_result=False,
@@ -254,10 +255,10 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, exponent)
     with (
-        _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
         scheduler.application(
             action,
             source.tile,
@@ -270,8 +271,7 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
         def request() -> BoundaryTileView:
             engine._application = application.identity
             result: object = engine._run(
-                CausalFrame(
-                    "output_boundary",
+                OutputBoundaryFrame(
                     (
                         action,
                         0,
@@ -314,21 +314,20 @@ def test_clipped_equal_regions_normalize_before_transient_task_lookup(
     """Backing occurrence identity cannot split one exact causal dependency."""
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
     first_symbols = (4, 4, 0, 1, 2, 4, 4, 4)
     second_symbols = (4, 0, 1, 2, 4, 3, 3, 3)
     with (
-        _tile(tiles, adapter, primitive, first_symbols) as first,
-        _tile(tiles, adapter, primitive, second_symbols) as second,
+        make_tile_from_symbols(tiles, adapter, primitive, first_symbols) as first,
+        make_tile_from_symbols(tiles, adapter, primitive, second_symbols) as second,
     ):
         engine = CausalTileEngine(scheduler)
         engine._hold_workspace = True
 
         def request(tile: TileID, offset: int) -> BoundaryTileView:
             result: object = engine._run(
-                CausalFrame(
-                    "output_boundary",
+                OutputBoundaryFrame(
                     (
                         action,
                         0,
@@ -374,10 +373,10 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
     import number_compiler.hashlife.tiles.tile_boundary_concat_memo as boundary_runtime
     import number_compiler.hashlife.tiles.tile_region_memo as region_memo
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
     with (
-        _tile(
+        make_tile_from_symbols(
             tiles,
             adapter,
             primitive,
@@ -395,8 +394,7 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
         def request() -> BoundaryTileView:
             engine._application = application.identity
             result: object = engine._run(
-                CausalFrame(
-                    "output_boundary",
+                OutputBoundaryFrame(
                     (
                         action,
                         0,

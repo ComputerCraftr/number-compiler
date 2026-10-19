@@ -215,7 +215,7 @@ def _sort_equal(left: SemanticSort, right: SemanticSort) -> bool:
         elif type(first) is ProductSort and type(second) is ProductSort:
             if len(first.items) != len(second.items):
                 return False
-            pending.extend(zip(first.items, second.items))
+            pending.extend(zip(first.items, second.items, strict=True))
         elif type(first) is FunctionSort and type(second) is FunctionSort:
             if first.inputs != second.inputs:
                 return False

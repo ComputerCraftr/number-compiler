@@ -17,9 +17,9 @@ from number_compiler.hashlife.interfaces.boolean_composition import (
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    BooleanCircuit,
     FactoredFunction,
     FactoredFunctionID,
-    _Circuit,
     substitute_boolean,
 )
 from number_compiler.resources.metric_keys import (
@@ -47,7 +47,7 @@ def divmod_atoms(
         or remainder_sort.cardinality != divisor
     ):
         raise ValueError("atom division has incompatible quotient/remainder sorts")
-    circuit = _Circuit(arena.functions, source.signature.inputs)
+    circuit = BooleanCircuit(arena.functions, source.signature.inputs)
     bits, valid = circuit.imported(source)
     width = (divisor - 1).bit_length()
     remainder = (circuit.zero,) * width
@@ -71,7 +71,7 @@ def divmod_atoms(
         remainder,
         valid,
     )
-    result = arena._publish(circuit, (quot, rem))
+    result = arena.publish_circuit(circuit, (quot, rem))
     arena.ledger.bump(_interfaces_keys.SEMANTIC_ATOM_DIVISION_BITS, len(bits))
     return result[0], result[1]
 
@@ -130,7 +130,7 @@ def substitute_many(
         tuple(port for port in source_inputs if port.variable not in removed),
         *(value.signature.inputs for _, value in items),
     )
-    circuit = _Circuit(arena.functions, inputs)
+    circuit = BooleanCircuit(arena.functions, inputs)
     try:
         mapping, replacement_valid, transform = substitution_environment(
             circuit, items, joint
@@ -154,7 +154,7 @@ def substitute_many(
             len(missing),
         )
         arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_COMPOSITION_EVALUATIONS)
-        published = arena._publish(
+        published = arena.publish_circuit(
             circuit,
             tuple(pending),
             substitutions=tuple(keys[index] for index in missing),
@@ -185,7 +185,7 @@ def restrict_many(
     allowed = set(inputs)
     if any(not set(value.signature.inputs) <= allowed for value in values):
         raise ValueError("batch restriction has an undeclared input port")
-    circuit = _Circuit(arena.functions, inputs)
+    circuit = BooleanCircuit(arena.functions, inputs)
     try:
         condition, admitted = circuit.imported(guard)
         pending = []
@@ -202,7 +202,7 @@ def restrict_many(
                 )
             )
         arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_RESTRICTION_EVALUATIONS)
-        return arena._publish(circuit, tuple(pending))
+        return arena.publish_circuit(circuit, tuple(pending))
     except BaseException:
         circuit.tx.close()
         raise
@@ -242,13 +242,13 @@ def admitted_replacements(
 
 
 def substitution_environment(
-    circuit: _Circuit,
+    circuit: BooleanCircuit,
     items: list[tuple[FinitePort, FactoredFunction]],
     joint: bool,
 ) -> tuple[
     dict[PortVariable, int],
     int,
-    Callable[[_Circuit, int, Mapping[PortVariable, int]], int],
+    Callable[[BooleanCircuit, int, Mapping[PortVariable, int]], int],
 ]:
     """Import one correlated argument environment and select its cofactor engine."""
     mapping: dict[PortVariable, int] = {}

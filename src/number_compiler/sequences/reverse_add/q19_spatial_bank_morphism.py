@@ -17,6 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BAND_NAMES,
+    DecimalPairBand,
+    decimal_pair_band,
+)
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 
 from ._q19_issuance import issue_q19_record
@@ -32,7 +37,7 @@ if TYPE_CHECKING:
     from .q19_output import ReversePairQ19OutputOwner
     from .temporal_residue99 import ReverseAddResidue99
 
-_BANDS = ("lt_low", "lt_high", "eq", "gt_low", "gt_high")
+_BANDS = DECIMAL_PAIR_BAND_NAMES
 _EXTRA = (
     "coefficient",
     "f5",
@@ -130,10 +135,15 @@ class ReverseAddSpatialBankMorphism:
     _binding: tuple[object, ...] = field(init=False, repr=False, compare=False)
     _registry_key: int = field(default=-1, init=False, repr=False, compare=False)
 
+    @property
+    def registry_key(self) -> int:
+        """Return the issuer slot; ownership is checked by the registry."""
+        return self._registry_key
+
     def __post_init__(self) -> None:
         if type(self.action) is not SourceGuardedGTBankAction:
             raise TypeError("spatial morphism requires a source-issued GT bank")
-        self.action._validate()
+        self.action.validate_source_authority()
         if self.halo != self.action.halo:
             raise ValueError("spatial morphism must preserve issued halo width")
         if type(self.start) is not int or type(self.count) is not int:
@@ -158,10 +168,14 @@ class ReverseAddSpatialBankMorphism:
             self._registry_key,
         )
 
-    def _validate(self) -> None:
+    def publication_snapshot(self) -> tuple[object, ...]:
+        """Return structural fields for the owning issuer's binding check."""
+        return self._snapshot()
+
+    def validate_source_authority(self) -> None:
         if type(self.action) is not SourceGuardedGTBankAction:
             raise TypeError("spatial morphism lost its source-issued GT bank")
-        self.action._validate()
+        self.action.validate_source_authority()
         if (
             type(self.start) is not int
             or type(self.count) is not int
@@ -179,7 +193,7 @@ class ReverseAddSpatialBankMorphism:
 
     @property
     def control_certified(self) -> bool:
-        self._validate()
+        self.validate_source_authority()
         return self.action.control_certified
 
     @property
@@ -188,30 +202,30 @@ class ReverseAddSpatialBankMorphism:
 
     @property
     def final_width_if_certified(self) -> int | None:
-        self._validate()
+        self.validate_source_authority()
         if not self.action.control_certified:
             return None
         return self.action.source.pair_width + self.action.growth_count
 
     def leading_carry_ports(self, tick: int) -> tuple[int, ...] | None:
         """Forward the source-bound leading safety cone, not bank mask bits."""
-        self._validate()
+        self.validate_source_authority()
         return self.action.leading_carry_ports(tick)
 
     def bilateral_carry_port(self, tick: int) -> BilateralCyclePort | None:
         """Forward the same source-issued low-overflow/middle transfer constraint."""
-        self._validate()
+        self.validate_source_authority()
         return self.action.bilateral_carry_port(tick)
 
     def bilateral_window_port(self, tick: int) -> BilateralCyclePort | None:
         """Forward the full K-window constraint when the finite tiles are fixed."""
-        self._validate()
+        self.validate_source_authority()
         return self.action.bilateral_window_port(tick)
 
     def _periods(
         self, depth: int, channels: tuple[str, ...]
     ) -> dict[str, tuple[int, ...]]:
-        self._validate()
+        self.validate_source_authority()
         if type(depth) is not int or not 0 <= depth <= self.action.steps:
             raise ValueError("temporal depth outside source-certified bank")
         if type(channels) is not tuple or not channels:
@@ -231,7 +245,9 @@ class ReverseAddSpatialBankMorphism:
                 elif channel == "f5":
                     result[channel] = tuple(x % 5 for x in word)
                 elif channel in _BANDS:
-                    result[channel] = tuple(int(_belongs(x, channel)) for x in word)
+                    result[channel] = tuple(
+                        int(_belongs(x, DecimalPairBand(channel))) for x in word
+                    )
                 else:
                     raise ValueError(
                         "conditional output ports require at least one tick"
@@ -307,25 +323,19 @@ class ReverseAddSpatialBankMorphism:
 
     def residue99(self) -> ReverseAddResidue99:
         """Exact scalar observer; never upgrades conditional bank authority."""
-        self._validate()
+        self.validate_source_authority()
         return self.action.temporal_residue99()
 
 
-def _belongs(s: int, channel: str) -> bool:
-    return {
-        "lt_low": s <= 4,
-        "lt_high": 5 <= s <= 8,
-        "eq": s == 9,
-        "gt_low": 10 <= s <= 14,
-        "gt_high": 15 <= s <= 18,
-    }[channel]
+def _belongs(s: int, channel: DecimalPairBand) -> bool:
+    return decimal_pair_band(s) is channel
 
 
 def _issue_spatial_bank_window(
     action: SourceGuardedGTBankAction, *, start: int, count: int
 ) -> ReverseAddSpatialBankMorphism:
     """Authenticate the complete output cone, then retain its exact record."""
-    action._validate()
+    action.validate_source_authority()
     halo = action.halo
     owner = action.owner
     source = action.source

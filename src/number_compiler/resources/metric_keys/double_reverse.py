@@ -82,6 +82,63 @@ DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS: Final = (
     "double_reverse_pointed_stencil_publications"
 )
 DOUBLE_REVERSE_POINTED_STENCIL_TILES: Final = "double_reverse_pointed_stencil_tiles"
+DOUBLE_REVERSE_POINTED_RING_AFFINE_DIGITS: Final = (
+    "double_reverse_pointed_ring_affine_digits"
+)
+DOUBLE_REVERSE_POINTED_RING_AFFINE_PORTS: Final = (
+    "double_reverse_pointed_ring_affine_ports"
+)
+DOUBLE_REVERSE_POINTED_RING_FAILED_WORK: Final = (
+    "double_reverse_pointed_ring_failed_work"
+)
+DOUBLE_REVERSE_POINTED_RING_OPERAND_BITS: Final = (
+    "double_reverse_pointed_ring_operand_bits"
+)
+DOUBLE_REVERSE_POINTED_RING_PACKED_STEPS: Final = (
+    "double_reverse_pointed_ring_packed_steps"
+)
+DOUBLE_REVERSE_POINTED_RING_SOURCE_CELLS: Final = (
+    "double_reverse_pointed_ring_source_cells"
+)
+DOUBLE_REVERSE_POINTED_RING_STENCIL_CELLS: Final = (
+    "double_reverse_pointed_ring_stencil_cells"
+)
+DOUBLE_REVERSE_POINTED_RING_WINDOW_ATTEMPTS: Final = (
+    "double_reverse_pointed_ring_window_attempts"
+)
+DOUBLE_REVERSE_POINTED_RING_WINDOWS: Final = "double_reverse_pointed_ring_windows"
+DOUBLE_REVERSE_POINTED_RING_FORCED_PORTS: Final = (
+    "double_reverse_pointed_ring_forced_ports"
+)
+DOUBLE_REVERSE_POINTED_RING_BUDGET_FALLBACKS: Final = (
+    "double_reverse_pointed_ring_budget_fallbacks"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_ATTEMPTS: Final = (
+    "double_reverse_pointed_ring_periodic_attempts"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_HITS: Final = (
+    "double_reverse_pointed_ring_periodic_hits"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_GUARD_STATES: Final = (
+    "double_reverse_pointed_ring_periodic_guard_states"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_MOTIF_STEPS: Final = (
+    "double_reverse_pointed_ring_periodic_motif_steps"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_SOURCE_PROBES: Final = (
+    "double_reverse_pointed_ring_periodic_source_probes"
+)
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_SOURCE_NODE_VISITS: Final = (
+    "double_reverse_pointed_ring_periodic_source_node_visits"
+)
+# Cell evaluations include discovery and per-position lineage validation;
+# motif steps count only complete row transitions during discovery.
+DOUBLE_REVERSE_POINTED_RING_PERIODIC_MOTIF_CELL_EVALUATIONS: Final = (
+    "double_reverse_pointed_ring_periodic_motif_cell_evaluations"
+)
+DOUBLE_REVERSE_POINTED_RING_AFFINE_LOGICAL_PORTS: Final = (
+    "double_reverse_pointed_ring_affine_logical_ports"
+)
 DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS: Final = (
     "double_reverse_represented_growth_cells"
 )

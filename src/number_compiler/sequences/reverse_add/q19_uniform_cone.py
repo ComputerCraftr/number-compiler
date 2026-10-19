@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import decimal_pair_band
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
     next_quiet_joint_xor_response,
@@ -317,16 +318,7 @@ class CertifiedUniformCone:
 
     @property
     def five_band(self) -> str:
-        s = self.coefficient
-        if s < 5:
-            return "lt_low"
-        if s < 9:
-            return "lt_high"
-        if s == 9:
-            return "eq"
-        if s < 15:
-            return "gt_low"
-        return "gt_high"
+        return decimal_pair_band(self.coefficient).value
 
     @property
     def bulk_carry(self) -> int | None:

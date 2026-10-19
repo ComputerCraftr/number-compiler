@@ -459,6 +459,11 @@ class DoubleReverseBankMixin:
     and Hashlife shape operations.
     """
 
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Read the resource owner, including for closed-state inspection."""
+        return self._ledger
+
     __slots__ = ()
 
     _adapter: _DoubleReverseSourceAdapter

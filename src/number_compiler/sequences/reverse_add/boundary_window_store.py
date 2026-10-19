@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Literal, Self
@@ -90,7 +90,7 @@ class BoundaryRelationStore:
         return self._worklist
 
     @contextmanager
-    def charged_frontier(self) -> Iterator[_LedgerFrontier]:
+    def charged_frontier(self) -> Generator[_LedgerFrontier, None, None]:
         """Expose the single-owner, ledger-accounted temporal worklist."""
         if self._worklist:
             raise RuntimeError("boundary relation worklist is already active")
@@ -126,9 +126,9 @@ class BoundaryRelationStore:
             for tile in value:
                 self._state_tiles.append(tile)
         except BaseException:
-            self._state_tiles._rollback_unpublished(state_count)
+            self._state_tiles.rollback_unpublished(state_count)
             if self.memo.get(key) is record:
-                self.memo._rollback_unpublished(key, record)
+                self.memo.rollback_unpublished(key, record)
             else:
                 self.ledger.release(
                     self.memo.owner, entries=1, nodes=self.memo.nodes_per_entry
@@ -160,7 +160,7 @@ class _LedgerFrontier:
         except BaseException:
             try:
                 if len(self._store._worklist) > prior_size:
-                    self._store._worklist._rollback_unpublished(prior_size)
+                    self._store._worklist.rollback_unpublished(prior_size)
             finally:
                 ledger.release(owner, entries=1, nodes=1)
             raise

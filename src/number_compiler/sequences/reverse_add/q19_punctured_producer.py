@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_occurrence import (
         ReversePairOutputOccurrence,
     )
-    from number_compiler.sequences.reverse_add.q19_word_summary import _WordSummary
+    from number_compiler.sequences.reverse_add.q19_word_summary import WordSummary
 
 
 class _OutputOwner(Protocol):
@@ -26,14 +26,12 @@ class _OutputOwner(Protocol):
     arena: LedgerSLPArena
     _digits: tuple[int, ...]
     _scratch_owner: int
-    _summaries: OwnedMemo[int, _WordSummary]
+    _summaries: OwnedMemo[int, WordSummary]
     _issued: OwnedMemo[tuple[int, int], ReversePairOutputOccurrence]
-
-    def _check_open(self) -> None: ...
 
     def validate(self, occurrence: ReversePairOutputOccurrence) -> None: ...
 
-    def _word_summary(self, root: int) -> _WordSummary: ...
+    def _word_summary(self, root: int) -> WordSummary: ...
 
     def _candidate(
         self, root: int, temporal_steps: int
@@ -260,7 +258,7 @@ class PuncturedPairProducer:
                 raise AssertionError("cannot roll back the Q19 empty node")
             # _add_interned can append a node before a mapping assignment fails.
             # Only erase an interner entry when it still names this exact node.
-            owner.arena._nodes_store._rollback_unpublished(node_id)
+            owner.arena._nodes_store.rollback_unpublished(node_id)
             owner.ledger.release(owner.arena.owners[0], entries=1, nodes=1)
 
 

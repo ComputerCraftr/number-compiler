@@ -267,7 +267,7 @@ def minimize_aligned_subsequential(
     cls = {q: 0 for q in states}
     while True:
         keys: dict[tuple[Word, tuple[tuple[Word, int], ...]], int] = {}
-        next_cls = {}
+        next_cls: dict[int, int] = {}
         for q in states:
             key = (
                 tuple(transducer.final_output[q]),

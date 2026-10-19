@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Protocol
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.causal_frames import (
+    CausalTaskFrame,
+    ChildStatesFrame,
+    InterfaceFrame,
+    OutputFrame,
+    PointFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
@@ -16,25 +23,95 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
     bound_states,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.hashlife.tiles.tile_ports import FusedBoundaryContract
+from number_compiler.hashlife.tiles.tile_ports import (
+    FusedBoundaryContract,
+    ResultWiring,
+)
+from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
-from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.resources.causal_types import (
+    CausalChildStates,
+    CausalPrefix,
+    CausalState,
+    CausalTaskValue,
+    require_child_states,
+)
+from number_compiler.resources.causal_workspace import CausalActionAdmission
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
+CausalRunResult = CausalTaskValue | ResultLease | TileLease
 
-class CausalTileAPI:
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
+    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+
+
+class CausalTileAPI(Protocol):
     """Mixin; the concrete engine supplies the single iterative ``_run``."""
 
-    def output(self: Any, action: FieldCellActionID, tile: TileID) -> TileLease:
+    scheduler: TileScheduler
+    tiles: TileArena
+    adapter: PrimitiveTileKernelAdapter
+    ledger: ResourceLedger
+    _application: int | None
+    _hold_workspace: bool
+
+    @property
+    def action_admission(self) -> CausalActionAdmission | None: ...
+
+    def _run(
+        self,
+        root: CausalTaskFrame,
+        *,
+        tile_result: bool,
+        return_result: bool = False,
+    ) -> CausalRunResult: ...
+
+    def _initial(
+        self,
+        action: FieldCellActionID,
+        side: int,
+        seed: int | None = None,
+    ) -> int | CausalPrefix: ...
+
+    def initial_state(
+        self,
+        action: FieldCellActionID,
+        side: int,
+        seed: int | None = None,
+    ) -> int | CausalPrefix:
+        """Return the admitted initial boundary state for one action side."""
+        return self._initial(action, side, seed)
+
+    def _children(
+        self,
+        action: FieldCellActionID,
+    ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
+
+    def _composite_key(
+        self,
+        action: FieldCellActionID,
+        tile: TileID,
+        left: CausalState,
+        right: CausalState,
+    ) -> PoweredResultKey | None: ...
+
+    def _wiring(self, action: FieldCellActionID) -> ResultWiring: ...
+
+    def _release_workspace(self) -> None: ...
+
+    def output(self, action: FieldCellActionID, tile: TileID) -> TileLease:
         result = self._run(
-            CausalFrame(
-                "output",
+            OutputFrame(
                 (action, tile, self._initial(action, 0), self._initial(action, 1)),
             ),
             tile_result=True,
@@ -44,7 +121,7 @@ class CausalTileAPI:
         return result
 
     def point(
-        self: Any,
+        self,
         action: FieldCellActionID,
         tile: TileID,
         coordinate: int,
@@ -53,8 +130,7 @@ class CausalTileAPI:
     ) -> int:
         self._application = application
         value = self._run(
-            CausalFrame(
-                "point",
+            PointFrame(
                 (
                     action,
                     tile,
@@ -70,7 +146,7 @@ class CausalTileAPI:
         return value
 
     def point_bound(
-        self: Any,
+        self,
         action: FieldCellActionID,
         tile: TileID,
         coordinate: int,
@@ -87,8 +163,7 @@ class CausalTileAPI:
         )
         self._application = application
         value = self._run(
-            CausalFrame(
-                "point",
+            PointFrame(
                 (
                     action,
                     tile,
@@ -104,7 +179,7 @@ class CausalTileAPI:
         return value
 
     def output_bound(
-        self: Any,
+        self,
         action: FieldCellActionID,
         tile: TileID,
         contract: FusedBoundaryContract,
@@ -117,8 +192,7 @@ class CausalTileAPI:
             contract,
         )
         result = self._run(
-            CausalFrame(
-                "output",
+            OutputFrame(
                 (action, tile, left, right),
             ),
             tile_result=True,
@@ -129,50 +203,48 @@ class CausalTileAPI:
         return result
 
     def interface(
-        self: Any,
+        self,
         action: FieldCellActionID,
         tile: TileID,
-        left: object,
-        right: object,
+        left: CausalState,
+        right: CausalState,
         *,
         application: int | None = None,
     ) -> CausalInterfacePayload:
         if application is not None:
             self._application = application
         result = self._run(
-            CausalFrame(
-                "interface",
+            InterfaceFrame(
                 (action, tile, left, right),
             ),
             tile_result=False,
         )
-        match result:
-            case CausalInterfacePayload():
-                pass
-            case _:
-                raise AssertionError("causal interface returned another payload sort")
+        if type(result) is not CausalInterfacePayload:
+            raise AssertionError("causal interface returned another payload sort")
         return result
 
     def child_states(
-        self: Any,
+        self,
         action: FieldCellActionID,
         parent: TileID,
-        left: object,
-        right: object,
-    ) -> tuple[tuple[object, object], tuple[object, object]]:
+        left: CausalState,
+        right: CausalState,
+    ) -> CausalChildStates:
         result = self._run(
-            CausalFrame(
-                "child_states",
+            ChildStatesFrame(
                 (action, parent, left, right),
             ),
             tile_result=False,
         )
-        if type(result) is not tuple or len(result) != 2:
-            raise AssertionError("causal child states returned another shape")
-        return result
+        try:
+            return require_child_states(result)
+        except TypeError as error:
+            raise AssertionError(
+                "causal child states returned another shape"
+            ) from error
 
     def width(
-        self: Any,
+        self,
         action: FieldCellActionID,
         tile: TileID,
         *,
@@ -192,6 +264,7 @@ class CausalTileAPI:
             )
         self._application = application
         try:
+            key: PoweredResultKey | None
             if self._children(action) is None:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError(
@@ -212,6 +285,8 @@ class CausalTileAPI:
                     else lookup_causal_result(self.scheduler.results, key)
                 )
             if completed is not None:
+                if key is None:
+                    raise AssertionError("completed causal result has no request key")
                 try:
                     with completed:
                         self.ledger.bump(

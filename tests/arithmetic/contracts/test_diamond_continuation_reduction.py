@@ -16,18 +16,18 @@ from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 from tests.support.diamond_continuation_reduction import (
     advance_after_emit,
     incoming_advance_task,
     literal,
-    machine,
     normalize,
 )
 
 
 @pytest.mark.parametrize("side", [0, 1])
 def test_physical_four_zero_words_have_the_same_complete_function(side: int) -> None:
-    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+    runtime, action = collatz_continuation_runtime(PhysicalCollatzFourBlockEffect())
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, side), "arbitrary-incoming")
     symbol = arena.symbol(action, 0)
@@ -49,7 +49,7 @@ def test_physical_four_zero_words_have_the_same_complete_function(side: int) -> 
 
 
 def test_cross_side_primitive_continuation_matches_every_input() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     kernel = runtime.kernel(action)
     variable = arena.variable(arena.state_sort(action, 1), "opposite-input")
@@ -69,7 +69,7 @@ def test_cross_side_primitive_continuation_matches_every_input() -> None:
 
 
 def test_closed_and_symbol_results_never_enter_function_binding_cache() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, 1), "input")
     left = literal(runtime, action, 0, 0)
@@ -82,7 +82,7 @@ def test_closed_and_symbol_results_never_enter_function_binding_cache() -> None:
 
 
 def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, 1), "input")
     other = arena.variable(arena.state_sort(action, 0), "other")
@@ -94,7 +94,7 @@ def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() ->
         NormalizePrimitiveLambda(function)
         not in runtime.primitive_continuations.normalized
     )
-    foreign, foreign_action = machine()
+    foreign, foreign_action = collatz_continuation_runtime()
     foreign_variable = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 1), "input"
     )
@@ -108,7 +108,7 @@ def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() ->
 def test_warm_complete_function_avoids_primitive_recomputation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena, task = incoming_advance_task(runtime, action)
     compiled = runtime.execute(task)
     assert task in runtime.primitive_continuations.maps
@@ -128,7 +128,7 @@ def test_exhausted_function_binding_budget_fails_before_child_work(
         BlockContextBudgetExceeded,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena, task = incoming_advance_task(runtime, action)
     runtime.ledger.max_cache_entries = runtime.ledger.entries
 
@@ -144,8 +144,8 @@ def test_exhausted_function_binding_budget_fails_before_child_work(
 
 
 def test_foreign_publication_rejects_before_any_cache_or_counter_mutation() -> None:
-    runtime, action = machine()
-    foreign, foreign_action = machine()
+    runtime, action = collatz_continuation_runtime()
+    foreign, foreign_action = collatz_continuation_runtime()
     arena, task = incoming_advance_task(runtime, action)
     wrong = foreign.kernels.constant(runtime.kernel(action).left_count, 0)
     assert_rejected_atomically(

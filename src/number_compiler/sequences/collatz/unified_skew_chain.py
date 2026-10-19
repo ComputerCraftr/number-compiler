@@ -33,7 +33,6 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_89_AT_NINE,
-    BoundaryActionIdentity,
     CollatzSegmentIdentity,
     NonBorderSegment,
 )
@@ -41,17 +40,11 @@ from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
-    AdmittedBoundaryMacroPlan,
     CollatzBoundaryMacro,
     admit_boundary_macro_plan,
-    select_admitted_boundary_macro,
-    validate_boundary_macro,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
-)
-from number_compiler.sequences.collatz.innovation_input_tape import (
-    _boundary_macro_specs,
 )
 from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 from number_compiler.sequences.collatz.radial_boundary_coupling import (
@@ -66,12 +59,12 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.boundary_macros import (
         BoundaryActionTemplateMemo,
     )
-    from number_compiler.sequences.collatz.cross_family_port_power import (
-        CrossFamilyPortAction,
-    )
     from number_compiler.sequences.collatz.skew_cylinder_repeat import (
         GuardedSkewCylinderPower,
         RepeatedWordMooreCylinder,
+    )
+    from number_compiler.sequences.collatz.source_closed_port_action import (
+        SourceClosedPortAction,
     )
 
 FactorSpecs = tuple[tuple[tuple[int, ...], int], ...]
@@ -84,32 +77,6 @@ def _segment_observation(identity: CollatzSegmentIdentity) -> dict[str, object]:
     if isinstance(identity, NonBorderSegment):
         return {"kind": "segment", "value": identity.value}
     return identity.observation()
-
-
-def _select_boundary_plan(
-    plan: AdmittedBoundaryMacroPlan,
-    templates: BoundaryActionTemplateMemo,
-    preflight: Callable[[int], None] | None,
-) -> tuple[
-    BoundaryActionIdentity,
-    int,
-    DyadicTerminalFieldAction,
-    BlankLedger,
-    FactorSpecs,
-    BoundaryWitness | None,
-]:
-    if preflight is not None:
-        preflight(plan.normalized_symbols)
-    boundary = select_admitted_boundary_macro(plan, templates=templates)
-    validate_boundary_macro(boundary)
-    return (
-        boundary.identity,
-        boundary.odd_symbols,
-        boundary.fields,
-        boundary.width_blank,
-        _boundary_macro_specs(boundary),
-        boundary,
-    )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -354,13 +321,13 @@ class UnifiedSkewChain:
 
     def source_closed_port_action(
         self, *, ledger: ResourceLedger | None = None
-    ) -> CrossFamilyPortAction:
+    ) -> SourceClosedPortAction:
         """Compile issued seams into one exact finite source congruence."""
-        from number_compiler.sequences.collatz.cross_family_port_power import (
-            CrossFamilyPortAction,
+        from number_compiler.sequences.collatz.source_closed_port_action import (
+            SourceClosedPortAction,
         )
 
-        return CrossFamilyPortAction.from_chain(self, ledger=ledger)
+        return SourceClosedPortAction.from_chain(self, ledger=ledger)
 
     def source_closed_temporal_power(
         self,
@@ -368,7 +335,7 @@ class UnifiedSkewChain:
         *,
         max_coefficient_bits: int = 8192,
         ledger: ResourceLedger | None = None,
-    ) -> CrossFamilyPortAction | None:
+    ) -> SourceClosedPortAction | None:
         """Power this recorded word only when all of its seam guards repeat."""
         return self.source_closed_port_action(ledger=ledger).power(
             repetitions,
@@ -616,6 +583,304 @@ class UnifiedSkewChain:
             "scope": "source-certified compositional prefix; terminal only at exact 1",
         }
 
+    @classmethod
+    def select_from_source(
+        cls,
+        source: int,
+        available_physical_ticks: int,
+        *,
+        templates: BoundaryActionTemplateMemo,
+        max_segments: int = 12,
+        precision: int = 32,
+        preflight: Callable[[int], None] | None = None,
+        ledger: ResourceLedger | None = None,
+        include_quadratic_clock: bool = True,
+        preserve_ordinary_mixed_parent: bool = False,
+    ) -> UnifiedSkewChain | None:
+        """Join certified macro segments before falling back to D8.
+
+        Terminal equality is checked when reached; otherwise sufficiently long
+        prefixes can still be applied as one guarded action. When requested, the
+        quadratic jet verifies the SAME action; it is never a branch oracle.
+        """
+        if type(source) is not int or source <= 0:
+            raise ValueError("skew chain requires a positive source")
+        if type(available_physical_ticks) is not int or available_physical_ticks < 0:
+            raise ValueError("skew chain physical budget must be nonnegative")
+        if type(max_segments) is not int or not 2 <= max_segments <= 12:
+            raise ValueError("skew chain requires a bounded join budget")
+        if type(include_quadratic_clock) is not bool:
+            raise TypeError("quadratic clock request must be Boolean")
+        if type(preserve_ordinary_mixed_parent) is not bool:
+            raise TypeError("mixed parent preference must be Boolean")
+        from number_compiler.sequences.collatz.skew_cylinder_repeat import (
+            RepeatedWordMooreCylinder,
+        )
+        from number_compiler.sequences.collatz.unified_skew_admission import (
+            admit_next_unified_segment,
+        )
+
+        if ledger is not None and type(ledger) is not ResourceLedger:
+            raise TypeError("unified skew selection requires its query ledger")
+        if ledger is not None:
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTOR_CHECKS)
+
+        # Admit a cheap parent before entering the multi-seam composer. This is
+        # only a source/clock classification; exact family selectors below still
+        # issue every action and endpoint guard.
+        joint_state = JointRadix6Source.from_source(source)
+        parent_plan = admit_boundary_macro_plan(
+            source,
+            available_physical_ticks,
+            minimum_repetitions=1,
+            radix_state=joint_state,
+            ledger=ledger,
+        )
+        terminal_parent = False
+        if source & 1 and source > 1:
+            numerator = 3 * source + 1
+            terminal_parent = (
+                numerator & (numerator - 1) == 0
+                and numerator.bit_length() <= available_physical_ticks
+            )
+        border_parent = (
+            available_physical_ticks >= 4 and joint_state.border_parent_candidate
+        )
+        # Ordinary requests preserve the existing 989-to-mixed-cache precedence.
+        # Observer requests still compose 989 when its clock, joint action, or tape
+        # is needed; ordinary cacheable requests leave this family to its owner.
+        if (
+            preserve_ordinary_mixed_parent
+            and parent_plan is not None
+            and parent_plan.identity == ENTRY_89_AT_NINE
+        ):
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_EXISTING_MIXED_PARENT_YIELDS
+                )
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
+                    source.bit_length() + max(1, available_physical_ticks.bit_length()),
+                )
+            return None
+        if parent_plan is None and not terminal_parent and not border_parent:
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_PARENT_REJECTIONS
+                )
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
+                    source.bit_length() + max(1, available_physical_ticks.bit_length()),
+                )
+            return None
+        if ledger is not None:
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_PARENT_ADMISSIONS)
+
+        current = source
+        used = 0
+        fields = DyadicTerminalFieldAction.identity()
+        width = BlankLedger()
+        clock = (
+            SkewQuadraticClock.identity(precision) if include_quadratic_clock else None
+        )
+        odd_symbols = 0
+        factors: list[tuple[tuple[int, ...], int]] = []
+        segment_identities: list[CollatzSegmentIdentity] = []
+        seams: list[CollatzRadialBoundarySeam] = []
+        first_boundary: tuple[int, BoundaryWitness] | None = None
+        discarded_bits = 0
+        repeat_cylinder: RepeatedWordMooreCylinder | None = None
+        for segment_index in range(max_segments):
+            if current == 1:
+                break
+            candidate_bits = current.bit_length() + max(
+                1, (available_physical_ticks - used).bit_length()
+            )
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
+                    candidate_bits,
+                )
+            admitted = admit_next_unified_segment(
+                current,
+                available_physical_ticks - used,
+                templates,
+                preflight,
+                ledger=ledger,
+                initial_plan=parent_plan if segment_index == 0 else None,
+                initial_plan_checked=segment_index == 0,
+                radix_state=joint_state,
+            )
+            if admitted is None:
+                if ledger is not None:
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES
+                    )
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
+                        discarded_bits + current.bit_length(),
+                    )
+                break
+            identity, odds, segment, blank, specs, witness = admitted
+            segment_bits = (
+                current.bit_length()
+                + max(1, (available_physical_ticks - used).bit_length())
+                + sum(
+                    max(1, value.bit_length())
+                    for value in (
+                        segment.steps,
+                        segment.gain,
+                        segment.offset,
+                        segment.sum_gain,
+                        segment.sum_offset,
+                        segment.previous_gain,
+                        segment.previous_offset,
+                    )
+                )
+            )
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTOR_SEGMENTS
+                )
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
+                    segment_bits,
+                )
+            ticks = segment.steps + odds
+            if ticks <= 0 or ticks > available_physical_ticks - used:
+                if ledger is not None:
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES
+                    )
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
+                        discarded_bits + segment_bits,
+                    )
+                return None
+            if not segment.certifies(current):
+                raise AssertionError("composite producer admitted a foreign source")
+            endpoint = segment.endpoint(current)
+            next_joint_state = joint_state.after_action(segment, endpoint, odds)
+            if clock is not None:
+                subclock = SkewQuadraticClock.factors(specs, precision)
+                subclock.verify(segment, current, endpoint)
+                if ledger is not None:
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CLOCK_CHECKS
+                    )
+            else:
+                subclock = None
+            if first_boundary is None and isinstance(
+                witness, (CollatzBoundaryMacro, BorderReturnMacro)
+            ):
+                first_boundary = (used, witness)
+            seams.append(
+                CollatzRadialBoundarySeam(
+                    identity,
+                    current,
+                    endpoint,
+                    odds,
+                    segment,
+                    witness,
+                    joint_state,
+                    next_joint_state,
+                )
+            )
+            # One chronological composition updates exact endpoint, accumulator,
+            # predecessor, width, helix, innovation and both clocks together.
+            # Reserve for the cumulative action before the exact composition can
+            # allocate its larger integer coefficients.
+            if preflight is not None:
+                preflight(fields.steps + segment.steps)
+            fields = fields.then(segment)
+            width = width.then(blank)
+            if clock is not None and subclock is not None:
+                clock = clock.then(subclock)
+            odd_symbols += odds
+            used += ticks
+            current = endpoint
+            joint_state = next_joint_state
+            factors.extend(specs)
+            segment_identities.append(identity)
+            discarded_bits += segment_bits
+            if (
+                preflight is not None
+                and len(segment_identities) >= 2
+                and used * 2 <= available_physical_ticks
+            ):
+                if ledger is not None:
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_CHECKS
+                    )
+                    ledger.bump(
+                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_OPERAND_BITS,
+                        source.bit_length()
+                        + fields.steps
+                        + fields.gain.bit_length()
+                        + abs(fields.offset).bit_length(),
+                    )
+                try:
+                    repeat_candidate = RepeatedWordMooreCylinder.from_action(
+                        fields, source, preflight=preflight
+                    )
+                except BlockContextBudgetExceeded:
+                    if ledger is not None:
+                        ledger.bump(
+                            _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_BUDGET_REFUSALS
+                        )
+                else:
+                    if repeat_candidate.admits(2):
+                        repeat_cylinder = repeat_candidate
+                        if ledger is not None:
+                            ledger.bump(
+                                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_ADMISSIONS
+                            )
+                        break
+                    if ledger is not None:
+                        ledger.bump(
+                            _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_REJECTIONS
+                        )
+            if (
+                fields.steps + odd_symbols != used
+                or (clock is not None and clock.physical_ticks != used)
+                or fields.endpoint(source) != current
+            ):
+                raise AssertionError("combined border/helix clocks lost their seam")
+
+        if len(segment_identities) < 2 or (
+            current != 1 and used < 16 and repeat_cylinder is None
+        ):
+            if ledger is not None:
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES
+                )
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
+                    discarded_bits,
+                )
+            return None
+        chain = cls._issue(
+            source,
+            current,
+            fields,
+            width,
+            clock,
+            odd_symbols,
+            tuple(factors),
+            tuple(segment_identities),
+            first_boundary,
+            tuple(seams),
+            repeat_cylinder,
+        )
+        if ledger is not None:
+            if clock is not None:
+                ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CLOCK_CHECKS, 2)
+            ledger.bump(
+                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CHAIN_RETAINED_OPERAND_BITS,
+                _chain_operand_bits(chain),
+            )
+        return chain
+
 
 def select_unified_skew_chain(
     source: int,
@@ -629,279 +894,18 @@ def select_unified_skew_chain(
     include_quadratic_clock: bool = True,
     preserve_ordinary_mixed_parent: bool = False,
 ) -> UnifiedSkewChain | None:
-    """Join certified macro segments before falling back to D8.
-
-    Terminal equality is checked when reached; otherwise sufficiently long
-    prefixes can still be applied as one guarded action. When requested, the
-    quadratic jet verifies the SAME action; it is never a branch oracle.
-    """
-    if type(source) is not int or source <= 0:
-        raise ValueError("skew chain requires a positive source")
-    if type(available_physical_ticks) is not int or available_physical_ticks < 0:
-        raise ValueError("skew chain physical budget must be nonnegative")
-    if type(max_segments) is not int or not 2 <= max_segments <= 12:
-        raise ValueError("skew chain requires a bounded join budget")
-    if type(include_quadratic_clock) is not bool:
-        raise TypeError("quadratic clock request must be Boolean")
-    if type(preserve_ordinary_mixed_parent) is not bool:
-        raise TypeError("mixed parent preference must be Boolean")
-    from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-        RepeatedWordMooreCylinder,
-    )
-    from number_compiler.sequences.collatz.unified_skew_admission import (
-        admit_next_unified_segment,
-    )
-
-    if ledger is not None and type(ledger) is not ResourceLedger:
-        raise TypeError("unified skew selection requires its query ledger")
-    if ledger is not None:
-        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTOR_CHECKS)
-
-    # Admit a cheap parent before entering the multi-seam composer. This is
-    # only a source/clock classification; exact family selectors below still
-    # issue every action and endpoint guard.
-    joint_state = JointRadix6Source.from_source(source)
-    parent_plan = admit_boundary_macro_plan(
+    """Select a source-closed chain through the class-owned source factory."""
+    return UnifiedSkewChain.select_from_source(
         source,
         available_physical_ticks,
-        minimum_repetitions=1,
-        radix_state=joint_state,
+        templates=templates,
+        max_segments=max_segments,
+        precision=precision,
+        preflight=preflight,
         ledger=ledger,
+        include_quadratic_clock=include_quadratic_clock,
+        preserve_ordinary_mixed_parent=preserve_ordinary_mixed_parent,
     )
-    terminal_parent = False
-    if source & 1 and source > 1:
-        numerator = 3 * source + 1
-        terminal_parent = (
-            numerator & (numerator - 1) == 0
-            and numerator.bit_length() <= available_physical_ticks
-        )
-    border_parent = (
-        available_physical_ticks >= 4 and joint_state.border_parent_candidate
-    )
-    # Ordinary requests preserve the existing 989-to-mixed-cache precedence.
-    # Observer requests still compose 989 when its clock, joint action, or tape
-    # is needed; ordinary cacheable requests leave this family to its owner.
-    if (
-        preserve_ordinary_mixed_parent
-        and parent_plan is not None
-        and parent_plan.identity == ENTRY_89_AT_NINE
-    ):
-        if ledger is not None:
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_EXISTING_MIXED_PARENT_YIELDS
-            )
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
-                source.bit_length() + max(1, available_physical_ticks.bit_length()),
-            )
-        return None
-    if parent_plan is None and not terminal_parent and not border_parent:
-        if ledger is not None:
-            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_PARENT_REJECTIONS)
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
-                source.bit_length() + max(1, available_physical_ticks.bit_length()),
-            )
-        return None
-    if ledger is not None:
-        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_PARENT_ADMISSIONS)
-
-    current = source
-    used = 0
-    fields = DyadicTerminalFieldAction.identity()
-    width = BlankLedger()
-    clock = SkewQuadraticClock.identity(precision) if include_quadratic_clock else None
-    odd_symbols = 0
-    factors: list[tuple[tuple[int, ...], int]] = []
-    segment_identities: list[CollatzSegmentIdentity] = []
-    seams: list[CollatzRadialBoundarySeam] = []
-    first_boundary: tuple[int, BoundaryWitness] | None = None
-    discarded_bits = 0
-    repeat_cylinder: RepeatedWordMooreCylinder | None = None
-    for segment_index in range(max_segments):
-        if current == 1:
-            break
-        candidate_bits = current.bit_length() + max(
-            1, (available_physical_ticks - used).bit_length()
-        )
-        if ledger is not None:
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
-                candidate_bits,
-            )
-        admitted = admit_next_unified_segment(
-            current,
-            available_physical_ticks - used,
-            templates,
-            preflight,
-            ledger=ledger,
-            initial_plan=parent_plan if segment_index == 0 else None,
-            initial_plan_checked=segment_index == 0,
-            radix_state=joint_state,
-        )
-        if admitted is None:
-            if ledger is not None:
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES
-                )
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
-                    discarded_bits + current.bit_length(),
-                )
-            break
-        identity, odds, segment, blank, specs, witness = admitted
-        segment_bits = (
-            current.bit_length()
-            + max(1, (available_physical_ticks - used).bit_length())
-            + sum(
-                max(1, value.bit_length())
-                for value in (
-                    segment.steps,
-                    segment.gain,
-                    segment.offset,
-                    segment.sum_gain,
-                    segment.sum_offset,
-                    segment.previous_gain,
-                    segment.previous_offset,
-                )
-            )
-        )
-        if ledger is not None:
-            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTOR_SEGMENTS)
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_SELECTION_OPERAND_BITS,
-                segment_bits,
-            )
-        ticks = segment.steps + odds
-        if ticks <= 0 or ticks > available_physical_ticks - used:
-            if ledger is not None:
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES
-                )
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
-                    discarded_bits + segment_bits,
-                )
-            return None
-        if not segment.certifies(current):
-            raise AssertionError("composite producer admitted a foreign source")
-        endpoint = segment.endpoint(current)
-        next_joint_state = joint_state.after_action(segment, endpoint, odds)
-        if clock is not None:
-            subclock = SkewQuadraticClock.factors(specs, precision)
-            subclock.verify(segment, current, endpoint)
-            if ledger is not None:
-                ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CLOCK_CHECKS)
-        else:
-            subclock = None
-        if first_boundary is None and isinstance(
-            witness, (CollatzBoundaryMacro, BorderReturnMacro)
-        ):
-            first_boundary = (used, witness)
-        seams.append(
-            CollatzRadialBoundarySeam(
-                identity,
-                current,
-                endpoint,
-                odds,
-                segment,
-                witness,
-                joint_state,
-                next_joint_state,
-            )
-        )
-        # One chronological composition updates exact endpoint, accumulator,
-        # predecessor, width, helix, innovation and both clocks together.
-        # Reserve for the cumulative action before the exact composition can
-        # allocate its larger integer coefficients.
-        if preflight is not None:
-            preflight(fields.steps + segment.steps)
-        fields = fields.then(segment)
-        width = width.then(blank)
-        if clock is not None and subclock is not None:
-            clock = clock.then(subclock)
-        odd_symbols += odds
-        used += ticks
-        current = endpoint
-        joint_state = next_joint_state
-        factors.extend(specs)
-        segment_identities.append(identity)
-        discarded_bits += segment_bits
-        if (
-            preflight is not None
-            and len(segment_identities) >= 2
-            and used * 2 <= available_physical_ticks
-        ):
-            if ledger is not None:
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_CHECKS
-                )
-                ledger.bump(
-                    _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_OPERAND_BITS,
-                    source.bit_length()
-                    + fields.steps
-                    + fields.gain.bit_length()
-                    + abs(fields.offset).bit_length(),
-                )
-            try:
-                repeat_candidate = RepeatedWordMooreCylinder.from_action(
-                    fields, source, preflight=preflight
-                )
-            except BlockContextBudgetExceeded:
-                if ledger is not None:
-                    ledger.bump(
-                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_BUDGET_REFUSALS
-                    )
-            else:
-                if repeat_candidate.admits(2):
-                    repeat_cylinder = repeat_candidate
-                    if ledger is not None:
-                        ledger.bump(
-                            _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_ADMISSIONS
-                        )
-                    break
-                if ledger is not None:
-                    ledger.bump(
-                        _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REPEAT_GUARD_REJECTIONS
-                    )
-        if (
-            fields.steps + odd_symbols != used
-            or (clock is not None and clock.physical_ticks != used)
-            or fields.endpoint(source) != current
-        ):
-            raise AssertionError("combined border/helix clocks lost their seam")
-
-    if len(segment_identities) < 2 or (
-        current != 1 and used < 16 and repeat_cylinder is None
-    ):
-        if ledger is not None:
-            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_REJECTED_PREFIXES)
-            ledger.bump(
-                _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_DISCARDED_OPERAND_BITS,
-                discarded_bits,
-            )
-        return None
-    chain = UnifiedSkewChain._issue(
-        source,
-        current,
-        fields,
-        width,
-        clock,
-        odd_symbols,
-        tuple(factors),
-        tuple(segment_identities),
-        first_boundary,
-        tuple(seams),
-        repeat_cylinder,
-    )
-    if ledger is not None:
-        if clock is not None:
-            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CLOCK_CHECKS, 2)
-        ledger.bump(
-            _collatz_keys.COLLATZ_PHYSICAL_UNIFIED_SKEW_CHAIN_RETAINED_OPERAND_BITS,
-            _chain_operand_bits(chain),
-        )
-    return chain
 
 
 def _chain_operand_bits(chain: UnifiedSkewChain) -> int:

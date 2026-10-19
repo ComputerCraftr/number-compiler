@@ -80,6 +80,7 @@ def validated_action_signature(
     """
     if type(action) is not FieldCellActionID:
         raise TypeError("powered result requires a scoped field action")
+    arena.validated_action_authority()
     if arena._validated_signature_for is None:
         arena._validate_action(action)
         signature = arena._signature_for(action)
@@ -155,7 +156,7 @@ def validate_fused_edge(arena: CompletedResultArena, key: FusedInterfaceKey) -> 
 def validate_fused_request(arena: CompletedResultArena, key: FusedInterfaceKey) -> None:
     if type(key) is not FusedInterfaceKey:
         raise TypeError("expected a fused-interface key")
-    arena._validate_base(key.action, key.input, key.wiring)
+    arena.validate_base(key.action, key.input, key.wiring)
     arena._validate_boundaries(key.boundaries, key.input)
     if arena._validate_fused_action is None:
         raise ValueError("action authority does not admit fused interfaces")
@@ -177,7 +178,7 @@ def validate_fused_request(arena: CompletedResultArena, key: FusedInterfaceKey) 
             )
     else:
         arena._validate_fused_wiring(key.action, producer_wiring, key.wiring)
-    arena._validate_ports(producer_wiring.signature, key.ports)
+    arena.validate_ports(producer_wiring.signature, key.ports)
 
 
 def validate_fusion_contexts(

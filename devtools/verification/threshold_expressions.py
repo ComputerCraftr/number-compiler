@@ -7,7 +7,7 @@ is used during substitution. Unresolved tables and their evaluation are counted.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Generator, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import product
@@ -104,7 +104,7 @@ class ThresholdExpressions:
         self.discarded_failed_schemas = 0
 
     @contextmanager
-    def construction_transaction(self) -> Iterator[None]:
+    def construction_transaction(self) -> Generator[None, None, None]:
         """Roll back unpublished expression identities, retaining work charges.
 
         Used around consumer substitution, which never mutates geometry caches

@@ -5,6 +5,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api import cli_render
+from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.query_types import (
     AntihydraTermQuery,
@@ -27,15 +28,18 @@ def test_render_accounting_matches_actual_output_without_reporting_work(
     }
     query = queries[family]
     term = NumberCompiler().project(query)
-    before = cli_render._metrics_json(term)["execution_metrics"]
-    assert isinstance(before, dict)
-    assert before["rendering"]["requests"] is None
-    result = cli_render._render_value(term, output_base=base, max_bits=1000)
-    first = cli_render._metrics_json(term)
-    assert cli_render._metrics_json(term) == first
+    before = cli_render.metrics_json(term)["execution_metrics"]
+    assert is_string_object_mapping(before)
+    before_rendering = before["rendering"]
+    assert is_string_object_mapping(before_rendering)
+    assert before_rendering["requests"] is None
+    result = cli_render.render_value(term, output_base=base, max_bits=1000)
+    first = cli_render.metrics_json(term)
+    assert cli_render.metrics_json(term) == first
     metrics = first["execution_metrics"]
-    assert isinstance(metrics, dict)
+    assert is_string_object_mapping(metrics)
     rendering = metrics["rendering"]
+    assert is_string_object_mapping(rendering)
     assert rendering["requests"] == 1
     assert rendering["emitted_digits"] == len(result)
     assert rendering["failures"] == 0
@@ -55,11 +59,11 @@ def test_failed_conversion_is_visible_without_claimed_emission(
         assert value == 214 and base == 10
         raise RuntimeError("conversion failed")
 
-    monkeypatch.setattr(cli_render, "_radix_string", fail_conversion)
+    monkeypatch.setattr(cli_render, "radix_string", fail_conversion)
     with pytest.raises(RuntimeError, match="conversion failed"):
-        cli_render._render_value(term, output_base=10, max_bits=1000)
-    metrics = cli_render._metrics_json(term)["execution_metrics"]
-    assert isinstance(metrics, dict)
+        cli_render.render_value(term, output_base=10, max_bits=1000)
+    metrics = cli_render.metrics_json(term)["execution_metrics"]
+    assert is_string_object_mapping(metrics)
     assert metrics["rendering"] == {
         "requests": 1,
         "emitted_digits": 0,
@@ -81,9 +85,9 @@ def test_bad_native_digit_closes_consumer_stream_immediately(regroup: bool) -> N
     stream = measured_output_stream(ledger, "test_output_stream", lambda: iter((1, 99)))
     with pytest.raises(ValueError, match="output digit"):
         if regroup:
-            cli_render._power_of_two_radix_string(stream, 2, 16)
+            cli_render.power_of_two_radix_string(stream, 2, 16)
         else:
-            cli_render._radix_string_from_lsd(stream, 10)
+            cli_render.radix_string_from_lsd(stream, 10)
     assert ledger.counters["test_output_stream_emitted_digits"] == 2
     assert ledger.counters["test_output_stream_cancellations"] == 1
     assert ledger.counters["test_output_stream_failures"] == 0

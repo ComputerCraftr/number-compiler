@@ -13,12 +13,14 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.character import CollatzRadialCharacter
+from number_compiler.sequences.collatz.defect_arena import (
+    CollatzDefectArena,
+    CollatzDefectClassID,
+)
 from number_compiler.sequences.collatz.field_action import (
     CollatzActionGeometry,
     CollatzCharacterAction,
     CollatzCocyclePrograms,
-    CollatzDefectArena,
-    CollatzDefectClassID,
     CollatzFieldAction,
     CollatzFieldActionArena,
     CollatzFieldActionID,
@@ -87,6 +89,14 @@ class _FinitePrograms:
         index = self.validate(role, reference)
         behavior = ("test-collatz-matrix-program-v1", role, self._values[index][1])
         return SemanticIdentity("", behavior)
+
+    def audit_semantic_identity(
+        self,
+        role: ProgramRole,
+        reference: ActionProgramID,
+    ) -> SemanticIdentity:
+        """Read this fixture's deterministic identity without changing it."""
+        return self.semantic_identity(role, reference)
 
     def composed_semantic_identity(
         self,

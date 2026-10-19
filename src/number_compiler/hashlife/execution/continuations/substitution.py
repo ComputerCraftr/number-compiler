@@ -8,6 +8,7 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpression,
     HigherExpressionID,
     HigherFunction,
+    HigherRewriteKey,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -37,11 +38,11 @@ def bind_free(
         raise ValueError("higher deferred binding sorts disagree")
     if variable == replacement:
         return expression
-    if variable.local_id not in self._expression_free_ids[expression.local_id]:
+    if variable.local_id not in self.free_variable_local_ids(expression):
         return expression
     if expression == variable:
         return replacement
-    return self._intern_expression(
+    return self.intern_expression(
         HigherExpression(
             "bind-free",
             node.sort,
@@ -69,7 +70,7 @@ def bind_free_many(
         raise TypeError("simultaneous bindings require an immutable port vector")
     seen: set[int] = set()
     relevant: list[tuple[HigherExpressionID, HigherExpressionID]] = []
-    free = self._expression_free_ids[expression.local_id]
+    free = self.free_variable_local_ids(expression)
     for binding in bindings:
         self.ledger.bump(_execution_keys.HIGHER_SIMULTANEOUS_BINDING_PAIRS_CHECKED)
         if type(binding) is not tuple or len(binding) != 2:
@@ -112,10 +113,6 @@ def substitute(
     variable: HigherExpressionID,
     replacement: HigherExpressionID,
 ) -> HigherExpressionID:
-    from number_compiler.hashlife.execution.continuations.higher_types import (
-        _Rewrite,
-    )
-
     _root, old, new = (
         self.expression(expression),
         self.expression(variable),
@@ -123,9 +120,13 @@ def substitute(
     )
     if old.sort != new.sort or old.kind not in ("variable", "bound"):
         raise ValueError("higher substitution requires equal variable/value sorts")
-    if variable.local_id not in self._expression_free_ids[expression.local_id]:
+    if variable.local_id not in self.free_variable_local_ids(expression):
         return expression
-    key = _Rewrite(expression.local_id, variable.local_id, replacement.local_id)
+    key = HigherRewriteKey(
+        expression.local_id,
+        variable.local_id,
+        replacement.local_id,
+    )
     found = self._rewrites.get(key)
     if found is not None:
         return found
@@ -140,13 +141,14 @@ def substitute(
             # Variable dependency children are identity metadata, not free
             # occurrences. Respect the same lexical scope used by interning
             # and skip subgraphs that cannot contain the substituted variable.
-            if variable.local_id not in self._expression_free_ids[local_id]:
+            local_expression = self.expression_id(local_id)
+            if variable.local_id not in self.free_variable_local_ids(local_expression):
                 built[local_id] = local_id
                 continue
             if local_id == variable.local_id:
                 built[local_id] = replacement.local_id
                 continue
-            node = self._expressions[local_id]
+            node = self.expression(local_expression)
             function_body = None
             if node.function is not None:
                 nested = self.function_record(node.function)
@@ -173,19 +175,22 @@ def substitute(
             rewritten_function = node.function
             if node.function is not None and function_body is not None:
                 function_record = self.function_record(node.function)
-                rewritten_body = self._expression_handle(built[function_body])
+                rewritten_body = self.expression_id(built[function_body])
                 if rewritten_body != function_record.body:
                     rewritten_function = self._intern_function(
                         HigherFunction(
                             function_record.signature,
                             function_record.parameter,
                             rewritten_body,
-                            self._function_free_variables(
-                                rewritten_body,
-                                function_record.parameter,
+                            tuple(
+                                item
+                                for item in self.component_free_variables(
+                                    rewritten_body
+                                )
+                                if item != function_record.parameter
                             ),
                             function_record.parameter
-                            in self._free_variables(
+                            in self.component_free_variables(
                                 rewritten_body,
                             ),
                         )
@@ -194,14 +199,14 @@ def substitute(
                 built[local_id] = local_id
             else:
                 rebuilt_children = tuple(
-                    self._expression_handle(child) for child in children
+                    self.expression_id(child) for child in children
                 )
                 if node.kind == "anchor":
                     rebuilt_id = self.anchor(rebuilt_children[0])
                 elif node.kind == "continuation":
                     rebuilt_id = self.continuation(rebuilt_children[0])
                 elif node.kind == "apply":
-                    rebuilt_id = self._intern_expression(
+                    rebuilt_id = self.intern_expression(
                         HigherExpression(
                             "apply",
                             node.sort,
@@ -214,7 +219,7 @@ def substitute(
                 elif node.kind == "bind-free":
                     rebuilt_id = self.bind_free(
                         rebuilt_children[0],
-                        self._expression_handle(node.value),
+                        self.expression_id(node.value),
                         rebuilt_children[1],
                     )
                 elif node.kind == "primitive-step":
@@ -242,7 +247,7 @@ def substitute(
                 elif node.kind == "function" and rewritten_function is not None:
                     rebuilt_id = self.function_expression(rewritten_function)
                 else:
-                    rebuilt_id = self._intern_expression(
+                    rebuilt_id = self.intern_expression(
                         HigherExpression(
                             node.kind,
                             node.sort,
@@ -255,7 +260,7 @@ def substitute(
                         )
                     )
                 built[local_id] = rebuilt_id.local_id
-        result = self._expression_handle(built[expression.local_id])
+        result = self.expression_id(built[expression.local_id])
     except BaseException:
         self.ledger.release(self._rewrite_owner, entries=1)
         raise

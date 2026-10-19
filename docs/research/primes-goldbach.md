@@ -1,5 +1,8 @@
 # Prime ranks, wheel actions, and Goldbach obligations
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 Status: **deterministic prime rank/select has checked finite refinement;
 universal Goldbach multiplicity and its live finite prover remain separate**.
 
@@ -69,5 +72,5 @@ finite successful corpus likewise cannot be promoted to universal multiplicity.
 Run the exact executable checks (including validation-marked assertions):
 
 ```console
-python -m pytest -o addopts='' tests/sequences/prime/test_image_consumers.py tests/sequences/prime/test_prime_automaton.py
+python -m devtools.checks.release --suite unit --select tests/sequences/prime/test_image_consumers.py --select tests/sequences/prime/test_prime_automaton.py
 ```

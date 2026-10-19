@@ -125,7 +125,7 @@ class HigherSemanticMetrics:
 
 
 @dataclass(frozen=True, slots=True)
-class _Rewrite:
+class HigherRewriteKey:
     root: int
     variable: int
     replacement: int

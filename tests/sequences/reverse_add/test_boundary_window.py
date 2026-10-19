@@ -98,8 +98,8 @@ def test_term_boundary_observation_reports_only_unanimous_edges() -> None:
     assert observation.prefix == "66"
     assert observation.suffix == "66"
     assert observation.full_integer_powered is False
-    assert term._ledger.counters["reverse_boundary_window_queries"] > 0
-    assert term._ledger.snapshot().nodes > 0
+    assert term.resource_ledger.counters["reverse_boundary_window_queries"] > 0
+    assert term.resource_ledger.snapshot().nodes > 0
 
 
 def test_term_boundary_observer_reuses_authenticated_source_carry_ports() -> None:
@@ -112,36 +112,45 @@ def test_term_boundary_observer_reuses_authenticated_source_carry_ports() -> Non
     assert workspace is not None
     assert observer.source_workspace is workspace
     assert (
-        term._ledger.counters.get("reverse_boundary_window_source_inner_scan_reads", 0)
+        term.resource_ledger.counters.get(
+            "reverse_boundary_window_source_inner_scan_reads", 0
+        )
         == 0
     )
     assert (
-        term._ledger.counters.get("reverse_source_ports_layer_1_carry_queries", 0) > 0
+        term.resource_ledger.counters.get(
+            "reverse_source_ports_layer_1_carry_queries", 0
+        )
+        > 0
     )
 
 
 def test_boundary_observation_is_lazy_and_reuses_term_owned_relations() -> None:
     term = ReverseAddPoweredTerm(19_999, 6)
     first = term.observe_boundary_macro()
-    before_reads = term._ledger.counters.get(
+    before_reads = term.resource_ledger.counters.get(
         "reverse_boundary_window_source_digit_reads", 0
     )
     second = term.observe_boundary_macro()
 
     assert first == second
     assert (
-        term._ledger.counters.get("reverse_boundary_window_source_digit_reads", 0)
+        term.resource_ledger.counters.get(
+            "reverse_boundary_window_source_digit_reads", 0
+        )
         == before_reads
     )
     assert (
-        term._ledger.counters.get("reverse_boundary_window_observation_cache_hits", 0)
+        term.resource_ledger.counters.get(
+            "reverse_boundary_window_observation_cache_hits", 0
+        )
         == 1
     )
     assert any(
         row.role == "reverse_boundary_window_relation"
-        for row in term._ledger.inventory()
+        for row in term.resource_ledger.inventory()
     )
-    audit = collect_ledger_metrics(term._ledger)
+    audit = collect_ledger_metrics(term.resource_ledger)
     assert audit.resource_audit_complete == 1, (
         "boundary observer payload audit failed: "
         f"unknown={audit.resource_audit_unknown_payloads}, "

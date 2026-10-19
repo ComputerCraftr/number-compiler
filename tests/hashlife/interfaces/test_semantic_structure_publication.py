@@ -24,11 +24,11 @@ from number_compiler.hashlife.interfaces.semantic_structure_publication import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
+    StructureBuilder,
     StructuredNode,
-    _Builder,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.stores import _TrackedDict
+from number_compiler.resources.stores import TrackedDict
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
@@ -59,7 +59,7 @@ def _prepared() -> tuple[
         FinitePort(PortVariable(0, 0, "x", 0), 4),
         FinitePort(PortVariable(0, 0, "y", 0), 2),
     )
-    builder = _Builder(arena)
+    builder = StructureBuilder(arena)
     roots = []
     for port in ports:
         identity = builder.variable(ports, port)
@@ -147,11 +147,11 @@ def test_publication_insert_failure_rolls_back_every_arena(
     ledger, arena, _, _, prepared = _prepared()
     retained = _retained_stores(arena)
     prepared.reserve_with()
-    original = _TrackedDict.__setitem__
+    original = TrackedDict.__setitem__
     failed = False
 
     def fail_once(
-        store: _TrackedDict[object, object], key: object, value: object
+        store: TrackedDict[object, object], key: object, value: object
     ) -> None:
         nonlocal failed
         if not failed and type(key) is key_type:
@@ -161,7 +161,7 @@ def test_publication_insert_failure_rolls_back_every_arena(
             raise MemoryError("injected publication failure")
         original(store, key, value)
 
-    monkeypatch.setattr(_TrackedDict, "__setitem__", fail_once)
+    monkeypatch.setattr(TrackedDict, "__setitem__", fail_once)
     with pytest.raises(MemoryError, match="injected publication failure"):
         prepared.publish_reserved()
     prepared.cancel()

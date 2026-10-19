@@ -8,45 +8,14 @@ environment. This operation neither discovers nor certifies that environment.
 """
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
+from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    InnovationID,
     SymbolicInnovationArena,
 )
 from number_compiler.arithmetic.polynomials.f5_transport import F5AffineTransport
-from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     arithmetic_fields as _fields_keys,
 )
-
-
-def composition_cache(
-    arena: SymbolicInnovationArena, minimum_nodes: int
-) -> OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID]:
-    """Conservatively charge retained exponent limbs on every memo entry.
-
-    A larger key capacity evicts only the arithmetic-result memo. The canonical
-    DAG remains intact; empty and failed caches never retain uncharged keys.
-    """
-    arena._check_open()
-    if type(minimum_nodes) is not int or minimum_nodes < 1:
-        raise ValueError("F5 memo metadata capacity must be positive")
-    memo = arena._f5_compositions
-    if memo is not None and memo.nodes_per_entry < minimum_nodes:
-        memo.dispose()
-        arena._f5_compositions = memo = None
-        arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_MEMO_RESIZES)
-    if memo is None:
-        memo = OwnedMemo(
-            arena.ledger,
-            arena.ledger.register(
-                f"innovation-F5-{arena._node_owner}-{arena.ledger.owner_count}",
-                "query_memo",
-            ),
-            nodes_per_entry=minimum_nodes,
-            evictable=True,
-        )
-        arena._f5_compositions = memo
-    return memo
 
 
 def compose_f5_forcing(
@@ -75,10 +44,10 @@ def compose_f5_forcing(
     metadata_bits = max(1, after.linear.no_growths.bit_length()) + max(
         1, after.linear.growths.bit_length()
     )
-    memo = arena._f5_composition_cache((metadata_bits + 63) // 64)
+    memo = arena.f5_composition_cache((metadata_bits + 63) // 64)
     key = (
-        arena._copy_ref(before.forcing),
-        arena._copy_ref(after.forcing),
+        arena.copy_reference(before.forcing),
+        arena.copy_reference(after.forcing),
         after.linear.no_growths,
         after.linear.growths,
     )
@@ -86,7 +55,7 @@ def compose_f5_forcing(
     if found is not None:
         arena.resolve(found)
         arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_COMPOSITION_HITS)
-        return F5AffineTransport(combined, arena._copy_ref(found))
+        return F5AffineTransport(combined, arena.copy_reference(found))
 
     def shift(value: InnovationID, distance: int) -> InnovationID:
         arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_F5_SHIFT_REQUESTS)
@@ -97,7 +66,7 @@ def compose_f5_forcing(
 
     try:
         result = before.then(after, shift=shift, add=arena.add, scale=scale)
-        memo[key] = arena._copy_ref(result.forcing)
+        memo[key] = arena.copy_reference(result.forcing)
     except BaseException:
         # Successfully interned subexpressions remain accounted reusable
         # arithmetic; no complete action or source image is published.

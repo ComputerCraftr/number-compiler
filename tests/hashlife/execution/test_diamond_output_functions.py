@@ -17,7 +17,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_runtime import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -27,7 +27,9 @@ if TYPE_CHECKING:
 
 
 def setup() -> tuple[DiamondRuntime, ActionProgramID, OutputFunction]:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (0, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1), 4, 1
+    )
     identity = runtime.actions.identity
     zero, one = (
         runtime.execute(Initial(identity, 0)),

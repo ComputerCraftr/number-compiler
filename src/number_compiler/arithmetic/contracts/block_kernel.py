@@ -11,10 +11,10 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     value_carry_fn,
 )
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BoundarySide,
     BoundaryState,
     _normalized_digit,
+    next_operator_id,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.semantic_identity import (
@@ -158,7 +158,7 @@ class BaseBlockEffect:
         self.base = base
         self.blank = 2 * base - 1  # active pair coefficients are 0..2b-2
         self.exponent = 1
-        self.node_id = next(_OPERATOR_IDS)
+        self.node_id = next_operator_id()
         self._initial = (
             _BaseLeftState(0, -1, False, False),
             _BaseRightState(CarryFn.ID, CarryFn.ID),
@@ -403,7 +403,7 @@ class FiniteBlockEffect:
         self.base = base
         self.blank = resolved_blank
         self.exponent = exponent
-        self.node_id = next(_OPERATOR_IDS)
+        self.node_id = next_operator_id()
         self.left_count = left_count
         self.right_count = right_count
         self.alphabet_size = alphabet_size

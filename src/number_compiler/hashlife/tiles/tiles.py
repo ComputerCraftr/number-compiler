@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from gc import get_stats
 from time import perf_counter_ns
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -21,6 +22,10 @@ from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        TileArenaAuditSnapshot,
+        TileLeaseAuditSnapshot,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,13 +110,21 @@ class TileLease:
             raise TypeError("tile leases must be issued by their arena")
         self._arena, self._id, self._closed = arena, lease_id, False
 
+    def audit_snapshot(self) -> TileLeaseAuditSnapshot:
+        """Expose issued lease bindings to read-only ownership auditors."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            TileLeaseAuditSnapshot,
+        )
+
+        return TileLeaseAuditSnapshot(self._arena, self._id, self._closed)
+
     @property
     def tile(self) -> TileID:
         if type(self._arena) is not TileArena or type(self._closed) is not bool:
             raise TypeError("malformed tile lease")
         if self._closed:
             raise ValueError("closed tile lease")
-        tile = self._arena._leased(self._id)
+        tile = self._arena.leased_tile(self._id)
         self._arena.resolve(tile)
         return tile
 
@@ -119,7 +132,7 @@ class TileLease:
         if type(self._arena) is not TileArena or type(self._closed) is not bool:
             raise TypeError("malformed tile lease")
         if not self._closed:
-            self._arena._release_lease(self._id)
+            self._arena.release_lease(self._id)
             self._closed = True
 
     def __enter__(self) -> Self:
@@ -178,6 +191,52 @@ class TileArena:
             payloads=self._leases.items,
             roots=lambda: self._leases.values(),
             node_count=lambda: 0,
+        )
+
+    @property
+    def tile_count(self) -> int:
+        """Return the allocation bound used to validate this arena's handles."""
+        return self._next_tile
+
+    @property
+    def lease_owner(self) -> int:
+        """Return the ledger owner used for this arena's root-lease reservations."""
+        return self._lease_owner
+
+    def audit_snapshot(self) -> TileArenaAuditSnapshot:
+        """Expose read-only views of the exact backing stores for resource audits."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            TileArenaAuditSnapshot,
+        )
+
+        return TileArenaAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            next_tile=self._next_tile,
+            next_alphabet=self._next_alphabet,
+            next_lease=self._next_lease,
+            results=self._results,
+            alphabet_owner=self._alphabet_owner,
+            alphabet_store_identity=id(self._alphabets),
+            alphabets=MappingProxyType(self._alphabets.backing_store),
+            alphabet_key_owner=self._alphabet_key_owner,
+            alphabet_key_store_identity=id(self._alphabet_keys),
+            alphabet_keys=MappingProxyType(self._alphabet_keys.backing_store),
+            node_owner=self._node_owner,
+            node_store_identity=id(self._nodes),
+            nodes=MappingProxyType(self._nodes.backing_store),
+            key_owner=self._key_owner,
+            key_store_identity=id(self._keys),
+            keys=MappingProxyType(self._keys.backing_store),
+            ref_owner=self._ref_owner,
+            ref_store_identity=id(self._refs),
+            refs=MappingProxyType(self._refs.backing_store),
+            edge_owner=self._edge_owner,
+            edge_store_identity=id(self._edges),
+            edges=MappingProxyType(self._edges.backing_store),
+            lease_owner=self._lease_owner,
+            lease_store_identity=id(self._leases),
+            leases=MappingProxyType(self._leases.backing_store),
         )
 
     def bind_results(self, results: CompletedResultArena) -> None:
@@ -343,18 +402,18 @@ class TileArena:
         )
 
     @staticmethod
-    def _mirror_key(local_id: int) -> _TileKey:
+    def mirror_key(local_id: int) -> _TileKey:
         return _MIRROR_SENTINEL, local_id, -1, -1, -1
 
     def _mirror_target(self, tile: TileID) -> TileID | None:
-        target = self._keys.get(self._mirror_key(tile.local_id))
+        target = self._keys.get(self.mirror_key(tile.local_id))
         if target is None:
             return None
         if type(target) is not int:
             raise TypeError("tile mirror index contains an integer alias")
         mirrored = TileID(self.owner, "canonical-tile", target)
         self.resolve(mirrored)
-        if self._keys.get(self._mirror_key(target)) != tile.local_id:
+        if self._keys.get(self.mirror_key(target)) != tile.local_id:
             raise ValueError("tile mirror index is not involutive")
         return mirrored
 
@@ -382,13 +441,13 @@ class TileArena:
         if source != mirrored:
             pairs += ((mirrored.local_id, source.local_id),)
         for local_id, target in pairs:
-            found = self._keys.get(self._mirror_key(local_id))
+            found = self._keys.get(self.mirror_key(local_id))
             if found is not None and found != target:
                 raise ValueError("tile already has another canonical mirror")
         missing = tuple(
-            (self._mirror_key(local_id), target)
+            (self.mirror_key(local_id), target)
             for local_id, target in pairs
-            if self._mirror_key(local_id) not in self._keys
+            if self.mirror_key(local_id) not in self._keys
         )
         self.ledger.reserve(self._key_owner, entries=len(missing))
         written: list[_TileKey] = []
@@ -534,7 +593,7 @@ class TileArena:
         self.ledger.bump(_tiles_keys.TILE_LEASE_ACQUISITIONS)
         return TileLease(self, lease_id, _LEASE_SEAL)
 
-    def _leased(self, lease_id: int) -> TileID:
+    def leased_tile(self, lease_id: int) -> TileID:
         if type(lease_id) is not int:
             raise TypeError("tile lease identity requires an exact integer")
         if not 0 <= lease_id < self._next_lease or lease_id not in self._leases:
@@ -580,8 +639,8 @@ class TileArena:
             if (actual is not None and type(actual) is not int) or actual != expected:
                 raise ValueError("tile summary differs from canonical content")
 
-    def _release_lease(self, lease_id: int) -> None:
-        tile = self._leased(lease_id)
+    def release_lease(self, lease_id: int) -> None:
+        tile = self.leased_tile(lease_id)
         self.resolve(tile)
         del self._leases[lease_id]
         self.ledger.release(self._lease_owner, entries=1)
@@ -602,11 +661,11 @@ class TileArena:
             reference = TileID(self.owner, "canonical-tile", current)
             if self._results is not None:
                 self._results.retire_tile(reference)
-            mirror_key = self._mirror_key(current)
+            mirror_key = self.mirror_key(current)
             mirror = self._keys.pop(mirror_key, None)
             removed_mirrors = int(mirror is not None)
             if type(mirror) is int and mirror != current:
-                reverse_key = self._mirror_key(mirror)
+                reverse_key = self.mirror_key(mirror)
                 if self._keys.get(reverse_key) != current:
                     raise ValueError("tile mirror reverse index is corrupt")
                 del self._keys[reverse_key]

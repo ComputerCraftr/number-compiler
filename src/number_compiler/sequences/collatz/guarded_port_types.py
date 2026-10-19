@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.guarded_radix6_bridge import FiveBand
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    SourceCongruence,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +30,7 @@ class PortPuncture:
     future_border: int | None = None
     upper_word: tuple[int, int, int] | None = None
     numerator_f5: int | None = None
+    clock_residues: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         for key, maximum in (
@@ -48,6 +49,21 @@ class PortPuncture:
                 type(value) is not int or not 0 <= value <= maximum
             ):
                 raise ValueError(f"invalid Collatz puncture {key}")
+        if type(self.clock_residues) is not tuple or any(
+            type(entry) is not tuple
+            or len(entry) != 2
+            or type(entry[0]) is not int
+            or type(entry[1]) is not int
+            or entry[0] not in (5, 25, 99, 198)
+            or not 0 <= entry[1] < entry[0]
+            for entry in self.clock_residues
+        ):
+            raise ValueError("invalid source-guarded modular-clock puncture")
+        seen_clocks: dict[int, int] = {}
+        for modulus, residue in self.clock_residues:
+            if modulus in seen_clocks and seen_clocks[modulus] != residue:
+                raise ValueError("conflicting repeated modular-clock punctures")
+            seen_clocks[modulus] = residue
         if self.upper_word is not None:
             if (
                 type(self.upper_word) is not tuple

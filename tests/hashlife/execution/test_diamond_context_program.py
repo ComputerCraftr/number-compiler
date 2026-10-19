@@ -13,13 +13,14 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_context_program import assert_context_inventory, populated
+from tests.support.collatz_diamond_fixtures import collatz_context_program_case
+from tests.support.diamond_context_program import assert_context_inventory
 
 
 def test_warm_context_parent_answers_with_all_child_and_primitive_evaluators_poisoned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, _, contexts, request = populated()
+    runtime, _, contexts, request = collatz_context_program_case()
     expected = contexts.observations[request]
     before = runtime.ledger.snapshot()
 
@@ -44,8 +45,8 @@ def test_warm_context_parent_answers_with_all_child_and_primitive_evaluators_poi
 
 
 def test_foreign_context_ports_reject_before_warm_lookup_or_mutation() -> None:
-    runtime, _, contexts, request = populated()
-    _, _, _, other = populated()
+    runtime, _, contexts, request = collatz_context_program_case()
+    _, _, _, other = collatz_context_program_case()
     for invalid in (
         replace(request, program=other.program),
         replace(request, incoming=other.incoming),
@@ -66,7 +67,7 @@ def test_foreign_context_ports_reject_before_warm_lookup_or_mutation() -> None:
 
 
 def test_context_node_and_interner_publication_is_atomic() -> None:
-    runtime, action, contexts, request = populated()
+    runtime, action, contexts, request = collatz_context_program_case()
     parent = contexts.resolve(request.program)
     assert (
         parent.left is not None
@@ -95,7 +96,7 @@ def test_context_node_and_interner_publication_is_atomic() -> None:
 def test_actual_context_graph_and_unary_observations_are_accounted_independently() -> (
     None
 ):
-    runtime, _, contexts, _ = populated()
+    runtime, _, contexts, _ = collatz_context_program_case()
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
     assert report.context_program_nodes == len(contexts._nodes)

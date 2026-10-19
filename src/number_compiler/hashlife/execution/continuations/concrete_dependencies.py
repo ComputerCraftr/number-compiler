@@ -92,7 +92,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     canonical_initial,
                 )(action, side)
                 if initial is not None:
-                    self._validate_atom(initial)
+                    self.validate_atom(initial)
                     self._store(frame, initial)
                     results.append(initial)
                     continue
@@ -157,7 +157,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     else None
                 )
                 if canonical is not None:
-                    self._validate_atom(canonical)
+                    self.validate_atom(canonical)
                     self._store(key, canonical)
                     results.append(canonical)
                     continue

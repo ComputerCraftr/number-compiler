@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
     MacroComponents,
     QuotientRecord,
@@ -36,7 +36,7 @@ def lookup_interface(
     self: CompletedResultArena,
     key: PoweredInterfaceKey,
 ) -> LocalInterfaceID | None:
-    self._validate_interface_key(key)
+    self.validate_interface_key(key)
     found = self._memo.get(key)
     self.ledger.bump(_tiles_keys.POWERED_INTERFACE_REQUESTS)
     if found is None:
@@ -45,7 +45,7 @@ def lookup_interface(
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("powered interface memo has another value sort")
-    self._validate_interface(key, found)
+    self.validate_interface(key, found)
     self.ledger.bump(_tiles_keys.POWERED_INTERFACE_EARLY_HITS)
     record_execution_cache_event(
         self, "interface", "early_hit", key.action, key.input, allow_new=False
@@ -58,8 +58,8 @@ def publish_interface(
     key: PoweredInterfaceKey,
     interface: LocalInterfaceID,
 ) -> LocalInterfaceID:
-    self._validate_interface_key(key)
-    self._validate_interface(key, interface)
+    self.validate_interface_key(key)
+    self.validate_interface(key, interface)
     self.ledger.bump(_tiles_keys.POWERED_INTERFACE_PUBLICATION_REQUESTS)
     found = self._memo.get(key)
     if found is not None:
@@ -76,7 +76,7 @@ def lookup_fused_interface(
     self: CompletedResultArena,
     key: FusedInterfaceKey,
 ) -> LocalInterfaceID | None:
-    self._validate_fused_key(key)
+    self.validate_fused_key(key)
     found = self._memo.get(key)
     self.ledger.bump(_tiles_keys.FUSED_INTERFACE_REQUESTS)
     if found is None:
@@ -126,7 +126,7 @@ def publish_fused_interface(
     key: FusedInterfaceKey,
     interface: LocalInterfaceID,
 ) -> LocalInterfaceID:
-    self._validate_fused_key(key)
+    self.validate_fused_key(key)
     if type(interface) is not LocalInterfaceID:
         raise TypeError("fused interface requires a local interface ID")
     if self.interfaces.resolve(interface).signature != key.wiring.signature:
@@ -146,19 +146,19 @@ def publish_fused_interface(
         bound *= port.cardinality
     if type(old_variants) is not int or not 0 <= old_variants < bound:
         raise ValueError("fused interface variants exceed the finite signature")
-    referenced = self._tiles_for(key, interface)
-    reverse_entries = self._index_entries(referenced)
+    referenced = self.tiles_for(key, interface)
+    reverse_entries = self.index_entries(referenced)
     reservations = (
         (self._memo_owner, 1, 0),
         (self._reverse_owner, reverse_entries, 0),
         (self._variant_owner, int(old_variants == 0), 0),
     )
-    reverse_snapshot = self._reverse_snapshot(referenced, key)
+    reverse_snapshot = self.reverse_snapshot(referenced, key)
     self.ledger.reserve_many(reservations)
     try:
         self._memo[key] = interface
         for tile in referenced:
-            self._add_membership(tile, key)
+            self.add_membership(tile, key)
         self._variants[variant_key] = old_variants + 1
     except BaseException:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
@@ -179,7 +179,7 @@ def lookup_spatial_interface(
     self: CompletedResultArena,
     key: SpatialInterfaceKey,
 ) -> LocalInterfaceID | None:
-    self._validate_spatial_key(key)
+    self.validate_spatial_key(key)
     found = self._memo.get(key)
     self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_REQUESTS)
     if found is None:
@@ -187,7 +187,7 @@ def lookup_spatial_interface(
         return None
     if type(found) is not LocalInterfaceID:
         raise TypeError("spatial interface memo has another value sort")
-    self._validate_spatial_result(key, found)
+    self.validate_spatial_result(key, found)
     self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_EARLY_HITS)
     return found
 
@@ -197,8 +197,8 @@ def publish_spatial_interface(
     key: SpatialInterfaceKey,
     result: LocalInterfaceID,
 ) -> LocalInterfaceID:
-    self._validate_spatial_key(key)
-    self._validate_spatial_result(key, result)
+    self.validate_spatial_key(key)
+    self.validate_spatial_result(key, result)
     self.ledger.bump(_tiles_keys.SPATIAL_INTERFACE_COMPOSITION_PUBLICATION_REQUESTS)
     found = self._memo.get(key)
     if found is not None:
@@ -234,7 +234,7 @@ def publish_spatial_quotient(
         publish_quotient,
     )
 
-    self._validate_spatial_key(key)
+    self.validate_spatial_key(key)
     interface = self.interfaces._validate_components(key.wiring.signature, components)
     closed = has_closed_components(components)
     if not closed and not atomic_product_is_masked(

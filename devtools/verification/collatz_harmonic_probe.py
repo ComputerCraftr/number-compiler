@@ -38,7 +38,7 @@ def spatial() -> dict[str, object]:
     witnesses: dict[tuple[WireResponse, WireResponse], tuple[int, ...]] = {
         Action.identity().response_key: ()
     }
-    for width in range(1, 9):
+    for _ in range(1, 9):
         following = {}
         next_words = {}
         for key, before in current.items():

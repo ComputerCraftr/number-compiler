@@ -73,7 +73,7 @@ def test_generic_identity_then_normalization_is_two_without_family_inference() -
     assert index.direct_active_width() == 1
     assert _effect_key(effect) != _effect_key(reverse)
     metrics = index.metrics()
-    audit = collect_ledger_metrics(index._ledger)
+    audit = collect_ledger_metrics(index.resource_ledger)
     assert audit.resource_audit_complete == 1
     assert audit.forbidden_future_payloads == 0
     assert metrics.sequential_generation_advances == 0
@@ -137,7 +137,7 @@ def test_generic_compositions_never_lower_midpoint_fields(
                 assert index.direct_active_width() == len(out)
             assert tile_arena_metrics()["intern_misses"] == before
             m = index.metrics()
-            audit = collect_ledger_metrics(index._ledger)
+            audit = collect_ledger_metrics(index.resource_ledger)
             assert audit.resource_audit_complete == 1
             assert audit.forbidden_future_payloads == 0
             assert m.resource_accounting_mismatch == 0
@@ -195,7 +195,7 @@ def test_uncertified_huge_blank_geometry_never_expands_to_a_future_word() -> Non
     assert index.direct_active_width() == 1
     assert index.direct_powered_point(0) == 2
     metrics = index.metrics()
-    audit = collect_ledger_metrics(index._ledger)
+    audit = collect_ledger_metrics(index.resource_ledger)
     assert audit.forbidden_future_payloads == 0
     assert audit.retained_unbounded_future_integers == 0
     assert audit.resource_audit_complete == 1

@@ -11,14 +11,16 @@ from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields import event_innovation
 from number_compiler.arithmetic.fields.event_innovation import normalize_event_sum
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.arithmetic.fields.test_centered_carry import _evaluate
+from tests.support.symbolic_innovation import evaluate
 
 
 def _identity(
@@ -117,9 +119,9 @@ def test_radial_certificate_normalization_matches_full_bounded_polynomials() -> 
             )
             terms.append((random.randrange(-4, 5), value))
         expression = arena.linear_combination(terms)
-        before = _evaluate(arena, expression)
+        before = evaluate(arena, expression)
         result = normalize_event_sum(arena, expression)
-        assert _evaluate(arena, result) == before
+        assert evaluate(arena, result) == before
         assert normalize_event_sum(arena, result) == result
 
 

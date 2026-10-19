@@ -33,6 +33,8 @@ from devtools.checks.process_guard import (
     PROOF_GENERATION_ENV,
     run_guarded,
 )
+from devtools.checks.pyright_policy import npm_install_command
+from devtools.checks.pyright_runner import run_pyright_quality
 from devtools.checks.pytest_policy import (
     ACTIVE_TEST_ENV,
     forbidden_environment_overrides,
@@ -44,6 +46,7 @@ from devtools.checks.test_run_evidence import (
     validate_evidence,
     validate_serial_release,
 )
+from devtools.checks.toolchain_policy import python_toolchain_violations
 from devtools.checks.validation_policy import (
     ISABELLE_JAVA_OPTIONS,
     ISABELLE_JOBS,
@@ -335,6 +338,7 @@ def execute(
     pytest_run: bool = False,
     record_fields: Mapping[str, object] | None = None,
     progress_watchdog: IsabelleSessionWatchdog | None = None,
+    output_limit_bytes: int = 8 * 1024**2,
 ) -> bool:
     before = git_source(run.root).as_dict()
     generation = uuid4().hex
@@ -366,6 +370,7 @@ def execute(
         timeout=policy.timeout_seconds,
         memory_bytes=memory_bytes,
         environment=environment,
+        output_bytes=output_limit_bytes,
         active_test_path=active_path if pytest_run else None,
         active_test_timeout=PYTHON_TEST_SECONDS if pytest_run else None,
         progress_watchdog=progress_watchdog,
@@ -381,6 +386,7 @@ def execute(
         "policy_version": POLICY_VERSION,
         "timeout_seconds": policy.timeout_seconds,
         "memory_bytes": policy.memory_bytes,
+        "output_limit_bytes": output_limit_bytes,
         "git_source_before": before,
         "git_source_after": after,
         "git_revision_stable": git_revision_stable,
@@ -401,14 +407,12 @@ def execute(
         active_path.unlink()
     else:
         record["active_test_at_termination"] = None
-    if pytest_run:
-        record["pytest_timing"] = _phase_summary(timing_path)
-        record["pytest_timing_path"] = str(timing_path)
     instrumentation_ok = True
     if pytest_run:
-        timing = record["pytest_timing"]
-        assert isinstance(timing, dict)
-        instrumentation_ok = bool(timing["complete"])
+        timing = _phase_summary(timing_path)
+        record["pytest_timing"] = timing
+        record["pytest_timing_path"] = str(timing_path)
+        instrumentation_ok = timing["complete"] is True
         record["instrumentation_complete"] = instrumentation_ok
         if result.outcome == "completed" and not instrumentation_ok:
             record["outcome"] = "instrumentation_failed"
@@ -424,7 +428,16 @@ def execute(
 
 
 def quality(run: EvidenceRun, *, acceptance: bool = False) -> bool:
+    violations = python_toolchain_violations(run.root)
+    run.record(
+        {
+            "name": "python-toolchain",
+            "outcome": "failed" if violations else "completed",
+            "violations": list(violations),
+        }
+    )
     commands = (
+        ("dependency-consistency", (sys.executable, "-m", "pip", "check")),
         ("mypy", (sys.executable, "-m", "mypy", "--python-executable", sys.executable)),
         ("ruff", (sys.executable, "-m", "ruff", "check", ".")),
         ("format", (sys.executable, "-m", "ruff", "format", "--check", ".")),
@@ -437,9 +450,31 @@ def quality(run: EvidenceRun, *, acceptance: bool = False) -> bool:
             )
         ),
     )
-    passed = True
+    passed = not violations
+    if acceptance:
+        try:
+            install_command = npm_install_command(run.root)
+        except (OSError, RuntimeError, ValueError) as error:
+            run.record(
+                {
+                    "name": "pyright-locked-install",
+                    "outcome": "unavailable",
+                    "detail": str(error),
+                }
+            )
+            passed = False
+        else:
+            passed = (
+                execute(run, "pyright-locked-install", install_command, acceptance=True)
+                and passed
+            )
     for name, command in commands:
         passed = execute(run, name, command, acceptance=acceptance) and passed
+        if name == "mypy":
+            passed = (
+                run_pyright_quality(run, execute=execute, acceptance=acceptance)
+                and passed
+            )
     package = (
         sys.executable,
         "-m",

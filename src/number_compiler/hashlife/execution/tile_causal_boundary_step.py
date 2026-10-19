@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    CausalTaskFrame,
+    OutputBoundaryFrame,
+    OutputChunkListFrame,
+    OutputFrame,
+    ScanChunksFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
     lookup_causal_result,
     probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
     schedule_reflected_scan,
     schedule_spatial_scan,
 )
@@ -20,13 +27,27 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
 from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
     concat_cached_boundary_views,
 )
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalTaskValue,
+    pop_causal_state,
+    pop_completed_output,
+    pop_spatial_buffer,
+    spatial_buffer_state_at,
+    spatial_buffer_tile_at,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 
-def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView | None:
+
+def probe_boundary_result(
+    engine: CausalTileEngine, frame: OutputBoundaryFrame
+) -> BoundaryTileView | None:
     """Reuse an already completed dyadic boundary before either sibling scan."""
     action, side, view, anchor, argument = frame.args
     pieces = engine._covered_chunks(view)
@@ -46,6 +67,7 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
         frame.saved = (chunks, anchor, argument)
         return None
     tile = pieces[0]
+    key: PoweredResultKey | None
     if engine._children(action) is None:
         if type(anchor) is not int or type(argument) is not int:
             raise TypeError("primitive boundary requires finite endpoints")
@@ -55,7 +77,7 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
             tile,
             PrimitiveCausalPorts(anchor, argument),
             engine._wiring(action),
-            action_admission=engine._action_admission_token,
+            action_admission=engine.action_admission,
         )
     else:
         key = engine._composite_key(action, tile, anchor, argument)
@@ -65,7 +87,7 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
             else lookup_causal_result(
                 engine.scheduler.results,
                 key,
-                action_admission=engine._action_admission_token,
+                action_admission=engine.action_admission,
             )
         )
     if completed is None:
@@ -73,6 +95,8 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
         chunks.append(tile)
         frame.saved = (chunks, anchor, argument)
         return None
+    if key is None:
+        raise AssertionError("completed causal result has no request key")
     output = completed.output
     if engine._application is None:
         engine._result_leases.append(completed)
@@ -85,24 +109,28 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
 
 
 def boundary_step(
-    engine: Any, frame: CausalFrame, frames: Any, values: CausalResults
+    engine: CausalTileEngine,
+    frame: OutputBoundaryFrame | OutputChunkListFrame | ScanChunksFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
 ) -> bool:
-    op, args = frame.op, frame.args
     workspace = engine.scheduler._causal_workspace
-    if op == "scan_chunks":
-        action, side, chunks, current, index, states = args
+    if isinstance(frame, ScanChunksFrame):
+        action, side, chunks, current, index, states = frame.args
         if frame.stage == 0:
             if index == len(chunks):
                 values.append(states)
                 return True
             frame.stage = 1
-            tile = chunks[len(chunks) - index - 1 if side else index]
+            tile = spatial_buffer_tile_at(
+                chunks,
+                len(chunks) - index - 1 if side else index,
+            )
             width = engine.tiles.resolve(tile).width
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "advance",
+                    AdvanceFrame(
                         (
                             action,
                             side,
@@ -113,16 +141,14 @@ def boundary_step(
                 )
             )
         else:
-            nxt = values.pop()
+            nxt = pop_causal_state(values)
             states.append(nxt)
             frames.append(
-                CausalFrame(
-                    "scan_chunks", (action, side, chunks, nxt, index + 1, states)
-                )
+                ScanChunksFrame((action, side, chunks, nxt, index + 1, states))
             )
         return True
-    if op == "output_chunk_list":
-        action, chunks, anchors, arguments, index, outputs = args
+    if isinstance(frame, OutputChunkListFrame):
+        action, chunks, anchors, arguments, index, outputs = frame.args
         if frame.stage == 0:
             if index == len(chunks):
                 anchors.close()
@@ -133,22 +159,20 @@ def boundary_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "output",
+                    OutputFrame(
                         (
                             action,
-                            chunks[index],
-                            anchors[index],
-                            arguments[index + 1],
+                            spatial_buffer_tile_at(chunks, index),
+                            spatial_buffer_state_at(anchors, index),
+                            spatial_buffer_state_at(arguments, index + 1),
                         ),
                     ),
                 )
             )
         else:
-            outputs.append(values.pop().output)
+            outputs.append(pop_completed_output(values).output)
             frames.append(
-                CausalFrame(
-                    "output_chunk_list",
+                OutputChunkListFrame(
                     (
                         action,
                         chunks,
@@ -160,12 +184,16 @@ def boundary_step(
                 )
             )
         return True
-    if op != "output_boundary":
+    if not isinstance(frame, OutputBoundaryFrame):
         return False
-    action, side, view, anchor, argument = args
+    action, side, view, anchor, argument = frame.args
     if frame.stage == 4:
-        completed = values.pop()
-        (chunks,) = frame.saved
+        completed = pop_completed_output(values)
+        match frame.saved:
+            case (chunks,):
+                pass
+            case _:
+                raise AssertionError("single-tile boundary lost its chunks")
         output = completed.output
         output = engine._keep(
             engine.tiles.mirror(output) if side else engine.tiles.retain(output)
@@ -177,7 +205,11 @@ def boundary_step(
         return True
     if frame.stage == 0:
         # Normalize once, not again after each child task returns.
-        chunks, anchor, argument = frame.saved
+        match frame.saved:
+            case (chunks, anchor, argument):
+                pass
+            case _:
+                raise AssertionError("boundary source chunks were not retained")
         if len(chunks) == 1:
             # One dyadic interval has no internal midpoint. Its exterior
             # contexts already determine the output request, so calculating
@@ -186,36 +218,46 @@ def boundary_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame("output", (action, chunks[0], anchor, argument)),
+                    OutputFrame(
+                        (action, spatial_buffer_tile_at(chunks, 0), anchor, argument)
+                    ),
                 )
             )
             return True
-        schedule_spatial_scan(
-            workspace, frames, frame, action, 0, chunks, anchor, (chunks, argument)
-        )
+        schedule_spatial_scan(workspace, frames, frame, action, 0, chunks, anchor)
     elif frame.stage == 1:
         schedule_reflected_scan(workspace, frames, frame, action, values)
     elif frame.stage == 2:
-        arguments = values.pop()
+        arguments = pop_spatial_buffer(values)
         arguments.reverse()
-        chunks, anchors = frame.saved
+        match frame.saved:
+            case (chunks, anchors):
+                pass
+            case _:
+                raise AssertionError("boundary reflection lost its anchors")
         outputs = workspace.allocate(len(chunks))
         frame.stage, frame.saved = 3, (chunks,)
         frames.extend(
             (
                 frame,
-                CausalFrame(
-                    "output_chunk_list",
+                OutputChunkListFrame(
                     (action, chunks, anchors, arguments, 0, outputs),
                 ),
             )
         )
     else:
-        outputs = values.pop()
-        (chunks,) = frame.saved
+        outputs = pop_spatial_buffer(values)
+        match frame.saved:
+            case (chunks,):
+                pass
+            case _:
+                raise AssertionError("boundary output lost its source chunks")
         merged = None
         for index in range(len(outputs)):
-            tile = outputs[len(outputs) - index - 1 if side else index]
+            tile = spatial_buffer_tile_at(
+                outputs,
+                len(outputs) - index - 1 if side else index,
+            )
             if side:
                 tile = engine._keep(engine.tiles.mirror(tile))
             node = engine.tiles.resolve(tile)

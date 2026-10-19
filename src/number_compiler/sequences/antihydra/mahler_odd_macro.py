@@ -30,6 +30,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
     HalfOpenInterval,
 )
+from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.three_power_radix import (
     ThreePowerRadixOrbit,
     triple_residue,
@@ -509,14 +510,12 @@ class MahlerOddToOddAction:
             raise ValueError("positive odd-run action budget required")
         if self.extent * repetitions > max_extent:
             raise BlockContextBudgetExceeded("odd-run powered width budget exceeded")
-        result, factor, remaining = self.identity(), self, repetitions
-        while remaining:
-            if remaining & 1:
-                result = result.then(factor)
-            remaining >>= 1
-            if remaining:
-                factor = factor.then(factor)
-        return result
+        return binary_power(
+            self,
+            repetitions,
+            identity=self.identity(),
+            compose=MahlerOddToOddAction.then,
+        ).value
 
     def _harmonic_action_fields(
         self,

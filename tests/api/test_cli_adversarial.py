@@ -277,7 +277,7 @@ def test_renderer_rejects_invalid_limits_before_touching_term(
             raise AssertionError("renderer observed a term before validating arguments")
 
     with pytest.raises((TypeError, ValueError)):
-        cli_render._render_value(
+        cli_render.render_value(
             cast("ProjectedNumberTerm", PoisonTerm()), **cast("RenderOptions", kwargs)
         )
 
@@ -289,7 +289,7 @@ def test_scalar_renderer_rejects_negative_or_coerced_values(
     value: bool | float, base: bool | float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
-        cli_render._radix_string(cast("int", value), cast("int", base))
+        cli_render.radix_string(cast("int", value), cast("int", base))
 
 
 @pytest.mark.parametrize(
@@ -299,7 +299,7 @@ def test_digit_renderer_checks_the_actual_digit_alphabet(
     digits: tuple[bool] | tuple[float] | tuple[int], base: float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
-        cli_render._radix_string_from_lsd(
+        cli_render.radix_string_from_lsd(
             cast("tuple[int, ...]", digits), cast("int", base)
         )
 
@@ -445,13 +445,15 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     )
     assert execution == json.loads(
         json.dumps(
-            asdict(collect_temporal_diagnostics_snapshot(term.payload.term._ledger))
+            asdict(
+                collect_temporal_diagnostics_snapshot(term.payload.term.resource_ledger)
+            )
         )
     )
     assert execution["schema_version"] == 8
     resources = execution["resources"]
-    assert resources["entries"] == term.payload.term._ledger.entries > 0
-    assert resources["nodes"] == term.payload.term._ledger.nodes > 0
+    assert resources["entries"] == term.payload.term.resource_ledger.entries > 0
+    assert resources["nodes"] == term.payload.term.resource_ledger.nodes > 0
     assert resources["audit_complete"] is False
     assert resources["accounting_mismatch"] is None
     assert execution["reporting"]["inspected_inventory_rows"] == 0
@@ -461,7 +463,7 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     runtime = term.payload.power_metrics()
     assert runtime.resource_audit_complete == 0
     assert runtime.resource_accounting_mismatch == 0
-    full_audit = collect_ledger_metrics(term.payload.term._ledger)
+    full_audit = collect_ledger_metrics(term.payload.term.resource_ledger)
     assert full_audit.resource_audit_complete == 1
     assert full_audit.resource_accounting_mismatch == 0
     assert all(
@@ -524,10 +526,13 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
         terms[0].payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
     )
     if isinstance(terms[0].payload, PoweredCollatzTermPayload):
-        assert terms[0].payload.term._workspace is None
+        assert terms[0].payload.term.published_width_summary is None
     else:
         assert not hasattr(terms[0].payload.term, "_index")
-    assert execution["resources"]["entries"] == terms[0].payload.term._ledger.entries
+    assert (
+        execution["resources"]["entries"]
+        == terms[0].payload.term.resource_ledger.entries
+    )
     assert execution["resources"]["audit_complete"] is False
     assert execution["resources"]["accounting_mismatch"] is None
     assert execution["schema_version"] == 8

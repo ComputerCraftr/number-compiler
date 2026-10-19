@@ -52,6 +52,7 @@ def test_all_views_are_specializations_of_one_clock_polynomial() -> None:
         for a, b in zip(
             clock.real_prime_exponents,
             (clock.two_adic_exponent, clock.three_adic_exponent),
+            strict=True,
         )
     ) == (0, 0)
     assert arena.node_count == nodes_before

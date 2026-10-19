@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+
+if TYPE_CHECKING:
+    from number_compiler.resources.ledger import ResourceLedger
 
 DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION: Final[str] = (
     "dyadic-return-source-image-v1"
@@ -124,13 +128,13 @@ class DyadicReturnImageID(ArenaHandle):
 
 
 @dataclass(frozen=True, slots=True)
-class _ActionNode:
+class DyadicReturnActionRecord:
     width: int
     children: tuple[DyadicReturnActionID, DyadicReturnActionID] | None
 
 
 @dataclass(frozen=True, slots=True)
-class _SourceNode:
+class DyadicReturnSourceRecord:
     residue: int
     precision: int
     lift: int
@@ -142,7 +146,7 @@ class _SourceNode:
 
 
 @dataclass(frozen=True, slots=True)
-class _SupportNode:
+class DyadicReturnSupportRecord:
     width: int
     residue: int
     transfer: SkewTransfer[int]
@@ -201,7 +205,27 @@ class DyadicImageSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class _ImageNode:
+class DyadicReturnImageRecord:
     source: DyadicReturnSourceID
     action: DyadicReturnActionID
     summary: DyadicImageSummary
+
+
+@dataclass(frozen=True, slots=True)
+class DyadicFiniteCacheAuditSnapshot:
+    """Read-only view of finite support memo and active worklists."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    closed: bool
+    macro_owner: int
+    macros: Mapping[tuple[object, ...], DyadicReturnSupportRecord]
+    macro_stack: tuple[tuple[int, int, DyadicReturnSupportRecord | None], ...]
+    balanced_stack: tuple[
+        tuple[
+            int,
+            int,
+            tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None] | None,
+        ],
+        ...,
+    ]

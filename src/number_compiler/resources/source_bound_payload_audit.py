@@ -9,29 +9,31 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _IMAGE_RECORD_SEAL,
     SourceBoundImageBindingAuditor,
     SourceBoundSchedulerCore,
-    SourceImageID,
-    _ApplyKey,
-    _ImageRecord,
-    _ProjectionRecord,
-    _RelativeApplication,
-    _RelativeKey,
+    SourceImageApplyKey,
+    SourceImageProjectionRecord,
+    SourceImageRecord,
+    SourceImageRelativeApplication,
+    SourceImageRelativeKey,
     source_bound_adapter_shape,
 )
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.hashlife.execution.source_image_seals import (
-    _typed_equal,
-    _TypedKey,
+    TypedPayloadKey,
     publication_matches_readonly,
+    typed_payload_equal,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
 
-def _resolve_readonly(core: SourceBoundSchedulerCore, image: object) -> _ImageRecord:
+def _resolve_readonly(
+    core: SourceBoundSchedulerCore, image: object
+) -> SourceImageRecord:
     if type(image) is not SourceImageID:
         raise TypeError("expected an exact source image ID")
     image.validate(core.owner, core._KIND, size=len(core._nodes))
     record = core._nodes[image.local_id]
     if (
-        type(record) is not _ImageRecord
+        type(record) is not SourceImageRecord
         or record.publication_owner is not _IMAGE_RECORD_SEAL
         or record.publication_snapshot
         is not core._publication_seals.images[image.local_id]
@@ -58,7 +60,7 @@ def _resolve_readonly(core: SourceBoundSchedulerCore, image: object) -> _ImageRe
 
 
 def _provenance(
-    record: _ImageRecord, kind: str, primary: object
+    record: SourceImageRecord, kind: str, primary: object
 ) -> tuple[str, object, object | None]:
     provenance = record.publication_provenance
     if (
@@ -199,7 +201,7 @@ def audit_source_bound_payloads(
             else:
                 valid_adapter_ids.add(id(adapter))
                 approved.update((id(adapter_key), id(adapter)))
-        valid_nodes: dict[int, _ImageRecord] = {}
+        valid_nodes: dict[int, SourceImageRecord] = {}
         linked_nodes: set[int] = set()
         for local_id, record in enumerate(core._nodes):
             recognized.add(id(record))
@@ -296,7 +298,7 @@ def audit_source_bound_payloads(
                 if type(origin_key) is not tuple or len(origin_key) != 2:
                     raise TypeError("source origin contains another key sort")
                 adapter_key, typed_source = origin_key
-                if type(typed_source) is not _TypedKey:
+                if type(typed_source) is not TypedPayloadKey:
                     raise TypeError("source origin lost its typed key")
                 source = typed_source.value
                 record = _resolve_readonly(core, image)
@@ -315,7 +317,7 @@ def audit_source_bound_payloads(
                     provenance[2] is not None
                     or record.adapter_key != adapter_key
                     or record.binding.source is not source
-                    or _TypedKey(record.binding.source) != typed_source
+                    or TypedPayloadKey(record.binding.source) != typed_source
                 ):
                     raise ValueError("source image origin binding was altered")
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
@@ -326,7 +328,7 @@ def audit_source_bound_payloads(
         for apply_key, image in core._applications.items():
             recognized.update((id(apply_key), id(image)))
             try:
-                if type(apply_key) is not _ApplyKey:
+                if type(apply_key) is not SourceImageApplyKey:
                     raise TypeError("source application contains another key sort")
                 source = _resolve_readonly(core, apply_key.source)
                 result = _resolve_readonly(core, image)
@@ -334,16 +336,18 @@ def audit_source_bound_payloads(
                 if (
                     result.adapter_key != apply_key.adapter_key
                     or source.adapter_key != apply_key.adapter_key
-                    or not _typed_equal(result.binding.source, source.binding.source)
+                    or not typed_payload_equal(
+                        result.binding.source, source.binding.source
+                    )
                 ):
                     raise ValueError("source image application binding was altered")
                 relative_key = provenance[2]
                 if relative_key is not None:
-                    if type(relative_key) is not _RelativeKey:
+                    if type(relative_key) is not SourceImageRelativeKey:
                         raise TypeError("application has another relative key sort")
                     relative = core._relative.get(relative_key)
                     if (
-                        type(relative) is not _RelativeApplication
+                        type(relative) is not SourceImageRelativeApplication
                         or relative.source is not apply_key.source
                         or relative.result is not image
                     ):
@@ -357,8 +361,8 @@ def audit_source_bound_payloads(
             recognized.update((id(relative_key), id(application)))
             try:
                 if (
-                    type(relative_key) is not _RelativeKey
-                    or type(application) is not _RelativeApplication
+                    type(relative_key) is not SourceImageRelativeKey
+                    or type(application) is not SourceImageRelativeApplication
                 ):
                     raise TypeError("relative transfer contains another record sort")
                 result = _resolve_readonly(core, application.result)
@@ -370,7 +374,7 @@ def audit_source_bound_payloads(
                 ):
                     raise ValueError("relative transfer lost its sealed application")
                 relative_apply_key = provenance[1]
-                if type(relative_apply_key) is not _ApplyKey:
+                if type(relative_apply_key) is not SourceImageApplyKey:
                     raise TypeError("relative transfer has another application key")
                 if (
                     relative_apply_key.adapter_key is not relative_key.adapter_key
@@ -394,7 +398,7 @@ def audit_source_bound_payloads(
                 if (
                     type(projection_key) is not tuple
                     or len(projection_key) != 2
-                    or type(projection_record) is not _ProjectionRecord
+                    or type(projection_record) is not SourceImageProjectionRecord
                     or projection_key[0] is not projection_record.image
                     or projection_key[1] is not projection_record.demand
                     or projection_record.publication_owner is not _IMAGE_RECORD_SEAL

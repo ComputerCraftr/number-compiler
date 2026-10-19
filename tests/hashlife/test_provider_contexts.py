@@ -34,7 +34,7 @@ from tests.support.provider_contexts import (
     bind_contextual_provider_input,
     publish_contextual_image_occurrence,
 )
-from tests.support.recursive_field_images import _completed_provider_setup
+from tests.support.recursive_field_images import completed_provider_setup
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
@@ -54,7 +54,7 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
         providers,
         provider,
         _source_binding,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert isinstance(source, SourceCellID)
     context_owner = ArenaToken("provider-test-contexts")
     root_context = ArenaHandle(context_owner, "provider-test-context", 0)
@@ -232,7 +232,7 @@ def test_provider_context_authority_is_checked_before_a_warm_image_probe() -> No
         providers,
         provider,
         _source_binding,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert isinstance(source, SourceCellID)
     foreign_owner = ArenaToken("foreign-provider-contexts")
     foreign_context = ArenaHandle(foreign_owner, "provider-test-context", 0)
@@ -331,7 +331,7 @@ def test_provider_context_keys_distinguish_numeric_aliases_recursively() -> None
         _providers,
         _provider,
         binding,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert isinstance(source, SourceCellID)
     image_request_true = ImageRequestKey(
         action, source, geometry, signature, None, True
@@ -389,7 +389,7 @@ def test_provider_child_context_pair_key_distinguishes_true_from_one() -> None:
         providers,
         _provider,
         binding,
-    ) = _completed_provider_setup()
+    ) = completed_provider_setup()
     assert isinstance(source, SourceCellID)
     source_left, _source_right = images.sources.children(source)
     image_left, _image_right = images.children(image)

@@ -18,12 +18,12 @@ from number_compiler.sequences.collatz.conditional_border_moore import (
     compile_conditional_border_moore,
     compile_conditional_return_power,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 from number_compiler.sequences.collatz.temporal_source_morphism import (
     PointedCollatzSource,
@@ -247,7 +247,7 @@ def test_root_true_endpoint_conditional_path_replaces_eager_compile(
         SourceCongruence(3, 5)
     )
     assert guard is not None
-    port = CrossFamilyPortAction(action, guard, 4, None)
+    port = SourceClosedPortAction(action, guard, 4, None)
     ticks = sum(j + 4 for j in motif[:2])
     owner = PointedCollatzSource.issue(x, 2 * ticks, ledger=ResourceLedger())
     first = certified_collatz_root_from_port(owner, port)
@@ -307,7 +307,7 @@ def test_joint_requested_prime_walsh_and_width_ports_use_same_selected_guard() -
 def test_demanded_conditional_graph_and_return_power_from_true_root() -> None:
     owner = PointedCollatzSource.issue(23, 24, ledger=ResourceLedger())
     action = DyadicTerminalFieldAction.one_run(2)
-    port = CrossFamilyPortAction(action, SourceCongruence(3, 20), 2, None)
+    port = SourceClosedPortAction(action, SourceCongruence(3, 20), 2, None)
     pointed = certified_collatz_root_from_port(owner, port)
     assert pointed.last.value == 53
     packet = pointed.demanded_conditional_border_moore(

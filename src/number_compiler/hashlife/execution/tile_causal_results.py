@@ -8,7 +8,8 @@ the recurrence to provide complete outgoing semantics before publication.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, TypeAlias, cast
+from types import MethodType
+from typing import TYPE_CHECKING, TypeAlias
 
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -18,9 +19,10 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
+    from number_compiler.resources.causal_workspace import CausalActionAdmission
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
     BoundaryTileOperands,
@@ -118,6 +120,31 @@ class CausalCompletedOutput:
             raise ValueError("causal task inputs disagree with completed semantics")
 
 
+def require_causal_authority(value: object) -> PrimitiveTileKernelAdapter:
+    """Authenticate the primitive executor that owns causal action laws."""
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
+
+    if type(value) is not PrimitiveTileKernelAdapter:
+        raise TypeError("causal results require their primitive action authority")
+    try:
+        action_record = object.__getattribute__(value, "action_record")
+    except AttributeError:
+        raise ValueError(
+            "causal action authority lost its checked record method"
+        ) from None
+    if (
+        type(action_record) is not MethodType
+        or action_record.__self__ is not value
+        or action_record.__func__ is not PrimitiveTileKernelAdapter.action_record
+    ):
+        raise ValueError(
+            "causal action authority record method changed after admission"
+        )
+    return value
+
+
 def cached_causal_output(
     result: ResultLease,
     tiles: TileArena | None = None,
@@ -125,12 +152,12 @@ def cached_causal_output(
     """Recover a transient payload from an arena-validated completed result."""
     if type(result) is not ResultLease:
         raise TypeError("cached causal output requires a completed-result lease")
-    value = result.result
-    authority = cast("PrimitiveTileKernelAdapter", result._issuer.action_authority)
-    children = authority.action_children(result._key.action)
+    key, value, issued_authority = result.validated_binding()
+    authority = require_causal_authority(issued_authority)
+    children = authority.action_record(key.action).children
     observed = value.observed_input_ports
     if children is None:
-        ports = result._key.ports
+        ports = key.ports
     elif observed is not None:
         ports = observed
     else:
@@ -173,25 +200,31 @@ def _causal_result_key(
     state: CausalInputState,
     wiring: ResultWiring,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> PoweredResultKey:
     """Build a request envelope for immediate validation by its consumer."""
     if type(results) is not CompletedResultArena:
         raise TypeError("causal result keys require the shared result arena")
+    authority = require_causal_authority(results.validated_action_authority())
     if action_admission is None:
-        children_hook = getattr(results.action_authority, "action_children", None)
-        if not callable(children_hook):
-            raise TypeError("causal result keys require a temporal action authority")
-        children = children_hook(action)
+        # The action record is the authenticated source of its structural sort.
+        # Do not trust mutable instance callbacks such as ``action_children``
+        # or ``action_record``: a forged implementation could otherwise label
+        # a composite action as atomic before key validation rejects it.
+        from number_compiler.hashlife.execution.tile_kernel import (
+            PrimitiveTileKernelAdapter,
+        )
+
+        record = PrimitiveTileKernelAdapter.action_record(authority, action)
     else:
         from number_compiler.resources.causal_workspace import (
             admitted_action_metadata,
         )
 
         _signature, _kernel, record = admitted_action_metadata(
-            action_admission, results.action_authority, action
+            action_admission, authority, action
         )
-        children = record.children
+    children = record.children
     if type(state) is PrimitiveCausalPorts:
         if children is not None:
             raise ValueError("composed causal actions require exact prefix operands")
@@ -214,7 +247,7 @@ def causal_result_key(
     state: CausalInputState,
     wiring: ResultWiring,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> PoweredResultKey:
     """Build and validate a key which may escape before its next consumer."""
     key = _causal_result_key(
@@ -223,9 +256,9 @@ def causal_result_key(
     # Validate owner/kind/allocation, signature, ports and exact operand geometry
     # before this key can probe a warm memo or reach a publisher.
     if action_admission is None:
-        results._validate_key(key)
+        results.validate_key(key)
     else:
-        results._validate_key(key, action_admission=action_admission)
+        results.validate_key(key, action_admission=action_admission)
     return key
 
 
@@ -236,7 +269,7 @@ def probe_causal_result(
     state: CausalInputState,
     wiring: ResultWiring,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> tuple[PoweredResultKey, ResultLease | None]:
     """Construct and probe atomically; the lookup validates before memo access.
 
@@ -256,7 +289,7 @@ def lookup_causal_result(
     results: CompletedResultArena,
     key: PoweredResultKey,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> ResultLease | None:
     """Probe the existing result memo; no causal continuation is retained."""
     if type(results) is not CompletedResultArena:
@@ -291,21 +324,16 @@ def primitive_causal_semantics(
     if type(occurrence) is not TemporalCocycle:
         raise TypeError("primitive causal semantics require an occurrence cocycle")
     key = causal_result_key(results, action, input_tile, ports, wiring)
-    authority = cast("PrimitiveTileKernelAdapter", results.action_authority)
-    compiler = getattr(authority, "_compile_interface", None)
-    observer = getattr(authority, "_observe", None)
-    cocycle_hook = getattr(authority, "action_cocycle", None)
-    if not callable(compiler) or not callable(observer) or not callable(cocycle_hook):
-        raise TypeError("primitive causal semantics require executable interface laws")
-    interface = compiler(action, input_tile, wiring)
+    authority = require_causal_authority(results.validated_action_authority())
+    interface = authority.compile_interface(action, input_tile, wiring)
     if type(interface) is not LocalInterfaceID:
         raise TypeError("primitive causal compiler returned another interface sort")
-    outgoing_left = observer(interface, "boundary_left", key.ports)
-    outgoing_right = observer(interface, "boundary_right", key.ports)
+    outgoing_left = authority.observe(interface, "boundary_left", key.ports)
+    outgoing_right = authority.observe(interface, "boundary_right", key.ports)
     if type(outgoing_left) is not int or type(outgoing_right) is not int:
         raise TypeError("primitive causal observer returned a non-integer port")
     outgoing = outgoing_left, outgoing_right
-    action_weight = cocycle_hook(action)
+    action_weight = authority.action_cocycle(action)
     if type(action_weight) is not TemporalCocycle:
         raise TypeError("primitive action returned another cocycle sort")
     output_node = results.tiles.resolve(output)
@@ -409,7 +437,7 @@ def combine_causal_outputs(
         raise TypeError("causal composition requires completed child outputs")
     left.__post_init__()
     right.__post_init__()
-    results._validate_action_wiring(action, wiring)
+    results.validate_action_wiring(action, wiring)
     parent = results.tiles.resolve(output)
     if parent.left != left.output or parent.right != right.output:
         raise ValueError("causal output does not contain its canonical children")
@@ -417,12 +445,12 @@ def combine_causal_outputs(
         raise ValueError("causal spatial children have different temporal spans")
     if left.semantics.frame_shift != right.semantics.frame_shift:
         raise ValueError("causal spatial children have different frame shifts")
-    results._validate_ports(wiring.signature, left.semantics.outgoing_ports)
-    results._validate_ports(wiring.signature, right.semantics.outgoing_ports)
+    results.validate_ports(wiring.signature, left.semantics.outgoing_ports)
+    results.validate_ports(wiring.signature, right.semantics.outgoing_ports)
     if left.incoming_ports is None or right.incoming_ports is None:
         raise ValueError("causal spatial children omitted their incoming states")
-    results._validate_ports(wiring.signature, left.incoming_ports)
-    results._validate_ports(wiring.signature, right.incoming_ports)
+    results.validate_ports(wiring.signature, left.incoming_ports)
+    results.validate_ports(wiring.signature, right.incoming_ports)
     if (
         left.semantics.outgoing_ports[0] != right.incoming_ports[0]
         or right.semantics.outgoing_ports[1] != left.incoming_ports[1]
@@ -452,7 +480,7 @@ def combine_causal_outputs(
             right_fusion.producer,
             right_fusion.consumer,
         ):
-            results._validate_bound_port_allocations(bound)
+            results.validate_bound_port_allocations(bound)
             if len(bound.ports) != 2:
                 raise ValueError("causal edge composition requires two directed ports")
         if (
@@ -501,12 +529,12 @@ def combine_causal_outputs(
             left_fusion.consumer.wiring,
             output_boundaries,
         )
-        results._validate_bound_port_allocations(producer)
-        results._validate_bound_port_allocations(consumer)
+        results.validate_bound_port_allocations(producer)
+        results.validate_bound_port_allocations(consumer)
         fusion = FusedBoundaryContract(producer, consumer)
 
-    authority = cast("PrimitiveTileKernelAdapter", results.action_authority)
-    record = authority._action(action)
+    authority = require_causal_authority(results.validated_action_authority())
+    record = authority.action_record(action)
     from number_compiler.hashlife.execution.tile_causal_interfaces import (
         combine_local_interfaces,
     )

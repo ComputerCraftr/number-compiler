@@ -21,13 +21,13 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
     PrimitiveKernel,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
+from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
     MacroComponents,
+    StructureArena,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
-from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
     PrimitiveTileResult,
@@ -83,32 +83,32 @@ class _Host(Protocol):
         self,
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
-    def _action(self, action: FieldCellActionID) -> _ActionView: ...
+    def action_record(self, action: FieldCellActionID) -> _ActionView: ...
     def validate_fused_wiring(
         self,
         action: FieldCellActionID,
         producer: ResultWiring,
         result: ResultWiring,
     ) -> None: ...
-    def _require_results(self) -> CompletedResultArena: ...
-    def _compile_interface(
+    def require_results(self) -> CompletedResultArena: ...
+    def compile_interface(
         self,
         action: FieldCellActionID,
         source: TileID,
         wiring: ResultWiring,
     ) -> LocalInterfaceID: ...
-    def _observe(
+    def observe(
         self,
         interface: LocalInterfaceID,
         channel: str,
         ports: tuple[int, ...],
     ) -> int: ...
-    def _leaf_components(
+    def leaf_components(
         self,
         kernel: PrimitiveKernel,
         symbol: int,
     ) -> tuple[FactoredFunctionID, ...]: ...
-    def _parent_components(
+    def parent_components(
         self,
         kernel: PrimitiveKernel,
         left: LocalInterfaceID,
@@ -139,7 +139,7 @@ def leaf_product(
     reverse apply-leaf admission. No source tile or producer context enters the
     key. Symbols are bounded kernel literals, not coordinate observations.
     """
-    record = self._action(action)
+    record = self.action_record(action)
     if record.children is not None:
         raise ValueError("leaf products require a primitive kernel")
     if type(wiring) is not ResultWiring:
@@ -178,7 +178,7 @@ def leaf_product(
             MIN_CLOSED_REVERSE_BASE <= kernel.base <= MAX_CLOSED_REVERSE_BASE
         ):
             from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-                _ports,
+                input_ports_for_kernel,
             )
             from number_compiler.hashlife.interfaces.tile_reverse_functions import (
                 reverse_leaf_components,
@@ -190,7 +190,7 @@ def leaf_product(
             with self.quotients.closed_workspace.scope("leaf"):
                 macro = attach_leaf_sectors(
                     reverse_leaf_components(
-                        _ports(kernel), kernel.base, symbol, self.ledger
+                        input_ports_for_kernel(kernel), kernel.base, symbol, self.ledger
                     ),
                     base=kernel.base,
                     symbol=symbol,
@@ -201,13 +201,15 @@ def leaf_product(
             division_radix := certified_binary_division_radix(kernel.effect)
         ) is not None:
             from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-                _ports,
+                input_ports_for_kernel,
             )
             from number_compiler.hashlife.interfaces.tile_radix_functions import (
                 division_leaf_components,
             )
 
-            macro = division_leaf_components(_ports(kernel), division_radix, symbol)
+            macro = division_leaf_components(
+                input_ports_for_kernel(kernel), division_radix, symbol
+            )
             if type(kernel.effect) is SymbolicBinaryDivisionEffect:
                 self.ledger.bump(
                     _execution_keys.SYMBOLIC_TILE_DIVISION_LEAF_COMPILATIONS
@@ -217,7 +219,7 @@ def leaf_product(
                 attach_leaf_sectors,
             )
 
-            components = self._leaf_components(kernel, symbol)
+            components = self.leaf_components(kernel, symbol)
             with self.quotients.closed_workspace.scope("leaf"):
                 macro = attach_leaf_sectors(
                     MacroComponents(
@@ -228,7 +230,7 @@ def leaf_product(
                 )
                 interface = self.quotients.intern(wiring.signature, macro)
         else:
-            components = self._leaf_components(kernel, symbol)
+            components = self.leaf_components(kernel, symbol)
             macro = MacroComponents(
                 *(self.structures.atom(item) for item in components)
             )
@@ -269,7 +271,7 @@ def fused_primitive_pair(
         return None
     if any(
         certified_binary_division_radix(
-            self.kernels.kernel(self._action(child).kernel).effect
+            self.kernels.kernel(self.action_record(child).kernel).effect
         )
         is not None
         for child in pair
@@ -296,7 +298,7 @@ def fused_interface(
     before, after = pair
     producer_wiring = wiring if producer_wiring is None else producer_wiring
     self.validate_fused_wiring(action, producer_wiring, wiring)
-    results = self._require_results()
+    results = self.require_results()
     root_key = FusedInterfaceKey(
         action,
         source,
@@ -346,8 +348,8 @@ def fused_interface(
             if not node.level:
                 if node.symbol is None:
                     raise ValueError("malformed fused source leaf")
-                first = self._compile_interface(before, current, producer_wiring)
-                symbol = self._observe(first, "output", ports)
+                first = self.compile_interface(before, current, producer_wiring)
+                symbol = self.observe(first, "output", ports)
                 interface = leaf_product(self, after, symbol, wiring)
             elif not ready:
                 if node.left is None or node.right is None:
@@ -419,7 +421,7 @@ def fused_child_contexts(
         raise TypeError("fused child side requires an exact integer")
     if side not in (0, 1):
         raise ValueError("fused child side must be zero or one")
-    self._require_results().validate_shape(action, consumer_ports, wiring)
+    self.require_results().validate_shape(action, consumer_ports, wiring)
     producer_wiring = wiring if producer_wiring is None else producer_wiring
     self.validate_fused_wiring(action, producer_wiring, wiring)
     pair = fused_primitive_pair(self, action)
@@ -455,7 +457,7 @@ def fused_child_contexts(
         producer_wiring=sibling_producer.wiring,
     )
     channel = "boundary_right" if side == 0 else "boundary_left"
-    midpoint = self._observe(interface, channel, consumer_ports)
+    midpoint = self.observe(interface, channel, consumer_ports)
     ports = (
         (consumer_ports[0], midpoint) if side == 0 else (midpoint, consumer_ports[1])
     )
@@ -475,7 +477,7 @@ def fused_leaf_result(
     node = self.tiles.resolve(source)
     if node.level or node.symbol is None:
         raise ValueError("fused leaf result requires one source symbol")
-    self._require_results().validate_shape(action, consumer_ports, wiring)
+    self.require_results().validate_shape(action, consumer_ports, wiring)
     interface = fused_interface(
         self,
         action,
@@ -484,10 +486,10 @@ def fused_leaf_result(
         wiring,
         producer_wiring=producer_wiring,
     )
-    output = self._observe(interface, "output", consumer_ports)
+    output = self.observe(interface, "output", consumer_ports)
     outgoing = (
-        self._observe(interface, "boundary_left", consumer_ports),
-        self._observe(interface, "boundary_right", consumer_ports),
+        self.observe(interface, "boundary_left", consumer_ports),
+        self.observe(interface, "boundary_right", consumer_ports),
     )
     blank = self.tiles.alphabet(node.alphabet).blank
     return PrimitiveTileResult(
@@ -506,7 +508,7 @@ def fused_output_active(
     *,
     producer_wiring: ResultWiring | None = None,
 ) -> bool:
-    self._require_results().validate_shape(action, consumer_ports, wiring)
+    self.require_results().validate_shape(action, consumer_ports, wiring)
     interface = fused_interface(
         self,
         action,
@@ -515,7 +517,7 @@ def fused_output_active(
         wiring,
         producer_wiring=producer_wiring,
     )
-    return bool(self._observe(interface, "activity", consumer_ports))
+    return bool(self.observe(interface, "activity", consumer_ports))
 
 
 __all__ = [

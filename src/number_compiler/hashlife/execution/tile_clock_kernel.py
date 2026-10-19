@@ -33,7 +33,7 @@ def complete_clock_kernel(
     key = PoweredResultKey(
         action, source, adapter.initial_ports(action), adapter.wiring(action)
     )
-    found = scheduler._lookup_execution_key(key)
+    found = scheduler.lookup_execution_key(key)
     if found is not None:
         scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_PARENT_EARLY_HITS)
         return found

@@ -46,7 +46,8 @@ class GrowthCoboundaryHalf:
         q, delta = GROWTH_SYMBOLS[self.symbols[0]]
         result = [q + delta]
         result.extend(
-            growth_pair_value(a, b) for a, b in zip(self.symbols, self.symbols[1:])
+            growth_pair_value(a, b)
+            for a, b in zip(self.symbols, self.symbols[1:], strict=False)
         )
         if self.width % 2 == 0:
             q, delta = GROWTH_SYMBOLS[self.symbols[-1]]

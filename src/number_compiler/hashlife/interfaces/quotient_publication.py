@@ -16,13 +16,15 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
-        DiamondKey,
         DiamondQuotientArena,
-        DiamondQuotientID,
-        QuotientRecord,
     )
     from number_compiler.hashlife.interfaces.semantic_structure_publication import (
         PreparedStructures,
+    )
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        DiamondKey,
+        DiamondQuotientID,
+        QuotientRecord,
     )
     from number_compiler.hashlife.tiles.tile_result_records import SpatialInterfaceKey
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
@@ -66,7 +68,7 @@ def publish_quotient(
     alias: QuotientRecord | None = None,
     spatial: SpatialQuotientBinding | None = None,
 ) -> DiamondQuotientID:
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+    from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 
     found = self._keys.get(record)
     if spatial is not None:
@@ -79,13 +81,13 @@ def publish_quotient(
             raise TypeError("quotient spatial binding requires the result memo owner")
         if results.interfaces is not self or results.ledger is not self.ledger:
             raise ValueError("quotient spatial binding belongs to another index")
-        results._validate_spatial_key(spatial.key)
+        results.validate_spatial_key(spatial.key)
         spatial_value = results._memo.get(spatial.key)
         if spatial_value is not None:
             if type(spatial_value) is not LocalInterfaceID:
                 raise TypeError("spatial interface memo has another value sort")
             spatial_found = spatial_value
-            results._validate_spatial_result(spatial.key, spatial_found)
+            results.validate_spatial_result(spatial.key, spatial_found)
             if self.resolve(spatial_found) != record:
                 if prepared is not None:
                     prepared.cancel()
@@ -142,7 +144,7 @@ def publish_quotient(
         if key is not None:
             self._parents[key] = found
         if spatial is not None:
-            spatial.results._validate_spatial_result(spatial.key, found)
+            spatial.results.validate_spatial_result(spatial.key, found)
             spatial.results._memo[spatial.key] = found
         if prepared is not None:
             prepared.publish_reserved()

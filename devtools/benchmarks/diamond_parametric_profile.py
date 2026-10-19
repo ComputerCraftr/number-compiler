@@ -122,7 +122,7 @@ def construct(
         application = ReverseAddPoweredTerm(
             seed, steps, max_cache_entries=CACHE_ENTRIES
         )
-        return application, application.maximum_width, application._ledger
+        return application, application.maximum_width, application.resource_ledger
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler

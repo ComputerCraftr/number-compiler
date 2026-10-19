@@ -16,9 +16,11 @@ from number_compiler.arithmetic.fields.centered_carry import (
     carry_coboundary,
     reflected_innovation,
 )
+from number_compiler.arithmetic.fields.radial_innovation import (
+    SymbolicRadialInnovation,
+)
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    SymbolicRadialInnovation,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.reverse_add.cylinder_innovation import (

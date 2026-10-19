@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import NumberCompiler

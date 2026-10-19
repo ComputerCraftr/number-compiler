@@ -9,7 +9,7 @@ from __future__ import annotations
 import ast
 import os
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +30,7 @@ def _profile_enabled() -> bool:
 
 
 @contextmanager
-def _profile_stage(name: str, *, detail: str = "") -> Iterator[None]:
+def _profile_stage(name: str, *, detail: str = "") -> Generator[None, None, None]:
     """Report optional flushed timings without changing the policy JSON."""
     if not _profile_enabled():
         yield
@@ -300,7 +300,7 @@ def _function_catalog(
             if isinstance(node, ast.Call) and active_function is not None:
                 calls[active_function].append(node)
             if active_function is None and not parent_qn:
-                if isinstance(node, ast.Assign) and node.value is not None:
+                if isinstance(node, ast.Assign):
                     for target in node.targets:
                         for name, value in _assignment_bindings(target, node.value):
                             module_aliases[module].setdefault(name, []).append(value)
@@ -525,7 +525,8 @@ def _call_aliases(
                 bound.add(node.name)
             if node.type is not None:
                 pending.append((node.type, comprehension_bound))
-            handler_bound = comprehension_bound | ({node.name} if node.name else set())
+            handler_names = frozenset((node.name,)) if node.name else frozenset[str]()
+            handler_bound = comprehension_bound | handler_names
             pending.extend((child, handler_bound) for child in reversed(node.body))
             continue
         if isinstance(node, ast.Match):
@@ -555,7 +556,7 @@ def _call_aliases(
             pending.extend((condition, comprehension_bound) for condition in node.ifs)
             pending.append((node.iter, comprehension_bound))
             continue
-        if isinstance(node, ast.Assign) and node.value is not None:
+        if isinstance(node, ast.Assign):
             for target in node.targets:
                 for name, value in _assignment_bindings(target, node.value):
                     aliases.setdefault(name, []).append(value)
@@ -709,7 +710,9 @@ def _resolve_call(
             )
             if arguments and not static:
                 receiver = arguments[0].arg
-        receiver_names = owner_names.intersection((receiver,)) if receiver else set()
+        receiver_names: set[str] = set()
+        if receiver and receiver in owner_names:
+            receiver_names.add(receiver)
         if receiver in aliases and owner == receiver:
             receiver_names.discard(receiver)
         class_name = (
@@ -787,6 +790,7 @@ def _cycles(graph: dict[str, set[str]]) -> tuple[tuple[str, ...], ...]:
 def repository_policy_report(root: Path) -> dict[str, object]:
     from dataclasses import asdict
 
+    from devtools.checks.border_registry_policy import border_registry_violations
     from devtools.checks.ownership_policy import ownership_policy_violations
     from devtools.checks.package_contracts import package_violations
     from devtools.checks.python_clones import (
@@ -829,6 +833,7 @@ def repository_policy_report(root: Path) -> dict[str, object]:
         from devtools.checks.semantic_name_policy import semantic_name_violations
 
         semantic_violations = semantic_name_violations(root, parsed_sources)
+        border_violations = border_registry_violations(root, parsed_sources)
     with _profile_stage("recursion", detail=f"modules={len(parsed_sources)}"):
         cycles = recursion_cycles(root, parsed_sources=parsed_sources)
     with _profile_stage("clones", detail=f"modules={len(parsed_sources)}"):
@@ -858,6 +863,7 @@ def repository_policy_report(root: Path) -> dict[str, object]:
         "ownership_violations": ownership_violations,
         "validation_entrypoint_violations": entrypoint_violations,
         "semantic_name_violations": semantic_violations,
+        "border_registry_violations": border_violations,
         "recursion_cycles": cycles,
         "duplicate_bodies": duplicate_sites,
         "package_violations": package_issues,
@@ -892,6 +898,7 @@ def main() -> int:
             or report["ownership_violations"]
             or report["validation_entrypoint_violations"]
             or report["semantic_name_violations"]
+            or report["border_registry_violations"]
             or report["recursion_cycles"]
             or report["duplicate_bodies"]
             or report["package_violations"]

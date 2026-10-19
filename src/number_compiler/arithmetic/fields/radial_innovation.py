@@ -15,7 +15,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeAlias
 
+from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
+from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.polynomials.cyclotomic_affine import (
@@ -26,6 +30,101 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationID(ArenaHandle):
+    """Scoped arithmetic identity; source authority is deliberately absent."""
+
+    seal: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RadialMultiplier:
+    """The unexpanded multiplier ``2**no_growth * (1+z)**growth``."""
+
+    no_growth: int = 0
+    growth: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.no_growth) is not int or type(self.growth) is not int:
+            raise TypeError("radial exponents must be exact integers")
+        if self.no_growth < 0 or self.growth < 0:
+            raise ValueError("radial exponents must be nonnegative")
+
+    @property
+    def is_identity(self) -> bool:
+        return self.no_growth == self.growth == 0
+
+    def then(self, after: RadialMultiplier) -> RadialMultiplier:
+        if type(after) is not RadialMultiplier:
+            raise TypeError("radial composition requires a radial multiplier")
+        self.__post_init__()
+        after.__post_init__()
+        return RadialMultiplier(
+            self.no_growth + after.no_growth,
+            self.growth + after.growth,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationZero:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationAtom:
+    semantic: SemanticIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationInterval:
+    """The exact window ``E_m = 1 + z + ... + z**(m-1)``."""
+
+    length: int
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationRadial:
+    multiplier: RadialMultiplier
+    child: InnovationID
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationCharted:
+    chart: CylinderChart
+    child: InnovationID
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationScale:
+    coefficient: int
+    child: InnovationID
+
+
+@dataclass(frozen=True, slots=True)
+class InnovationAdd:
+    left: InnovationID
+    right: InnovationID
+
+
+InnovationNode: TypeAlias = (
+    InnovationZero
+    | InnovationAtom
+    | InnovationInterval
+    | InnovationRadial
+    | InnovationCharted
+    | InnovationScale
+    | InnovationAdd
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolicRadialInnovation:
+    """One source-free affine arithmetic component ``(M, B)``."""
+
+    multiplier: RadialMultiplier
+    innovation: InnovationID
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,7 +413,18 @@ class ReverseAddCyclotomicInnovationBlock:
 
 
 __all__ = [
+    "InnovationAdd",
+    "InnovationAtom",
+    "InnovationCharted",
+    "InnovationID",
+    "InnovationInterval",
+    "InnovationNode",
+    "InnovationRadial",
+    "InnovationScale",
+    "InnovationZero",
+    "RadialMultiplier",
     "ReverseAddCyclotomicInnovationBlock",
     "ReverseWidthPhase",
     "ReverseWidthPhaseAction",
+    "SymbolicRadialInnovation",
 ]

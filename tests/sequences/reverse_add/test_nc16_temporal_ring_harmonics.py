@@ -12,6 +12,10 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     value_carry_fn,
 )
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
@@ -24,6 +28,10 @@ from number_compiler.sequences.reverse_add.symmetric_carry_filter import (
 )
 from number_compiler.sequences.reverse_add.temporal_inward_constraints import (
     ReverseInwardConstraints,
+)
+from number_compiler.sequences.reverse_add.temporal_ring_channels import (
+    ReverseTemporalRingChannel,
+    checked_temporal_ring_channel,
 )
 from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
     ReverseAddTemporalRingBank,
@@ -100,17 +108,17 @@ def pair(x: int, position: int) -> int:
     return int(word[position]) + int(word[-position - 1])
 
 
-def band(s: int) -> str:
+def band(s: int) -> DecimalPairBand:
     return (
-        "lt_low"
+        DecimalPairBand.LT_LOW
         if s <= 4
-        else "lt_high"
+        else DecimalPairBand.LT_HIGH
         if s <= 8
-        else "eq"
+        else DecimalPairBand.EQ
         if s == 9
-        else "gt_low"
+        else DecimalPairBand.GT_LOW
         if s <= 14
-        else "gt_high"
+        else DecimalPairBand.GT_HIGH
     )
 
 
@@ -170,9 +178,9 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
         issued_words = ring.bank_words
         object.__setattr__(ring, "bank_words", changed_words)
         with pytest.raises(ValueError):
-            ring.harmonic(0, "lt_high")
+            ring.harmonic(0, DecimalPairBand.LT_HIGH)
         object.__setattr__(ring, "bank_words", issued_words)
-        ring.harmonic(0, "lt_high")
+        ring.harmonic(0, DecimalPairBand.LT_HIGH)
         assert ring.macro is not None
         assert ring.certificate.growth_word == (0, 1, 0, 0, 1, 0, 1, 0, 1)
         assert ring.macro.growth == 4
@@ -185,12 +193,21 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
             ]
             > 0
         )
-        assert ring.harmonic(0, "lt_high").forced_count == 9
+        assert ring.harmonic(0, DecimalPairBand.LT_HIGH).forced_count == 9
+        with pytest.raises(TypeError):
+            checked_temporal_ring_channel("lt_high")
+        original_band_value = DecimalPairBand.LT_HIGH.value
+        object.__setattr__(DecimalPairBand.LT_HIGH, "_value_", "tampered")
+        try:
+            with pytest.raises(ValueError):
+                ring.harmonic(0, DecimalPairBand.LT_HIGH)
+        finally:
+            object.__setattr__(DecimalPairBand.LT_HIGH, "_value_", original_band_value)
         assert len(ring.phase_pair_domains) == 8
         assert all(
             len(domain) >= 1 for row in ring.phase_pair_domains for domain in row
         )
-        assert ring.harmonic(0, "f5").forced_count == 9
+        assert ring.harmonic(0, ReverseTemporalRingChannel.F5).forced_count == 9
         assert not ring.temporal_repeat_certified
         assert not ring.complete_integer_certified
         values = [x]
@@ -198,6 +215,10 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
             values.append(successor(values[-1]))
         for position in range(8):
             orbit = ring.orbit(position)
+            harmonics = {
+                channel: ring.harmonic(position, channel)
+                for channel in DECIMAL_PAIR_BANDS
+            }
             for t in range(9):
                 coeff = pair(values[t], position)
                 assert coeff % 5 in orbit.pair_f5[t]
@@ -205,17 +226,17 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
                     coeff in ring.phase_pair_domains[ring.positions.index(position)][t]
                 )
                 assert band(coeff) in orbit.selected_bands[t]
-                for channel in ("lt_low", "lt_high", "eq", "gt_low", "gt_high"):
-                    observed = ring.harmonic(position, channel).lanes[t]
+                for channel, harmonic in harmonics.items():
+                    observed = harmonic.lanes[t]
                     if observed is not None:
                         assert observed == int(band(coeff) == channel)
         with pytest.raises(ValueError):
             ring.then(ring)
-        period, count = ring.formal_repeated_output(0, "lt_high", 10**18)
+        period, count = ring.formal_repeated_output(0, DecimalPairBand.LT_HIGH, 10**18)
         assert len(period) == 9 and count == 10**18
         owner.dispose()
         with pytest.raises(ValueError):
-            ring.harmonic(0, "lt_high")
+            ring.harmonic(0, DecimalPairBand.LT_HIGH)
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0
@@ -233,7 +254,7 @@ def test_validated_pair_domains_check_full_ring_authority_once(
         ring = certificate.temporal_ring_bank(
             positions=tuple(range(8)), source_pair_prefix=8
         )
-        original_check = ReverseAddTemporalRingBank._check
+        original_check = ReverseAddTemporalRingBank.validate
         checks = 0
 
         def counted_check(record: ReverseAddTemporalRingBank) -> None:
@@ -241,7 +262,7 @@ def test_validated_pair_domains_check_full_ring_authority_once(
             checks += 1
             original_check(record)
 
-        monkeypatch.setattr(ReverseAddTemporalRingBank, "_check", counted_check)
+        monkeypatch.setattr(ReverseAddTemporalRingBank, "validate", counted_check)
         domains = ring.validated_pair_domains()
         assert checks == 1
         assert len(domains) == len(ring.positions) == 8
@@ -393,9 +414,14 @@ def test_finite_action_composition_requires_exact_source_and_width_seam() -> Non
         assert together.macro is not None
         assert together.target_pair_domain(0) == b.target_pair_domain(0)
         for i in (0, 1):
-            for name in ("lt_low", "gt_high", "eq", "carry_xor"):
-                assert together.harmonic(i, name).lanes == (
-                    a.harmonic(i, name).lanes + b.harmonic(i, name).lanes
+            for channel in (
+                DecimalPairBand.LT_LOW,
+                DecimalPairBand.GT_HIGH,
+                DecimalPairBand.EQ,
+                ReverseTemporalRingChannel.CARRY_XOR,
+            ):
+                assert together.harmonic(i, channel).lanes == (
+                    a.harmonic(i, channel).lanes + b.harmonic(i, channel).lanes
                 )
         with pytest.raises(ValueError):
             b.then(a)
@@ -430,7 +456,7 @@ def test_source_driven_temporal_matrix_uses_changing_inner_carries() -> None:
             assert action.targets[initial] == pair(values[-1], position)
             counts = tuple(
                 sum(band(pair(v, position)) == name for v in values[1:])
-                for name in ("lt_low", "lt_high", "eq", "gt_low", "gt_high")
+                for name in DECIMAL_PAIR_BANDS
             )
             assert action.band_counts[initial] == counts
             assert not action.physical_input_repeat_certified
@@ -483,11 +509,11 @@ def test_spatial_walsh64_reuses_forced_gt_bank_and_refuses_unknown_lanes() -> No
             positions=tuple(range(64)),
             include_source_digits=True,
         )
-        assert ring.harmonic(0, "lt_low").lanes == (1,)
-        assert ring.spatial_walsh64_mod5("lt_low") == (4,) + (0,) * 63
-        assert ring.spatial_walsh64_mod5("gt_high") == (0,) * 64
+        assert ring.harmonic(0, DecimalPairBand.LT_LOW).lanes == (1,)
+        assert ring.spatial_walsh64_mod5(DecimalPairBand.LT_LOW) == (4,) + (0,) * 63
+        assert ring.spatial_walsh64_mod5(DecimalPairBand.GT_HIGH) == (0,) * 64
         with pytest.raises(ValueError):
-            ring.spatial_walsh64_mod5("f5")
+            ring.spatial_walsh64_mod5(ReverseTemporalRingChannel.F5)
     finally:
         owner.dispose()
         assert ld.entries == ld.nodes == 0
@@ -505,8 +531,10 @@ def test_source_certified_temporal_bank_forces_ring_f5_orbit_without_replay() ->
         expected = tuple(bank.at(t) for t in range(bank.steps + 1))
         assert ring.phase_pair_domains[0] == tuple((s,) for s in expected)
         assert ring.target_pair_domain(pos) == (expected[-1],)
-        assert ring.harmonic(pos, "f5").lanes == tuple(s % 5 for s in expected[:-1])
-        assert ring.harmonic(pos, "gt_high").lanes == tuple(
+        assert ring.harmonic(pos, ReverseTemporalRingChannel.F5).lanes == tuple(
+            s % 5 for s in expected[:-1]
+        )
+        assert ring.harmonic(pos, DecimalPairBand.GT_HIGH).lanes == tuple(
             int(15 <= s <= 18) for s in expected[:-1]
         )
         forced = ring.diagnostic()["forced_lanes"]
@@ -531,6 +559,11 @@ def test_temporal_ring_work_counters_track_construction_not_observation() -> Non
         certificate = owner.certify_border_growth(
             owner.initial, steps=1, window_digits=1
         )
+        ring_nodes_before = sum(
+            account.nodes
+            for account in ledger.inventory()
+            if account.role == "reverse_pair_q19_temporal_ring_bank"
+        )
         ring = certificate.temporal_ring_bank(
             duration=1,
             positions=(0,),
@@ -546,10 +579,25 @@ def test_temporal_ring_work_counters_track_construction_not_observation() -> Non
             _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS
         ]
         assert cells > 0 and rounds > 0 and lane_visits > 0
+        assert ring.retained_auxiliary_array_nodes == (
+            sum(1 + len(row) for row in ring.center_domains)
+            + len(ring.global_residues99)
+            + len(ring.global_residues198)
+        )
+        ring_accounts = tuple(
+            account
+            for account in ledger.inventory()
+            if account.role == "reverse_pair_q19_temporal_ring_bank"
+        )
+        assert len(ring_accounts) == 1
+        assert (
+            ring_accounts[0].nodes - ring_nodes_before
+            >= ring.retained_auxiliary_array_nodes
+        )
 
         ring.diagnostic()
-        ring.harmonic(0, "f5")
-        ring.harmonic(0, "lt_high")
+        ring.harmonic(0, ReverseTemporalRingChannel.F5)
+        ring.harmonic(0, DecimalPairBand.LT_HIGH)
         assert (
             ledger.counters[
                 _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_CONSTRAINT_CELLS

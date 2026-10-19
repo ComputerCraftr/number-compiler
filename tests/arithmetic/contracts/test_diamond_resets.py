@@ -15,6 +15,7 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_runtime import build
 
@@ -42,7 +43,9 @@ def test_verified_four_step_reset_covers_every_original_state_and_every_word() -
 def test_composed_reset_erases_every_reachable_and_an_arbitrary_nonconstant_state() -> (
     None
 ):
-    runtime, action = build(CollatzPhysicalBlockEffect(), (0, 1), 8, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1), 8, 2
+    )
     arena = RightResetCertificates(runtime)
     assert arena.radius(action) == 2
     first = runtime.actions.reference(runtime.actions.node(action).first)
@@ -90,7 +93,9 @@ def test_composed_reset_erases_every_reachable_and_an_arbitrary_nonconstant_stat
 
 
 def test_unknown_kernel_and_short_or_left_scans_cannot_reset() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 8, 4)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 4
+    )
     arena = RightResetCertificates(runtime)
     left = runtime.execute(Initial(runtime.actions.identity, 0))
     right = runtime.execute(Initial(runtime.actions.identity, 1))

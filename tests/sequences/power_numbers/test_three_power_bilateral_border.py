@@ -19,7 +19,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
     RadixBilateralTripling,
-    _carry_h5,
+    carry_h5,
 )
 
 
@@ -122,13 +122,13 @@ def test_h5_from_both_sides_filters_short_missing_middle() -> None:
             carry = (3 * digit + carry) // border.base
             carries.append(carry)
         # Only a full separately checked harmonic may refine the middle.
-        h5 = _carry_h5(tuple(carries), 0)
+        h5 = carry_h5(tuple(carries), 0)
         filtered = border.condition_on_full_h5(h5)
         assert filtered
         assert _true_middle_transfer(source, border) in filtered
         assert len(filtered) <= len(border.allowed_middle_actions)
         assert (
-            border.condition_on_full_h5((_carry_h5(tuple(carries), 0)[0], h5[1]))
+            border.condition_on_full_h5((carry_h5(tuple(carries), 0)[0], h5[1]))
             == filtered
         )
         with pytest.raises(ValueError, match="precision-budget"):
@@ -148,7 +148,7 @@ def test_terminal_f4_f5_are_constrained_but_not_classified() -> None:
             assert b.allowed_middle_actions
             assert b.unknown_middle_length > 1000
             assert b.high_h5_options
-            assert b.low_h5 == _carry_h5(b.low_carry_vector, 0)
+            assert b.low_h5 == carry_h5(b.low_carry_vector, 0)
         if n == 4 and t == 14:
             assert packet.decimal.forced_middle_action == (2, 2, 2)
         if n == 4 and t == 15:

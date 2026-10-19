@@ -8,15 +8,18 @@ import os
 import resource
 import subprocess
 import sys
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 from time import perf_counter, process_time
-from typing import TypedDict, cast
+from typing import TypedDict, TypeGuard
 
 from devtools.checks.lazy_scaling_audit import (
     MetricSnapshot,
     QueryDelta,
+    QueryPhase,
+    ScalingAssessment,
     ScalingSample,
     metric_value,
     sample_deltas,
@@ -141,6 +144,109 @@ FIELDS = (
     "finite_port_decision_visits",
     "reverse_carry_function_classifications",
 ) + tuple(name for name, _ in DIAMOND_MEMO_ROLES)
+
+
+def _json_object(value: object) -> TypeGuard[dict[str, object]]:
+    """Narrow an object produced by ``json.loads`` to its string-keyed shape.
+
+    The standard JSON decoder represents object member names as strings, so an
+    exact dictionary check is sufficient here and avoids treating an arbitrary
+    mapping implementation as a decoded JSON object.
+    """
+    return type(value) is dict
+
+
+def _elapsed_seconds(value: object | None, field_name: str) -> float:
+    if type(value) is int:
+        return float(value)
+    if type(value) is float:
+        return value
+    raise TypeError(f"worker result has invalid {field_name}")
+
+
+def _integer_counter_map(value: object) -> TypeGuard[dict[str, int]]:
+    if not _json_object(value):
+        return False
+    return all(type(counter) is int for counter in value.values())
+
+
+def _metric_snapshot(value: object) -> MetricSnapshot:
+    if not _json_object(value):
+        raise TypeError("worker metrics must be a JSON object")
+    result: MetricSnapshot = {}
+    for name, measurement in value.items():
+        if type(measurement) is int:
+            result[name] = measurement
+        elif _integer_counter_map(measurement):
+            result[name] = measurement
+        else:
+            raise TypeError("worker metrics contain a non-integer measurement")
+    return result
+
+
+def _query_delta(value: object) -> QueryDelta:
+    if not _json_object(value):
+        raise TypeError("worker query delta must be a JSON object")
+    names = ("retained", "work", "workspace_peak_increases")
+    if not value.keys() <= set(names):
+        raise ValueError("worker query delta contains an unknown field")
+    result: QueryDelta = {}
+    for name in names:
+        counts = value.get(name)
+        if counts is None:
+            continue
+        if not _integer_counter_map(counts):
+            raise TypeError("worker query delta must contain integer counters")
+        if name == "retained":
+            result["retained"] = counts
+        elif name == "work":
+            result["work"] = counts
+        else:
+            result["workspace_peak_increases"] = counts
+    return result
+
+
+def _scaling_sample(value: object) -> ScalingSample:
+    if not _json_object(value):
+        raise TypeError("worker result must be a JSON object")
+    family = value.get("family")
+    steps = value.get("steps")
+    cold_seconds = value.get("cold_seconds")
+    warm_seconds = value.get("warm_seconds")
+    if type(family) is not str or type(steps) is not int:
+        raise TypeError("worker result has invalid scaling sample fields")
+    cold = _metric_snapshot(value.get("cold"))
+    warm = _metric_snapshot(value.get("warm"))
+    raw_phases = value.get("query_phases")
+    sample: ScalingSample = {
+        "family": family,
+        "steps": steps,
+        "cold": cold,
+        "warm": warm,
+        "cold_seconds": _elapsed_seconds(cold_seconds, "cold_seconds"),
+        "warm_seconds": _elapsed_seconds(warm_seconds, "warm_seconds"),
+    }
+    if raw_phases is None:
+        return sample
+    if not _json_object(raw_phases):
+        raise TypeError("worker query phases must be a JSON object")
+    phases: dict[str, QueryPhase] = {}
+    for phase_name, raw_phase in raw_phases.items():
+        if not _json_object(raw_phase):
+            raise TypeError("worker query phase must be a JSON object")
+        delta = raw_phase.get("delta")
+        if delta is None:
+            continue
+        phases[phase_name] = {"delta": _query_delta(delta)}
+    sample["query_phases"] = phases
+    return sample
+
+
+def _integer_field(value: Mapping[str, object], name: str) -> int:
+    field = value.get(name)
+    if type(field) is not int:
+        raise TypeError(f"worker result field {name} must be an exact integer")
+    return field
 
 
 def worker(family: str, steps: int, seed: int | None = None) -> dict[str, object]:
@@ -364,9 +470,9 @@ def _run_worker(case: tuple[str, int, int | None]) -> dict[str, object]:
         env=dict(os.environ),
     )
     value: object = json.loads(completed.stdout)
-    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+    if not _json_object(value):
         raise TypeError("worker output must be a JSON object")
-    return cast("dict[str, object]", value)
+    return value
 
 
 def main() -> None:
@@ -425,11 +531,15 @@ def main() -> None:
         rows = list(pool.map(_run_worker, cases))
     if args.stress_collatz:
         assert all(
-            row["original_seed_bits"] == 513
-            and row["oracle_odd_events"] == cast("int", row["steps"]) // 2
-            and row["oracle_one_shift_events"] == row["oracle_odd_events"]
+            _integer_field(row, "original_seed_bits") == 513
+            and _integer_field(row, "oracle_odd_events")
+            == _integer_field(row, "steps") // 2
+            and _integer_field(row, "oracle_one_shift_events")
+            == _integer_field(row, "oracle_odd_events")
             for row in rows
         )
+    samples = [_scaling_sample(row) for row in rows]
+    gate: ScalingAssessment = scaling_report(samples)
     result = {
         "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "audit_revision": 7,
@@ -444,16 +554,12 @@ def main() -> None:
             "Complete bimachine composition certification is separate from measured resource growth; finite samples do not prove logarithmic complexity."
         ],
         "rows": rows,
-        "scaling_release_gate": scaling_report(
-            [cast("ScalingSample", row) for row in rows]
-        ),
+        "scaling_release_gate": gate,
     }
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(args.output)
-    if args.require_logarithmic and result["scaling_release_gate"]["status"] != "PASS":
-        raise SystemExit(
-            "BLOCKED: " + ", ".join(result["scaling_release_gate"]["release_blockers"])
-        )
+    if args.require_logarithmic and gate["status"] != "PASS":
+        raise SystemExit("BLOCKED: " + ", ".join(gate["release_blockers"]))
 
 
 if __name__ == "__main__":

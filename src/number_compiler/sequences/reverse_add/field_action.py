@@ -33,9 +33,9 @@ from number_compiler.arithmetic.contracts.semantic_identity import (
     SemanticIdentityDomain,
 )
 from number_compiler.arithmetic.fields.radial_innovation import (
+    RadialMultiplier,
     ReverseAddCyclotomicInnovationBlock,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import RadialMultiplier
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     PowerTwoCyclotomicRadialQuotient,
 )
@@ -47,6 +47,9 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerDict
+from number_compiler.sequences.reverse_add.field_action_audit import (
+    ReverseFieldActionAudit,
+)
 from number_compiler.sequences.reverse_add.semantic_identity_cache import (
     SemanticIdentityMemoRecord,
     build_radial_identity,
@@ -79,7 +82,7 @@ from number_compiler.sequences.reverse_add.field_action_types import (
 _DEFAULT_REVERSE_GEOMETRY_1 = ReverseGeometry(0)
 
 
-class ReverseFieldActionArena:
+class ReverseFieldActionArena(ReverseFieldActionAudit):
     """Index-owned canonical arena for algebraic reverse/add actions."""
 
     _ACTION_KIND = "field-cell-action"
@@ -337,6 +340,10 @@ class ReverseFieldActionArena:
         """Validate the shared runtime sort and this arena's scoped identity."""
         self.resolve(reference)
 
+    def validate_residual(self, reference: ReverseDefectClassID) -> None:
+        """Validate a residual handle against this exact arena and store."""
+        self._residual_key(reference)
+
     def validate_output(self, reference: CoordinateOutputMorphismID) -> None:
         """Reject foreign or wrong-sort morphisms before an image lookup."""
         self._output_key(reference)
@@ -344,6 +351,22 @@ class ReverseFieldActionArena:
     def output_semantics(self, reference: CoordinateOutputMorphismID) -> SemanticKey:
         """Return the bounded canonical program key, never an emitted tape."""
         return self._output_key(reference)
+
+    def audit_expected_action_key(
+        self, action: ReverseFieldAction
+    ) -> tuple[object, ...]:
+        """Return the canonical key recomputed from a typed action record."""
+        if type(action) is not ReverseFieldAction:
+            raise TypeError("reverse action audit requires an exact action record")
+        return self._action_key(
+            action.base,
+            self._block(action),
+            action.carry_forward,
+            action.carry_backward,
+            action.residual,
+            action.output,
+            action.geometry,
+        )
 
     def temporal_action(self, reference: FieldCellActionID) -> RadialMultiplier:
         """Return the radial exponents recorded on this algebraic action.
@@ -456,14 +479,14 @@ class ReverseFieldActionArena:
             self._semantic_identity_issued[reference] = record
         except BaseException:
             issued_removed = (
-                self._semantic_identity_issued._rollback_unpublished(reference, record)
+                self._semantic_identity_issued.rollback_unpublished(reference, record)
                 if record is not None
                 else False
             )
             if not issued_removed:
                 self.ledger.release(self._semantic_identity_issued_owner, entries=1)
             identity_removed = (
-                self._semantic_identities._rollback_unpublished(reference, record)
+                self._semantic_identities.rollback_unpublished(reference, record)
                 if record is not None
                 else False
             )

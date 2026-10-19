@@ -54,6 +54,22 @@ _HISTORY_FIELDS = frozenset(
     }
 )
 
+AGGREGATE_EXEMPT_PAYLOAD_ROLES = frozenset(
+    {
+        "exact_source",
+        "exact_endpoint",
+        "explicit_lowering",
+        "lowering",
+        "exact_microblock",
+        "radix_image_binding",
+        "image_input_reference",
+        "image_input_reference_interner",
+        "image_input_reference_binding",
+        "future_behavior_admission",
+        "future_behavior_publication_snapshot",
+    }
+)
+
 
 def _role(role: str) -> str:
     return role.lower().replace("-", "_")

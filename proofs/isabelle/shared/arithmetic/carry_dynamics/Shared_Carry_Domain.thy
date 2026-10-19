@@ -24,6 +24,10 @@ lemma carry_then_apply:
     carry_apply after (carry_apply before c)"
   by (cases after; cases before; cases c; simp_all add: carry_then_def)
 
+lemma carry_domain_idempotent:
+  "carry_apply d (carry_apply d c) = carry_apply d c"
+  by (cases d) simp_all
+
 lemma carry_apply_decimal_threshold:
   "carry_apply (domain s) c = (10 \<le> s + (if c then 1 else 0))"
   by (cases c; auto simp: domain_def split: if_splits; arith)
@@ -61,7 +65,7 @@ qed
 
 ML \<open>
   val checked = @{thms carry_then_apply carry_apply_decimal_threshold
-      decimal_double_digit_floor_carry};
+      carry_domain_idempotent decimal_double_digit_floor_carry};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared carry-domain proof depends on an oracle";
 \<close>

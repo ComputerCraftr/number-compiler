@@ -8,13 +8,18 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.actions.field_actions import (
+    FieldCellActionID,
+    FieldGeometryID,
+)
 from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_images import SourceCellID
-from number_compiler.hashlife.execution.source_bound_images import SourceImageView
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageView,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.recursive_adapters import (
-    _ReverseRecursiveFieldAdapter,
+    ReverseRecursiveFieldAdapter,
 )
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveTemporalCutover,
@@ -271,21 +276,22 @@ def test_small_decimal_composite_uses_authenticated_q19_occurrence(
 def test_completed_child_parent_join_never_recompiles_nonleaf_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_compile = _ReverseRecursiveFieldAdapter._compile
+    original_leaf = ReverseRecursiveFieldAdapter.leaf
 
-    def leaf_only_compile(
-        self: _ReverseRecursiveFieldAdapter,
+    def checked_leaf(
+        self: ReverseRecursiveFieldAdapter,
         action: FieldCellActionID,
         source: SourceCellID,
+        geometry: FieldGeometryID,
     ) -> FieldImageCandidate:
         if self.sources.resolve(source).level > 0:
             raise AssertionError("completed parent was recompiled from source")
-        return original_compile(self, action, source)
+        return original_leaf(self, action, source, geometry)
 
     def forbidden_terminal_image(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("direct output rebuilt a terminal field image")
 
-    monkeypatch.setattr(_ReverseRecursiveFieldAdapter, "_compile", leaf_only_compile)
+    monkeypatch.setattr(ReverseRecursiveFieldAdapter, "leaf", checked_leaf)
     monkeypatch.setattr(
         ReverseRecursiveTemporalCutover, "digit_image", forbidden_terminal_image
     )
@@ -305,18 +311,19 @@ def test_direct_pair_image_uses_joined_children_and_checks_occurrence_authority(
     cutover = ReverseRecursiveTemporalCutover(
         ledger, literal_reverse_add_digits(196, 0), base=10, maximum_steps=3
     )
-    original_compile = _ReverseRecursiveFieldAdapter._compile
+    original_leaf = ReverseRecursiveFieldAdapter.leaf
 
-    def leaf_only_compile(
-        self: _ReverseRecursiveFieldAdapter,
+    def checked_leaf(
+        self: ReverseRecursiveFieldAdapter,
         action: FieldCellActionID,
         source: SourceCellID,
+        geometry: FieldGeometryID,
     ) -> FieldImageCandidate:
         if self.sources.resolve(source).level > 0:
             raise AssertionError("direct pair image recompiled a nonleaf source")
-        return original_compile(self, action, source)
+        return original_leaf(self, action, source, geometry)
 
-    monkeypatch.setattr(_ReverseRecursiveFieldAdapter, "_compile", leaf_only_compile)
+    monkeypatch.setattr(ReverseRecursiveFieldAdapter, "leaf", checked_leaf)
     occurrence = cutover.pair_image(3)
     assert occurrence.temporal_steps == 3
     assert tuple(cutover.iter_digits(occurrence)) == (6, 3, 4, 7)
@@ -479,8 +486,18 @@ def test_adapter_memo_construction_failure_retires_its_registered_owner(
 
 
 @pytest.mark.parametrize("base", [2, 3, 10])
-def test_two_step_small_sources_against_independent_arithmetic(base: int) -> None:
-    for seed in range(512):
+@pytest.mark.parametrize(
+    "exhaustive", [False, pytest.param(True, marks=pytest.mark.validation)]
+)
+def test_two_step_small_sources_against_independent_arithmetic(
+    base: int, exhaustive: bool
+) -> None:
+    seeds = (
+        range(512)
+        if exhaustive
+        else (0, 1, base - 1, base, base + 1, base**2 - 1, base**2, 196, 511)
+    )
+    for seed in seeds:
         workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2, base=base)
         assert tuple(workspace.iter_digits()) == literal_reverse_add_digits(
             seed, 2, base

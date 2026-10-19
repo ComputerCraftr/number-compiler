@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -220,6 +220,11 @@ class HashLifeBlockIndex:
         )
 
     @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Return this index's exact shared resource owner."""
+        return self._ledger
+
+    @property
     def _tile_roots(self) -> set[DyadicTile]:
         return {chunk.tile for chunk in self.evaluation_root.chunks}
 
@@ -336,7 +341,7 @@ class HashLifeBlockIndex:
 __all__ = ["HashLifeBehaviorMetrics", "HashLifeBlockIndex", "HashLifeProjectionMetrics"]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     from number_compiler.api.lazy_exports import resolve_export
 
     return resolve_export(

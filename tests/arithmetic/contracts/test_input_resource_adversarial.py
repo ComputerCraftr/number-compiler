@@ -278,7 +278,7 @@ def test_public_digit_aliases_reject_before_zero_or_warm_lookup(
     )
     for value in BAD:
         assert_rejected_atomically(
-            term._ledger, partial(term.digit, cast(int, value)), TypeError
+            term.resource_ledger, partial(term.digit, cast(int, value)), TypeError
         )
 
 

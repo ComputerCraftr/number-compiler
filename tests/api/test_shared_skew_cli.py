@@ -11,6 +11,8 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
@@ -22,7 +24,7 @@ from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
 from number_compiler.sequences.prime.select import PrimePrefixRank
-from number_compiler.sequences.prime.successor_action import (
+from number_compiler.sequences.prime.successor_image_adapter import (
     PrimeSuccessorImageAdapter,
 )
 

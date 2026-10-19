@@ -6,9 +6,9 @@ import pytest
 
 from devtools.experiments.reverse_add.cocycle_temporal import (
     CocycleAction,
+    CocycleCompositionEntry,
+    CocycleCompositionKey,
     CocycleTemporalArena,
-    _CompositionEntry,
-    _CompositionKey,
 )
 from devtools.experiments.reverse_add.cocycle_temporal_payload_audit import (
     audit_cocycle_temporal_payloads,
@@ -40,8 +40,8 @@ def _work(context: BoundedReverseCocycle) -> tuple[int, ...]:
     )
 
 
-def _cache_key(before: CocycleAction, after: CocycleAction) -> _CompositionKey:
-    return _CompositionKey(
+def _cache_key(before: CocycleAction, after: CocycleAction) -> CocycleCompositionKey:
+    return CocycleCompositionKey(
         before.ports,
         before.outputs,
         before.cocycles,
@@ -121,7 +121,7 @@ def test_valid_shape_cache_substitution_is_rejected() -> None:
     entry = context.temporal._composition_cache[key]
     assert entry.result is result
 
-    context.temporal._composition_cache._data[key] = _CompositionEntry(
+    context.temporal._composition_cache._data[key] = CocycleCompositionEntry(
         key, entry.entry_id, primitive
     )
     with pytest.raises(ValueError, match="cache|publication|events"):
@@ -139,7 +139,7 @@ def test_cache_cap_evicts_the_oldest_complete_key_and_reconciles_entries() -> No
         for event in range(1, temporal._COMPOSITION_CACHE_LIMIT + 1)
     )
     for key in keys:
-        entry = _CompositionEntry(
+        entry = CocycleCompositionEntry(
             key,
             temporal._next_composition_entry,
             replace(primitive, events=key.before_events + key.after_events),
@@ -276,7 +276,7 @@ def test_audit_rejects_corrupted_cache_entry_and_seal() -> None:
     entry = context.temporal._composition_cache[key]
     old_seal = context.temporal._composition_seals[key]
 
-    context.temporal._composition_cache._data[key] = _CompositionEntry(
+    context.temporal._composition_cache._data[key] = CocycleCompositionEntry(
         key, entry.entry_id, primitive
     )
     try:

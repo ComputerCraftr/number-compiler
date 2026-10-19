@@ -10,7 +10,7 @@ from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
 from number_compiler.sequences.reverse_add.source_images import (
-    _ReverseSourceImageAdapter,
+    ReverseSourceImageAdapter,
 )
 from tests.support.reference_arithmetic import literal_reverse_add_digits
 
@@ -119,7 +119,7 @@ def test_scheduler_publishes_punctured_t2_as_completed_output() -> None:
     workspace = term._source_workspace()
     try:
         assert term.digits() == literal_reverse_add_digits(seed, steps)
-        counters = term._ledger.counters
+        counters = term.resource_ledger.counters
         assert counters.get("reverse_q19_punctured_t2_applications", 0) > 0
         assert counters.get("reverse_q19_root_bootstrap_publications", 0) > 0
         assert counters.get("reverse_q19_root_bootstrap_pair_steps", 0) > 0
@@ -139,9 +139,9 @@ def test_larger_request_joins_punctured_children_without_source_primitive_descen
         def forbidden(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("T2/T4 composite descended to a source primitive")
 
-        monkeypatch.setattr(_ReverseSourceImageAdapter, "apply_primitive", forbidden)
+        monkeypatch.setattr(ReverseSourceImageAdapter, "apply_primitive", forbidden)
         assert term.digits() == literal_reverse_add_digits(seed, steps)
-        counters = term._ledger.counters
+        counters = term.resource_ledger.counters
         assert (
             counters.get("reverse_source_punctured_completed_child_publications", 0) > 0
         )

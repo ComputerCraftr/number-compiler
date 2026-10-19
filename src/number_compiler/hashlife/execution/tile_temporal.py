@@ -59,7 +59,7 @@ def complete_temporal(
         while frames:
             frame = frames.pop()
             key = frame.key
-            found = scheduler._lookup_execution_key(key)
+            found = scheduler.lookup_execution_key(key)
             scheduler.ledger.bump(_execution_keys.TILE_TEMPORAL_COMPLETE_FRAMES)
             if found is not None:
                 values.append(own(found))

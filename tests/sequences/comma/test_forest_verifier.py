@@ -23,7 +23,7 @@ from number_compiler.sequences.comma.forest_verifier import (
 from tests.support.comma_oracles import assert_phase_period
 
 
-def _canonical_line(value: Any) -> bytes:
+def _canonical_line(value: object) -> bytes:
     return (
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         + "\n"

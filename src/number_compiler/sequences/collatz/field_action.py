@@ -10,13 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
-from hashlib import sha256
 from types import MappingProxyType
 from typing import Final, Literal, Protocol, TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
-    ArenaHandle,
     ArenaToken,
 )
 from number_compiler.arithmetic.contracts.semantic_identity import (
@@ -35,7 +33,19 @@ from number_compiler.hashlife.actions.field_actions import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+    PayloadAuditStoreBinding,
+    register_payload_audit_contract,
+)
 from number_compiler.sequences.collatz.character import CollatzRadialCharacter
+from number_compiler.sequences.collatz.defect_arena import (
+    CollatzDefectArena as _CollatzDefectArena,
+)
+from number_compiler.sequences.collatz.defect_arena import (
+    CollatzDefectClassID as _CollatzDefectClassID,
+)
 
 ProgramRole = Literal[
     "root",
@@ -54,7 +64,6 @@ _PROGRAM_ROLES: tuple[ProgramRole, ...] = (
     "frame",
 )
 _ACTION_KIND = "field-cell-action"
-_DEFECT_KIND = "collatz-residual-defect"
 _OUTPUT_KIND = "coordinate-output-morphism"
 COLLATZ_CHARACTER_ACTION_TAG: Final[str] = "collatz-character-action-v1"
 COLLATZ_RESIDUAL_DEFECT_TAG: Final[str] = "collatz-residual-defect-v1"
@@ -79,6 +88,12 @@ class CollatzSymbolicProgramAlgebra(Protocol):
         reference: ActionProgramID,
     ) -> SemanticIdentity: ...
 
+    def audit_semantic_identity(
+        self,
+        role: ProgramRole,
+        reference: ActionProgramID,
+    ) -> SemanticIdentity: ...
+
     def composed_semantic_identity(
         self,
         role: ProgramRole,
@@ -94,94 +109,9 @@ class CollatzSymbolicProgramAlgebra(Protocol):
     ) -> ActionProgramID: ...
 
 
-@dataclass(frozen=True, slots=True)
-class CollatzDefectClassID(ArenaHandle):
-    """A scoped class in one frozen residual-behavior certificate."""
-
-
 # Compatibility spelling for callers of the family module.  Production image
 # arenas must see the shared runtime action sort, never a family-local alias.
 CollatzFieldActionID: TypeAlias = FieldCellActionID
-
-
-class CollatzDefectArena:
-    """Frozen finite monoid for the residual behavior left after factoring."""
-
-    def __init__(
-        self,
-        table: tuple[tuple[int, ...], ...],
-        *,
-        identity: int,
-        ledger: ResourceLedger | None = None,
-    ) -> None:
-        if (
-            type(table) is not tuple
-            or not table
-            or any(type(row) is not tuple for row in table)
-        ):
-            raise TypeError(
-                "residual composition table must be a nonempty immutable matrix"
-            )
-        size = len(table)
-        if type(identity) is not int:
-            raise TypeError("residual identity must be an exact class index")
-        if not 0 <= identity < size:
-            raise ValueError("residual identity must be an exact class index")
-        if any(len(row) != size for row in table):
-            raise ValueError("residual composition table must be square")
-        for row in table:
-            for result in row:
-                if type(result) is not int or not 0 <= result < size:
-                    raise ValueError("residual composition table is not closed")
-        for index in range(size):
-            if table[identity][index] != index or table[index][identity] != index:
-                raise ValueError("declared residual identity is invalid")
-        for first in range(size):
-            for second in range(size):
-                for third in range(size):
-                    if (
-                        table[table[first][second]][third]
-                        != table[first][table[second][third]]
-                    ):
-                        raise ValueError(
-                            "residual composition table is not associative"
-                        )
-        self.owner = ArenaToken("collatz-residual-defects")
-        self.ledger = ledger if ledger is not None else ResourceLedger()
-        self.table = table
-        self.identity_index = identity
-        encoded = repr((size, identity, table)).encode("ascii")
-        self.certificate_digest = sha256(encoded).hexdigest()
-
-    @property
-    def class_count(self) -> int:
-        return len(self.table)
-
-    @property
-    def identity(self) -> CollatzDefectClassID:
-        return self.class_id(self.identity_index)
-
-    def class_id(self, index: int) -> CollatzDefectClassID:
-        if type(index) is not int or not 0 <= index < self.class_count:
-            raise ValueError("invalid residual class index")
-        return CollatzDefectClassID(self.owner, _DEFECT_KIND, index)
-
-    def validate(self, reference: CollatzDefectClassID) -> int:
-        if type(reference) is not CollatzDefectClassID:
-            raise TypeError("expected a scoped Collatz residual class")
-        return reference.validate(
-            self.owner,
-            _DEFECT_KIND,
-            size=self.class_count,
-        ).local_id
-
-    def compose(
-        self,
-        before: CollatzDefectClassID,
-        after: CollatzDefectClassID,
-    ) -> CollatzDefectClassID:
-        before_id, after_id = self.validate(before), self.validate(after)
-        return self.class_id(self.table[before_id][after_id])
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,7 +202,7 @@ class CollatzFieldAction:
     root_action: ActionProgramID
     affine_action: ActionProgramID
     innovation: PadicRadialQuotient
-    defect: CollatzDefectClassID
+    defect: _CollatzDefectClassID
     cocycles: CollatzCocyclePrograms
     output_morphism: ActionProgramID
     geometry: CollatzActionGeometry
@@ -296,7 +226,7 @@ class CollatzFieldActionArena:
     def __init__(
         self,
         programs: CollatzSymbolicProgramAlgebra,
-        defects: CollatzDefectArena,
+        defects: _CollatzDefectArena,
         *,
         radial_orders: tuple[int, ...] = (),
         padic_precision: int = 32,
@@ -410,11 +340,8 @@ class CollatzFieldActionArena:
         self._composition_early_hits = 0
         self._early_hits = 0
         self._source_annihilation_derivations = 0
-        from number_compiler.sequences.collatz.payload_audit import (
-            register_collatz_field_action_contract,
-        )
 
-        register_collatz_field_action_contract(self)
+        self.register_payload_audit()
 
     @property
     def nodes(self) -> tuple[CollatzFieldAction, ...]:
@@ -824,6 +751,168 @@ class CollatzFieldActionArena:
             len(self._compositions),
         )
 
+    def register_payload_audit(self) -> None:
+        root = self
+
+        if type(root) is not CollatzFieldActionArena:
+            raise TypeError("Collatz field-action audit requires its exact arena")
+        stores = (
+            PayloadAuditStoreBinding(
+                root._node_owner, "_nodes", "collatz_field_action"
+            ),
+            PayloadAuditStoreBinding(
+                root._key_owner, "_keys", "collatz_field_action_interner"
+            ),
+            PayloadAuditStoreBinding(
+                root._output_node_owner,
+                "_output_programs",
+                "coordinate_output_morphism",
+            ),
+            PayloadAuditStoreBinding(
+                root._output_key_owner,
+                "_output_ids",
+                "coordinate_output_interner",
+            ),
+            PayloadAuditStoreBinding(
+                root._witness_owner,
+                "_witnesses",
+                "action_construction_metadata",
+            ),
+            PayloadAuditStoreBinding(
+                root._composition_owner,
+                "_compositions",
+                "action_construction_metadata",
+            ),
+        )
+        register_payload_audit_contract(
+            root.ledger, root, "collatz", stores, audit_collatz_field_action
+        )
+
+    def audit_payload(self, ledger: object, root: object) -> PayloadAuditContribution:
+        """Validate action/key/output/witness rows without ledger mutation."""
+        if root is not self:
+            raise TypeError("payload audit callback received another owner")
+        from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+        from number_compiler.arithmetic.contracts.semantic_identity import (
+            SemanticIdentity,
+        )
+        from number_compiler.resources.ledger import ResourceLedger
+
+        if (
+            type(ledger) is not ResourceLedger
+            or type(root) is not CollatzFieldActionArena
+        ):
+            raise TypeError("Collatz field-action audit received a foreign owner")
+        arena = root
+        approved: list[PayloadAuditEntry] = []
+        invalid: list[PayloadAuditEntry] = []
+
+        def accept(owner: int, value: object) -> None:
+            approved.append(PayloadAuditEntry(owner, value))
+
+        def reject(owner: int, value: object) -> None:
+            invalid.append(PayloadAuditEntry(owner, value))
+
+        if arena.ledger is not ledger:
+            reject(arena._node_owner, arena)
+            return PayloadAuditContribution((), tuple(invalid))
+
+        for index, action in enumerate(arena._nodes):
+            try:
+                valid = type(action) is CollatzFieldAction
+                arena._validate_action(action)
+                reference = CollatzFieldActionID(arena.owner, arena.action_kind, index)
+                valid &= arena.resolve(reference) is action
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            (accept if valid else reject)(arena._node_owner, action)
+
+        program_identity_cache: dict[
+            tuple[ProgramRole, ActionProgramID], SemanticIdentity
+        ] = {}
+
+        def audit_program_identity(
+            role: ProgramRole, program: ActionProgramID
+        ) -> SemanticIdentity:
+            cache_key = role, program
+            found = program_identity_cache.get(cache_key)
+            if found is not None:
+                return found
+            identity = arena.programs.audit_semantic_identity(role, program)
+            if type(identity) is not SemanticIdentity:
+                raise TypeError("Collatz program audit returned an unchecked identity")
+            program_identity_cache[cache_key] = identity
+            return identity
+
+        for key, reference in arena._keys.items():
+            try:
+                valid = type(key) is SemanticIdentity
+                valid &= type(reference) is CollatzFieldActionID
+                action = arena.resolve(reference)
+                if type(action) is not CollatzFieldAction:
+                    raise TypeError("Collatz field-action store contains another node")
+                arena._validate_action(action)
+                program_identities = (
+                    audit_program_identity("root", action.root_action),
+                    audit_program_identity("affine", action.affine_action),
+                    audit_program_identity(
+                        "physical-tick", action.cocycles.physical_tick
+                    ),
+                    audit_program_identity("valuation", action.cocycles.valuation),
+                    audit_program_identity("frame", action.cocycles.frame),
+                    audit_program_identity("output", action.output_morphism),
+                )
+                valid &= arena._action_identity(action, program_identities) == key
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            (accept if valid else reject)(arena._key_owner, key)
+            (accept if valid else reject)(arena._key_owner, reference)
+
+        for index, program in enumerate(arena._output_programs):
+            try:
+                valid = type(program) is ActionProgramID
+                arena._validate_program("output", program)
+                valid &= arena._output_ids.get(program) == index
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            (accept if valid else reject)(arena._output_node_owner, program)
+
+        for program, index in arena._output_ids.items():
+            valid = type(program) is ActionProgramID and type(index) is int
+            valid &= 0 <= index < len(arena._output_programs)
+            if valid:
+                valid &= arena._output_programs[index] == program
+            (accept if valid else reject)(arena._output_key_owner, program)
+            (accept if valid else reject)(arena._output_key_owner, index)
+
+        for parent, children in arena._witnesses.items():
+            try:
+                valid = type(parent) is CollatzFieldActionID
+                arena.resolve(parent)
+                valid &= type(children) is tuple and len(children) == 2
+                if valid:
+                    for child in children:
+                        arena.resolve(child)
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            (accept if valid else reject)(arena._witness_owner, parent)
+            (accept if valid else reject)(arena._witness_owner, children)
+
+        for operands, result in arena._compositions.items():
+            try:
+                valid = type(operands) is tuple and len(operands) == 2
+                if valid:
+                    first, second = operands
+                    arena.resolve(first)
+                    arena.resolve(second)
+                arena.resolve(result)
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            (accept if valid else reject)(arena._composition_owner, operands)
+            (accept if valid else reject)(arena._composition_owner, result)
+
+        return PayloadAuditContribution(tuple(approved), tuple(invalid))
+
 
 def bounded_3adic_innovation(
     precision: int,
@@ -847,8 +936,6 @@ __all__ = [
     "CollatzActionGeometry",
     "CollatzCharacterAction",
     "CollatzCocyclePrograms",
-    "CollatzDefectArena",
-    "CollatzDefectClassID",
     "CollatzFieldAction",
     "CollatzFieldActionArena",
     "CollatzFieldActionID",
@@ -857,3 +944,12 @@ __all__ = [
     "ProgramRole",
     "bounded_3adic_innovation",
 ]
+
+
+def audit_collatz_field_action(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    """Closure-free ledger entry point for its exact family owner."""
+    if type(root) is not CollatzFieldActionArena:
+        raise TypeError("Collatz payload audit received another owner")
+    return root.audit_payload(ledger, root)

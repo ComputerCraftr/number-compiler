@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from _thread import LockType
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from math import lcm
@@ -77,7 +77,7 @@ def _column_node_cost(key: ReturnColumnKey, value: ReturnColumnKey) -> int:
 @contextmanager
 def _workspace_reservation(
     ledger: ResourceLedger, owner: int
-) -> Iterator[tuple[Callable[[int], None], Callable[[int], None]]]:
+) -> Generator[tuple[Callable[[int], None], Callable[[int], None]], None, None]:
     """Account temporary MDD work once and release it on every exit path."""
     held = 0
 
@@ -102,7 +102,7 @@ def _workspace_reservation(
 
 
 @contextmanager
-def _dispose_on_exit(dispose: Callable[[], None]) -> Iterator[None]:
+def _dispose_on_exit(dispose: Callable[[], None]) -> Generator[None, None, None]:
     """Keep attempting later cleanup actions when one disposer raises."""
     try:
         yield

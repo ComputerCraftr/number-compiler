@@ -7,13 +7,15 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate
+from tests.support.symbolic_innovation import evaluate
 
 
 def _forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -67,7 +69,7 @@ def test_parity_pullback_matches_exact_substitution(q: int, coefficient: int) ->
     replacement = arena.interval(4)
     (exact,) = arena.substitute_many((root,), {atom: replacement})
     (parity,) = arena.substitute_parity_many((root,), {atom: replacement})
-    original, reduced = _evaluate(arena, exact), _evaluate(arena, parity)
+    original, reduced = evaluate(arena, exact), evaluate(arena, parity)
     assert {i: v % 2 for i, v in original.items() if v % 2} == {
         i: v % 2 for i, v in reduced.items() if v % 2
     }

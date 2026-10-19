@@ -7,8 +7,8 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
@@ -17,21 +17,21 @@ from number_compiler.arithmetic.polynomials.f5_transport import (
     F5SpatialTransport,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+from tests.support.symbolic_innovation import evaluate, polynomial
 
 
 @pytest.mark.parametrize("growth", [0, 1, 4, 5, 9, 20])
 def test_f5_handle_composition_matches_exact_integer_lift(growth: int) -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
-    left = _polynomial(arena, [2, -1, 4])
-    right = _polynomial(arena, [-3, 1, 0, 2])
+    left = polynomial(arena, [2, -1, 4])
+    right = polynomial(arena, [-3, 1, 0, 2])
     before = F5AffineTransport(F5SpatialTransport(1, 2), left)
     after = F5AffineTransport(F5SpatialTransport(3, growth), right)
     result = compose_f5_forcing(arena, before, after)
     exact = arena.add(arena.radial(left, RadialMultiplier(3, growth)), right)
 
-    got = _evaluate(arena, result.forcing)
-    expected = _evaluate(arena, exact)
+    got = evaluate(arena, result.forcing)
+    expected = evaluate(arena, exact)
     assert {i: v % 5 for i, v in got.items() if v % 5} == {
         i: v % 5 for i, v in expected.items() if v % 5
     }
@@ -66,7 +66,7 @@ def test_dense_operator_reuses_ledger_handles_without_atom_evaluation(
     # Warm memoization validates handles but does not repeat construction.
     assert arena.ledger.counters["symbolic_innovation_f5_shift_requests"] == 256
     assert arena.ledger.counters["symbolic_innovation_f5_composition_hits"] == 1
-    arena._f5_composition_cache().clear()
+    arena.f5_composition_cache().clear()
     assert compose_f5_forcing(arena, before, after) == result
     assert arena.node_count == retained
     assert arena.ledger.counters["symbolic_innovation_f5_shift_requests"] == 512

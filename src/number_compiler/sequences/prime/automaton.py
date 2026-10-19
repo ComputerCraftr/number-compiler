@@ -51,7 +51,8 @@ class BooleanCoordinateDerivativeMetrics:
     @property
     def densities(self) -> tuple[float, ...]:
         return tuple(
-            ones / pairs for ones, pairs in zip(self.derivative_ones, self.pair_counts)
+            ones / pairs
+            for ones, pairs in zip(self.derivative_ones, self.pair_counts, strict=True)
         )
 
 

@@ -10,16 +10,16 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.causal_frames import (
+    ResidualFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_pair_transfer import (
     finite_pair_transfer,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    CausalPrefix,
-)
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
+from number_compiler.resources.causal_types import CausalPrefix
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     LEFT,
@@ -33,7 +33,7 @@ from number_compiler.sequences.reverse_add.tile_pair_transfer import (
     ReverseAddFinitePairTransfer,
 )
 from tests.support.assertions import assert_clean_payloads
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 @pytest.mark.parametrize("base", (2, 3, 10))
@@ -49,7 +49,7 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
 ) -> None:
     from tests.arithmetic.contracts.test_tile_causal_private import _scan
 
-    ledger, tiles, adapter, before, scheduler = _runtime(BaseBlockEffect(base))
+    ledger, tiles, adapter, before, scheduler = make_tile_runtime(BaseBlockEffect(base))
     after = adapter.admit(DigitNormalizeBlockEffect(base)) if terminal else before
     action = adapter.compose(before, after)
     first, second = adapter.primitive_law(before), adapter.primitive_law(after)
@@ -64,7 +64,7 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("finite transfer constructed a producer boundary output")
 
-    with _tile(tiles, adapter, before, symbols) as source:
+    with make_tile_from_symbols(tiles, adapter, before, symbols) as source:
         prefix = CausalPrefix(
             action,
             side,
@@ -96,7 +96,9 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
 
 
 def test_decimal_output_morphism_all_kernel_ports() -> None:
-    _ledger, _tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(10))
+    _ledger, _tiles, adapter, action, _scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
     kernel = adapter.primitive_law(action)
     arena = ReversePrimitiveOutputMorphism(adapter.bits, kernel)
     for symbol in range(20):
@@ -117,7 +119,9 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
     from number_compiler.sequences.reverse_add import tile_pair_transfer
     from tests.arithmetic.contracts.test_tile_causal_private import _scan
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
     action = adapter.compose(primitive, primitive)
     law = adapter.primitive_law(primitive)
     symbols = (0, 9, 10, 19)
@@ -127,7 +131,7 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
     for s in reversed(produced) if side else produced:
         expected = law.advance(BoundarySide(side), expected, s)
     with (
-        _tile(tiles, adapter, primitive, symbols) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, symbols) as source,
         tiles.mirror(source.tile) as _mirrored_source,
     ):
         prefix = CausalPrefix(
@@ -146,7 +150,7 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
         monkeypatch.setattr(tiles, "join", forbidden)
         engine = CausalTileEngine(scheduler)
         result = engine._run(
-            CausalFrame("residual", (action, side, prefix, ports[1 - side])),
+            ResidualFrame((action, side, prefix, ports[1 - side])),
             tile_result=False,
         )
         # Audits independently validate retained transfer metadata, including
@@ -168,11 +172,11 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
 def test_morphism_budget_failure_cleans_traversal_and_stale_sources_are_rejected() -> (
     None
 ):
-    ledger, tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, action, _scheduler = make_tile_runtime(BaseBlockEffect(10))
     arena = ReverseMorphismTransferArena(
         tiles, adapter.bits, adapter.primitive_law(action)
     )
-    with _tile(tiles, adapter, action, (10, 0)) as source:
+    with make_tile_from_symbols(tiles, adapter, action, (10, 0)) as source:
         ledger.max_cache_entries = ledger.entries
         before = ledger.snapshot()
         with pytest.raises(BlockContextBudgetExceeded):
@@ -189,15 +193,21 @@ def test_morphism_budget_failure_cleans_traversal_and_stale_sources_are_rejected
 
 
 def test_cancellation_and_carry_distinctions_survive_the_connected_projection() -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
     arena = ReverseMorphismTransferArena(
         tiles, adapter.bits, adapter.primitive_law(primitive)
     )
     with (
-        _tile(tiles, adapter, primitive, (10, 0, 0, 10, 19, 19, 19, 19)) as first,
-        _tile(tiles, adapter, primitive, (10, 9, 9, 10, 19, 19, 19, 19)) as second,
-        _tile(tiles, adapter, primitive, (4, 4)) as four,
-        _tile(tiles, adapter, primitive, (9, 9)) as nine,
+        make_tile_from_symbols(
+            tiles, adapter, primitive, (10, 0, 0, 10, 19, 19, 19, 19)
+        ) as first,
+        make_tile_from_symbols(
+            tiles, adapter, primitive, (10, 9, 9, 10, 19, 19, 19, 19)
+        ) as second,
+        make_tile_from_symbols(tiles, adapter, primitive, (4, 4)) as four,
+        make_tile_from_symbols(tiles, adapter, primitive, (9, 9)) as nine,
     ):
         assert first.tile != second.tile
         assert arena.compile_bound(first.tile, (0, 0)) == arena.compile_bound(
@@ -223,7 +233,7 @@ def test_next_carry_is_parametric_and_never_constructs_successor(
     symbols: tuple[int, ...],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(10))
+    _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(10))
     arena = ReverseMorphismTransferArena(
         tiles, adapter.bits, adapter.primitive_law(action)
     )
@@ -246,7 +256,7 @@ def test_next_carry_is_parametric_and_never_constructs_successor(
                 for value in reversed(output) if side else output:
                     state = law.advance(BoundarySide(side), state, value)
                 expected[left, right, side, incoming] = state
-    with _tile(tiles, adapter, action, symbols) as source:
+    with make_tile_from_symbols(tiles, adapter, action, symbols) as source:
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
             pytest.fail("carry morphism constructed an exact successor")
@@ -264,7 +274,7 @@ def test_directional_future_consumer_drops_exact_pair_output(
 ) -> None:
     from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortCodec
 
-    ledger, tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, action, _scheduler = make_tile_runtime(BaseBlockEffect(10))
     arena = ReverseMorphismTransferArena(
         tiles, adapter.bits, adapter.primitive_law(action)
     )
@@ -283,7 +293,7 @@ def test_directional_future_consumer_drops_exact_pair_output(
     monkeypatch.setattr(ReversePrimitiveOutputMorphism, "bind", forbidden)
     monkeypatch.setattr(type(law), "emit", forbidden)
     for symbol in range(20):
-        with _tile(tiles, adapter, action, (symbol,)) as source:
+        with make_tile_from_symbols(tiles, adapter, action, (symbol,)) as source:
             for left, right in product(range(43), range(5)):
                 transfer = arena.compile_right(source.tile, (left, right))
                 assert (
@@ -300,13 +310,13 @@ def test_directional_future_consumer_drops_exact_pair_output(
 
 
 def test_directional_composition_merges_different_exact_edges() -> None:
-    ledger, tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, action, _scheduler = make_tile_runtime(BaseBlockEffect(10))
     arena = ReverseMorphismTransferArena(
         tiles, adapter.bits, adapter.primitive_law(action)
     )
     with (
-        _tile(tiles, adapter, action, (1, 1)) as first,
-        _tile(tiles, adapter, action, (2, 2)) as second,
+        make_tile_from_symbols(tiles, adapter, action, (1, 1)) as first,
+        make_tile_from_symbols(tiles, adapter, action, (2, 2)) as second,
     ):
         assert arena.compile_right(first.tile, (0, 0)) == arena.compile_right(
             second.tile, (0, 0)

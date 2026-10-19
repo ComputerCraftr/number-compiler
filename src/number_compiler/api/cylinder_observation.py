@@ -9,9 +9,15 @@ Special-number roots are supplied and checked, never advertised as terminal root
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
 
-from number_compiler.api.observation_types import FamilyId
+from number_compiler.api.output_schema import (
+    CollatzPhysicalClockValue,
+    CollatzTapeWidthPacket,
+    HomogeneousGrowthPacket,
+    PhysicalCollatzClockPacket,
+    RadialSturmianPacket,
+)
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.homogeneous_growth import (
     GrowthArithmeticEvaluator,
@@ -26,6 +32,9 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
+from number_compiler.sequences.collatz.observation_kind import (
+    CollatzObservationKind,
+)
 from number_compiler.sequences.power_numbers.etale_factor import factor_from_etale_root
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
@@ -38,7 +47,7 @@ def observe_physical_clock(
     max_digits: int,
     _term: PoweredCollatzTerm | None = None,
     _include_metrics: bool = True,
-) -> dict[str, Any]:
+) -> PhysicalCollatzClockPacket:
     """Read the existing bound powered result; no accelerated-prefix discovery."""
     seed = require_integer(seed, "seed", 1)
     ticks = require_integer(ticks, "physical ticks", 0)
@@ -54,48 +63,69 @@ def observe_physical_clock(
     if ticks and term.maximum_width > max_digits:
         raise ValueError("physical clock target exceeds digit budget")
     clock = term.s_arithmetic_clock()
-    with GrowthArithmeticEvaluator(term._ledger) as radial_evaluator:
-        radial = asdict(clock.radial_leading_binary(radial_evaluator))
-        growth = asdict(
-            homogeneous_growth_packet(
-                clock.homogeneous_growth, term._ledger, evaluator=radial_evaluator
-            )
+    ledger = term.resource_ledger
+    with GrowthArithmeticEvaluator(ledger) as radial_evaluator:
+        radial_observation = clock.radial_leading_binary(radial_evaluator)
+        radial: RadialSturmianPacket = {
+            "growths": radial_observation.growths,
+            "halvings": radial_observation.halvings,
+            "binary_order": radial_observation.binary_order,
+            "prefix_width": radial_observation.prefix_width,
+            "prefix_value": radial_observation.prefix_value,
+            "precision_bits": radial_observation.precision_bits,
+            "scope": radial_observation.scope,
+        }
+        growth_observation = homogeneous_growth_packet(
+            clock.homogeneous_growth, ledger, evaluator=radial_evaluator
         )
-    workspace = term._workspace
-    width_tape = None if workspace is None else workspace.tape_width_summary
-    return {
+        growth: HomogeneousGrowthPacket = {
+            "growths": growth_observation.growths,
+            "halvings": growth_observation.halvings,
+            "radix": growth_observation.radix,
+            "homogeneous_radix_order": growth_observation.homogeneous_radix_order,
+        }
+    width_summary = term.published_width_summary
+    width_tape: CollatzTapeWidthPacket | None = (
+        None
+        if width_summary is None
+        else {
+            "radix": 2,
+            "scope": "exact physical width walk",
+            "source_width": width_summary.source_width,
+            "target_width": width_summary.target_width,
+            "physical_ticks": width_summary.physical_ticks,
+            "normalized_symbols": width_summary.normalized_symbols,
+            "odd_steps": width_summary.odd_steps,
+            "blank": {
+                "delta": width_summary.blank.delta,
+                "minimum": width_summary.blank.minimum,
+                "maximum": width_summary.blank.maximum,
+            },
+        }
+    )
+    clock_value: CollatzPhysicalClockValue = {
+        "events": clock.events,
+        "divisions": clock.divisions,
+        "physical_ticks": clock.physical_ticks,
+        "real_prime_exponents": clock.real_prime_exponents,
+        "two_adic_exponent": clock.two_adic_exponent,
+        "three_adic_exponent": clock.three_adic_exponent,
+        "homogeneous_growth": growth,
+        "radial_sturmian": radial,
+    }
+    packet: PhysicalCollatzClockPacket = {
         "family": "collatz",
         "kind": "physical-clock",
         "scope": "source-bound physical powered result, including the 1-4-2 cycle",
         "requested_ticks": ticks,
-        "width_tape": (
-            None
-            if width_tape is None
-            else {
-                "radix": 2,
-                "scope": "exact physical width walk",
-                **asdict(width_tape),
-            }
-        ),
-        "value": {
-            **asdict(clock),
-            "physical_ticks": clock.physical_ticks,
-            "real_prime_exponents": clock.real_prime_exponents,
-            "two_adic_exponent": clock.two_adic_exponent,
-            "three_adic_exponent": clock.three_adic_exponent,
-            "homogeneous_growth": growth,
-            "radial_sturmian": radial,
-        },
-        **(
-            {
-                "work_counters": dict(term._ledger.counters),
-                "peak_nodes": term._ledger.peak_nodes,
-                "retained_nodes": term._ledger.nodes,
-            }
-            if _include_metrics
-            else {}
-        ),
+        "width_tape": width_tape,
+        "value": clock_value,
     }
+    if _include_metrics:
+        packet["work_counters"] = dict(ledger.counters)
+        packet["peak_nodes"] = ledger.peak_nodes
+        packet["retained_nodes"] = ledger.nodes
+    return packet
 
 
 class CollatzObservationContext:
@@ -135,7 +165,7 @@ def observe_collatz(
     seed: int,
     events: int,
     *,
-    kind: str,
+    kind: CollatzObservationKind,
     modulus: int = 257,
     width: int = 2,
     sign: int = -1,
@@ -147,18 +177,9 @@ def observe_collatz(
     max_digits: int = 4096,
     _context: CollatzObservationContext | None = None,
     _include_metrics: bool = True,
-) -> dict[str, Any]:
-    if kind not in {
-        "clock",
-        "modular",
-        "twisted",
-        "hasse",
-        "hensel",
-        "tropical",
-        "factor",
-        "safety",
-    }:
-        raise ValueError("unknown Collatz observation")
+) -> dict[str, object]:
+    if type(kind) is not CollatzObservationKind:
+        raise TypeError("Collatz observation requires a CollatzObservationKind")
     seed = require_integer(seed, "seed", 1)
     events = require_integer(events, "events", 0)
     require_integer(max_events, "event budget", 0)
@@ -189,15 +210,16 @@ def observe_collatz(
         raise ValueError("accelerated observer lost its published source binding")
     arena, root, observer = context.arena, context.root, context.observer
     discovered, digit_work = context.discovered, context.digit_work
-    value: Any
-    if kind == "clock":
+    value: object
+    if kind is CollatzObservationKind.CLOCK:
         clock = observer.clock(root)
-        with GrowthArithmeticEvaluator(arena._ledger) as radial_evaluator:
+        ledger = arena.resource_ledger
+        with GrowthArithmeticEvaluator(ledger) as radial_evaluator:
             radial = asdict(clock.radial_leading_binary(radial_evaluator))
             growth = asdict(
                 homogeneous_growth_packet(
                     clock.homogeneous_growth,
-                    arena._ledger,
+                    ledger,
                     evaluator=radial_evaluator,
                 )
             )
@@ -210,22 +232,22 @@ def observe_collatz(
             "homogeneous_growth": growth,
             "radial_sturmian": radial,
         }
-    elif kind == "modular":
+    elif kind is CollatzObservationKind.MODULAR:
         value = asdict(observer.modular(root, modulus))
-    elif kind == "twisted":
+    elif kind is CollatzObservationKind.TWISTED:
         value = observer.twisted(root, width=width, sign=sign, modulus=modulus)
-    elif kind == "hasse":
+    elif kind is CollatzObservationKind.HASSE:
         value = observer.hasse(root, degree=width, modulus=modulus)
-    elif kind == "hensel":
+    elif kind is CollatzObservationKind.HENSEL:
         value = asdict(
             observer.hensel_pullback(root, HenselCylinder(precision, target))
         )
-    elif kind == "tropical":
+    elif kind is CollatzObservationKind.TROPICAL:
         value = observer.tropical(root, s_weight=s_weight, z_weight=z_weight)
-    elif kind == "factor":
+    elif kind is CollatzObservationKind.FACTOR:
         support = observer.factor_observation(root, modulus)
         value = {"support": support.divisor, "factor": support.proper_factor}
-    elif kind == "safety":
+    elif kind is CollatzObservationKind.SAFETY:
         from number_compiler.sequences.collatz.saturated_future import (
             from_published_prefix,
         )
@@ -276,7 +298,7 @@ def observe_collatz(
         raise ValueError("unknown Collatz observation")
     return {
         "family": "collatz",
-        "kind": kind,
+        "kind": kind.value,
         "value": value,
         "scope": "source-derived accelerated prefix, stopping at one if reached",
         "reached_one": context.reached_one,
@@ -311,7 +333,7 @@ def observe_mirror(
     base: int = 10,
     _term: ReverseAddPoweredTerm | None = None,
     _include_metrics: bool = True,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     require_integer(max_digits, "digit budget", 1)
     first_width = require_integer(first_width, "first sheet width", 1)
     if first_width > max_digits:
@@ -324,6 +346,7 @@ def observe_mirror(
     if term.maximum_width > max_digits:
         raise ValueError("mirror target exceeds digit budget")
     projection = term.mirror_obstruction(first_width=first_width)
+    ledger = term.resource_ledger
     return {
         "family": "reverse-add",
         "kind": "mirror",
@@ -333,9 +356,9 @@ def observe_mirror(
         "value": None if projection is None else asdict(projection),
         **(
             {
-                "work_counters": dict(term._ledger.counters),
-                "peak_nodes": term._ledger.peak_nodes,
-                "retained_nodes": term._ledger.nodes,
+                "work_counters": dict(ledger.counters),
+                "peak_nodes": ledger.peak_nodes,
+                "retained_nodes": ledger.nodes,
             }
             if _include_metrics
             else {}
@@ -345,7 +368,7 @@ def observe_mirror(
 
 def observe_etale_root(
     family: FamilyId, parameter: int, defect: int, *, max_digits: int
-) -> dict[str, Any]:
+) -> dict[str, object]:
     parameter = require_integer(parameter, "parameter", 0)
     require_integer(max_digits, "digit budget", 2)
     if (

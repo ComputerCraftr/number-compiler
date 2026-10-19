@@ -66,12 +66,16 @@ def test_executed_bundle_is_expanded_and_delegated_owner_is_reported(
     result = proof_index.build_index()
     theory_rows = result["theories"]
     assert isinstance(theory_rows, list)
-    theories = {}
+    theories: dict[str, dict[str, object]] = {}
     for item in theory_rows:
         assert isinstance(item, dict)
-        theory_name = item["theory"]
+        row: dict[str, object] = {}
+        for key, value in item.items():
+            assert isinstance(key, str)
+            row[key] = value
+        theory_name = row["theory"]
         assert isinstance(theory_name, str)
-        theories[theory_name] = item
+        theories[theory_name] = row
 
     assert theories["Helper"]["oracle_audit_theorems"] == ()
     assert theories["Helper"]["delegated_oracle_audit_bundles"] == (

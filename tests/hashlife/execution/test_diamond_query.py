@@ -13,6 +13,10 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_application
 from tests.support.diamond_query import bounded_case, build, oracle
 
 
@@ -32,7 +36,9 @@ def test_width_uses_observer_diamonds_without_point_queries(
     steps: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    application, expected = bounded_case(effect, steps)
+    application, expected = bounded_case(
+        effect, steps, family_hooks=collatz_tile_hooks_for_effect(effect)
+    )
 
     def forbidden(*args: object) -> Never:
         raise AssertionError("width must not query individual output points")
@@ -62,7 +68,9 @@ def test_nonblank_zero_and_truncated_shift_preserve_external_suffix_context(
 
     monkeypatch.setattr(DiamondRuntime, "point", forbidden)
     for source in product((0, 1), repeat=3):
-        application = build(effect, source, 8, 1)
+        application = build(
+            effect, source, 8, 1, family_hooks=collatz_tile_hooks_for_effect(effect)
+        )
         expected = oracle(effect, source, 8, 1)
         for bound in (1, 2, 3, 8):
             assert application.active_width(bound) == max(
@@ -88,7 +96,9 @@ def test_absorbing_observer_skips_provider_outputs_and_spatial_children(
         ImageBinding,
     )
 
-    application = build(CollatzPhysicalBlockEffect(), (1, 1, 0, 1, 1), 8, 8)
+    application = build_collatz_diamond_application(
+        CollatzPhysicalBlockEffect(), (1, 1, 0, 1, 1), 8, 8
+    )
     runtime = application.runtime
     left = runtime.execute(Initial(application.root, 0))
     right = runtime.execute(Initial(application.root, 1))

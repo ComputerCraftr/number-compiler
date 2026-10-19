@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Final
 
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.hashlife.interfaces.border_macros import (
-    BorderFamilyId,
     BorderMacroIdentity,
     BorderMacroKind,
     BorderMacroPhase,
     BorderSourceCursor,
+    BorderWireValue,
     require_exact_border_join,
 )
 
@@ -23,23 +25,114 @@ from .temporal_residue_quotient import (
     decimal_residues_from_slp,
 )
 
+TWO_REVERSE_TEN_PORT_TAG: Final[str] = "2rev10-two-tick-port-v1"
+TWO_REVERSE_TEN_BURST_TAG: Final[str] = "2rev10-four-tick-burst-v1"
+
 
 @dataclass(frozen=True, slots=True)
-class ClockedBorderPhase:
+class DoubleReverseBorderPhaseOccurrence:
     """One exact T-squared child with two lifted steps and clock guards."""
 
     phase: BorderMacroPhase
-    ordinal: int
-    source_border: LiftedBorder
-    target_border: LiftedBorder
-    fourth_digit_carries: tuple[int, int]
-    growth: int
     residue_action: CertifiedResidueTemporalAction
+
+    @property
+    def signature(self) -> DoubleReverseEdgeSignature:
+        signature = self.phase.identity.checked_signature()
+        if type(signature) is not DoubleReverseEdgeSignature:
+            raise ValueError("2rev10 phase identity is not a guarded port edge")
+        return signature
+
+    @property
+    def ordinal(self) -> int:
+        return self.phase.phase
+
+    @property
+    def source_border(self) -> LiftedBorder:
+        return self.signature.source
+
+    @property
+    def target_border(self) -> LiftedBorder:
+        return self.signature.target
+
+    @property
+    def fourth_digit_carries(self) -> tuple[int, int]:
+        return self.signature.carries
+
+    @property
+    def growth(self) -> int:
+        return self.signature.growth
 
 
 @dataclass(frozen=True, slots=True)
-class RegisteredBorderMacro:
-    """A finite four-physical-tick word, identified by its actual edge path."""
+class DoubleReverseEdgeSignature:
+    """A complete two-tick port, with its middle state and both carry bits."""
+
+    source: LiftedBorder
+    middle: LiftedBorder
+    target: LiftedBorder
+    carries: tuple[int, int]
+    growth: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.source) is not LiftedBorder
+            or type(self.middle) is not LiftedBorder
+            or type(self.target) is not LiftedBorder
+            or type(self.carries) is not tuple
+            or len(self.carries) != 2
+            or any(
+                type(carry) is not int or carry not in (0, 1) for carry in self.carries
+            )
+            or type(self.growth) is not int
+            or not 0 <= self.growth <= 2
+        ):
+            raise ValueError("2rev10 guarded edge signature is malformed")
+
+    @property
+    def family(self) -> FamilyId:
+        return FamilyId.DOUBLE_REVERSE
+
+    def wire_value(self) -> BorderWireValue:
+        return (
+            TWO_REVERSE_TEN_PORT_TAG,
+            _state(self.source),
+            _state(self.middle),
+            _state(self.target),
+            self.carries,
+            self.growth,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DoubleReverseBurstSignature:
+    """Two adjacent powered ports; the burst is finite, not a cycle claim."""
+
+    ports: tuple[DoubleReverseEdgeSignature, DoubleReverseEdgeSignature]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.ports) is not tuple
+            or len(self.ports) != 2
+            or any(type(port) is not DoubleReverseEdgeSignature for port in self.ports)
+        ):
+            raise ValueError("2rev10 finite burst requires two exact edge ports")
+
+    @property
+    def family(self) -> FamilyId:
+        return FamilyId.DOUBLE_REVERSE
+
+    def wire_value(self) -> BorderWireValue:
+        return (
+            TWO_REVERSE_TEN_BURST_TAG,
+            4,
+            tuple(port.wire_value() for port in self.ports),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DoubleReverseBorderOccurrence:
+    """One finite four-tick word under its exact guarded edge-path identity."""
 
     identity: BorderMacroIdentity
     start_phase: int
@@ -54,16 +147,16 @@ class RegisteredBorderMacro:
 
 
 @dataclass(frozen=True, slots=True)
-class SourceBorderMacroCatalogue:
-    """Recomputable border evidence over exact owner-issued action children."""
+class DoubleReverseBorderTrace:
+    """Recomputable observations over exact owner-issued action children."""
 
     source: PointedBankSource = field(repr=False, compare=False)
     actions: tuple[DoubleReversePortAction, ...] = field(repr=False, compare=False)
     roots: tuple[int, ...]
     midpoint_roots: tuple[int, ...] = field(repr=False, compare=False)
     pair_depth: int
-    phases: tuple[ClockedBorderPhase, ...]
-    four_tick_macros: tuple[RegisteredBorderMacro, ...]
+    phases: tuple[DoubleReverseBorderPhaseOccurrence, ...]
+    four_tick_occurrences: tuple[DoubleReverseBorderOccurrence, ...]
     residue99: tuple[int, ...]
     residue198: tuple[int, ...]
     widths: tuple[int, ...]
@@ -72,7 +165,7 @@ class SourceBorderMacroCatalogue:
         from .source_bound_bank import PointedBankSource
 
         if type(self.source) is not PointedBankSource:
-            raise TypeError("2rev10 border catalogue needs an existing source cursor")
+            raise TypeError("2rev10 border trace needs an existing source cursor")
         self.source.validate(require_issued_cursor=self.source.f_steps > 0)
         if (
             len(self.roots) != len(self.actions) + 1
@@ -93,7 +186,7 @@ class SourceBorderMacroCatalogue:
             )
             or self.widths[0] != self.source.width_in
         ):
-            raise ValueError("2rev10 border catalogue lost its exact source root")
+            raise ValueError("2rev10 border trace lost its exact source root")
         initial_residues = decimal_residues_from_slp(
             self.source.arena,
             self.source.root,
@@ -101,7 +194,7 @@ class SourceBorderMacroCatalogue:
             scratch_owner=self.source.scratch_owner,
         )
         if (self.residue99[0], self.residue198[0]) != initial_residues:
-            raise ValueError("2rev10 border catalogue has a forged initial clock")
+            raise ValueError("2rev10 border trace has a forged initial clock")
         engine = self.source.engine
         current_phase = self.source.phase
         for index, (action, phase) in enumerate(
@@ -131,7 +224,7 @@ class SourceBorderMacroCatalogue:
                 clock.target_mod99,
                 clock.target_mod198,
             ):
-                raise ValueError("2rev10 border catalogue clock seam was changed")
+                raise ValueError("2rev10 border trace clock seam was changed")
             if engine.advance_source_root(source_root) != self.midpoint_roots[index]:
                 raise ValueError(
                     "2rev10 physical midpoint differs from its exact T child"
@@ -160,16 +253,24 @@ class SourceBorderMacroCatalogue:
             ):
                 raise ValueError("border macro phase lost its exact owner roots")
             current_phase = action.phase_out
-        for earlier, later in zip(self.phases, self.phases[1:]):
+        for earlier, later in zip(self.phases, self.phases[1:], strict=False):
             require_exact_border_join(earlier.phase, later.phase)
-        if self.four_tick_macros != _four_tick_macros(
+        if self.four_tick_occurrences != _four_tick_occurrences(
             self.phases, self.widths, self.residue99, self.residue198
         ):
             raise ValueError("four-tick macro metadata differs from source phases")
 
 
-def _state(border: LiftedBorder) -> tuple[object, ...]:
+def _state(
+    border: LiftedBorder,
+) -> tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int, int]]:
     return border.high, border.low, border.edge
+
+
+def _edge_signature(
+    phase: DoubleReverseBorderPhaseOccurrence,
+) -> DoubleReverseEdgeSignature:
+    return phase.signature
 
 
 def _make_phase(
@@ -185,7 +286,7 @@ def _make_phase(
     target99: int,
     target198: int,
     pair_depth: int,
-) -> ClockedBorderPhase:
+) -> DoubleReverseBorderPhaseOccurrence:
     arena = source.arena
     owner = source.engine
     source_border = lift_from_slp(arena, source_root)
@@ -219,7 +320,7 @@ def _make_phase(
     if width != source_width or action.phase_in != owner.certify(source_root):
         raise ValueError("2rev10 border phase and temporal owner disagree")
     source_cursor = BorderSourceCursor(
-        BorderFamilyId.TWO_REVERSE_TEN,
+        FamilyId.DOUBLE_REVERSE,
         owner,
         source_root,
         source.physical_prefix + 2 * ordinal,
@@ -227,7 +328,7 @@ def _make_phase(
         action.phase_in,
     )
     target_cursor = BorderSourceCursor(
-        BorderFamilyId.TWO_REVERSE_TEN,
+        FamilyId.DOUBLE_REVERSE,
         owner,
         target_root,
         source.physical_prefix + 2 * (ordinal + 1),
@@ -235,13 +336,12 @@ def _make_phase(
         action.phase_out,
     )
     identity = BorderMacroIdentity(
-        BorderFamilyId.TWO_REVERSE_TEN,
+        FamilyId.DOUBLE_REVERSE,
         BorderMacroKind.EDGE,
-        (
-            2,
-            _state(source_border),
-            _state(middle_border),
-            _state(target_border),
+        DoubleReverseEdgeSignature(
+            source_border,
+            middle_border,
+            target_border,
             (first_carry, second_carry),
             growth,
         ),
@@ -274,39 +374,32 @@ def _make_phase(
         or clock.target_mod198 != target198
     ):
         raise ValueError("2rev10 border child does not match its 99/198 clock")
-    return ClockedBorderPhase(
+    return DoubleReverseBorderPhaseOccurrence(
         metadata,
-        ordinal,
-        source_border,
-        target_border,
-        (first_carry, second_carry),
-        growth,
         clock,
     )
 
 
-def _four_tick_macros(
-    phases: tuple[ClockedBorderPhase, ...],
+def _four_tick_occurrences(
+    phases: tuple[DoubleReverseBorderPhaseOccurrence, ...],
     widths: tuple[int, ...],
     residue99: tuple[int, ...],
     residue198: tuple[int, ...],
-) -> tuple[RegisteredBorderMacro, ...]:
-    macros: list[RegisteredBorderMacro] = []
+) -> tuple[DoubleReverseBorderOccurrence, ...]:
+    macros: list[DoubleReverseBorderOccurrence] = []
     for start in range(0, len(phases) - 1, 2):
         word = phases[start : start + 2]
-        signature = (
-            tuple(_state(phase.source_border) for phase in word),
-            tuple(_state(phase.target_border) for phase in word),
-            tuple(phase.fourth_digit_carries for phase in word),
-            tuple(phase.growth for phase in word),
+        first_signature, second_signature = (
+            _edge_signature(word[0]),
+            _edge_signature(word[1]),
         )
         identity = BorderMacroIdentity(
-            BorderFamilyId.TWO_REVERSE_TEN,
+            FamilyId.DOUBLE_REVERSE,
             BorderMacroKind.BURST,
-            (4, *signature),
+            DoubleReverseBurstSignature((first_signature, second_signature)),
         )
         macros.append(
-            RegisteredBorderMacro(
+            DoubleReverseBorderOccurrence(
                 identity,
                 start,
                 start + 2,
@@ -321,18 +414,18 @@ def _four_tick_macros(
     return tuple(macros)
 
 
-def source_border_macro_catalogue(
+def trace_double_reverse_border_occurrences(
     source: PointedBankSource,
     roots: tuple[int, ...],
     actions: tuple[DoubleReversePortAction, ...],
     *,
     pair_depth: int,
-) -> SourceBorderMacroCatalogue:
-    """Register finite exact Hashlife children and their border/clock guards."""
+) -> DoubleReverseBorderTrace:
+    """Trace finite exact Hashlife children and their border/clock guards."""
     from .source_bound_bank import PointedBankSource
 
     if type(source) is not PointedBankSource:
-        raise TypeError("2rev10 border catalogue requires PointedBankSource")
+        raise TypeError("2rev10 border trace requires PointedBankSource")
     source.validate(require_issued_cursor=source.f_steps > 0)
     if type(pair_depth) is not int or not 1 <= pair_depth <= 16:
         raise ValueError("pair depth must be in 1..16")
@@ -344,7 +437,7 @@ def source_border_macro_catalogue(
         or any(type(root) is not int for root in roots)
         or any(type(action) is not DoubleReversePortAction for action in actions)
     ):
-        raise ValueError("2rev10 catalogue needs a nonempty exact child path")
+        raise ValueError("2rev10 border trace needs a nonempty exact child path")
     first99, first198 = decimal_residues_from_slp(
         source.arena,
         roots[0],
@@ -354,7 +447,7 @@ def source_border_macro_catalogue(
     widths = [source.arena.nodes[root].length for root in roots]
     residue99 = [first99]
     residue198 = [first198]
-    phases: list[ClockedBorderPhase] = []
+    phases: list[DoubleReverseBorderPhaseOccurrence] = []
     midpoint_roots: list[int] = []
     cursor_phase = source.phase
     for index, action in enumerate(actions):
@@ -403,14 +496,14 @@ def source_border_macro_catalogue(
     width_tuple = tuple(widths)
     r99_tuple = tuple(residue99)
     r198_tuple = tuple(residue198)
-    result = SourceBorderMacroCatalogue(
+    result = DoubleReverseBorderTrace(
         source,
         actions,
         roots,
         tuple(midpoint_roots),
         pair_depth,
         phase_tuple,
-        _four_tick_macros(phase_tuple, width_tuple, r99_tuple, r198_tuple),
+        _four_tick_occurrences(phase_tuple, width_tuple, r99_tuple, r198_tuple),
         r99_tuple,
         r198_tuple,
         width_tuple,
@@ -419,8 +512,8 @@ def source_border_macro_catalogue(
 
 
 __all__ = [
-    "ClockedBorderPhase",
-    "RegisteredBorderMacro",
-    "SourceBorderMacroCatalogue",
-    "source_border_macro_catalogue",
+    "DoubleReverseBorderPhaseOccurrence",
+    "DoubleReverseBorderOccurrence",
+    "DoubleReverseBorderTrace",
+    "trace_double_reverse_border_occurrences",
 ]

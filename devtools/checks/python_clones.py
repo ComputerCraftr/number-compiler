@@ -17,6 +17,7 @@ from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeGuard
 
 MIN_CLONE_NODES = 24
 MIN_CLONE_STATEMENTS = 3
@@ -33,7 +34,7 @@ _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _IGNORED_FIELDS = frozenset({"annotation", "returns", "type_comment", "type_params"})
 _STATEMENT_SUITE_FIELDS = frozenset({"body", "orelse", "finalbody"})
-_BINDING_FIELDS = {
+_BINDING_FIELDS: dict[type[ast.AST], str] = {
     ast.arg: "arg",
     ast.FunctionDef: "name",
     ast.AsyncFunctionDef: "name",
@@ -50,9 +51,9 @@ _BINDING_FIELDS = {
 class _Scope:
     parent: _Scope | None
     kind: str
-    bound: set[str] = field(default_factory=set)
-    globals: set[str] = field(default_factory=set)
-    nonlocals: set[str] = field(default_factory=set)
+    bound: set[str] = field(default_factory=set[str])
+    globals: set[str] = field(default_factory=set[str])
+    nonlocals: set[str] = field(default_factory=set[str])
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,14 +94,22 @@ class _TokenFragment:
     operations: int
 
 
+def _object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _statement_list(value: object) -> TypeGuard[list[ast.stmt]]:
+    return _object_list(value) and all(isinstance(item, ast.stmt) for item in value)
+
+
 def _children(node: ast.AST) -> list[ast.AST]:
-    children = []
+    children: list[ast.AST] = []
     for name, value in ast.iter_fields(node):
         if name in _IGNORED_FIELDS:
             continue
         if isinstance(value, ast.AST):
             children.append(value)
-        elif isinstance(value, list):
+        elif _object_list(value):
             children.extend(item for item in value if isinstance(item, ast.AST))
     return children
 
@@ -132,12 +141,8 @@ def _module_ast_inventory(
             children: tuple[ast.AST, ...]
             if isinstance(value, ast.AST):
                 children = (value,)
-            elif isinstance(value, list):
-                if (
-                    value
-                    and name in _STATEMENT_SUITE_FIELDS
-                    and isinstance(value[0], ast.stmt)
-                ):
+            elif _object_list(value):
+                if value and name in _STATEMENT_SUITE_FIELDS and _statement_list(value):
                     suites.append(value)
                 children = tuple(child for child in value if isinstance(child, ast.AST))
             else:
@@ -537,7 +542,7 @@ def _token_fragment(
                     ]
                 if (
                     name == "body"
-                    and isinstance(item, list)
+                    and _object_list(item)
                     and isinstance(
                         value, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
                     )
@@ -548,7 +553,7 @@ def _token_fragment(
             # an AST node, before serializing any of that node's children.
             events.extend(reservations)
             pending.extend(reversed(fields))
-        elif isinstance(value, list):
+        elif _object_list(value):
             events.append(f"list:{len(value)}")
             pending.extend(reversed(value))
         else:
@@ -701,9 +706,7 @@ def _bodies(
             suites = tuple(
                 value
                 for _name, value in ast.iter_fields(node)
-                if isinstance(value, list)
-                and value
-                and all(isinstance(item, ast.stmt) for item in value)
+                if _statement_list(value) and value
             )
         else:
             suites = statement_suites.get(node, ())

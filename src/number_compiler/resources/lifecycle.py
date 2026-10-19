@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 @contextmanager
-def cleanup_on_exit(cleanup: Callable[[], object]) -> Iterator[None]:
+def cleanup_on_exit(cleanup: Callable[[], object]) -> Generator[None, None, None]:
     """Expose the active exception to a cleanup callback for chaining."""
     try:
         yield
@@ -21,7 +21,7 @@ def cleanup_on_exit(cleanup: Callable[[], object]) -> Iterator[None]:
 
 
 @contextmanager
-def cleanup_on_error(cleanup: Callable[[], object]) -> Iterator[None]:
+def cleanup_on_error(cleanup: Callable[[], object]) -> Generator[None, None, None]:
     """Run rollback with the construction error active for exception chaining."""
     try:
         yield

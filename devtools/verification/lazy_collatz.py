@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING
 
+from devtools.verification.collatz_carry_ranges import (
+    CarryRangeSummary as _CarryRangeSummary,
+)
+from devtools.verification.collatz_carry_ranges import (
+    CarryRangeTransfer as _CarryRangeTransfer,
+)
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -39,115 +45,6 @@ from number_compiler.resources.proof_payload_admission import (
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-
-
-@dataclass(frozen=True, slots=True)
-class CarryRangeSummary:
-    length: int
-    exit_carry: int
-    first_one: int | None
-    last_one: int | None
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.length) is not int
-            or self.length < 0
-            or type(self.exit_carry) is not int
-            or not 0 <= self.exit_carry <= 2
-        ):
-            raise ValueError("invalid finite carry summary")
-        if any(
-            point is not None
-            and (type(point) is not int or not 0 <= point < self.length)
-            for point in (self.first_one, self.last_one)
-        ):
-            raise ValueError("carry witnesses must be coordinates within the range")
-        if (self.first_one is None) != (self.last_one is None):
-            raise ValueError("carry witness endpoints must agree on emptiness")
-        if (
-            self.first_one is not None
-            and self.last_one is not None
-            and self.first_one > self.last_one
-        ):
-            raise ValueError("carry witnesses must be ordered")
-
-    @property
-    def all_zero(self) -> bool:
-        return self.first_one is None
-
-    def then(self, following: CarryRangeSummary) -> CarryRangeSummary:
-        """Combine adjacent ranges already evaluated with matched carry ports."""
-        return CarryRangeSummary(
-            self.length + following.length,
-            following.exit_carry,
-            self.first_one
-            if self.first_one is not None
-            else (
-                None
-                if following.first_one is None
-                else self.length + following.first_one
-            ),
-            self.last_one
-            if following.last_one is None
-            else self.length + following.last_one,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CarryRangeTransfer:
-    """Complete three-state carry transfer with geometric output witnesses."""
-
-    rows: tuple[CarryRangeSummary, ...]
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.rows) is not tuple
-            or len(self.rows) != 3
-            or any(type(row) is not CarryRangeSummary for row in self.rows)
-        ):
-            raise ValueError("a mul3 transfer has exactly three carry rows")
-        if any(row.length != self.rows[0].length for row in self.rows):
-            raise ValueError("all carry rows must cover the same range")
-
-    @property
-    def length(self) -> int:
-        return self.rows[0].length
-
-    @classmethod
-    def bit(cls, bit: int) -> CarryRangeTransfer:
-        if type(bit) is not int or bit not in (0, 1):
-            raise ValueError(bit)
-        return cls(
-            tuple(
-                CarryRangeSummary(
-                    1,
-                    (3 * bit + carry) >> 1,
-                    0 if (3 * bit + carry) & 1 else None,
-                    0 if (3 * bit + carry) & 1 else None,
-                )
-                for carry in range(3)
-            )
-        )
-
-    def compose(self, following: CarryRangeTransfer) -> CarryRangeTransfer:
-        return CarryRangeTransfer(
-            tuple(row.then(following.rows[row.exit_carry]) for row in self.rows)
-        )
-
-    def repeat(self, count: int) -> CarryRangeTransfer:
-        if type(count) is not int or count < 0:
-            raise ValueError(count)
-        result = CarryRangeTransfer(
-            tuple(CarryRangeSummary(0, carry, None, None) for carry in range(3))
-        )
-        factor = self
-        while count:
-            if count & 1:
-                result = result.compose(factor)
-            count >>= 1
-            if count:
-                factor = factor.compose(factor)
-        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,13 +262,13 @@ class LazyCollatzApplication:
         self._program_ids: MutableMapping[_Program, int] = self.ledger.make_dict(
             self._program_key_owner
         )
-        self._summaries: MutableMapping[_SummaryKey, CarryRangeSummary] = (
+        self._summaries: MutableMapping[_SummaryKey, _CarryRangeSummary] = (
             self.ledger.make_dict(self._summary_owner, nodes_per_entry=1)
         )
         self._results: MutableMapping[_ResultKey, LazyCollatzResult] = (
             self.ledger.make_dict(self._result_owner, nodes_per_entry=1)
         )
-        self._source_ranges: MutableMapping[_SourceRangeKey, CarryRangeTransfer] = (
+        self._source_ranges: MutableMapping[_SourceRangeKey, _CarryRangeTransfer] = (
             self.ledger.make_dict(self._transfer_owner, nodes_per_entry=1)
         )
         self._exact_program_widths: MutableMapping[
@@ -379,7 +276,7 @@ class LazyCollatzApplication:
         ] = self.ledger.make_dict(
             self._width_owner,
         )
-        self._mul3_summaries: OwnedMemo[_SummaryKey, CarryRangeTransfer] = OwnedMemo(
+        self._mul3_summaries: OwnedMemo[_SummaryKey, _CarryRangeTransfer] = OwnedMemo(
             self.ledger,
             mul3_owner,
             nodes_per_entry=1,
@@ -486,15 +383,19 @@ class LazyCollatzApplication:
             self.ledger.bump("collatz_source_reads")
         return encoded
 
-    def _program_block(self, program: ActionProgramID, block: int) -> int:
-        from devtools.verification.collatz_microblock_projection import _program_block
+    def program_block(self, program: ActionProgramID, block: int) -> int:
+        from devtools.verification.collatz_microblock_projection import (
+            program_block as project_program_block,
+        )
 
-        return _program_block(self, program, block)
+        return project_program_block(self, program, block)
 
-    def _program_bit(self, program: ActionProgramID, position: int) -> int:
-        from devtools.verification.collatz_microblock_projection import _program_bit
+    def program_bit(self, program: ActionProgramID, position: int) -> int:
+        from devtools.verification.collatz_microblock_projection import (
+            program_bit as project_program_bit,
+        )
 
-        return _program_bit(self, program, position)
+        return project_program_bit(self, program, position)
 
     def _finish_program_scan(self, program: ActionProgramID, width: int) -> None:
         """Keep one complete capped stage plus its bounded right halo.
@@ -694,7 +595,7 @@ class LazyCollatzApplication:
                 yield bit
 
     @source_reads_only
-    def range_summary(self, view: CollatzLazyView) -> CarryRangeSummary:
+    def range_summary(self, view: CollatzLazyView) -> _CarryRangeSummary:
         """Summarize the full finite output range without retaining its bits."""
         self._validate(view)
         self.summary_queries += 1
@@ -708,7 +609,7 @@ class LazyCollatzApplication:
             self.ledger.bump("summary_cache_hits")
             return found
         effect = self._range_evaluator.range_effect(view.program, 0, view.width)
-        result = CarryRangeSummary(view.width, 0, effect.first_one, effect.last_one)
+        result = _CarryRangeSummary(view.width, 0, effect.first_one, effect.last_one)
         self.ledger.bump("summary_evaluations")
         if cacheable:
             self.ledger.reserve(self._summary_owner, entries=1, nodes=1)
@@ -716,7 +617,7 @@ class LazyCollatzApplication:
         return result
 
     @source_reads_only
-    def mul3_summary(self, view: CollatzLazyView) -> tuple[CarryRangeSummary, ...]:
+    def mul3_summary(self, view: CollatzLazyView) -> tuple[_CarryRangeSummary, ...]:
         """The complete three-carry observer of a source range, including flush."""
         self._validate(view)
         self.ledger.bump("symbolic_port_queries")
@@ -736,23 +637,23 @@ class LazyCollatzApplication:
         transfer = self._range_evaluator.range_effect(
             view.program, 0, view.width
         ).transfer
-        result = transfer.compose(CarryRangeTransfer.bit(0).repeat(2))
+        result = transfer.compose(_CarryRangeTransfer.bit(0).repeat(2))
         self.maximum_carry = max(self.maximum_carry, 2)
         self.ledger.bump("summary_evaluations")
         if cacheable:
             self._mul3_summaries[key] = result
         return result.rows
 
-    def _source_transfer(self, width: int) -> CarryRangeTransfer:
+    def _source_transfer(self, width: int) -> _CarryRangeTransfer:
         found = self._source_ranges.get(_SourceRangeKey(width))
         if found is not None:
             self.ledger.bump("summary_cache_hits")
             return found
-        leaves = CarryRangeTransfer.bit(0), CarryRangeTransfer.bit(1)
+        leaves = _CarryRangeTransfer.bit(0), _CarryRangeTransfer.bit(1)
         for bit in (0, 1):
             for carry in range(3):
                 self._arithmetic(3 * bit + carry)
-        blocks: list[CarryRangeTransfer] = []
+        blocks: list[_CarryRangeTransfer] = []
         for position in range(min(width, len(self._source))):
             current = leaves[self._source[position]]
             while blocks and blocks[-1].length == current.length:
@@ -991,8 +892,6 @@ register_proof_geometry_fields(
         LazyCollatzResult: frozenset(
             ("valuations", "repeated_twos", "initial_shift", "partial_ticks")
         ),
-        CarryRangeSummary: frozenset(("length", "first_one", "last_one")),
-        CarryRangeTransfer: frozenset(),
     }
 )
 register_proof_opaque_types(Mul3Carry)

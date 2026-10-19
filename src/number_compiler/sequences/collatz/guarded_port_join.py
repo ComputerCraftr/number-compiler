@@ -19,16 +19,17 @@ from math import gcd
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_identity import (
+    CollatzSegmentIdentity,
+)
 from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
+    GuardedPairEntry,
     WeightedPairMatrix,
+    validate_pointed_pair_action,
 )
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
-)
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    MacroTraceGrammar,
-    SourceCongruence,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -53,14 +54,25 @@ from number_compiler.sequences.collatz.guarded_port_types import (
 from number_compiler.sequences.collatz.guarded_radix6_bridge import (
     FiveBand,
     GuardedRadix6Bridge,
+    _common_plus_one_valuation,
+    _merge_bands,
     _trace_is_zero_tail,
+    _transport_bands,
     certify_guarded_radix6_bridge,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.guarded_radix6_bridge import (
         GuardedTemporalCarryCounts,
+    )
+    from number_compiler.sequences.collatz.named_border_carry_matrix import (
+        UnitsCarryMatrix,
     )
     from number_compiler.sequences.collatz.parity_carry_tape import (
         ParityCarryTape,
@@ -78,7 +90,7 @@ class GuardedPortJoin:
     """
 
     source: CollatzTwoSidedCylinder
-    port: CrossFamilyPortAction
+    port: SourceClosedPortAction
     bridge: GuardedRadix6Bridge
     named_macro: object | None = None
     factor_grammar: tuple[tuple[tuple[int, ...], int], ...] | None = None
@@ -88,7 +100,7 @@ class GuardedPortJoin:
     def __post_init__(self) -> None:
         if (
             type(self.source) is not CollatzTwoSidedCylinder
-            or type(self.port) is not CrossFamilyPortAction
+            or type(self.port) is not SourceClosedPortAction
             or type(self.bridge) is not GuardedRadix6Bridge
         ):
             raise TypeError(
@@ -269,20 +281,27 @@ class GuardedPortJoin:
     ) -> tuple[FiveBand, ...]:
         if not demand:
             return ()
-        if narrowed is not None and narrowed != self.source:
-            return certify_guarded_radix6_bridge(
-                narrowed, prefix, odds, max_upper_digits=12, max_lower_digits=32
-            ).target_fives
+        cylinder = self.source if narrowed is None else narrowed
         if time == self.port.action.steps:
-            return self.bridge.target_fives
+            return self.bridge.restrict_to(cylinder).target_fives
         if time == 0:
-            return self.bridge.source_fives
-        # The exact bounded prefix is itself a source-authorized action. It
-        # generates 3-primary births and transfers inherited 5s, including
-        # mixed odd-growth/halving prefixes, not only the terminal interval.
-        return certify_guarded_radix6_bridge(
-            self.source, prefix, odds, max_upper_digits=0, max_lower_digits=32
-        ).target_fives
+            return self.bridge.restrict_to(cylinder).source_fives
+        # Carry reset is a source-wide 6-adic fact: previously certified
+        # bands can be transported through the exact prefix without another
+        # radix conversion.  If a narrower port forces additional trailing
+        # fives, the 2/3-adic valuations supply them algebraically.
+        starts = self.bridge.restrict_to(cylinder).source_fives
+        inherited = _transport_bands(starts, odds, time)
+        born: tuple[FiveBand, ...] = ()
+        if prefix.offset + (1 << time) == prefix.gain:
+            v2 = _common_plus_one_valuation(cylinder, 2)
+            v3 = _common_plus_one_valuation(cylinder, 3)
+            if v2 < time:
+                raise ArithmeticError("source narrowed beyond certified parity guard")
+            k = min(v2 - time, v3 + odds)
+            if k:
+                born = (FiveBand(0, k),)
+        return _merge_bands(inherited + born)
 
     def puncture(
         self,
@@ -334,6 +353,13 @@ class GuardedPortJoin:
             if residue % 10 != 3:
                 raise ArithmeticError("numerator residue inversion broke the 3-border")
             g = SourceCongruence(residue, 50).pullback(prefix)
+            base = None if g is None else _restrict(base, g)
+        # CRT 99/198/25 clocks constrain the SAME original source, rather
+        # than being checked on the scalar endpoint after selecting a macro.
+        for modulus, residue in request.clock_residues:
+            if base is None:
+                break
+            g = SourceCongruence(residue, modulus).pullback(prefix)
             base = None if g is None else _restrict(base, g)
         if base is not None and request.upper_word is not None:
             width, digits, word = request.upper_word
@@ -471,6 +497,25 @@ class GuardedPortJoin:
                         narrowed=root,
                     ),
                 )
+            if (request.five_carry is not None and not local_fives) or (
+                request.five_remainder is not None
+                and not any(band.upper - band.lower > odd for band in local_fives)
+            ):
+                # Explicit 5-run requests may require upper, non-suffix
+                # digits newly certified by the narrowed endpoint interval.
+                # Pay for complete positional coverage only on this missing
+                # port, never for every ordinary matrix/admission seam.
+                expanded = certify_guarded_radix6_bridge(
+                    root,
+                    prefix,
+                    odds,
+                    max_upper_digits=12,
+                    max_lower_digits=32,
+                )
+                local_fives = _merge_five_source_bands(
+                    local_fives,
+                    expanded.target_fives,
+                )
             if request.five_carry is not None and not local_fives:
                 continue
             if request.five_remainder is not None and not any(
@@ -539,12 +584,11 @@ class GuardedPortJoin:
             or not after.source.contains(seam.last)
         ):
             raise ValueError("guarded port join has no complete authenticated seam")
-        first = certify_guarded_radix6_bridge(
-            root, self.port.action, self.port.odd_events
-        )
-        second = certify_guarded_radix6_bridge(
-            seam, after.port.action, after.port.odd_events
-        )
+        # A proof on a wider cylinder remains valid on its source subset;
+        # algebraically enrich only newly forced 6-adic suffixes. Re-running
+        # radix-6 upper coverage at every seam used to dominate the CLI.
+        first = self.bridge.restrict_to(root)
+        second = after.bridge.restrict_to(seam)
         first_tape = self._tape()
         second_tape = after._tape()
         tape = None
@@ -561,82 +605,44 @@ class GuardedPortJoin:
             parity_tape=tape,
         )
 
-    def future_border_partition(self) -> tuple[tuple[int, GuardedPortJoin], ...]:
-        """Partition *all* source alternatives by the next decimal border.
+    def prefix_units(self, time: int) -> UnitsCarryMatrix:
+        """Demand the authenticated five-state weighted prefix of this tape."""
+        tape = self._tape()
+        if tape is None:
+            raise ValueError("source join has no certified parity prefix tape")
+        if type(time) is not int or not 0 <= time <= self.port.action.steps:
+            raise ValueError("weighted prefix outside issued action")
+        return tape.prefix_units(time)
 
-        Unlike a naked digit observer, every alternative is pulled back
-        through the powered affine action to its original source class.
-        """
-        alternatives = tuple(
-            (digit, joined)
-            for digit in range(10)
-            if (joined := self.future_border(digit)) is not None
+    def future_family_partition(
+        self,
+    ) -> tuple[tuple[CollatzSegmentIdentity | None, CollatzTwoSidedCylinder], ...]:
+        """Partition the source by the shared future-family classifier."""
+        from number_compiler.sequences.collatz.guarded_port_partitions import (
+            future_family_partition,
         )
-        if sum(part.source.count for _, part in alternatives) != self.source.count:
-            raise ArithmeticError(
-                "joined future-border punctures lost source alternatives"
-            )
-        return alternatives
+
+        return future_family_partition(self)
+
+    def future_border_partition(self) -> tuple[tuple[int, GuardedPortJoin], ...]:
+        """Partition all source alternatives by their next decimal border."""
+        from number_compiler.sequences.collatz.guarded_port_partitions import (
+            future_border_partition,
+        )
+
+        return future_border_partition(self)
 
     def future_tails(
         self,
         *,
         max_tail: int = 12,
     ) -> tuple[tuple[int | None, GuardedPortJoin], ...]:
-        """Demand the existing exact 3-border tail partition, never a guess.
+        """Demand exact source-guarded tails from the family partitioner."""
+        from number_compiler.sequences.collatz.guarded_port_partitions import (
+            future_tails,
+        )
 
-        A ``None`` tail retains the explicit unresolved-long-tail source
-        rather than silently creating a future macro. An 8/9 source is first
-        partitioned by ``future_border_partition``; it cannot use 6305 tails.
-        """
-        if type(max_tail) is not int or not 1 <= max_tail <= 64:
-            raise ValueError("future border tail budget must be 1..64")
-        if self.bridge.target.forced_residue(10) != 3:
-            raise ValueError("next 6305 tails require a forced 3-ending border")
-        output: list[tuple[int | None, GuardedPortJoin]] = []
-        for tail, target in self.bridge.target.conditional_next_tails(
-            max_tail=max_tail
-        ):
-            pulled = SourceCongruence(target.residue, target.modulus).pullback(
-                self.port.action
-            )
-            if pulled is None:
-                continue
-            root_guard = self.port.guard.meet(pulled)
-            if root_guard is None:
-                continue
-            root = _restrict(self.source, root_guard)
-            if root is None:
-                continue
-            image = root.transport(self.port.action)
-            if (image.first, image.last, image.count) != (
-                target.first,
-                target.last,
-                target.count,
-            ):
-                raise ArithmeticError(
-                    "future tail inverse image lost an affine source fiber"
-                )
-            revised = CrossFamilyPortAction(
-                self.port.action,
-                root_guard,
-                self.port.odd_events,
-                self.port.clock,
-                self.port.trace,
-            )
-            bridge = certify_guarded_radix6_bridge(
-                root,
-                revised.action,
-                revised.odd_events,
-                max_upper_digits=0,
-                max_lower_digits=0,
-            )
-            output.append((tail, GuardedPortJoin(root, revised, bridge)))
-        if sum(part.source.count for _, part in output) != self.source.count:
-            raise ArithmeticError(
-                "guarded future tail partition omitted a refused source"
-            )
-        return tuple(output)
+        return future_tails(self, max_tail=max_tail)
 
     def future_border(self, digit: int) -> GuardedPortJoin | None:
         """Puncture an authenticated border *before* the next macro is chosen."""
@@ -653,15 +659,15 @@ class GuardedPortJoin:
             return None
         # Retain the same issued parity word and affine coefficients; only
         # narrow its source guard using an exact inverse-image constraint.
-        port = CrossFamilyPortAction(
+        port = SourceClosedPortAction(
             self.port.action,
             guard,
             self.port.odd_events,
             self.port.clock,
             self.port.trace,
         )
-        bridge = certify_guarded_radix6_bridge(root, port.action, port.odd_events)
-        return GuardedPortJoin(root, port, bridge)
+        bridge = self.bridge.restrict_to(root)
+        return GuardedPortJoin(root, port, bridge, parity_tape=self._tape())
 
     def require_pointed(
         self, source: int, *, check_last: bool = True
@@ -933,6 +939,7 @@ def certify_pointed_port_join(
     source_cylinder: CollatzTwoSidedCylinder | None = None,
     factor_grammar: tuple[tuple[tuple[int, ...], int], ...] | None = None,
     factor_repetitions: int = 1,
+    pointed_pair: GuardedPairEntry | None = None,
 ) -> GuardedPortJoin:
     """Rejoin a named 6305/8/9 macro to its actual source carry rows."""
     if (
@@ -951,7 +958,7 @@ def certify_pointed_port_join(
     if guard is None or not guard.admits(source):
         raise ArithmeticError("named border guard contradicts the parity action")
     grammar = MacroTraceGrammar.leaf(trace) if type(trace) is tuple else trace
-    port = CrossFamilyPortAction(action, guard, odd_events, None, grammar)
+    port = SourceClosedPortAction(action, guard, odd_events, None, grammar)
     if source_cylinder is None:
         source_cylinder = CollatzTwoSidedCylinder(source, source, 0, 1)
     elif type(
@@ -972,7 +979,14 @@ def certify_pointed_port_join(
         factor_grammar=factor_grammar,
         factor_repetitions=factor_repetitions,
     )
-    joined.require_pointed(source)
+    if pointed_pair is None:
+        joined.require_pointed(source)
+    else:
+        endpoint = validate_pointed_pair_action(pointed_pair, source, action)
+        if not joined.bridge.target.contains(endpoint):
+            raise ArithmeticError("pointed pair misses joined bridge endpoint")
+        if ledger is not None:
+            ledger.bump(_collatz_keys.COLLATZ_POINTED_PAIR_CERTIFICATE_REUSES)
     return joined
 
 

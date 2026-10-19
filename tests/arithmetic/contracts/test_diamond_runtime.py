@@ -9,6 +9,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_runtime import build, oracle
 
 
@@ -33,6 +34,6 @@ def test_reverse_diamonds_against_exact_bimachine(base: int, steps: int) -> None
 def test_physical_collatz_diamonds_on_small_sources(steps: int) -> None:
     effect = CollatzPhysicalBlockEffect()
     for source in product((0, 1), repeat=2):
-        runtime, action = build(effect, (*source, 1), 8, steps)
+        runtime, action = build_collatz_diamond_runtime(effect, (*source, 1), 8, steps)
         expected = oracle(effect, (*source, 1), 8, steps)
         assert [runtime.point(action, i) for i in range(8)] == expected

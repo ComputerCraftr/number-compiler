@@ -273,7 +273,7 @@ def check_isabelle_resource_owner(root: Path, source: Path, target: Path) -> Non
 def isabelle_ownership_violations(
     root: Path,
     *,
-    sessions: tuple[Session, ...] | None = None,
+    sessions: tuple[object, ...] | None = None,
     theory_headers: Mapping[Path, tuple[str, tuple[str, ...]]] | None = None,
     authored_sources: tuple[Path, ...] | None = None,
 ) -> tuple[str, ...]:
@@ -290,16 +290,21 @@ def isabelle_ownership_violations(
     source_inventory = (
         authored_files(proof_root) if authored_sources is None else authored_sources
     )
-    sessions = (
+    discovered_sessions = (
         sessions
         if sessions is not None
         else discover_sessions(proof_root, authored_sources=source_inventory)
     )
+    checked_sessions: list[Session] = []
+    for candidate in discovered_sessions:
+        if not isinstance(candidate, Session):
+            raise TypeError("Isabelle registry returned a foreign session record")
+        checked_sessions.append(candidate)
+    sessions = tuple(checked_sessions)
     violations: list[str] = []
     owners: dict[str, _IsabelleOwner] = {}
     for session in sessions:
-        if not isinstance(session, Session):
-            raise TypeError("Isabelle registry returned a foreign session record")
+        # The candidate collection is validated once before building the graph.
         owner = _isabelle_owner(session.directory.parts)
         parts = session.directory.parts
         canonical_depth = len(parts) == 3 or (len(parts) == 4 and parts[2] == "audit")

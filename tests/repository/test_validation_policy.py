@@ -515,3 +515,16 @@ def test_actual_pytest_rejects_per_test_timeout_marker(tmp_path: Path) -> None:
     assert result.outcome == "child_failed"
     assert "per-test timeout markers are forbidden" in output
     assert "1 passed" not in output
+
+
+def test_timeout_ini_override_is_rejected_before_collection(tmp_path: Path) -> None:
+    settings = tmp_path / "pytest.ini"
+    settings.write_text("[pytest]\ntimeout_disable_debugger_detection = false\n")
+    result, _, log = _run_pytest_policy_probe(
+        tmp_path,
+        "def test_should_not_run():\n    raise AssertionError('collected')\n",
+        ("-c", str(settings)),
+    )
+    assert result.outcome == "child_failed"
+    assert "timeout_disable_debugger_detection conflicts with policy" in log
+    assert "collected" not in log

@@ -34,7 +34,7 @@ def domain_observability(width: int, horizon: int) -> dict[str, object]:
     counts: list[tuple[int, int]] = []
     for step in range(horizon + 1):
         classes: dict[tuple[int, tuple[int, ...]], int] = {}
-        next_labels = []
+        next_labels: list[int] = []
         for previous, field in zip(labels, fields, strict=True):
             key = previous, carry_threshold_itinerary(field)
             next_labels.append(classes.setdefault(key, len(classes)))

@@ -5,7 +5,7 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 @pytest.mark.parametrize(
@@ -25,15 +25,19 @@ def test_distinct_carry_geometries_share_successor_and_completed_consumer(
     second: tuple[int, ...],
     successor: tuple[int, ...],
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(10))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(10)
+    )
     # Active zeroes are part of the declared pair field, unlike blank padding.
     # Fixed equal extents make exact content sharing independent of provenance.
     blank, extent = 19, 16
     ports, wiring = adapter.initial_ports(primitive), adapter.wiring(primitive)
     later = adapter.power(primitive, 2)
     with (
-        _tile(tiles, adapter, primitive, first + (blank,) * (extent - len(first))) as a,
-        _tile(
+        make_tile_from_symbols(
+            tiles, adapter, primitive, first + (blank,) * (extent - len(first))
+        ) as a,
+        make_tile_from_symbols(
             tiles, adapter, primitive, second + (blank,) * (extent - len(second))
         ) as b,
         scheduler.complete(primitive, a.tile, ports, wiring) as output_a,

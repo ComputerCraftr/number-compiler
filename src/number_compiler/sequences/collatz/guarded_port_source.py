@@ -5,13 +5,13 @@ from __future__ import annotations
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.guarded_radix6_bridge import FiveBand
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    SourceCongruence,
+)
 
 
 def ceil_div(numerator: int, denominator: int) -> int:

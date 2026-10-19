@@ -253,7 +253,7 @@ def test_public_digit_demand_consumes_certified_bank_without_q19_discovery(
         workspace = term._workspace
         assert workspace is not None
         assert workspace._image is None
-        counters = term._ledger.counters
+        counters = term.resource_ledger.counters
         assert counters["reverse_q19_pointed_gt_bank_applied_actions"] == 1
         assert counters["reverse_q19_border_control_state_visits"] > 0
         assert counters["reverse_q19_border_control_edge_transitions"] > 0
@@ -380,23 +380,23 @@ def test_owner_registry_rejects_resealed_certificates_and_actions() -> None:
         )
         forged_action = _resealed_copy(action, coordinate=action.coordinate + 1)
         with pytest.raises(ValueError, match="retained by this Q19 owner"):
-            forged_action._validate()
+            forged_action.validate_source_authority()
         original_coordinate = action.coordinate
         object.__setattr__(action, "coordinate", original_coordinate + 1)
         object.__setattr__(action, "_binding", action._snapshot())
         with pytest.raises(ValueError, match="retained by this Q19 owner"):
-            action._validate()
+            action.validate_source_authority()
         object.__setattr__(action, "coordinate", original_coordinate)
         object.__setattr__(action, "_binding", action._snapshot())
-        action._validate()
+        action.validate_source_authority()
         original_target = action.action.target
         object.__setattr__(action.action, "target", replace(original_target))
         object.__setattr__(action, "_binding", action._snapshot())
         with pytest.raises(ValueError, match="not retained by this Q19 owner"):
-            action._validate()
+            action.validate_source_authority()
         object.__setattr__(action.action, "target", original_target)
         object.__setattr__(action, "_binding", action._snapshot())
-        action._validate()
+        action.validate_source_authority()
         frame = action.frame(0)
         with pytest.raises((AttributeError, TypeError)):
             object.__setattr__(frame, "growth", 1 - frame.growth)
@@ -417,7 +417,7 @@ def test_owner_registry_rejects_resealed_certificates_and_actions() -> None:
         assert audit.owns_root("reverse_add", owner, ledger=ledger)
         owner.dispose()
         with pytest.raises(ValueError, match="disposed Q19 pair output owner"):
-            action._validate()
+            action.validate_source_authority()
         assert ledger.entries == ledger.nodes == 0
     finally:
         owner.dispose()

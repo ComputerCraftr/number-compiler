@@ -43,9 +43,9 @@ def run() -> dict[str, object]:
                     radix_cases += 1
 
     sparse_cases = 0
-    for family, parameter, spec in (
-        ("fermat", 20, FermatNumberSpec(20)),
-        ("mersenne", 1 << 20, MersenneNumberSpec(1 << 20)),
+    for family, spec in (
+        ("fermat", FermatNumberSpec(20)),
+        ("mersenne", MersenneNumberSpec(1 << 20)),
     ):
         level = 14
         for base, positions in (

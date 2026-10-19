@@ -34,7 +34,10 @@ from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
-from number_compiler.resources.stores import append_indexed_node, make_dense_index
+from number_compiler.resources.stores import (
+    NodeIndexFactory,
+    append_indexed_node,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +74,9 @@ class RadixProviderActionArena:
         prefix = f"radix-provider-actions-{len(ledger.inventory())}"
         self._node_owner = ledger.register(prefix + "-nodes", "field_cell_action")
         self._key_owner = ledger.register(prefix + "-keys", "field_action_interner")
-        self._nodes, self._keys = make_dense_index(
-            ledger, self._node_owner, self._key_owner
-        )
+        self._nodes, self._keys = NodeIndexFactory[
+            _RadixProviderAction, _RadixProviderAction
+        ].dense(ledger, self._node_owner, self._key_owner)
         ledger.register_execution_root(self)
 
     def _handle(self, local_id: int) -> RadixProviderActionID:

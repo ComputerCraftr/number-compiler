@@ -31,13 +31,13 @@ from number_compiler.hashlife.tiles.tiles import TileAlphabet
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_kernel import (
-    _oracle,
-    _runtime,
-    _runtime_source,
-    _spatial_inputs,
-    _symbols,
-    _tile,
+    literal_tile_output,
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+    read_tile_symbols,
     runtime_source_children,
+    runtime_spatial_inputs,
 )
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, action, scheduler, source = make_tile_runtime_source(
         effect, (0, 0, 0, 1)
     )
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
@@ -75,7 +75,9 @@ def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
                 CausalCompletedOutput(output.tile, semantics),
             ) as published:
                 expected = published.result
-                assert _symbols(tiles, published.output) == _oracle(
+                assert read_tile_symbols(
+                    tiles, published.output
+                ) == literal_tile_output(
                     effect,
                     (0, 0, 0, 1),
                 )
@@ -91,10 +93,79 @@ def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
         source.close()
 
 
+def test_cached_causal_output_rejects_rebound_action_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    effect = BaseBlockEffect(3)
+    _, _, adapter, action, scheduler, source = make_tile_runtime_source(
+        effect, (0, 0, 0, 1)
+    )
+    _, _, foreign, _, _ = make_tile_runtime(effect)
+
+    def forbidden_children(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a rebound authority must not interpret the cached action")
+
+    monkeypatch.setattr(foreign, "action_children", forbidden_children)
+    with (
+        source,
+        scheduler.complete(
+            action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
+        ) as result,
+    ):
+        expected = cached_causal_output(result)
+        scheduler.results.action_authority = foreign
+        try:
+            with pytest.raises(ValueError, match="authority changed after admission"):
+                cached_causal_output(result)
+        finally:
+            scheduler.results.action_authority = adapter
+        assert cached_causal_output(result) == expected
+
+
+def test_result_lease_rejects_same_signature_action_rebinding_and_releases_root() -> (
+    None
+):
+    effect = BaseBlockEffect(3)
+    _, _, adapter, action, scheduler, source = make_tile_runtime_source(
+        effect, (0, 0, 0, 1)
+    )
+    with (
+        source,
+        scheduler.complete(
+            action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
+        ) as result,
+    ):
+        original_key = result._key
+        original_root = result._tile
+        alternate = adapter.power(action, 2)
+        assert alternate != action
+        assert adapter.signature_for(alternate) == adapter.signature_for(action)
+
+        # Both actions are valid under the same authority and port signature,
+        # so semantic validation of the replacement alone cannot authenticate
+        # that this result lease was issued for it.
+        result._key = replace(original_key, action=alternate)
+        with pytest.raises(ValueError, match="binding changed after issuance"):
+            cached_causal_output(result)
+
+        # Fail closed while the association is corrupted. The issued root stays
+        # pinned until the caller restores the exact binding, then normal close
+        # releases it without ever trusting the alternate action.
+        with pytest.raises(ValueError, match="binding changed after issuance"):
+            result.close()
+        assert result._closed is False
+        assert original_root._closed is False
+        result._key = original_key
+        result.close()
+        assert result._closed is True
+        assert result._tile is original_root
+        assert original_root._closed is True
+
+
 def test_composite_key_encodes_exact_input_prefixes_separately_from_ports() -> None:
     effect = BaseBlockEffect(3)
     _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(effect, (0, 0, 0, 1))
+        make_tile_runtime_source(effect, (0, 0, 0, 1))
     )
     action = adapter.power(primitive, 4)
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
@@ -126,9 +197,9 @@ def test_composite_key_encodes_exact_input_prefixes_separately_from_ports() -> N
 def test_causal_payload_rejects_conflicting_observed_inputs_before_composition() -> (
     None
 ):
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with (
-        _tile(tiles, adapter, action, (0,)) as source,
+        make_tile_from_symbols(tiles, adapter, action, (0,)) as source,
         scheduler.complete(
             action,
             source.tile,
@@ -155,8 +226,8 @@ def test_causal_finite_ports_reject_numeric_aliases_before_arena_work(
     bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
-        effect, (0,)
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = (
+        make_tile_runtime_source(effect, (0,))
     )
     before = ledger.snapshot()
     try:
@@ -178,7 +249,9 @@ def test_causal_finite_ports_reject_numeric_aliases_before_arena_work(
 
 def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0,))
+    ledger, tiles, adapter, action, scheduler, source = make_tile_runtime_source(
+        effect, (0,)
+    )
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
     key = causal_result_key(
         scheduler.results,
@@ -187,7 +260,7 @@ def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> 
         PrimitiveCausalPorts(*ports),
         wiring,
     )
-    interface = adapter._compile_interface(action, source.tile, wiring)
+    interface = adapter.compile_interface(action, source.tile, wiring)
     wrong_alphabet = tiles.intern_alphabet(
         TileAlphabet(
             2,
@@ -228,7 +301,7 @@ def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> 
 def test_causal_boundary_sorts_cannot_alias_across_temporal_depth() -> None:
     effect = BaseBlockEffect(3)
     _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(effect, (0,))
+        make_tile_runtime_source(effect, (0,))
     )
     composite = adapter.power(primitive, 2)
     try:
@@ -276,7 +349,7 @@ def _payload(
 
 def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+    _ledger, tiles, adapter, action, scheduler, source = make_tile_runtime_source(
         effect, (0, 0, 0, 1)
     )
     (
@@ -287,7 +360,7 @@ def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
         wiring,
         left_context,
         right_context,
-    ) = _spatial_inputs(tiles, adapter, action, source)
+    ) = runtime_spatial_inputs(tiles, adapter, action, source)
     left = scheduler.complete(
         action,
         left_cell,
@@ -333,7 +406,7 @@ def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
                 right_payload,
                 wiring,
             )
-            expected_interface = adapter._compile_interface(
+            expected_interface = adapter.compile_interface(
                 action,
                 source.tile,
                 wiring,
@@ -380,12 +453,12 @@ def test_collatz_causal_spatial_events_sum_beyond_one_tick_cap() -> None:
     action = adapter.power(primitive, 2)
     wiring = adapter.wiring(action)
     ports = adapter.initial_ports(action)
-    left_interface = adapter._compile_interface(
+    left_interface = adapter.compile_interface(
         primitive,
         node.left,
         adapter.wiring(primitive),
     )
-    right_interface = adapter._compile_interface(
+    right_interface = adapter.compile_interface(
         primitive,
         node.right,
         adapter.wiring(primitive),
@@ -419,18 +492,18 @@ def test_spatial_causal_composition_keeps_distinct_producer_and_consumer_tiles()
     None
 ):
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    _ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, (0, 1)
     )
-    producer_output = _tile(tiles, adapter, primitive, (1, 0))
+    producer_output = make_tile_from_symbols(tiles, adapter, primitive, (1, 0))
     node = tiles.resolve(source.tile)
     producer_node = tiles.resolve(producer_output.tile)
     assert node.left is not None and node.right is not None
     assert producer_node.left is not None and producer_node.right is not None
     action = adapter.power(primitive, 2)
     wiring = adapter.wiring(action)
-    left_interface = adapter._compile_interface(primitive, node.left, wiring)
-    right_interface = adapter._compile_interface(primitive, node.right, wiring)
+    left_interface = adapter.compile_interface(primitive, node.left, wiring)
+    right_interface = adapter.compile_interface(primitive, node.right, wiring)
     left_consumer, right_consumer = (0, 1), (1, 0)
     left_producer, right_producer = (1, 0), (0, 1)
     left_producer_boundaries = BoundaryTileOperands(

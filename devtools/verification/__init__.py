@@ -7,7 +7,7 @@ not bounded transfer summaries or production temporal state.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -34,7 +34,7 @@ def require_exact_oracle() -> None:
 
 
 @contextmanager
-def exact_oracle() -> Iterator[None]:
+def exact_oracle() -> Generator[None, None, None]:
     """Authorize exact reference computation outside any point/width request."""
     require_endpoint_construction()
     token = _ORACLE_ACTIVE.set(True)

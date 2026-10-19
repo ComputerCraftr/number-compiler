@@ -7,7 +7,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.tile_kernel import _runtime
+from tests.support.tile_kernel import make_tile_runtime
 
 
 @pytest.mark.parametrize("effect", (BaseBlockEffect(3), CollatzPhysicalBlockEffect()))
@@ -15,7 +15,7 @@ def test_symbol_interface_matches_complete_leaf_law_without_tiles(
     effect: BaseBlockEffect | CollatzPhysicalBlockEffect,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, _scheduler = _runtime(effect)
+    _ledger, tiles, adapter, action, _scheduler = make_tile_runtime(effect)
     kernel = adapter.primitive_law(action)
     wiring = adapter.wiring(action)
 

@@ -98,10 +98,10 @@ def _mirror_lookup(tile: DyadicTile) -> DyadicTile | None:
     return None if found is None else found()
 
 
-_TILE_INTERN_HITS = 0
-_TILE_INTERN_MISSES = 0
-_MIRROR_HITS = 0
-_MIRROR_MISSES = 0
+_tile_intern_hits = 0
+_tile_intern_misses = 0
+_mirror_hits = 0
+_mirror_misses = 0
 
 
 def tile_arena_metrics() -> dict[str, int]:
@@ -131,10 +131,10 @@ def tile_arena_metrics() -> dict[str, int]:
         "internal_nodes": len(_NODES),
         "uniform_entries": len(_UNIFORM),
         "mirror_entries": len(_MIRRORS),
-        "intern_hits": _TILE_INTERN_HITS,
-        "intern_misses": _TILE_INTERN_MISSES,
-        "mirror_hits": _MIRROR_HITS,
-        "mirror_misses": _MIRROR_MISSES,
+        "intern_hits": _tile_intern_hits,
+        "intern_misses": _tile_intern_misses,
+        "mirror_hits": _mirror_hits,
+        "mirror_misses": _mirror_misses,
         "node_id_collisions": node_id_collisions,
         "invalid_intern_entries": invalid_leaf_keys + invalid_internal_keys,
         "mirror_involution_violations": mirror_involution_violations,
@@ -143,13 +143,13 @@ def tile_arena_metrics() -> dict[str, int]:
 
 @exact_constructor
 def leaf(symbol: int) -> DyadicTile:
-    global _TILE_INTERN_HITS, _TILE_INTERN_MISSES
+    global _tile_intern_hits, _tile_intern_misses
     symbol = int(symbol)
     found = _LEAVES.get(symbol)
     if found is not None:
-        _TILE_INTERN_HITS += 1
+        _tile_intern_hits += 1
         return found
-    _TILE_INTERN_MISSES += 1
+    _tile_intern_misses += 1
     out = DyadicTile(next(_IDS), 0, symbol=symbol)
     _LEAVES[symbol] = out
     _UNIFORM[(symbol, 0)] = out
@@ -159,15 +159,15 @@ def leaf(symbol: int) -> DyadicTile:
 @exact_constructor
 def join(left: DyadicTile, right: DyadicTile) -> DyadicTile:
     """Intern one aligned parent without collapsing equal children."""
-    global _TILE_INTERN_HITS, _TILE_INTERN_MISSES
+    global _tile_intern_hits, _tile_intern_misses
     if left.level != right.level:
         raise ValueError((left.level, right.level))
     key = (id(left), id(right))
     found = _NODES.get(key)
     if found is not None:
-        _TILE_INTERN_HITS += 1
+        _tile_intern_hits += 1
         return found
-    _TILE_INTERN_MISSES += 1
+    _tile_intern_misses += 1
     uniform_symbol = (
         int(left.symbol) if left is right and left.symbol is not None else None
     )
@@ -388,12 +388,12 @@ def mirror_tile(tile: DyadicTile) -> DyadicTile:
     Reflection is itself a canonical quadtree action.  Cache it at the tile
     layer so repeated RIGHT scans do not rebuild the same reflected subtree.
     """
-    global _MIRROR_HITS, _MIRROR_MISSES
+    global _mirror_hits, _mirror_misses
     found = _mirror_lookup(tile)
     if found is not None:
-        _MIRROR_HITS += 1
+        _mirror_hits += 1
         return found
-    _MIRROR_MISSES += 1
+    _mirror_misses += 1
     if tile.level == 0:
         _MIRRORS[tile] = ref(tile)
         return tile

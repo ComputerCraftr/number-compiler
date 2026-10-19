@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     _affine_weight_signature,
-    _boundary_state_signature,
+    boundary_source_index,
+    boundary_state_signature,
 )
 from number_compiler.sequences.comma.carry_generator import BitsCharge
 from number_compiler.sequences.comma.future_authority import (
@@ -32,7 +33,6 @@ from number_compiler.sequences.comma.future_provider import (
     SemanticFutureProviderLease,
     UnrankedChildSelection,
     WorkCharger,
-    _source_index,
 )
 from number_compiler.sequences.comma.occurrence import (
     BoundaryOccurrence,
@@ -59,8 +59,8 @@ def _numeric_payload_signature(
         raise ValueError("semantic macro child has malformed numeric payload")
     return (
         literal_value,
-        _boundary_state_signature(weighted_action.start),
-        _boundary_state_signature(weighted_action.end),
+        boundary_state_signature(weighted_action.start),
+        boundary_state_signature(weighted_action.end),
         weighted_action.exponent_delta,
         _affine_weight_signature(weighted_action.weight),
     )
@@ -118,7 +118,7 @@ def _validate_selection_class_bindings(
         or any(type(child) is not BoundaryState for child in ordered_children)
     ):
         raise ValueError("semantic branch has malformed ordered boundary states")
-    if _source_index(selection.source) != _source_index(source):
+    if boundary_source_index(selection.source) != boundary_source_index(source):
         raise ValueError("semantic provider selected a different source state")
 
     class_count = provider.class_count
@@ -194,7 +194,7 @@ class SemanticMacroChild:
             self,
             "_selection_snapshot",
             (
-                _source_index(selection.source),
+                boundary_source_index(selection.source),
                 selection.source_class,
                 selection.fork_coefficient,
                 selection.ordered_child_classes,
@@ -237,7 +237,7 @@ class SemanticMacroChild:
         ):
             raise ValueError("semantic macro child has malformed FutureCID fields")
         if getattr(self, "_selection_snapshot", None) != (
-            _source_index(self.selection.source),
+            boundary_source_index(self.selection.source),
             self.selection.source_class,
             self.selection.fork_coefficient,
             selected_classes,
@@ -253,15 +253,15 @@ class SemanticMacroChild:
             type(slot) is not int
             or slot not in (0, 1)
             or self.prefix.source != self.source
-            or _boundary_state_signature(self.selection.source)
-            != _boundary_state_signature(self.source.state)
+            or boundary_state_signature(self.selection.source)
+            != boundary_state_signature(self.source.state)
             or self.occurrence.prefix is not self.prefix
             or self.occurrence.kind != ("N" if slot == 0 else "Z")
             or self.selection.fork_coefficient != self.prefix.template.destination_a
-            or _boundary_state_signature(self.weighted_action.start)
-            != _boundary_state_signature(self.source.state)
-            or _boundary_state_signature(self.weighted_action.end)
-            != _boundary_state_signature(self.occurrence.target.state)
+            or boundary_state_signature(self.weighted_action.start)
+            != boundary_state_signature(self.source.state)
+            or boundary_state_signature(self.weighted_action.end)
+            != boundary_state_signature(self.occurrence.target.state)
             or self.weighted_action.exponent_delta != self.prefix.width_delta
         ):
             raise ValueError("semantic macro child fields lost their source binding")
@@ -400,8 +400,8 @@ class Source20FirstChildEntry:
             raise ValueError("source-20 first-child authority changed")
         self._occurrence._validate()
         if (
-            _boundary_state_signature(self._occurrence.state)
-            != _boundary_state_signature(BoundaryState("N", 2, 10))
+            boundary_state_signature(self._occurrence.state)
+            != boundary_state_signature(BoundaryState("N", 2, 10))
             or self._occurrence.exponent != 10
             or getattr(self, "_snapshot", None) != self._current_snapshot()
         ):
@@ -595,10 +595,10 @@ def select_semantic_macro_child(
     literal_value = expected_literals[selection.selected_slot]
     weighted_action = occurrence.weighted_action()
     if (
-        _boundary_state_signature(weighted_action.start)
-        != _boundary_state_signature(source.state)
-        or _boundary_state_signature(weighted_action.end)
-        != _boundary_state_signature(occurrence.target.state)
+        boundary_state_signature(weighted_action.start)
+        != boundary_state_signature(source.state)
+        or boundary_state_signature(weighted_action.end)
+        != boundary_state_signature(occurrence.target.state)
         or weighted_action.exponent_delta != prefix.width_delta
     ):
         raise ValueError("semantic branch lost its exact weighted occurrence binding")

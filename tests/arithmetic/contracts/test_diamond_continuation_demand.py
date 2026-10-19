@@ -21,7 +21,8 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ImageBinding,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.diamond_runtime import build, oracle
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
+from tests.support.diamond_runtime import oracle
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -50,7 +51,9 @@ def interfaces(
 def test_constant_substitution_skips_the_opposite_transfer_before_any_execution(
     side: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 8, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 2
+    )
     first, second, provider = interfaces(runtime, action)
     anchor = runtime.execute(Initial(first, side))
     argument = runtime.execute(Initial(first, 1 - side))
@@ -79,7 +82,9 @@ def test_constant_substitution_skips_the_opposite_transfer_before_any_execution(
 def test_two_constant_output_continuations_schedule_neither_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 8, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 2
+    )
     first, second, provider = interfaces(runtime, action)
     left, right = (
         runtime.execute(Initial(action, 0)),
@@ -99,7 +104,9 @@ def test_two_constant_output_continuations_schedule_neither_argument(
 
 def test_nonconstant_contexts_remain_exact_after_demand_reduction() -> None:
     source = (1, 0, 1, 1, 0, 1)
-    runtime, action = build(CollatzPhysicalBlockEffect(), source, 16, 8)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), source, 16, 8
+    )
     expected = oracle(CollatzPhysicalBlockEffect(), source, 16, 8)
     assert [runtime.point(action, index) for index in (0, 1, 3, 6, 12, 15)] == [
         expected[index] for index in (0, 1, 3, 6, 12, 15)
@@ -112,7 +119,9 @@ def test_nonconstant_contexts_remain_exact_after_demand_reduction() -> None:
 def test_complete_primitive_constant_skips_all_source_and_provider_outputs(
     provider_steps: int, fixed_output: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runtime, composed = build(CollatzPhysicalBlockEffect(), (1,), 8, 2)
+    runtime, composed = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 2
+    )
     atom = runtime.actions.reference(runtime.actions.node(composed).first)
     provider_action = runtime.actions.identity if not provider_steps else composed
     provider_left = runtime.execute(Initial(provider_action, 0))
@@ -148,7 +157,9 @@ def test_complete_primitive_constant_skips_all_source_and_provider_outputs(
 def test_nonconstant_primitive_function_still_observes_its_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, atom = build(CollatzPhysicalBlockEffect(), (1,), 8, 1)
+    runtime, atom = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 1
+    )
     unit_left = runtime.execute(Initial(runtime.actions.identity, 0))
     unit_right = runtime.execute(Initial(runtime.actions.identity, 1))
     provider = ImageBinding(

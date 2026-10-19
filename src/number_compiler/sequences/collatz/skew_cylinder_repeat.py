@@ -36,7 +36,7 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 
@@ -171,7 +171,7 @@ class RepeatedWordMooreCylinder:
         if evaluator is not None:
             if type(evaluator) is not GrowthArithmeticEvaluator:
                 raise TypeError("repeat-guard evaluator has another owner")
-            with evaluator._charge_work(
+            with evaluator.charge_work(
                 work_units,
                 0,
                 source.bit_length()
@@ -346,13 +346,13 @@ class GuardedSkewCylinderPower:
             validate_boundary_macro,
         )
         from number_compiler.sequences.collatz.innovation_input_tape import (
-            _boundary_macro_specs,
+            boundary_macro_specs,
         )
 
         if type(macro) is not CollatzBoundaryMacro:
             raise TypeError("named parity power requires its issued boundary macro")
         validate_boundary_macro(macro)
-        clock = SkewQuadraticClock.factors(_boundary_macro_specs(macro), precision)
+        clock = SkewQuadraticClock.factors(boundary_macro_specs(macro), precision)
         return cls._from_issued_action(
             source=macro.source,
             expected_endpoint=macro.endpoint,
@@ -441,13 +441,13 @@ class GuardedSkewCylinderPower:
             validate_boundary_macro,
         )
         from number_compiler.sequences.collatz.innovation_input_tape import (
-            _boundary_macro_specs,
+            boundary_macro_specs,
         )
 
         if type(macro) is not CollatzBoundaryMacro:
             raise TypeError("named parity inspection requires its issued macro")
         validate_boundary_macro(macro)
-        clock = SkewQuadraticClock.factors(_boundary_macro_specs(macro), precision)
+        clock = SkewQuadraticClock.factors(boundary_macro_specs(macro), precision)
         return cls._inspect_issued_action(
             source=macro.source,
             expected_endpoint=macro.endpoint,
@@ -815,7 +815,7 @@ class GuardedSkewCylinderPower:
             "quadratic_clock_published": self.skew_clock is not None,
             "scope": "same source-admitted parity word only; no next-family claim",
         }
-        powered_f5 = _project_dyadic_fields_f5(self.action).power(self.repetitions)
+        powered_f5 = project_dyadic_fields_f5(self.action).power(self.repetitions)
         packet["powered_f5_action"] = {
             "scale": powered_f5.scale,
             "offset": powered_f5.offset,
@@ -880,7 +880,7 @@ class GuardedSkewCylinderPower:
                 + abs(self.action.offset).bit_length()
                 + self.normalized_steps
             )
-            with evaluator._charge_work(
+            with evaluator.charge_work(
                 work_units,
                 0,
                 operand_bits,

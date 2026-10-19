@@ -9,7 +9,9 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
@@ -38,14 +40,14 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
     children = workspace.action_node(workspace.root_action).children
     assert children is not None
     action, after = children
-    root_origin = core._origin(workspace, workspace.root_source)
+    root_origin = core.origin(workspace, workspace.root_source)
     source = workspace.first_child_source(
         workspace.root_action,
         core.view(root_origin),
         action,
         after,
     )
-    core._origin(workspace, source)
+    core.origin(workspace, source)
     before = (
         ledger.entries,
         ledger.nodes,

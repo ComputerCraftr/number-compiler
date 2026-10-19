@@ -45,7 +45,7 @@ def test_full_response_composition_and_normalization_basis() -> None:
                     length=length, incoming=incoming, outgoing=outgoing
                 )
                 assert defect == direct_jet(
-                    tuple(a - b for a, b in zip(coefficients, digits))
+                    tuple(a - b for a, b in zip(coefficients, digits, strict=True))
                 )
                 assert (
                     PrimaryCarryJet.from_normalization_defect(

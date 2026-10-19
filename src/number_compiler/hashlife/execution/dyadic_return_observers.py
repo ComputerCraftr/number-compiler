@@ -19,17 +19,16 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicImageSummary,
     DyadicReturnImageID,
     DyadicReturnSupportID,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
-    _clear_finite_memo,
-    _low_bits,
     balanced_residue_effect,
     balanced_residue_macro,
     cycle_phase_summaries,
+    low_bits,
     transport_low,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageView
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageView
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -44,7 +43,7 @@ def first_failure(
     payload = image.payload
     if type(payload) is not DyadicReturnImageID:
         raise TypeError("dyadic return image payload has another sort")
-    return workspace._first_failure(workspace.image_node(payload).summary)
+    return _first_failure(workspace, workspace.image_node(payload).summary)
 
 
 def summary(workspace: DyadicReturnImageWorkspace) -> DyadicImageSummary:
@@ -57,8 +56,8 @@ def endpoint(workspace: DyadicReturnImageWorkspace) -> int:
     chart = integer_dyadic_fiber_action(
         summary.transfer, source.residue, source.precision
     )
-    workspace._bump("fiber_endpoint_demands")
-    workspace._bump(
+    workspace.bump_metric("fiber_endpoint_demands")
+    workspace.bump_metric(
         "fiber_endpoint_operand_bits",
         max(1, abs(chart.multiplier).bit_length())
         + max(1, abs(chart.addend).bit_length())
@@ -86,13 +85,13 @@ def binary_cell(workspace: DyadicReturnImageWorkspace, position: int) -> int:
         or action.width != workspace.steps
         or image.summary.width != workspace.steps
         or source.precision != workspace.steps
-        or source.residue != _low_bits(workspace.seed, source.precision)
+        or source.residue != low_bits(workspace.seed, source.precision)
         or source.lift != workspace.seed >> source.precision
     ):
         raise ValueError("binary cell has another source/action binding")
     transfer = workspace.summary().transfer
     upper, offset, lower = transfer.upper, transfer.offset, transfer.lower
-    workspace._bump("point_germ_demands")
+    workspace.bump_metric("point_germ_demands")
     divisions = lower.bit_length() - 1
     if lower <= 0 or lower != 1 << divisions or upper < 0:
         raise ValueError("binary cell requires a nonnegative dyadic affine image")
@@ -103,7 +102,7 @@ def binary_cell(workspace: DyadicReturnImageWorkspace, position: int) -> int:
         + 1
     )
     if position + divisions >= numerator_bits:
-        workspace._bump("point_germ_exterior_shortcuts")
+        workspace.bump_metric("point_germ_exterior_shortcuts")
         return 0 if position == 0 else 2
     place = 1 << position
     if not upper:
@@ -116,7 +115,7 @@ def binary_cell(workspace: DyadicReturnImageWorkspace, position: int) -> int:
         raise ValueError("binary image has insufficient source precision")
     width = position + 1
     modulus = lower << width
-    workspace._bump(
+    workspace.bump_metric(
         "point_germ_operand_bits",
         upper.bit_length()
         + abs(offset).bit_length()
@@ -136,8 +135,8 @@ def binary_cell(workspace: DyadicReturnImageWorkspace, position: int) -> int:
     if position == 0:
         cutoff = 0  # The canonical integer zero has one zero digit.
     germ = AffinePointGerm.normal_form(width, gain, residue // lower, cutoff)
-    workspace._bump("point_germ_normalizations")
-    workspace._bump("point_germ_descriptor_bits", germ.descriptor_bits)
+    workspace.bump_metric("point_germ_normalizations")
+    workspace.bump_metric("point_germ_descriptor_bits", germ.descriptor_bits)
     return germ.at(source.lift)
 
 
@@ -184,7 +183,7 @@ def branch_segments(
 
 
 def _cycle_branch_segments(
-    workspace: DyadicReturnImageWorkspace, node: _SupportNode, start: int
+    workspace: DyadicReturnImageWorkspace, node: DyadicReturnSupportRecord, start: int
 ) -> Iterator[tuple[int, int, int]]:
     cycle = workspace.law.cycle
     metadata = node.cycle
@@ -210,7 +209,7 @@ def _expanded_saturated_support(
     """Demand exact bounded leaves once from the same admitted source image."""
     cached = workspace.demanded_support.get(payload)
     if cached is not None:
-        workspace._bump("saturated_support_demand_hits")
+        workspace.bump_metric("saturated_support_demand_hits")
         return cached
     image = workspace.image_node(payload)
     summary = image.summary
@@ -224,7 +223,7 @@ def _expanded_saturated_support(
     support_start, image_start = len(workspace.support), len(workspace.images)
     try:
         prefix_id = balanced_residue_macro(
-            workspace, prefix, _low_bits(source.residue, prefix)
+            workspace, prefix, low_bits(source.residue, prefix)
         )
         prefix_node = workspace.support_node(prefix_id)
         if cycle is None:
@@ -254,9 +253,9 @@ def _expanded_saturated_support(
                 cycle.minimum,
             )
             tail_id = workspace._append_support(
-                _SupportNode(
+                DyadicReturnSupportRecord(
                     tail_width,
-                    _low_bits(entry_value, tail_width),
+                    low_bits(entry_value, tail_width),
                     SkewTransfer(0, law_cycle.states[cycle.terminal_phase], 1),
                     cycle.odd_steps,
                     cycle.delta,
@@ -273,7 +272,7 @@ def _expanded_saturated_support(
                 prefix_node.delta, prefix_node.minimum, cycle.delta, cycle.minimum
             )
             completed_id = workspace._append_support(
-                _SupportNode(
+                DyadicReturnSupportRecord(
                     summary.width,
                     summary.residue,
                     composed,
@@ -294,7 +293,7 @@ def _expanded_saturated_support(
             numerator = (
                 completed.transfer.upper * source_value + completed.transfer.offset
             )
-            workspace._bump(
+            workspace.bump_metric(
                 "support_comparison_operand_bits",
                 max(1, numerator.bit_length(), source_value.bit_length()),
             )
@@ -319,7 +318,7 @@ def _expanded_saturated_support(
             workspace.demanded_support.pop(payload, None)
             workspace.ledger.release(workspace.demanded_support_owner, entries=1)
             raise
-        workspace._bump("saturated_support_expansions")
+        workspace.bump_metric("saturated_support_expansions")
         return completed_id
     except BaseException:
         workspace._rollback_new_publications(support_start, image_start)
@@ -375,7 +374,7 @@ def leaf_summaries_for(
 
 def first_failure_index(workspace: DyadicReturnImageWorkspace) -> int | None:
     """Find the first negative weighted prefix from the admitted summary."""
-    return workspace._first_failure(workspace.summary())
+    return _first_failure(workspace, workspace.summary())
 
 
 def _first_failure(
@@ -395,7 +394,7 @@ def _first_failure(
             return _saturated_first_failure(workspace, node, balance, start)
         if node.branch_word is not None:
             for offset in range(node.width):
-                workspace._bump("first_failure_leaf_steps")
+                workspace.bump_metric("first_failure_leaf_steps")
                 bit = (node.branch_word >> offset) & 1
                 balance += workspace.law.weights[bit]
                 if balance < 0:
@@ -420,7 +419,7 @@ def _first_failure(
 
 def _saturated_first_failure(
     workspace: DyadicReturnImageWorkspace,
-    node: _SupportNode,
+    node: DyadicReturnSupportRecord,
     balance: int,
     start: int,
 ) -> int:
@@ -432,7 +431,7 @@ def _saturated_first_failure(
     finite construction memo survive between refinements.
     """
     if (
-        workspace._closed
+        workspace.closed
         or workspace.macros
         or workspace.macro_stack
         or workspace.balanced_stack
@@ -441,7 +440,7 @@ def _saturated_first_failure(
     # A failing first symbol is known from the admitted source port. Do not
     # construct a half-horizon effect merely to rediscover that boundary.
     if node.width and balance + workspace.law.weights[node.residue & 1] < 0:
-        workspace._bump("first_failure_leaf_steps")
+        workspace.bump_metric("first_failure_leaf_steps")
         return start
     workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
     try:
@@ -451,9 +450,9 @@ def _saturated_first_failure(
             prefix = metadata.entry_steps
             if prefix:
                 left = balanced_residue_effect(
-                    workspace, prefix, _low_bits(residue, prefix), _keep_memo=True
+                    workspace, prefix, low_bits(residue, prefix), retain_cache=True
                 )
-                workspace._bump("first_failure_refinements")
+                workspace.bump_metric("first_failure_refinements")
                 if balance + left.minimum < 0:
                     width, residue = prefix, left.residue
                 else:
@@ -465,10 +464,10 @@ def _saturated_first_failure(
         while width > workspace.MAX_LEAF_STEPS:
             left_width = width // 2
             left = balanced_residue_effect(
-                workspace, left_width, _low_bits(residue, left_width), _keep_memo=True
+                workspace, left_width, low_bits(residue, left_width), retain_cache=True
             )
-            workspace._bump("first_failure_refinements")
-            workspace._bump(
+            workspace.bump_metric("first_failure_refinements")
+            workspace.bump_metric(
                 "first_failure_descent_operand_bits",
                 residue.bit_length() + width.bit_length() + abs(balance).bit_length(),
             )
@@ -482,7 +481,7 @@ def _saturated_first_failure(
                 width = right_width
         for offset in range(width):
             bit = residue & 1
-            workspace._bump("first_failure_leaf_steps")
+            workspace.bump_metric("first_failure_leaf_steps")
             balance += workspace.law.weights[bit]
             if balance < 0:
                 return start + offset
@@ -494,7 +493,7 @@ def _saturated_first_failure(
             )
         raise ArithmeticError("saturated dyadic minimum lost its failure witness")
     finally:
-        _clear_finite_memo(workspace)
+        workspace.clear_finite_support_cache()
         workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
 
 
@@ -515,9 +514,9 @@ def _cycle_first_failure(
     cycle_length = len(cycle.states)
     balance += copies * safety.delta
     limit = metadata.remainder if failing_copy is None else cycle_length
-    workspace._bump("cycle_safety_descent_demands")
+    workspace.bump_metric("cycle_safety_descent_demands")
     for local in range(limit):
-        workspace._bump("first_failure_leaf_steps")
+        workspace.bump_metric("first_failure_leaf_steps")
         state = cycle.states[(metadata.cycle_phase + local) % cycle_length]
         balance += workspace.law.weights[state & 1]
         if balance < 0:

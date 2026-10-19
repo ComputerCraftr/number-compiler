@@ -30,8 +30,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     WordLimb,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_actions import arenas
-from tests.support.diamond_runtime import build
 
 HandleT = TypeVar("HandleT", bound=ArenaHandle)
 
@@ -60,7 +60,9 @@ def forged(reference: HandleT, **changes: object) -> HandleT:
 def test_scoped_action_source_formal_and_boundary_handles_reject_forgery(
     warm: bool, change: dict[str, object]
 ) -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (0, 1, 0, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1, 0, 1), 4, 1
+    )
     source = runtime.cells.source(0, 1)
     formal = runtime.cells.formal_symbol(1)
     state = runtime.boundaries.literal(action, 1, 0)

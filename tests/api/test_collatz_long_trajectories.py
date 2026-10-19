@@ -74,19 +74,27 @@ def test_noncycle_block_boundaries_and_clock_share_the_source_image(
         expected = trajectory.values[steps]
         term = PoweredCollatzTerm(trajectory.seed, steps)
         assert term.materialize(max_bits=expected.bit_length()) == expected, steps
-        leaf_work = term._ledger.counters.get("collatz_physical_leaf_steps", 0)
-        compositions = term._ledger.counters.get(
+        leaf_work = term.resource_ledger.counters.get("collatz_physical_leaf_steps", 0)
+        compositions = term.resource_ledger.counters.get(
             "source_image_chronological_compositions", 0
         )
         clock = term.s_arithmetic_clock()
         odd = trajectory.odd_counts[steps]
         assert (clock.events, clock.divisions) == (odd, steps - odd), steps
-        assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) == leaf_work
         assert (
-            term._ledger.counters.get("source_image_chronological_compositions", 0)
+            term.resource_ledger.counters.get("collatz_physical_leaf_steps", 0)
+            == leaf_work
+        )
+        assert (
+            term.resource_ledger.counters.get(
+                "source_image_chronological_compositions", 0
+            )
             == compositions
         )
-        assert term._ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
+        assert (
+            term.resource_ledger.counters.get("collatz_physical_cycle_compressions", 0)
+            == 0
+        )
 
 
 @pytest.mark.parametrize("offset", (-1, 0, 1, 2, 3, 4, 63, 64, 65))

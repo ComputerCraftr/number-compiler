@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from number_compiler.arithmetic.fields.morphism_core import binary_power
+
 RADIX4_LOW_TRANSLATIONS = (0, 3, 5, 8)
 MAX_SPATIAL_DIGITS = 4096
 MAX_SPATIAL_REPETITIONS = 1 << 32
@@ -102,16 +104,12 @@ class MahlerBorderCarryMap:
     def power(self, copies: int) -> MahlerBorderCarryMap:
         if type(copies) is not int or copies < 0 or copies > MAX_SPATIAL_REPETITIONS:
             raise ValueError("spatial motif copies exceed budget")
-        result = self.identity(self.radix)
-        factor = self
-        remaining = copies
-        while remaining:
-            if remaining & 1:
-                result = result.then(factor)
-            remaining >>= 1
-            if remaining:
-                factor = factor.then(factor)
-        return result
+        return binary_power(
+            self,
+            copies,
+            identity=self.identity(self.radix),
+            compose=MahlerBorderCarryMap.then,
+        ).value
 
     def outgoing(self, incoming: int) -> int:
         if type(incoming) is not int or not 0 <= incoming < self.multiplier:

@@ -15,7 +15,7 @@ from number_compiler.sequences.collatz.tape_width import CollatzWidthSpineAccumu
 from number_compiler.sequences.collatz.temporal_f5_observer import (
     ODD_HALF_F5,
     CollatzF5AffineAction,
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.terminal_preimage import (
     CollatzTerminalPower2Macro,
@@ -144,7 +144,7 @@ def consume_terminal_power_two(
     if width_spine.complete:
         width_spine.record(macro.width_blank)
     if normalized_f5 is not None and physical_f5 is not None:
-        f5 = _project_dyadic_fields_f5(macro.fields)
+        f5 = project_dyadic_fields_f5(macro.fields)
         normalized_f5 = normalized_f5.then(f5)
         physical_f5 = physical_f5.then(f5)
     ledger.bump(_collatz_keys.COLLATZ_TERMINAL_POWER2_PREIMAGE_ACTIONS)

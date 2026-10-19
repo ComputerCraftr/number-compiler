@@ -7,8 +7,8 @@ import pytest
 from devtools.experiments.reverse_add.edge_interior_regions import (
     construct_edge_interior_d2,
 )
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import (

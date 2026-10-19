@@ -32,6 +32,10 @@ MAX_CAUSAL_PHYSICAL_STEPS = 4096
 MAX_CAUSAL_DIGIT_POSITION = 256
 MAX_CAUSAL_WORK_UNITS = 25_000_000
 MAX_CAUSAL_ROW_STORAGE_CELLS = 123_000
+# The producer seal snapshots every finite digit/carry cell separately.
+# Reject the guaranteed-too-large serialized rows before constructing them.
+# Compact powered matrices do not carry this finite-row cost.
+MAX_CAUSAL_HARMONIC_ROW_TOKENS = 80_000
 _SUPPORTED_BASES = frozenset((2, 5, 7, 10))
 
 if TYPE_CHECKING:
@@ -117,10 +121,10 @@ class FermatCausalBorderMatrix:
     construction_peak_cells: int
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
-            self.source._payload(),
-            self.cylinder._payload(),
+            self.source.issuer_payload(),
+            self.cylinder.structural_payload(),
             self.base,
             self.position,
             self.physical_steps,
@@ -138,7 +142,9 @@ class FermatCausalBorderMatrix:
             self.source.producer_verified
             and self.cylinder.producer_verified
             and self.cylinder.source is self.source
-            and harmonic_verified(self, self._payload(), issuer=_MATRIX_ISSUER)
+            and harmonic_verified(
+                self, self.structural_payload(), issuer=_MATRIX_ISSUER
+            )
         )
 
     @property
@@ -204,12 +210,12 @@ def _source_residue(
     base: int,
     places: int,
 ) -> int:
-    modulus = base**places
+    modulus: int = base**places
     raw_level = source.level
     if type(raw_level) is not int or raw_level < 0:
         raise ValueError("issued Fermat source has an invalid level")
     level = int(raw_level)
-    residue = int(pow(3, 1 << level, modulus))
+    residue: int = pow(3, 1 << level, modulus)
     binary = source.origin.binary_phase_bank
     decimal = source.origin.decimal_phase_bank
     if base == 2:
@@ -253,7 +259,7 @@ def _row(
     physical_steps: int,
     ledger: ResourceLedger,
 ) -> FermatCausalCarryRow:
-    low_modulus = base**position
+    low_modulus: int = base**position
     modulus = low_modulus * base
     current = lower_residue + source_digit * low_modulus
     source_residue = current
@@ -317,6 +323,11 @@ def compile_causal_border_matrix(
         raise BlockContextBudgetExceeded("Fermat causal row work budget exceeded")
     if construction_peak_cells > MAX_CAUSAL_ROW_STORAGE_CELLS:
         raise BlockContextBudgetExceeded("Fermat causal row storage budget exceeded")
+    if 3 * row_cells + 15 * base > MAX_CAUSAL_HARMONIC_ROW_TOKENS:
+        raise BlockContextBudgetExceeded(
+            "finite Fermat causal harmonic snapshot budget exceeded; "
+            "request the source-guarded powered port matrix instead"
+        )
     if base == 7 and (
         type(multiradix_port) is not FermatMultiradixPort
         or not multiradix_port.producer_verified
@@ -354,7 +365,7 @@ def compile_causal_border_matrix(
         # returned rows have their own explicit size cap; they are not claimed
         # as a live ResourceLedger-owned allocation after this scope ends.
         with ledger.reservation(owner, nodes=construction_peak_cells):
-            rows = tuple(
+            rows: tuple[FermatCausalCarryRow, ...] = tuple(
                 _row(
                     base=base,
                     position=position,
@@ -367,7 +378,7 @@ def compile_causal_border_matrix(
             )
     finally:
         ledger.mark_disposed(owner)
-    selected = residue // (base**position)
+    selected: int = residue // (base**position)
     if rows[selected].source_residue != residue:
         raise ArithmeticError("source-selected causal row lost the production digit")
     result = FermatCausalBorderMatrix(
@@ -383,7 +394,7 @@ def compile_causal_border_matrix(
         row_cells,
         construction_peak_cells,
     )
-    issue_harmonic(result, result._payload(), issuer=_MATRIX_ISSUER)
+    issue_harmonic(result, result.structural_payload(), issuer=_MATRIX_ISSUER)
     if not result.producer_verified:
         raise ArithmeticError("failed to issue causal Fermat matrix")
     return result
@@ -431,6 +442,11 @@ def demand_fermat_causal_border_matrix(
     required_work = base * physical_steps * (position + 1)
     if required_work > work_budget:
         raise BlockContextBudgetExceeded("Fermat causal row work budget exceeded")
+    if 3 * base * physical_steps + 15 * base > MAX_CAUSAL_HARMONIC_ROW_TOKENS:
+        raise BlockContextBudgetExceeded(
+            "finite Fermat causal harmonic snapshot budget exceeded; "
+            "request the source-guarded powered port matrix instead"
+        )
 
     source = spec.demand_three_power_signed_border_action(
         level,

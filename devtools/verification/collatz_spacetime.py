@@ -451,7 +451,7 @@ class CollatzCausalSpacetimeEngine:
         self,
         *,
         max_jump_entries: int = 8192,
-        event_arena: CollatzEventArena | None = None,
+        event_arena: object | None = None,
     ) -> None:
         self.summary = _RadixSummaryArena(1)
         self.shift = _Base4ShiftRightOneArena()
@@ -469,9 +469,12 @@ class CollatzCausalSpacetimeEngine:
             self.codec.intern(DomainCell(self.codec.family, True, digit))
         self.codec.intern(DomainCell(self.codec.family, False, 0))
         self.domains = CanonicalDomainArena(self.codec)
-        self.event_arena = CollatzEventArena() if event_arena is None else event_arena
-        if not isinstance(self.event_arena, CollatzEventArena):
-            raise TypeError(type(self.event_arena))
+        if event_arena is None:
+            self.event_arena = CollatzEventArena()
+        elif isinstance(event_arena, CollatzEventArena):
+            self.event_arena = event_arena
+        else:
+            raise TypeError(type(event_arena))
         self.forcing_actions = CollatzBlockActionArena(self.mul3)
         self.forcing = CollatzForcingMorphismArena(self.forcing_actions)
         self.primitive_field_steps = 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass, fields
+from types import MappingProxyType
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -14,6 +15,9 @@ from number_compiler.arithmetic.contracts.semantic_identity import (
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
+)
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    HigherSpatialMacroAuditSnapshot,
 )
 from number_compiler.hashlife.execution.continuations.higher_blank_residual import (
     primitive_blank_run_admitted,
@@ -49,7 +53,7 @@ from number_compiler.hashlife.execution.tile_absorption import (
     compose_higher_spatial_wiring,
     higher_boundary_transfer,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -70,7 +74,7 @@ class SourceBoundHigherMacro:
 
 
 @dataclass(frozen=True, slots=True)
-class _MacroBindingKey:
+class MacroBindingKey:
     action: FieldCellActionID
     source: SourceBindingID
 
@@ -170,7 +174,7 @@ class HigherSpatialMacroComposer:
         self._binding_owner = self.ledger.register(
             prefix + "-bindings", "spatial_binding"
         )
-        self._bindings: MutableMapping[_MacroBindingKey, SourceBoundHigherMacro] = (
+        self._bindings: MutableMapping[MacroBindingKey, SourceBoundHigherMacro] = (
             self.ledger.make_dict(self._binding_owner)
         )
         self.ledger.register_container(
@@ -193,6 +197,15 @@ class HigherSpatialMacroComposer:
             self._bindings,
             self._declaration,
             self._declaration_seal,
+        )
+
+    def audit_snapshot(self) -> HigherSpatialMacroAuditSnapshot:
+        """Expose the exact source-bound macro interner as a read-only view."""
+        return HigherSpatialMacroAuditSnapshot(
+            ledger=self.ledger,
+            binding_owner=self._binding_owner,
+            bindings=MappingProxyType(self._bindings),
+            binding_store=self._bindings,
         )
 
     def _current_declaration(self) -> HigherMacroDeclaration:
@@ -608,7 +621,7 @@ class HigherSpatialMacroComposer:
         # to compare equal to a warm binding through its integer payload.
         self.sources.resolve(source)
         self.declaration()
-        key = _MacroBindingKey(self.action, source)
+        key = MacroBindingKey(self.action, source)
         self.ledger.bump(_execution_keys.HIGHER_SPATIAL_PARENT_REQUESTS)
         self.ledger.bump(_execution_keys.SPATIAL_PARENT_REQUESTS)
         found = self._bindings.get(key)
@@ -619,7 +632,7 @@ class HigherSpatialMacroComposer:
         pending = [(source, False)]
         while pending:
             current, ready = pending.pop()
-            current_key = _MacroBindingKey(self.action, current)
+            current_key = MacroBindingKey(self.action, current)
             if current_key in self._bindings:
                 continue
             node = self.sources.resolve(current)
@@ -646,7 +659,7 @@ class HigherSpatialMacroComposer:
                 if not node.level
                 else self._combine(
                     *(
-                        self._bindings[_MacroBindingKey(self.action, child)]
+                        self._bindings[MacroBindingKey(self.action, child)]
                         for child in self.sources.children(current)
                     )
                 )
@@ -664,7 +677,7 @@ class HigherSpatialMacroComposer:
             raise TypeError("higher spatial macro requires a scoped source binding")
         forest = self.sources.resolve_forest(source)
         self.declaration()
-        key = _MacroBindingKey(self.action, source)
+        key = MacroBindingKey(self.action, source)
         self.ledger.bump(_execution_keys.HIGHER_SPATIAL_FOREST_REQUESTS)
         self.ledger.bump(_execution_keys.SPATIAL_PARENT_REQUESTS)
         found = self._bindings.get(key)
@@ -704,7 +717,7 @@ class HigherSpatialMacroComposer:
             self.sources.resolve_forest(source)
         else:
             raise TypeError("higher source binding requires a scoped source")
-        found = self._bindings.get(_MacroBindingKey(self.action, source))
+        found = self._bindings.get(MacroBindingKey(self.action, source))
         if found is None or found != macro:
             raise ValueError("higher macro is not bound to this source occurrence")
         self.interfaces.resolve(macro.interface)
@@ -730,7 +743,7 @@ class HigherSpatialMacroComposer:
         if type(provider) is not CoordinateOutputMorphismID:
             raise TypeError("higher provider requires a scoped output ID")
         self.outputs.resolve(provider)
-        macro = self._bindings.get(_MacroBindingKey(self.action, source))
+        macro = self._bindings.get(MacroBindingKey(self.action, source))
         if macro is None:
             raise ValueError("higher provider source was never compiled")
         self.validate_binding(source, macro)
@@ -755,5 +768,6 @@ class HigherSpatialMacroComposer:
 __all__ = [
     "HigherMacroDeclaration",
     "HigherSpatialMacroComposer",
+    "MacroBindingKey",
     "SourceBoundHigherMacro",
 ]

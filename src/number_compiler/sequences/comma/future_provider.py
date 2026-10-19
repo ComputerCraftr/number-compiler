@@ -54,15 +54,18 @@ from number_compiler.resources.ledger import (
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.sequences.comma import future_authority as _future_authority
 from number_compiler.sequences.comma.boundary_chart import PERIOD
-from number_compiler.sequences.comma.boundary_quotient import BoundaryState
+from number_compiler.sequences.comma.boundary_quotient import (
+    BoundaryState,
+    boundary_source_index,
+)
 from number_compiler.sequences.comma.future_authority import (
     FutureClass,
     FutureControl,
-    _class_row_signature,
-    _global_release_admission_matches,
-    _KernelInstanceAdmission,
-    _registered_admission_matches,
+    KernelInstanceAdmission,
     _valid_artifact_digest,
+    class_row_signature,
+    global_release_admission_matches,
+    registered_admission_matches,
 )
 from number_compiler.sequences.comma.future_provider_memory import (
     candidate_workspace_cost,
@@ -92,9 +95,7 @@ _RECORD_FIELDS = frozenset(
 )
 # Deliberately empty until the FutureCID instance has passed the Isabelle
 # kernel gate and its exact artifact/theorem binding is reviewed for release.
-_ADMITTED_KERNEL_INSTANCES: Mapping[str, _KernelInstanceAdmission] = MappingProxyType(
-    {}
-)
+_ADMITTED_KERNEL_INSTANCES: Mapping[str, KernelInstanceAdmission] = MappingProxyType({})
 
 
 registered_global_release_artifact_sha256 = partial(
@@ -133,7 +134,7 @@ class UnrankedChildSelection:
     selected_slot: Literal[0, 1]
 
     def __post_init__(self) -> None:
-        _source_index(self.source)
+        boundary_source_index(self.source)
         if type(self.source_class) is not int or self.source_class < 0:
             raise ValueError("future selection needs an exact source CID")
         if (
@@ -170,7 +171,7 @@ class SemanticFutureProvider:
     _source_classes: tuple[int, ...]
     _classes: tuple[FutureClass, ...]
     _digest: str
-    _admission: _KernelInstanceAdmission
+    _admission: KernelInstanceAdmission
     _source_classes_binding: tuple[int, ...] = field(
         repr=False, compare=False, hash=False
     )
@@ -190,7 +191,7 @@ class SemanticFutureProvider:
         classes: tuple[FutureClass, ...],
         digest: str,
         *,
-        admission: _KernelInstanceAdmission,
+        admission: KernelInstanceAdmission,
         _seal: object,
     ) -> None:
         if _seal is not _PROVIDER_SEAL:
@@ -199,7 +200,7 @@ class SemanticFutureProvider:
         object.__setattr__(self, "_classes", classes)
         object.__setattr__(self, "_digest", digest)
         object.__setattr__(self, "_admission", admission)
-        signatures = tuple(_class_row_signature(row) for row in classes)
+        signatures = tuple(class_row_signature(row) for row in classes)
         object.__setattr__(self, "_source_classes_binding", source_classes)
         object.__setattr__(self, "_classes_binding", classes)
         object.__setattr__(self, "_class_signatures", signatures)
@@ -308,21 +309,21 @@ class SemanticFutureProvider:
     def runtime_admitted(self) -> bool:
         if (
             not _valid_artifact_digest(self._digest)
-            or type(self._admission) is not _KernelInstanceAdmission
+            or type(self._admission) is not KernelInstanceAdmission
         ):
             return False
         admission = _ADMITTED_KERNEL_INSTANCES.get(self._digest)
         return (
             self._tables_bound()
-            and type(admission) is _KernelInstanceAdmission
+            and type(admission) is KernelInstanceAdmission
             and admission is self._admission
-            and _registered_admission_matches(admission, self._digest)
+            and registered_admission_matches(admission, self._digest)
         )
 
     @property
     def global_release_admitted(self) -> bool:
         """Whether this exact artifact has the full global kernel contract."""
-        return self.runtime_admitted and _global_release_admission_matches(
+        return self.runtime_admitted and global_release_admission_matches(
             self._admission, self._digest
         )
 
@@ -352,7 +353,7 @@ class SemanticFutureProvider:
             raise ValueError("future class identifier is out of range")
         row = self._classes[cid]
         try:
-            fields = _class_row_signature(row)
+            fields = class_row_signature(row)
         except TypeError as exc:
             raise PermissionError("semantic future class row was altered") from exc
         if not matches_scalar_signature(fields, self._class_signatures[cid]):
@@ -376,7 +377,7 @@ class SemanticFutureProvider:
             raise TypeError("future lookup requires a validated BoundaryState")
         self._require_table_bindings()
         _charge_work(charge_work, 1)
-        return self._source_classes[_source_index(source)]
+        return self._source_classes[boundary_source_index(source)]
 
     def class_row(self, cid: int, *, charge_work: WorkCharger) -> FutureClass:
         _charge_work(charge_work, 1)
@@ -396,7 +397,7 @@ class SemanticFutureProvider:
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
         self._require_table_bindings()
-        source_cid = self._source_classes[_source_index(source)]
+        source_cid = self._source_classes[boundary_source_index(source)]
         row = self._checked_class_row(source_cid)
         if row.control.kind != "fork" or row.control.fork_coefficient is None:
             raise ValueError("future source is not a Fork class")
@@ -580,7 +581,7 @@ class SemanticFutureProviderStore:
             charge_work,
         )
 
-    def _resolve(
+    def resolve_checked(
         self,
         digest: str,
         token: ArenaToken,
@@ -677,7 +678,9 @@ class SemanticFutureProviderLease:
         if type(self._token) is not ArenaToken:
             raise TypeError("future provider lease needs an exact store token")
 
-    def _provider(self, *, record_metrics: bool = True) -> SemanticFutureProvider:
+    def resolve_provider(
+        self, *, record_metrics: bool = True
+    ) -> SemanticFutureProvider:
         store = getattr(self, "_store", None)
         digest = getattr(self, "_digest", None)
         token = getattr(self, "_token", None)
@@ -688,7 +691,7 @@ class SemanticFutureProviderLease:
             or type(token) is not ArenaToken
         ):
             raise TypeError("malformed future provider lease binding")
-        return SemanticFutureProviderStore._resolve(
+        return SemanticFutureProviderStore.resolve_checked(
             store,
             digest,
             token,
@@ -696,46 +699,67 @@ class SemanticFutureProviderLease:
         )
 
     @property
-    def artifact_sha256(self) -> str:
-        return self._provider().artifact_sha256
+    def resource_ledger(self) -> ResourceLedger:
+        """Inspect the exact store owner without resolving or charging a lookup."""
+        store = getattr(self, "_store", None)
+        if type(store) is not SemanticFutureProviderStore:
+            raise TypeError("malformed future provider lease binding")
+        return store.ledger
 
-    def _status_provider(self) -> SemanticFutureProvider | None:
+    @property
+    def artifact_sha256(self) -> str:
+        return self.resolve_provider().artifact_sha256
+
+    def status_provider(self) -> SemanticFutureProvider | None:
         """Validate an already retained provider without changing work counters."""
         try:
-            return self._provider(record_metrics=False)
+            return self.resolve_provider(record_metrics=False)
         except (PermissionError, RuntimeError, TypeError):
             return None
 
     @property
     def runtime_admitted(self) -> bool:
-        provider = self._status_provider()
+        provider = self.status_provider()
         return provider is not None and provider.runtime_admitted
 
     @property
     def global_release_admitted(self) -> bool:
-        provider = self._status_provider()
+        provider = self.status_provider()
         return provider is not None and provider.global_release_admitted
+
+    def matches_global_release_binding(
+        self, ledger: ResourceLedger, artifact_sha256: str
+    ) -> bool:
+        provider = self.status_provider()
+        return (
+            type(ledger) is ResourceLedger
+            and _valid_artifact_digest(artifact_sha256)
+            and provider is not None
+            and provider.global_release_admitted
+            and self._store.ledger is ledger
+            and provider.artifact_sha256 == artifact_sha256
+        )
 
     @property
     def class_count(self) -> int:
-        return self._provider().class_count
+        return self.resolve_provider().class_count
 
     def require_runtime_admission(self) -> None:
-        self._provider().require_runtime_admission()
+        self.resolve_provider().require_runtime_admission()
 
     def require_global_release_admission(self) -> None:
-        self._provider().require_global_release_admission()
+        self.resolve_provider().require_global_release_admission()
 
     def source_class(self, source: BoundaryState, *, charge_work: WorkCharger) -> int:
-        return self._provider().source_class(source, charge_work=charge_work)
+        return self.resolve_provider().source_class(source, charge_work=charge_work)
 
     def class_row(self, cid: int, *, charge_work: WorkCharger) -> FutureClass:
-        return self._provider().class_row(cid, charge_work=charge_work)
+        return self.resolve_provider().class_row(cid, charge_work=charge_work)
 
     def select_unique_unranked_child(
         self, source: BoundaryState, *, charge_work: WorkCharger
     ) -> UnrankedChildSelection:
-        return self._provider().select_unique_unranked_child(
+        return self.resolve_provider().select_unique_unranked_child(
             source, charge_work=charge_work
         )
 
@@ -825,24 +849,9 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 
 
 def _admission_matches(
-    admission: _KernelInstanceAdmission, parsed: ParsedFutureCandidate
+    admission: KernelInstanceAdmission, parsed: ParsedFutureCandidate
 ) -> bool:
-    return _registered_admission_matches(admission, parsed.artifact_sha256)
-
-
-def _source_index(source: BoundaryState) -> int:
-    if (
-        type(source) is not BoundaryState
-        or type(source.kind) is not str
-        or source.kind not in ("N", "Z")
-        or type(source.a) is not int
-        or not 2 <= source.a <= 9
-        or type(source.exponent_residue) is not int
-        or not 0 <= source.exponent_residue < PERIOD
-    ):
-        raise ValueError("malformed comma boundary source state")
-    kind_offset = 0 if source.kind == "N" else 8 * PERIOD
-    return kind_offset + (source.a - 2) * PERIOD + source.exponent_residue
+    return registered_admission_matches(admission, parsed.artifact_sha256)
 
 
 def _validate_record(

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BoundarySide,
     BoundaryState,
+    next_operator_id,
 )
 
 
@@ -22,9 +22,7 @@ class NonblankBlockEffect:
 
     base: int
     blank: int
-    node_id: int = field(
-        default_factory=lambda: next(_OPERATOR_IDS), init=False, compare=False
-    )
+    node_id: int = field(default_factory=next_operator_id, init=False, compare=False)
 
     def __post_init__(self) -> None:
         if (

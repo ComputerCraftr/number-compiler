@@ -17,28 +17,29 @@ def audit_temporal_image_owner(
     containers: Mapping[int, object],
 ) -> tuple[frozenset[int], frozenset[tuple[int, int]]]:
     """Admit issued image records, never caller-supplied macro summaries."""
+    snapshot = root.audit_snapshot()
     stores = (
-        (root._node_owner, root._nodes),
-        (root._key_owner, root._keys),
-        (root._seal_owner, root._seals),
-        (root._frame_owner, root._frames),
-        (root._built_owner, root._built),
-        (root._source_frame_owner, root._source_frames),
-        (root._source_summary_owner, root._source_summaries),
+        (snapshot.node_owner, snapshot.node_store),
+        (snapshot.key_owner, snapshot.key_store),
+        (snapshot.seal_owner, snapshot.seal_store),
+        (snapshot.frame_owner, snapshot.frame_store),
+        (snapshot.built_owner, snapshot.built_store),
+        (snapshot.source_frame_owner, snapshot.source_frame_store),
+        (snapshot.source_summary_owner, snapshot.source_summary_store),
     )
     valid_root = (
-        root.ledger is ledger
+        snapshot.ledger is ledger
         and root.spatial.ledger is ledger
         and root.semantics is root.spatial.semantics
         and root.interfaces is root.spatial.interfaces
         and root.outputs is root.spatial.outputs
         and root.sources is root.spatial.sources
-        and root._running is False
-        and not root._frames
-        and not root._built
-        and not root._source_frames
-        and not root._source_summaries
-        and len(root._nodes) == len(root._keys) == len(root._seals)
+        and snapshot.running is False
+        and snapshot.frame_count == 0
+        and snapshot.built_count == 0
+        and snapshot.source_frame_count == 0
+        and snapshot.source_summary_count == 0
+        and len(snapshot.nodes) == len(snapshot.keys) == len(snapshot.seals)
         and all(
             containers.get(owner) is store and ledger.is_factory_container(store)
             for owner, store in stores
@@ -47,20 +48,19 @@ def audit_temporal_image_owner(
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     try:
-        root._check_authority()
+        root.validate_authority()
     except (TypeError, ValueError, AttributeError):
         valid_root = False
     if not valid_root:
         invalid.update((owner, id(store)) for owner, store in stores)
         return frozenset(), frozenset(invalid)
-    for index, record in enumerate(root._nodes):
+    for index, record in enumerate(snapshot.nodes):
         valid = type(record) is HigherTemporalImage
         try:
-            valid &= root.resolve(root._handle(index)) is record
-            key_index = root._keys.get(record)
+            valid &= root.resolve(root.handle_for_local_id(index)) is record
+            key_index = snapshot.keys.get(record)
             valid &= type(key_index) is int and key_index == index
-            valid &= type(root._seals[index]) is tuple
-            valid &= root._seals[index] == root._seal(record)
+            valid &= root.seal_matches(record, snapshot.seals[index])
             valid &= record.predecessor is None or record.predecessor.local_id < index
         except (TypeError, ValueError, KeyError, IndexError, AttributeError):
             valid = False
@@ -69,7 +69,7 @@ def audit_temporal_image_owner(
             approved.update((id(record), id(record.macro), id(seal)))
             approved.update(id(field) for field in seal)
         else:
-            invalid.add((root._node_owner, id(record)))
+            invalid.add((snapshot.node_owner, id(record)))
     if not invalid:
         approved.update(id(store) for _owner, store in stores)
     return frozenset(approved), frozenset(invalid)

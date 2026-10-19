@@ -14,6 +14,10 @@ from math import isnan
 from typing import NamedTuple, cast
 from weakref import ReferenceType, ref
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+    require_instance,
+)
 from number_compiler.arithmetic.contracts.iterative_queries import (
     enter_ordered_children,
 )
@@ -30,8 +34,7 @@ class HarmonicIssuer(NamedTuple):
 
 
 def new_harmonic_issuer(record_type: type[object]) -> HarmonicIssuer:
-    if not isinstance(record_type, type):
-        raise TypeError("harmonic issuer requires a record type")
+    require_instance(record_type, type)
     return HarmonicIssuer(record_type, object())
 
 
@@ -61,8 +64,6 @@ def _primitive_token(value: object) -> _Token | None:
     if value_type is float:
         floating = cast(float, value)
         return _Token(float, floating.hex() if isnan(floating) else floating)
-    if isinstance(value, Enum):
-        return _Token(value_type, value)
     return None
 
 
@@ -89,7 +90,12 @@ def _iter_tokens(payload: tuple[object, ...]) -> Iterator[_Token]:
             continue
         if identity in active:
             raise ValueError("harmonic payload contains a reference cycle")
-        if type(value) is tuple:
+        children: tuple[object, ...]
+        if isinstance(value, Enum):
+            # Retaining the member itself would alias a changed arithmetic value.
+            children = (value.name, value.value)
+            marker = _Token(type(value), len(children))
+        elif is_object_tuple(value) and type(value) is tuple:
             children = value
             marker = _Token(tuple, len(children))
         elif is_dataclass(value) and not isinstance(value, type):

@@ -2,23 +2,41 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.causal_frames import (
+    CausalTaskFrame,
+    OutputBoundaryFrame,
+    ReverseBoundaryFrame,
+    ScanChunksFrame,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
     boundary_dyadic_pieces,
     concat_boundary_views,
 )
+from number_compiler.hashlife.tiles.tile_result_records import (
+    PoweredResultKey,
+)
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalPrefix,
+    CausalSpatialBuffer,
+    CausalSpatialValue,
+    CausalState,
+    CausalTaskValue,
+    pop_spatial_buffer,
+    require_causal_state,
+    require_spatial_buffer,
+)
 from number_compiler.resources.causal_workspace import (
-    CausalFrameStack,
-    CausalResults,
+    CausalActionAdmission,
     CausalSpatialWorkspace,
-    SpatialReferenceBuffer,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -33,32 +51,11 @@ if TYPE_CHECKING:
         PrimitiveTileKernelAdapter,
     )
     from number_compiler.hashlife.tiles.tile_ports import FusedBoundaryContract
-    from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
     from number_compiler.hashlife.tiles.tile_results import (
         CompletedResultArena,
         ResultLease,
     )
     from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
-
-
-@dataclass(frozen=True, slots=True)
-class CausalPrefix:
-    action: FieldCellActionID
-    side: int
-    producer_seed: int
-    consumer_seed: int
-    view: BoundaryTileView | None = None
-    consumer_view: BoundaryTileView | None = None
-    explicit_edge: bool = False
-
-
-@dataclass(slots=True)
-class CausalFrame:
-    op: str
-    args: tuple[Any, ...]
-    stage: int = 0
-    saved: tuple[Any, ...] = ()
-    memoized: bool = False
 
 
 def edge_state(
@@ -127,7 +124,7 @@ def primitive_advance(
     state: int,
     view: BoundaryTileView,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> int:
     """Apply a primitive directed transfer to one exact logical view."""
     from number_compiler.hashlife.tiles.tile_ports import BoundPorts
@@ -177,9 +174,6 @@ def primitive_advance(
         from number_compiler.hashlife.execution.tile_causal_admission import (
             admitted_kernel,
             admitted_wiring,
-        )
-        from number_compiler.resources.causal_workspace import (
-            CausalActionAdmission,
         )
 
         if type(action_admission) is not CausalActionAdmission:
@@ -423,10 +417,10 @@ def composite_result_key(
     results: CompletedResultArena,
     action: FieldCellActionID,
     tile: TileID,
-    left: object,
-    right: object,
+    left: CausalState,
+    right: CausalState,
     *,
-    action_admission: object | None = None,
+    action_admission: CausalActionAdmission | None = None,
 ) -> PoweredResultKey | None:
     """Build a key only when the exact edge context is represented."""
     from number_compiler.hashlife.execution.tile_causal_results import (
@@ -501,7 +495,7 @@ def composite_result_key(
             consumer_boundaries,
             FusedBoundaryContract(producer, consumer),
         )
-        results._validate_key(key, action_admission=action_admission)
+        results.validate_key(key, action_admission=action_admission)
         return key
     if (
         left.consumer_view is not None
@@ -524,8 +518,6 @@ def composite_result_key(
 
 
 __all__ = [
-    "CausalFrame",
-    "CausalPrefix",
     "append_prefix",
     "bound_states",
     "composite_result_key",
@@ -599,33 +591,43 @@ def publish_composite_output(
 
 
 def schedule_spatial_scan(
-    workspace: CausalSpatialWorkspace,
-    frames: CausalFrameStack,
-    frame: CausalFrame,
+    workspace: CausalSpatialWorkspace[CausalSpatialValue],
+    frames: CausalFrameStack[CausalTaskFrame],
+    frame: CausalTaskFrame,
     action: FieldCellActionID,
     side: int,
-    chunks: SpatialReferenceBuffer,
+    chunks: CausalSpatialBuffer,
     incoming: int | CausalPrefix,
-    saved: tuple[object, ...],
 ) -> None:
     """Schedule one directional scan with a single charged endpoint buffer."""
     states = workspace.allocate(len(chunks) + 1)
     states.append(incoming)
-    frame.stage, frame.saved = side + 1, saved
-    frames.extend(
-        (frame, CausalFrame("scan_chunks", (action, side, chunks, incoming, 0, states)))
-    )
+    frame.stage = side + 1
+    frames.extend((frame, ScanChunksFrame((action, side, chunks, incoming, 0, states))))
 
 
 def schedule_reflected_scan(
-    workspace: CausalSpatialWorkspace,
-    frames: CausalFrameStack,
-    frame: CausalFrame,
+    workspace: CausalSpatialWorkspace[CausalSpatialValue],
+    frames: CausalFrameStack[CausalTaskFrame],
+    frame: CausalTaskFrame,
     action: FieldCellActionID,
-    values: CausalResults,
+    values: CausalResults[CausalTaskValue],
 ) -> None:
-    anchors = values.pop()
-    chunks, argument = frame.saved
-    schedule_spatial_scan(
-        workspace, frames, frame, action, 1, chunks, argument, (chunks, anchors)
-    )
+    anchors = pop_spatial_buffer(values)
+    if isinstance(frame, OutputBoundaryFrame):
+        output_saved = frame.saved
+        if len(output_saved) != 3:
+            raise AssertionError("output boundary lost its scan endpoints")
+        chunks = require_spatial_buffer(output_saved[0])
+        argument = require_causal_state(output_saved[2])
+        frame.saved = (chunks, anchors)
+    elif isinstance(frame, ReverseBoundaryFrame):
+        reverse_saved = frame.saved
+        if len(reverse_saved) != 2:
+            raise AssertionError("reverse boundary lost its scan endpoints")
+        chunks = require_spatial_buffer(reverse_saved[0])
+        argument = require_causal_state(reverse_saved[1])
+        frame.saved = (chunks, anchors)
+    else:
+        raise TypeError("reflected scan requires an output or reverse boundary frame")
+    schedule_spatial_scan(workspace, frames, frame, action, 1, chunks, argument)

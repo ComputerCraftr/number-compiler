@@ -12,7 +12,7 @@ from number_compiler.hashlife.execution.tile_clock_dispatch import complete_cloc
 from number_compiler.hashlife.execution.tile_execution_adapter import (
     TileExecutionAdapter,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.ordered_boolean_support import (
     OrderedBooleanSupportArena,
 )

@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileID
-from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.tile_runtime_audit_contracts import (
+    FusedTraversalWorkspaceAuditSnapshot,
+)
 
 
 def _valid_frame(
@@ -34,14 +36,17 @@ def _valid_frame(
 def audit_fused_traversal_workspace(
     adapter: PrimitiveTileKernelAdapter,
     containers: Mapping[int, object],
+    snapshot: FusedTraversalWorkspaceAuditSnapshot | None = None,
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Validate the three charged stores and every live scratch reference."""
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
-    workspace = adapter._fused_workspace
+    workspace = (
+        adapter.audit_snapshot().fused_workspace if snapshot is None else snapshot
+    )
     ledger = adapter.ledger
     valid = (
-        type(workspace) is FusedTraversalWorkspace
+        type(workspace) is FusedTraversalWorkspaceAuditSnapshot
         and type(ledger) is ResourceLedger
         and workspace.ledger is ledger
         and type(workspace.owner) is int
@@ -52,9 +57,9 @@ def audit_fused_traversal_workspace(
         and type(workspace.max_frames) is int
         and type(workspace.max_values) is int
         and len({workspace.owner, workspace.frame_owner, workspace.value_owner}) == 3
-        and containers.get(workspace.owner) is workspace
-        and containers.get(workspace.frame_owner) is workspace.frames
-        and containers.get(workspace.value_owner) is workspace.values
+        and id(containers.get(workspace.owner)) == workspace.workspace_identity
+        and id(containers.get(workspace.frame_owner)) == workspace.frame_store_identity
+        and id(containers.get(workspace.value_owner)) == workspace.value_store_identity
     )
     try:
         accounts = ledger.inventory()
@@ -121,13 +126,13 @@ def audit_fused_traversal_workspace(
     if valid and not invalid:
         approved.update(
             (
-                id(workspace),
-                id(workspace.frames),
-                id(workspace.values),
+                workspace.workspace_identity,
+                workspace.frame_store_identity,
+                workspace.value_store_identity,
             )
         )
     else:
-        invalid.add((getattr(workspace, "owner", -1), id(workspace)))
+        invalid.add((getattr(workspace, "owner", -1), workspace.workspace_identity))
     return approved, invalid
 
 

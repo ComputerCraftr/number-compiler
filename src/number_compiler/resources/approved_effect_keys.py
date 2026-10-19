@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
+
 _MAX_EFFECT_KEY_NODES = 65_536
 
 
@@ -55,3 +58,50 @@ def effect_key_fingerprint(
     """Fingerprint a tuple key without hashing or comparing caller objects."""
     snapshot = _walk_effect_key(value, authorized_identity_ids)
     return None if snapshot is None else snapshot[0]
+
+
+def approved_effect_key(
+    value: object,
+    *,
+    approved_metadata: set[int],
+    authorized_identity_ids: set[int],
+    approved_fingerprints: set[tuple[tuple[object, ...], ...]],
+) -> bool:
+    """Check retained effect-key metadata against one completed audit inventory."""
+    if id(value) in approved_metadata:
+        return True
+    if type(value) is not tuple:
+        return False
+    fingerprint = effect_key_fingerprint(
+        value, authorized_identity_ids=authorized_identity_ids
+    )
+    return fingerprint is not None and fingerprint in approved_fingerprints
+
+
+def record_approved_effect_key(
+    value: object,
+    *,
+    authorized_identity_ids: set[int],
+    approved_fingerprints: set[tuple[tuple[object, ...], ...]],
+) -> None:
+    """Add one immutable key's safe fingerprint and retained identity leaves."""
+    snapshot = effect_key_snapshot(value)
+    if snapshot is None:
+        return
+    fingerprint, identity_ids = snapshot
+    authorized_identity_ids.update(identity_ids)
+    approved_fingerprints.add(fingerprint)
+
+
+def approved_effect_key_checker(
+    approved_metadata: set[int],
+    authorized_identity_ids: set[int],
+    approved_fingerprints: set[tuple[tuple[object, ...], ...]],
+) -> Callable[[object], bool]:
+    """Bind the mutable, audit-local approval sets to the key checker."""
+    return partial(
+        approved_effect_key,
+        approved_metadata=approved_metadata,
+        authorized_identity_ids=authorized_identity_ids,
+        approved_fingerprints=approved_fingerprints,
+    )

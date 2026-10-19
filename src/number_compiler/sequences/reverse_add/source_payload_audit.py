@@ -18,8 +18,8 @@ from number_compiler.sequences.reverse_add.source_audit_bindings import (
     source_audit_owners,
 )
 from number_compiler.sequences.reverse_add.source_workspace_payload_audit import (
-    _store_valid,
     audit_reverse_source_workspaces,
+    store_valid_for_audit,
 )
 
 
@@ -56,11 +56,13 @@ def audit_reverse_source_payloads(
     # Spatial carry products are projections, not source or successor identities.
     # Audit geometry and source ownership without invoking any runtime evaluator.
     for ports in roots:
-        if type(ports) is not SourceCarryPorts or ports._closed:
+        if type(ports) is not SourceCarryPorts:
             continue
-        owner = getattr(ports._cache, "owner", -1)
-        port_authority = ports._authority
-        port_source = ports._source
+        port_snapshot = ports.audit_snapshot()
+        cache = port_snapshot.cache
+        owner = cache.owner
+        port_authority = port_snapshot.authority
+        port_source = port_snapshot.source
         valid_ports = (
             type(port_authority) is tuple
             and len(port_authority) == 10
@@ -72,22 +74,24 @@ def audit_reverse_source_payloads(
             and port_source.blank == port_authority[4]
             and port_source.extent == port_authority[5]
             and port_source.alphabet_size == port_authority[6]
-            and ports._ledger is ledger
+            and port_snapshot.ledger is ledger
             and port_authority[7] is ledger
-            and port_authority[8] is ports._cache
+            and port_authority[8] is port_snapshot.cache_identity
             and port_authority[9] == owner
-            and ports._workspace_owner == ports._workspace_authority
-            and ports._width == len(port_source.digits)
-            and _store_valid(
+            and port_snapshot.workspace_owner == port_snapshot.workspace_authority
+            and port_snapshot.width == len(port_source.digits)
+            and store_valid_for_audit(
+                ledger,
                 owner,
-                ports._cache,
+                port_snapshot.cache_identity,
                 "reverse_source_carry_interval",
                 containers,
                 inventory,
             )
+            and cache.container is port_snapshot.audit_cache
         )
         recognized.add(id(ports))
-        for key, value in ports._cache.items():
+        for key, value in cache.container.items():
             recognized.add(id(key))
             geometry_valid = (
                 type(key) is tuple
@@ -98,7 +102,7 @@ def audit_reverse_source_payloads(
                 and key[2] > 0
                 and key[2] & (key[2] - 1) == 0
                 and key[1] % key[2] == 0
-                and key[1] + key[2] <= ports._width + int(key[0] == 2)
+                and key[1] + key[2] <= port_snapshot.width + int(key[0] == 2)
                 and type(value) is CarryFn
             )
             if valid_ports and geometry_valid:
@@ -107,7 +111,7 @@ def audit_reverse_source_payloads(
                 invalid.add((owner, id(key)))
                 invalid.add((owner, id(value)))
         if valid_ports:
-            approved.update((id(ports), id(ports._cache._data)))
+            approved.update((id(ports), id(cache.container)))
         else:
             invalid.add((owner, id(ports)))
     workspace_approved, workspace_recognized, workspace_invalid = (
@@ -137,7 +141,7 @@ def audit_reverse_source_owner(
     if type(root) is SourceCarryPorts:
         bindings = (
             PayloadAuditStoreBinding(
-                root._cache_owner,
+                root.audit_snapshot().cache.owner,
                 "_audit_cache",
                 "reverse_source_carry_interval",
             ),
@@ -146,38 +150,38 @@ def audit_reverse_source_owner(
     elif type(root) is ReverseSourceImageWorkspace:
         bindings = (
             PayloadAuditStoreBinding(
-                root.actions._nodes.owner,
+                root.actions.audit_snapshot().nodes.owner,
                 "_audit_action_nodes",
                 "reverse_source_action",
             ),
             PayloadAuditStoreBinding(
-                root.actions._normal.owner,
+                root.actions.audit_snapshot().normal.owner,
                 "_audit_action_normal",
                 "reverse_source_action_normal_form",
             ),
             PayloadAuditStoreBinding(
-                root.actions._sources.owner,
+                root.actions.audit_snapshot().sources.owner,
                 "_audit_sources",
                 "reverse_original_source",
             ),
             PayloadAuditStoreBinding(
-                root.actions._workspace_owner,
+                root.actions.audit_snapshot().workspace_owner,
                 "_audit_action_workspace",
                 "reverse_source_action_workspace",
             ),
             PayloadAuditStoreBinding(
-                root.adapter._recursive_occurrences.owner,
+                root.adapter.audit_snapshot().recursive_occurrences.owner,
                 "_audit_recursive_occurrences",
                 "reverse_recursive_occurrence_binding",
             ),
             PayloadAuditStoreBinding(
-                root._pointed_gt_banks.owner,
+                root.audit_snapshot().pointed_gt_banks.owner,
                 "_audit_pointed_gt_banks",
                 "reverse_source_pointed_gt_bank",
             ),
             *nested_source_store_bindings(root),
         )
-        ports = root.adapter._ports
+        ports = root.adapter.published_ports
         roots = (root,) if ports is None else (root, ports)
     else:
         return PayloadAuditContribution()

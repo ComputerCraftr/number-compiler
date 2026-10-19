@@ -11,6 +11,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import product
+from typing import overload
 from weakref import ReferenceType, WeakValueDictionary, ref
 
 from number_compiler.arithmetic.automata import program_word as words
@@ -29,6 +30,17 @@ class PlaneID:
     kind: str
     index: int
     root: words.CanonicalWord = field(compare=False, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PlaneAlgebraAuditSnapshot:
+    """Read-only working/cache counts; contained cache keys are not exposed."""
+
+    work: int
+    gate_entries: int
+    cofactor_entries: int
+    reuse_entries: int
+    reuse_peak_entries: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +87,56 @@ class PlaneGate:
         object.__setattr__(
             self, "constant", all(v == self.table[0] for v in self.table)
         )
+
+    @overload
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        inputs: tuple[()],
+        output: str,
+        law: Callable[[], int | None],
+    ) -> PlaneGate: ...
+
+    @overload
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        inputs: tuple[str],
+        output: str,
+        law: Callable[[int], int | None],
+    ) -> PlaneGate: ...
+
+    @overload
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        inputs: tuple[str, str],
+        output: str,
+        law: Callable[[int, int], int | None],
+    ) -> PlaneGate: ...
+
+    @overload
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        inputs: tuple[str, str, str],
+        output: str,
+        law: Callable[[int, int, int], int | None],
+    ) -> PlaneGate: ...
+
+    @overload
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        inputs: tuple[str, str, str, str],
+        output: str,
+        law: Callable[[int, int, int, int], int | None],
+    ) -> PlaneGate: ...
 
     @classmethod
     def build(
@@ -168,6 +230,16 @@ class PlaneAlgebra:
         )
         self._gates: dict[_GateKey, words.CanonicalWord] = {}
 
+    def audit_snapshot(self) -> PlaneAlgebraAuditSnapshot:
+        """Return cache populations without exposing owner-managed dictionaries."""
+        return PlaneAlgebraAuditSnapshot(
+            self.work,
+            len(self._gates),
+            len(self._cofactors),
+            len(self._reuse),
+            self.reuse_peak_entries,
+        )
+
     def clear_work(self) -> None:
         self._gates.clear()
         self.work = 0
@@ -202,7 +274,7 @@ class PlaneAlgebra:
             or plane.index != plane.root.node_id
         ):
             raise ValueError("foreign, stale, or incorrectly sorted plane")
-        words._validate_word(plane.root)
+        words.validate_source_word(plane.root)
         return plane.root
 
     def constant(self, kind: str, value: int, width: int) -> PlaneID:

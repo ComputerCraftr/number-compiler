@@ -6,10 +6,12 @@ import argparse
 import json
 import os
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from pathlib import Path
 
 from devtools.git_source import git_source
 from devtools.paths import repository_root
+from devtools.report_values import object_list, string_keyed_mapping
 
 GIT_COMMIT_BEFORE = "number_compiler_git_commit_before"
 GIT_COMMIT_AFTER = "number_compiler_git_commit_after"
@@ -24,6 +26,35 @@ PROVENANCE_MODE_ENV = "NUMBER_COMPILER_EVIDENCE_MODE"
 MANIFEST = "number_compiler_test_manifest"
 NODE_ID = "number_compiler_nodeid"
 EXECUTION_MODE = "number_compiler_execution_mode"
+
+
+def _string_list(value: object) -> tuple[str, ...] | None:
+    if not object_list(value):
+        return None
+    result: list[str] = []
+    for item in value:
+        if type(item) is not str:
+            return None
+        result.append(item)
+    return tuple(result)
+
+
+def _json_object_list(value: object) -> tuple[Mapping[str, object], ...] | None:
+    if not object_list(value):
+        return None
+    result: list[Mapping[str, object]] = []
+    for item in value:
+        mapping = string_keyed_mapping(item)
+        if mapping is None:
+            return None
+        result.append(mapping)
+    return tuple(result)
+
+
+def _step_runs_command(value: Mapping[str, object], expected: str) -> bool:
+    command = value.get("command")
+    commands = _string_list(command)
+    return commands is not None and expected in commands
 
 
 def classify_execution_mode(
@@ -129,13 +160,11 @@ def validate_evidence(
         or after_revision != live_revision
     ):
         raise ValueError("test evidence is dirty, stale, or changed during execution")
-    manifest = json.loads(properties.get(MANIFEST, "null"))
-    if (
-        type(manifest) is not list
-        or not manifest
-        or any(type(node) is not str for node in manifest)
-        or len(set(manifest)) != len(manifest)
-    ):
+    manifest_value: object = json.loads(properties.get(MANIFEST, "null"))
+    manifest = _string_list(manifest_value)
+    if manifest is None:
+        raise ValueError("test evidence has no complete unique collection manifest")
+    if not manifest or len(set(manifest)) != len(manifest):
         raise ValueError("test evidence has no complete unique collection manifest")
     if any(int(suite.get(key, "0")) for key in ("errors", "failures", "skipped")):
         raise ValueError("test evidence contains failed, skipped, or errored tests")
@@ -179,36 +208,35 @@ def _validate_acceptance_manifest(path: Path, source: object) -> None:
         raise TypeError("source must be a GitSource")
     manifest_path = path.parent / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_value: object = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError("reusable evidence has no readable run manifest") from error
+    manifest = string_keyed_mapping(manifest_value)
+    if manifest is None:
+        raise ValueError("run manifest must contain a JSON object")
     if (
-        not isinstance(manifest, dict)
-        or manifest.get("evidence_mode") != "acceptance"
+        manifest.get("evidence_mode") != "acceptance"
         or manifest.get("outcome") != "completed"
         or manifest.get("acceptance_verified") is not True
         or manifest.get("cacheable") is not True
         or manifest.get("reusable") is not True
     ):
         raise ValueError("run manifest has not verified acceptance completion")
-    before = manifest.get("git_source_before")
-    after = manifest.get("git_source_after")
+    before = string_keyed_mapping(manifest.get("git_source_before"))
+    after = string_keyed_mapping(manifest.get("git_source_after"))
     expected = source.as_dict()
     if (
-        not isinstance(before, dict)
-        or not isinstance(after, dict)
+        before is None
+        or after is None
         or before != after
         or before != expected
         or before.get("git_dirty") is not False
     ):
         raise ValueError("run manifest Git source is not clean and current")
     expected_xml = str(path.resolve())
-    steps = manifest.get("steps")
-    if not isinstance(steps, list) or not any(
-        isinstance(step, dict)
-        and isinstance(step.get("command"), list)
-        and f"--junitxml={expected_xml}" in step["command"]
-        for step in steps
+    steps = _json_object_list(manifest.get("steps"))
+    if steps is None or not any(
+        _step_runs_command(step, f"--junitxml={expected_xml}") for step in steps
     ):
         raise ValueError("run manifest does not bind this JUnit selection")
 

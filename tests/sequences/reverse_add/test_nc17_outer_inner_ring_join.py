@@ -97,7 +97,9 @@ def test_source_issued_ring_joins_cyclotomic_and_middle_carry() -> None:
         assert len(ring.carry_wire_phases) == 9
         assert ring.global_residues99 == tuple(v % 99 for v in values)
         assert ring.global_residues198 == tuple(v % 198 for v in values)
-        assert all(_center(v) in d for v, d in zip(values, ring.center_domains))
+        assert all(
+            _center(v) in d for v, d in zip(values, ring.center_domains, strict=True)
+        )
         assert any(len(phases) > 1 for phases in ring.carry_wire_phases)
         word = ring.conditional_carry_word()
         assert not word.conditional_power(10**14).physical_repeat_certified

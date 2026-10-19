@@ -27,6 +27,7 @@ from number_compiler.sequences.collatz.border_identity import (
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     boundary_macro_26847_phase,
+    boundary_metric_key,
     boundary_metric_suffix,
 )
 from number_compiler.sequences.collatz.decimal_boundary import physical_boundary_packet
@@ -175,14 +176,13 @@ def observe_guarded_boundary(
         ),
         "scope": "first executed decimal boundary macro; not a global endpoint ActionID",
         "executed_macro_actions": {
-            suffix: ledger.counters.get(
-                f"collatz_physical_boundary_{suffix}_macro_actions", 0
+            boundary_metric_suffix(identity): ledger.counters.get(
+                boundary_metric_key(
+                    identity, _collatz_keys.BoundaryMacroMetric.ACTIONS
+                ),
+                0,
             )
-            for suffix in tuple(
-                dict.fromkeys(
-                    boundary_metric_suffix(identity) for identity in observed_identities
-                )
-            )
+            for identity in observed_identities
         },
         "source_prefix": macro.observation()
         if macro is not None and tick == 0

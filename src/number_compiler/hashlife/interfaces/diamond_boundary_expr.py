@@ -92,7 +92,8 @@ class FormalPort:
     role: str
 
 
-def _port_order(port: FormalPort) -> tuple[str, int, int, int, int, str]:
+def port_order(port: FormalPort) -> tuple[str, int, int, int, int, str]:
+    """Return the canonical structural ordering for a formal port."""
     sort = port.sort
     if type(sort) is StateSort:
         return ("state", sort.action.local_id, sort.side, 0, 0, port.role)

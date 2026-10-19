@@ -124,6 +124,36 @@ def test_python_policy_includes_type_only_and_local_relative_imports(
     assert ownership_policy_violations(root, parsed_sources=parsed) == violations
 
 
+def test_python_policy_checks_runtime_else_and_aliased_family_imports(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path
+    source = root / "src/number_compiler/arithmetic/fields/reader.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    import number_compiler.sequences.collatz.actions as typed_action\n"
+        "else:\n"
+        "    from ...sequences.antihydra.mahler import Action as runtime_action\n",
+        encoding="utf-8",
+    )
+
+    violations = python_ownership_violations(root)
+
+    assert len(violations) == 2
+    assert any(
+        ":3: shared code imports sequence-family module "
+        "number_compiler.sequences.collatz.actions" in item
+        for item in violations
+    )
+    assert any(
+        ":5: shared code imports sequence-family module "
+        "number_compiler.sequences.antihydra.mahler" in item
+        for item in violations
+    )
+
+
 def test_python_policy_allows_shared_and_external_imports(tmp_path: Path) -> None:
     root = tmp_path
     source = root / "src/number_compiler/resources/ledger.py"

@@ -238,7 +238,8 @@ class _JointObserverMachine:
                 self.reset[index] = _reset_code(pair_sum)
             self.digits[index] = comma_port_next(leading, digit)
         self.harmonic = [
-            (value * 10) % core for value, core in zip(self.harmonic, HARMONIC_CORES)
+            (value * 10) % core
+            for value, core in zip(self.harmonic, HARMONIC_CORES, strict=True)
         ]
 
 
@@ -255,7 +256,7 @@ def joint_observer_trace(
         raise ValueError(f"observer trace limit must be in 0..{MAX_TRACE_LENGTH}")
     machine = _JointObserverMachine()
     states: list[JointObserverState] = []
-    for steps in range(limit):
+    for _ in range(limit):
         states.append(machine.state())
         machine.advance()
     return tuple(states)

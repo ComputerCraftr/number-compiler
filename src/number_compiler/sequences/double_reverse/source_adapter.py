@@ -12,7 +12,7 @@ from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,

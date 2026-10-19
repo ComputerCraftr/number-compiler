@@ -12,10 +12,11 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicImageSummary,
     DyadicReturnImageID,
     DyadicReturnSourceID,
-    _SourceNode,
 )
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra import arithmetic_images
 from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -53,9 +54,7 @@ def test_scheduler_applies_mixed_odd_macro_with_bounded_partial_suffix(
     ledger = ResourceLedger()
     workspace = AntihydraArithmeticImageWorkspace(ledger, width, shared_cache=False)
     try:
-        source = workspace._append_source(
-            _SourceNode(source_h, width, 0, None, None, None, 0, True)
-        )
+        source = workspace.admitted_source(source_h, width)
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("powered admitted macro fell back to child discovery")
@@ -116,9 +115,7 @@ def test_scheduler_keeps_total_arithmetic_after_ledger_failure() -> None:
     try:
         # h=6 has centered D=5 and a=4. The first odd macro's ledger change is
         # -1, but arithmetic remains total and publishes the exact endpoint.
-        source = workspace._append_source(
-            _SourceNode(6, 4, 0, None, None, None, 0, True)
-        )
+        source = workspace.admitted_source(6, 4)
         summary = _requested_summary(workspace, source)
         expected = literal_antihydra_summary(6, 4)[:4]
         assert (summary.width, summary.delta, summary.minimum, summary.odd_steps) == (
@@ -141,9 +138,7 @@ def test_warm_parent_hit_bypasses_odd_macro_reconstruction(
         ResourceLedger(), width, shared_cache=False
     )
     try:
-        source = workspace._append_source(
-            _SourceNode(source_h, width, 0, None, None, None, 0, True)
-        )
+        source = workspace.admitted_source(source_h, width)
         demand = SourceImageDemand("physical-summary")
         first = workspace.scheduler.source_image_demanded(
             workspace, source, workspace.root_action, demand
@@ -173,9 +168,7 @@ def test_powered_odd_macro_preserves_negative_ledger_minimum() -> None:
     ledger = ResourceLedger()
     workspace = AntihydraArithmeticImageWorkspace(ledger, width, shared_cache=False)
     try:
-        source = workspace._append_source(
-            _SourceNode(source_h, width, 0, None, None, None, 0, True)
-        )
+        source = workspace.admitted_source(source_h, width)
         summary = _requested_summary(workspace, source)
         expected = literal_antihydra_summary(source_h, width)[:4]
         transfer = summary.transfer
@@ -212,10 +205,8 @@ def test_failed_odd_macro_publication_releases_scratch_and_rolls_back(
     ledger = ResourceLedger()
     workspace = AntihydraArithmeticImageWorkspace(ledger, width, shared_cache=False)
     try:
-        source = workspace._append_source(
-            _SourceNode(source_h, width, 0, None, None, None, 0, True)
-        )
-        workspace.scheduler.source_origin_image(workspace, source)
+        source = workspace.admitted_source(source_h, width)
+        workspace.scheduler.source_image_origin(workspace, source)
         support_count, image_count = len(workspace.support), len(workspace.images)
         compositions_before = ledger.counters.get(
             "antihydra_arithmetic_temporal_odd_macro_evaluations", 0
@@ -277,7 +268,7 @@ def test_dispose_cleans_base_workspace_and_preserves_primary_release_error(
     with pytest.raises(RuntimeError) as raised:
         workspace.dispose()
 
-    assert workspace._closed
+    assert workspace.finite_cache_audit_snapshot().closed
     assert workspace.mahler_bindings is bindings
     assert len(workspace.actions) == 0
     chain = (raised.value, raised.value.__cause__, raised.value.__context__)
@@ -332,7 +323,7 @@ def test_constructor_preserves_primary_error_when_consumer_close_fails(
             workspace, ledger, 8, shared_cache=False, prepare_mahler=True
         )
 
-    assert workspace._closed
+    assert workspace.finite_cache_audit_snapshot().closed
     assert (
         raised.value.__cause__ is not None
         and "injected primary constructor failure" in str(raised.value.__cause__)

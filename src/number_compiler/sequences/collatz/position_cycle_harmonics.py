@@ -274,7 +274,7 @@ class CenteredMotifPositionOrbit:
         if scale.growths <= 512 and (
             numerator.bit_length() + 2 * scale.growths <= 2048
         ):
-            with evaluator._charge_work(
+            with evaluator.charge_work(
                 max(1, width + scale.growths),
                 0,
                 numerator.bit_length() + denominator.bit_length() + 2 * scale.growths,

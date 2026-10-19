@@ -40,7 +40,8 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_higher_context import expr, machine, point, scalar, summary
+from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
+from tests.support.diamond_higher_context import expr, point, scalar, summary
 
 if TYPE_CHECKING:
     import typing
@@ -69,7 +70,6 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
         CompileStructuredExpression,
         StructuredExpressionTask,
@@ -78,12 +78,15 @@ if TYPE_CHECKING:
         PrimitiveMacroKey,
         PrimitiveMacroObservation,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+    from number_compiler.hashlife.interfaces.semantic_structures import (
+        LocalInterfaceID,
+        StructureID,
+    )
 
 
 @pytest.mark.parametrize("steps", [0, 1, 2, 3, 4])
 def test_composed_unary_context_matches_physical_integer_oracle(steps: int) -> None:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     action = runtime.actions.power(primitive, steps)
     expected = 27
     for _ in range(steps):
@@ -98,7 +101,7 @@ def test_composed_unary_context_matches_physical_integer_oracle(steps: int) -> N
 
 @pytest.mark.parametrize("side", [0, 1])
 def test_higher_provider_context_matches_complete_output_oracle(side: int) -> None:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     provider = runtime.actions.power(primitive, 2)
     cell = runtime.cells.source(0, 3)
     compiled = summary(runtime, HigherSummary(provider, primitive, cell))
@@ -118,7 +121,7 @@ def test_higher_provider_context_matches_complete_output_oracle(side: int) -> No
 def test_warm_parent_observation_never_reenters_source_compilation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     provider = runtime.actions.power(primitive, 2)
     cell = runtime.cells.source(0, 3)
     task = HigherSummary(provider, primitive, cell)
@@ -145,8 +148,8 @@ def test_warm_parent_observation_never_reenters_source_compilation(
 
 
 def test_higher_admission_rejects_foreign_and_wrong_side_before_warm_mutation() -> None:
-    runtime, primitive = machine()
-    foreign, foreign_primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
+    foreign, foreign_primitive = collatz_higher_context_runtime()
     initial = expr(runtime, HigherInitial(primitive, 0))
     foreign_initial = expr(foreign, HigherInitial(foreign_primitive, 0))
     task = HigherUnarySummary(primitive, runtime.cells.source(0, 3), 0)
@@ -169,7 +172,7 @@ def test_higher_admission_rejects_foreign_and_wrong_side_before_warm_mutation() 
 
 
 def test_summary_program_and_binding_reservations_are_atomic() -> None:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     arena = runtime.higher
     variable = arena._unary_variable(primitive, 0)
     record = HigherUnaryRecord(
@@ -185,7 +188,7 @@ def test_summary_program_and_binding_reservations_are_atomic() -> None:
 
 
 def test_summary_records_reject_numeric_payload_disguises() -> None:
-    _runtime, primitive = machine()
+    _runtime, primitive = collatz_higher_context_runtime()
     with pytest.raises(ValueError):
         HigherUnaryRecord(primitive, 0, cast(ClosureProgramID, 123))
     with pytest.raises(ValueError):
@@ -259,7 +262,7 @@ def _paired_fixture() -> tuple[
     BoundaryExpressionArena,
     BoundaryActionArena,
 ]:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     return (
         runtime,
         primitive,
@@ -291,7 +294,7 @@ def test_higher_step_binder_never_captures_an_incoming_same_named_free_port() ->
 def test_complete_right_reset_specializes_before_opposite_transfer_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, primitive = machine()
+    runtime, primitive = collatz_higher_context_runtime()
     paired = runtime.actions.compose(primitive, primitive)
     cell = runtime.cells.source(0, 3)
     target = HigherUnarySummary(paired, cell, 1)

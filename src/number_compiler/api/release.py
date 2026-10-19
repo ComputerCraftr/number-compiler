@@ -5,12 +5,18 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Protocol, TypeGuard, runtime_checkable
 
 from number_compiler.arithmetic.automata.guard import JumpGuardViolation
-from number_compiler.arithmetic.formula.formula import FormulaRoot, formula_metrics
+from number_compiler.arithmetic.formula.formula import (
+    FormulaArena,
+    FormulaRoot,
+    formula_metrics,
+)
 from number_compiler.arithmetic.formula.summary import get_summary
+from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.actions.jump import (
+    ExactJumpBackend,
     MissingJumpBackend,
     NoExactJumpBackend,
     StrictBinaryRootBuilder,
@@ -19,6 +25,25 @@ from number_compiler.hashlife.actions.jump import (
 
 class FullJumpReleaseBlocked(RuntimeError):
     pass
+
+
+@runtime_checkable
+class FullStateJumpBackend(ExactJumpBackend[FormulaRoot], Protocol):
+    """Backend shape required by the public full-state release gate."""
+
+    full_state_exact: bool
+    arena: FormulaArena
+    spec: RadixSpec
+
+
+def _has_formula_inputs(arena: object, spec: object) -> bool:
+    """Keep the runtime owner checks at the untrusted backend boundary."""
+    return isinstance(arena, FormulaArena) and isinstance(spec, RadixSpec)
+
+
+def _is_formula_root(value: object) -> TypeGuard[FormulaRoot]:
+    """Validate roots returned across the runtime-checkable backend protocol."""
+    return isinstance(value, FormulaRoot)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,53 +113,70 @@ class FullJumpReleaseReport:
     reason: str = ""
 
 
-def _full_state_contract_error(backend: Any) -> str | None:
-    if isinstance(backend, MissingJumpBackend):
-        return "full exact J_0/J_1 backend is missing"
-    if getattr(backend, "full_state_exact", False) is not True:
-        return "backend is not explicitly certified as a full exact FormulaRoot jump"
-    if not hasattr(backend, "arena") or not hasattr(backend, "spec"):
-        return "full-state backend must own compiler arena/spec for summary validation"
+def _validated_backend(
+    candidate: object,
+) -> tuple[FullStateJumpBackend | None, str | None]:
+    if isinstance(candidate, MissingJumpBackend):
+        return None, "full exact J_0/J_1 backend is missing"
+    if not isinstance(candidate, FullStateJumpBackend):
+        return (
+            None,
+            "backend does not implement the full exact FormulaRoot jump contract",
+        )
+    if candidate.full_state_exact is not True:
+        return (
+            None,
+            "backend is not explicitly certified as a full exact FormulaRoot jump",
+        )
+    if not _has_formula_inputs(candidate.arena, candidate.spec):
+        return (
+            None,
+            "full-state backend must own compiler arena/spec for summary validation",
+        )
     try:
-        seed = backend.seed_root()
+        seed = candidate.seed_root()
     except Exception as exc:  # pragma: no cover - defensive release path
         logging.getLogger(__name__).debug("Backend seed failed", exc_info=True)
-        return f"seed_root failed: {exc}"
-    if not isinstance(seed, FormulaRoot):
-        return "full-state backend seed is not FormulaRoot"
+        return None, f"seed_root failed: {exc}"
+    if not _is_formula_root(seed):
+        return None, "full-state backend seed is not FormulaRoot"
     try:
-        get_summary(backend.arena, seed, backend.spec, required=True)
+        get_summary(candidate.arena, seed, candidate.spec, required=True)
     except Exception as exc:
         logging.getLogger(__name__).debug("Backend summary failed", exc_info=True)
-        return f"seed compiler summary unavailable: {exc}"
-    return None
+        return None, f"seed compiler summary unavailable: {exc}"
+    return candidate, None
 
 
 _DEFAULT_RELEASE_COMPLEXITY_POLICY_1 = ReleaseComplexityPolicy()
 
 
 def certify_full_jump_backend(
-    backend: Any,
+    backend: object,
     *,
     probes: Iterable[int] = (0, 1, 2, 3, 7, 31, 63),
     exact_checker: Callable[[int, FormulaRoot], bool] | None = None,
     complexity: ReleaseComplexityPolicy | None = _DEFAULT_RELEASE_COMPLEXITY_POLICY_1,
 ) -> FullJumpReleaseReport:
-    error = _full_state_contract_error(backend)
+    checked_backend, error = _validated_backend(backend)
     if error:
         return FullJumpReleaseReport(False, (), error)
-    builder = StrictBinaryRootBuilder(backend)
+    if checked_backend is None:
+        raise AssertionError("validated release backend was not returned")
+    builder = StrictBinaryRootBuilder(checked_backend)
     results: list[ReleaseProbeResult] = []
     try:
         for n in tuple(map(int, probes)):
             got = builder.root_at(n)
-            if not isinstance(got.root, FormulaRoot):
+            if not _is_formula_root(got.root):
                 return FullJumpReleaseReport(
                     False, tuple(results), f"jump n={n} did not return FormulaRoot"
                 )
             # This is a metadata lookup only. Missing summary is a release blocker;
             # it must have been propagated by jump compilation, not synthesized now.
-            get_summary(backend.arena, got.root, backend.spec, required=True)
+            get_summary(
+                checked_backend.arena, got.root, checked_backend.spec, required=True
+            )
             if not got.audit.clean:
                 return FullJumpReleaseReport(
                     False, tuple(results), "powered jump audit is dirty"
@@ -302,8 +344,16 @@ def certify_full_jump_backend(
     return FullJumpReleaseReport(True, tuple(results))
 
 
-def require_full_jump_release(backend: Any, **kwargs: Any) -> FullJumpReleaseReport:
-    report = certify_full_jump_backend(backend, **kwargs)
+def require_full_jump_release(
+    backend: object,
+    *,
+    probes: Iterable[int] = (0, 1, 2, 3, 7, 31, 63),
+    exact_checker: Callable[[int, FormulaRoot], bool] | None = None,
+    complexity: ReleaseComplexityPolicy | None = _DEFAULT_RELEASE_COMPLEXITY_POLICY_1,
+) -> FullJumpReleaseReport:
+    report = certify_full_jump_backend(
+        backend, probes=probes, exact_checker=exact_checker, complexity=complexity
+    )
     if not report.ready:
         raise FullJumpReleaseBlocked(report.reason)
     return report

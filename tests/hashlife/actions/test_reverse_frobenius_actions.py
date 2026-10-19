@@ -16,8 +16,10 @@ from number_compiler.arithmetic.polynomials.frobenius_sector import (
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution import tile_kernel_validation
+from number_compiler.hashlife.execution.causal_frames import (
+    PointFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.resources.causal_workspace import _ACTION_ADMISSION_NODES
@@ -136,7 +138,10 @@ def test_internal_action_reads_skip_deep_semantic_and_sector_revalidation(
         monkeypatch.setattr(tile_kernel_validation, "_effect_key", counted_effect_key)
         before = ledger.snapshot()
         for _ in range(64):
-            assert adapter._action_record(powered).repetitions == 8
+            record, _kernel = tile_kernel_validation.validate_action_record(
+                adapter, powered
+            )
+            assert record.repetitions == 8
         assert deep_reconstructions == 0
         adapter.validate_action(powered)
         assert deep_reconstructions == 1
@@ -253,7 +258,7 @@ def test_causal_setup_failure_cannot_leave_structural_action_access_enabled(
         visits_before = ledger.counters.get("tile_causal_action_admission_visits", 0)
         with pytest.raises(RuntimeError, match="injected frame setup failure"):
             engine.output(application.action, application.source)
-        assert engine._action_admission_token is None
+        assert engine.action_admission is None
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
         assert ledger.counters["tile_causal_action_admission_visits"] > visits_before
@@ -289,13 +294,13 @@ def test_causal_action_admission_failure_releases_application_and_workspace(
         monkeypatch.setattr(adapter, "validate_action", fail_admission)
         before = ledger.snapshot()
         visits_before = ledger.counters.get("tile_causal_action_admission_visits", 0)
-        frame = CausalFrame("point", (application.action, application.source, 0, 0, 0))
+        frame = PointFrame((application.action, application.source, 0, 0, 0))
         with pytest.raises(ValueError, match="injected action admission failure"):
             engine._run(frame, tile_result=False)
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
         assert engine._application is None
-        assert engine._action_admission_token is None
+        assert engine.action_admission is None
         assert ledger.counters["tile_causal_action_admission_visits"] == (
             visits_before + 1
         )
@@ -346,16 +351,14 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
                     engine._cocycle(cast(FieldCellActionID, invalid))
             with pytest.raises(RuntimeError, match="cannot reenter"):
                 engine._run(
-                    CausalFrame(
-                        "point",
+                    PointFrame(
                         (application.action, application.source, 0, 0, 0),
                     ),
                     tile_result=False,
                 )
             with pytest.raises(RuntimeError, match="already has an active run"):
                 other_engine._run(
-                    CausalFrame(
-                        "point",
+                    PointFrame(
                         (application.action, application.source, 0, 0, 0),
                     ),
                     tile_result=False,
@@ -368,7 +371,7 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
         with pytest.raises(RuntimeError, match="stop after inspecting run admission"):
             engine.output(application.action, application.source)
         assert observed and observed[0][0] == observed[0][1]
-        assert engine._action_admission_token is None
+        assert engine.action_admission is None
         assert not engine._running
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)

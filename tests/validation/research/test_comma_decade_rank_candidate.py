@@ -22,16 +22,16 @@ from number_compiler.sequences.comma.boundary_chart import (
 
 
 def test_source_round_uses_canonical_chart_and_normalizes_phase() -> None:
-    first = generator._decade_round_candidate(5, 3)
+    first = generator.decade_round_candidate(5, 3)
     assert first.kind == "continue"
     assert first.positions == 37
     assert first.terminal_chart == BoundaryChart("near", 9, 0, 3)
     assert first.successor == (6, 68)
-    boundary, successor = generator._boundary_partial_round_candidate("Z", 7, 5)
+    boundary, successor = generator.boundary_partial_round_candidate("Z", 7, 5)
     assert boundary.kind == "landmine"
     assert boundary.positions == 12
     assert successor is None
-    near_boundary, near_successor = generator._boundary_partial_round_candidate(
+    near_boundary, near_successor = generator.boundary_partial_round_candidate(
         "N", 2, 10
     )
     assert near_boundary.kind == "continue"
@@ -67,7 +67,7 @@ def test_cross_witness_checks_pre_cross_terminal_and_rejects_target() -> None:
 
 
 def test_short_power_catalog_factors_entry_germs() -> None:
-    periods, entry_cases = generator._phase_factorization_profile()
+    periods, entry_cases = generator.phase_factorization_profile()
     assert len(periods) == 17
     assert sum(periods.values()) == 116
     assert entry_cases == 6_454
@@ -89,14 +89,14 @@ def test_round_rejects_non_decreasing_or_unexpected_seam(
 
     monkeypatch.setattr(generator, "chart_step", non_decreasing)
     with pytest.raises(AssertionError, match="measure failed"):
-        generator._decade_round_candidate(5, 3)
+        generator.decade_round_candidate(5, 3)
 
     def wrong_seam(_residue: int, chart: BoundaryChart) -> ChartMove:
         return ChartMove(BoundaryChart("entry", 2, chart.delta + 1, 0), UNIT_WEIGHT)
 
     monkeypatch.setattr(generator, "chart_step", wrong_seam)
     with pytest.raises(AssertionError, match="unproved decimal seam"):
-        generator._decade_round_candidate(5, 3)
+        generator.decade_round_candidate(5, 3)
 
 
 def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
@@ -140,7 +140,7 @@ def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
     assert header["first_max_source"] == [42, 68]
     assert len(header["first_max_chain"]) == 27
     assert header["first_max_chain"][-1] == [68, 10]
-    assert generator._decade_round_candidate(68, 10).kind == "fork"
+    assert generator.decade_round_candidate(68, 10).kind == "fork"
     first_phase = json.loads(next(rows))
     assert first_phase == {"phase": 0, "ranks": ranks[:91]}
     for candidate, rank in zip(graph, ranks, strict=True):
@@ -155,7 +155,7 @@ def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
 def test_decade_candidate_streams_and_check_rejects_changed_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    graph = [generator._decade_round_candidate(5, 3)]
+    graph = [generator.decade_round_candidate(5, 3)]
     monkeypatch.setattr(generator, "_decade_round_graph", lambda: graph)
     monkeypatch.setattr(generator, "_decade_rank_candidates", lambda _: [1])
 

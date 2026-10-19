@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from inspect import getattr_static
 from types import FunctionType, MemberDescriptorType
@@ -64,6 +64,7 @@ class PayloadAuditContractAudit:
 
     _approved: frozenset[tuple[int, int]]
     _invalid: frozenset[tuple[int, int]]
+    _result_ids: frozenset[int]
     _by_family: tuple[
         tuple[str, frozenset[tuple[int, int]], frozenset[tuple[int, int]]], ...
     ] = ()
@@ -98,6 +99,10 @@ class PayloadAuditContractAudit:
     @property
     def invalid(self) -> frozenset[tuple[int, int]]:
         return self._invalid if self._is_current() else frozenset()
+
+    @property
+    def result_ids(self) -> frozenset[int]:
+        return self._result_ids if self._is_current() else frozenset()
 
     @property
     def by_family(
@@ -138,9 +143,55 @@ class PayloadAuditContractAudit:
             for name, valid, invalid in self._roots_by_family
         )
 
+    def approves_member(
+        self,
+        identities: frozenset[int],
+        value: object,
+        owner: int | None,
+    ) -> bool:
+        """Check a family-audit result with owner qualification when required."""
+        if not self._is_current():
+            return False
+        identity = id(value)
+        if identity not in self._result_ids:
+            return identity in identities
+        if owner is None:
+            return False
+        pair = owner, identity
+        return pair in self._approved and pair not in self._invalid
+
+    def approves_member_in(
+        self,
+        audits: Iterable[frozenset[int]],
+        value: object,
+        owner: int | None,
+    ) -> bool:
+        return any(
+            self.approves_member(identities, value, owner) for identities in audits
+        )
+
+
+class SemanticComponentAuditMemo:
+    """Memoize one audit's payload checks without conflating object identities."""
+
+    __slots__ = ("_checked", "_validate")
+
+    def __init__(self, validate: Callable[..., bool]) -> None:
+        self._checked: dict[tuple[int, int | None], tuple[object, bool]] = {}
+        self._validate = validate
+
+    def __call__(self, value: object, *, owner: int | None = None) -> bool:
+        cache_key = id(value), owner
+        checked = self._checked.get(cache_key)
+        if checked is not None and checked[0] is value:
+            return checked[1]
+        valid = self._validate(value, owner=owner)
+        self._checked[cache_key] = value, valid
+        return valid
+
 
 @dataclass(frozen=True, slots=True)
-class _PayloadAuditBinding:
+class PayloadAuditBinding:
     family: str
     root_identity: int
     root_type: type[object]
@@ -150,13 +201,13 @@ class _PayloadAuditBinding:
     dependencies: tuple[tuple[int, str, ReferenceType[object]], ...]
 
 
-def _drop_root_contracts(ledger: ResourceLedger, identity: int) -> None:
+def drop_root_contracts(ledger: ResourceLedger, identity: int) -> None:
     for key, binding in tuple(ledger._payload_audit_contracts.items()):
         if binding.root_identity == identity:
             ledger._payload_audit_contracts.pop(key, None)
 
 
-def _drop_owner_contracts(ledger: ResourceLedger, owner: int) -> None:
+def drop_owner_contracts(ledger: ResourceLedger, owner: int) -> None:
     for key, binding in tuple(ledger._payload_audit_contracts.items()):
         if any(bound_owner == owner for bound_owner, _, _, _ in binding.stores):
             ledger._payload_audit_contracts.pop(key, None)
@@ -338,7 +389,7 @@ def register_payload_audit_contract(
         ):
             return
         raise ValueError("replace an existing payload audit contract explicitly")
-    ledger._payload_audit_contracts[key] = _PayloadAuditBinding(
+    ledger._payload_audit_contracts[key] = PayloadAuditBinding(
         family,
         id(root),
         type(root),
@@ -380,7 +431,7 @@ def _store_identity_index(
     ledger: ResourceLedger, container: object
 ) -> dict[int, object]:
     """Index direct payloads, including the shared memo accounting envelope."""
-    from number_compiler.resources.ledger import _DynamicMemoValue
+    from number_compiler.resources.owned_memo import DynamicMemoValue
 
     values: dict[int, object] = {}
     if isinstance(container, Mapping):
@@ -390,7 +441,7 @@ def _store_identity_index(
             ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS, 2)
             # This is an accounting envelope, not another semantic container.
             # Do not recursively approve arbitrary nested records or subclasses.
-            if type(item) is _DynamicMemoValue:
+            if type(item) is DynamicMemoValue:
                 values[id(item.value)] = item.value
                 ledger.bump(_resources_keys.PAYLOAD_AUDIT_CONTRACT_MEMBER_VISITS)
     elif isinstance(container, Sequence) and not isinstance(
@@ -416,7 +467,7 @@ def audit_payload_contracts(ledger: ResourceLedger) -> PayloadAuditContractAudit
     valid_roots_by_family: dict[str, set[int]] = {}
     invalid_roots_by_family: dict[str, set[int]] = {}
     live_roots = {id(root): root for root in ledger.iter_execution_roots()}
-    results: list[tuple[_PayloadAuditBinding, list[tuple[str, PayloadAuditEntry]]]] = []
+    results: list[tuple[PayloadAuditBinding, list[tuple[str, PayloadAuditEntry]]]] = []
     invalid_contracts: set[tuple[int, str]] = set()
     contract_keys = set(ledger._payload_audit_contracts)
     for key, binding in tuple(ledger._payload_audit_contracts.items()):
@@ -614,6 +665,7 @@ def audit_payload_contracts(ledger: ResourceLedger) -> PayloadAuditContractAudit
     snapshot = PayloadAuditContractAudit(
         _approved=frozenset(approved),
         _invalid=frozenset(invalid),
+        _result_ids=frozenset(identity for _, identity in approved | invalid),
         _by_family=tuple(by_family),
         _roots_by_family=roots_by_family,
         _ledger_reference=cast(ReferenceType[object], ref(ledger)),

@@ -9,6 +9,7 @@ import json
 import os
 import platform
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -18,7 +19,10 @@ from types import TracebackType
 from typing import Literal, Self, TextIO
 from uuid import uuid4
 
+from devtools.checks.process_guard import run_guarded
+from devtools.checks.pyright_policy import node_executable, pyright_version
 from devtools.paths import repository_root
+from devtools.report_values import string_keyed_mapping
 
 EVIDENCE_SCHEMA_VERSION = 2
 
@@ -27,19 +31,83 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def tool_versions() -> dict[str, str]:
-    """Report Python-side tools without probing unrelated executables.
+def _node_version(root: Path) -> str:
+    """Record the Node version only when the private checker is installed."""
+    if pyright_version(root) == "unavailable":
+        return "unavailable"
+    executable = node_executable()
+    if executable is None:
+        return "unavailable"
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="number-compiler-node-version-"
+        ) as directory:
+            output = Path(directory) / "node-version.log"
+            result = run_guarded(
+                (str(executable), "--version"), output=output, cwd=root
+            )
+            if result.outcome != "completed":
+                return "unavailable"
+            return output.read_text(encoding="utf-8").strip() or "unavailable"
+    except (OSError, ValueError, RuntimeError):
+        return "unavailable"
+
+
+def _pylance_versions() -> str:
+    """Read installed VS Code Pylance extension versions without launching it."""
+    candidates = [
+        Path.home() / ".vscode" / "extensions",
+        Path.home() / ".vscode-insiders" / "extensions",
+        Path.home() / ".vscode-server" / "extensions",
+    ]
+    configured = os.environ.get("VSCODE_EXTENSIONS_DIR")
+    if configured:
+        candidates.insert(0, Path(configured).expanduser())
+    found: set[str] = set()
+    for directory in candidates:
+        try:
+            manifests = directory.glob("ms-python.vscode-pylance-*/package.json")
+            for manifest in manifests:
+                try:
+                    payload: object = json.loads(manifest.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                manifest_data = string_keyed_mapping(payload)
+                value = (
+                    manifest_data.get("version") if manifest_data is not None else None
+                )
+                if isinstance(value, str):
+                    found.add(value)
+        except OSError:
+            continue
+    return ",".join(sorted(found)) if found else "unavailable"
+
+
+def tool_versions(root: Path | None = None) -> dict[str, str]:
+    """Report selected Python and private editor/type-checker tool versions.
 
     Isabelle's version belongs to proof execution provenance. The release proof
     runner records the selected executable when a proof suite actually runs;
     creating an ordinary Python evidence run must not spawn it.
     """
+    source_root = (root or repository_root()).resolve()
     result = {"python": platform.python_version()}
-    for name in ("pytest", "pytest-timeout", "mypy", "ruff", "setuptools"):
+    for name in (
+        "pip",
+        "pytest",
+        "pytest-timeout",
+        "mypy",
+        "ruff",
+        "pyinstrument",
+        "setuptools",
+    ):
         try:
             result[name] = version(name)
         except PackageNotFoundError:
             result[name] = "unavailable"
+    result["pyright"] = pyright_version(source_root)
+    result["node"] = _node_version(source_root)
+    result["pylance_extension"] = _pylance_versions()
     return result
 
 
@@ -77,6 +145,7 @@ class EvidenceRun:
         self.path.mkdir(parents=True, exist_ok=False)
         self.closed = False
         self._entered = False
+        self._steps: list[dict[str, object]] = []
         self.manifest: dict[str, object] = {
             "schema_version": EVIDENCE_SCHEMA_VERSION,
             "validation_policy_version": POLICY_VERSION,
@@ -84,7 +153,7 @@ class EvidenceRun:
             "command": list(command or tuple(sys.orig_argv)),
             "cwd": str(Path.cwd()),
             "source_root": str(self.root),
-            "tool_versions": tool_versions(),
+            "tool_versions": tool_versions(self.root),
             "limits": dict(limits) if limits is not None else {"enforced": False},
             "git_source_before": self._git_before.as_dict(),
             "evidence_mode": evidence_mode,
@@ -93,7 +162,7 @@ class EvidenceRun:
             "acceptance_verified": False,
             "started_at": utc_now(),
             "outcome": "running",
-            "steps": [],
+            "steps": self._steps,
         }
         self._write()
         atexit.register(self._unfinished)
@@ -106,9 +175,7 @@ class EvidenceRun:
     def record(self, record: Mapping[str, object]) -> None:
         if self.closed:
             raise ValueError("cannot append to completed evidence")
-        rows = self.manifest["steps"]
-        assert isinstance(rows, list)
-        rows.append(dict(record))
+        self._steps.append(dict(record))
         self._write()
 
     def finish(self, outcome: str) -> None:
@@ -142,12 +209,10 @@ class EvidenceRun:
             raise ValueError("development evidence cannot certify acceptance")
         if self.manifest.get("outcome") != "completed":
             raise ValueError("only completed acceptance evidence can be certified")
-        before = self.manifest.get("git_source_before")
-        after = self.manifest.get("git_source_after")
+        before = string_keyed_mapping(self.manifest.get("git_source_before"))
+        after = string_keyed_mapping(self.manifest.get("git_source_after"))
         if before is None or after is None:
             raise ValueError("acceptance evidence is missing Git identities")
-        if not isinstance(before, dict) or not isinstance(after, dict):
-            raise TypeError("acceptance Git identities must be mappings")
         keys = ("git_commit", "git_tree", "git_object_format")
         if (
             before.get("git_dirty") is not False
@@ -226,7 +291,7 @@ class EvidenceRun:
 
 
 _REPORT_RUNS: dict[tuple[Path, Path | None], EvidenceRun] = {}
-_ACTIVE_RUN: EvidenceRun | None = None
+_active_run: EvidenceRun | None = None
 
 
 def report_run(root: Path | None = None) -> EvidenceRun:
@@ -234,8 +299,8 @@ def report_run(root: Path | None = None) -> EvidenceRun:
     import argparse
 
     root = (root or repository_root()).resolve()
-    if _ACTIVE_RUN is not None and _ACTIVE_RUN.root == root and not _ACTIVE_RUN.closed:
-        return _ACTIVE_RUN
+    if _active_run is not None and _active_run.root == root and not _active_run.closed:
+        return _active_run
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("--output-dir", type=Path)
     options, _ = parser.parse_known_args()
@@ -285,10 +350,10 @@ def run_reported(main: Callable[[], int | None]) -> int:
     if "--worker" in remaining:
         result = main()
         return 0 if result is None else result
-    global _ACTIVE_RUN
-    previous_run = _ACTIVE_RUN
+    global _active_run
+    previous_run = _active_run
     run = report_run()
-    _ACTIVE_RUN = run
+    _active_run = run
     original = sys.argv
     sys.argv = [sys.argv[0], *remaining]
     try:
@@ -299,7 +364,7 @@ def run_reported(main: Callable[[], int | None]) -> int:
             run.finish("completed" if code == 0 else "failed")
             return code if run.manifest["outcome"] != "git_identity_changed" else 1
     finally:
-        _ACTIVE_RUN = previous_run
+        _active_run = previous_run
         sys.argv = original
 
 
@@ -392,11 +457,14 @@ def _guard_standalone_command() -> int | None:
     nested_manifest = probe_output / "manifest.json"
     if outcome != "completed" and nested_manifest.is_file():
         try:
-            nested = json.loads(nested_manifest.read_text(encoding="utf-8"))
+            nested = string_keyed_mapping(
+                json.loads(nested_manifest.read_text(encoding="utf-8"))
+            )
         except (OSError, json.JSONDecodeError):
             nested = None
-        if isinstance(nested, dict) and nested.get("outcome") == "running":
-            nested.update(
+        if nested is not None and nested.get("outcome") == "running":
+            updated = dict(nested)
+            updated.update(
                 outcome="incomplete",
                 cacheable=False,
                 reusable=False,
@@ -404,7 +472,7 @@ def _guard_standalone_command() -> int | None:
                 guarded_command_detail=result.detail,
                 finished_at=utc_now(),
             )
-            nested_manifest.write_text(json.dumps(nested, indent=2) + "\n")
+            nested_manifest.write_text(json.dumps(updated, indent=2) + "\n")
     if outcome != "completed":
         print(
             f"guarded command {outcome}: {result.detail}; evidence: {run_path}",

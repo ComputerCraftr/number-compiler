@@ -19,7 +19,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ._temporal_slp import concatenate_temporal_slp
+from number_compiler.arithmetic.automata.temporal_slp import concatenate_temporal_slp
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BAND_NAMES,
+    decimal_pair_word_projection,
+)
+
 from .temporal_bulk_moore import (
     AlternatingCore,
     UniformCarryCell,
@@ -29,11 +34,7 @@ from .temporal_bulk_moore import (
 
 S = TypeVar("S")
 CHANNELS = (
-    "lt_low",
-    "lt_high",
-    "eq",
-    "gt_low",
-    "gt_high",
+    *DECIMAL_PAIR_BAND_NAMES,
     "carry",
     "borrow_identity",
     "borrow_reset",
@@ -84,24 +85,20 @@ class TemporalPortFrame:
         )
         if any(len(p) != n for p in ports):
             raise ValueError("misaligned bank mask and borrow outputs")
-        for i, s in enumerate(self.coefficients):
-            if not (0 <= s <= 18) or self.f5[i] != s % 5:
-                raise ValueError("invalid F5 pair coefficient")
-            masks = (
-                int(s < 5),
-                int(5 <= s <= 8),
-                int(s == 9),
-                int(10 <= s <= 14),
-                int(15 <= s <= 18),
+        projection = decimal_pair_word_projection(self.coefficients)
+        if (
+            self.f5 != projection.f5
+            or (
+                self.lt_low,
+                self.lt_high,
+                self.eq,
+                self.gt_low,
+                self.gt_high,
             )
-            if masks != (
-                self.lt_low[i],
-                self.lt_high[i],
-                self.eq[i],
-                self.gt_low[i],
-                self.gt_high[i],
-            ):
-                raise ValueError("LT/EQ/GT masks disagree with exact pair coefficient")
+            != projection.bands
+        ):
+            raise ValueError("pair ports disagree with exact five-band projection")
+        for i, _coefficient in enumerate(self.coefficients):
             if not (0 <= self.normalized_digits[i] <= 9):
                 raise ValueError("invalid decimal output digit")
             if any(
@@ -151,14 +148,11 @@ def _frame(
     reflected_identity: tuple[int, int],
     reflected_reset: tuple[int, int],
 ) -> TemporalPortFrame:
+    projection = decimal_pair_word_projection(s)
     return TemporalPortFrame(
         s,
-        tuple(v % 5 for v in s),
-        tuple(int(v < 5) for v in s),
-        tuple(int(5 <= v <= 8) for v in s),
-        tuple(int(v == 9) for v in s),
-        tuple(int(10 <= v <= 14) for v in s),
-        tuple(int(15 <= v <= 18) for v in s),
+        projection.f5,
+        *projection.bands,
         c,
         reflected_carries,
         reflected_carries[0] ^ reflected_carries[1],
@@ -305,7 +299,7 @@ class _TemporalArena:
                 left,
                 right,
                 1,
-                tuple(p + q for p, q in zip(x.counts, y.counts)),
+                tuple(p + q for p, q in zip(x.counts, y.counts, strict=True)),
                 (x.digit_sums[0] + y.digit_sums[0], x.digit_sums[1] + y.digit_sums[1]),
                 (
                     x.digit_weighted_sums[0]
@@ -419,7 +413,7 @@ class _FiniteFutureBank(Generic[S]):
 
     def square(self) -> int:
         old = self.layers[-1]
-        new = []
+        new: list[tuple[int, int]] = []
         for mid, emitted in old:
             end, continuation = old[mid]
             new.append((end, self.arena.concat(emitted, continuation)))

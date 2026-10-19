@@ -15,7 +15,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 from number_compiler.hashlife.execution.diamond_parent import publish_parent_identity
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_runtime import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -24,7 +24,9 @@ if TYPE_CHECKING:
 
 
 def setup() -> tuple[DiamondRuntime, MacroTransferKey]:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 0, 1, 1), 8, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 0, 1, 1), 8, 2
+    )
     key = MacroTransferKey(action, action, runtime.cells.source(0, 3), 0)
     return runtime, key
 

@@ -20,7 +20,7 @@ def _forbidden(*args: object, **kwargs: object) -> Never:
 
 def _reference(value: int, base: int) -> str:
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-    result = []
+    result: list[str] = []
     while value:
         value, digit = divmod(value, base)
         result.append(digits[digit])
@@ -147,12 +147,12 @@ def test_decimal_scalar_format_never_changes_process_digit_limit(
         context.prec = 2
         context.Emax = 2
         context.Emin = -2
-        assert cli_render._radix_string(10**5000 + 987, 10) == "1" + "0" * 4997 + "987"
-        assert cli_render._radix_string(12345, 10) == "12345"
+        assert cli_render.radix_string(10**5000 + 987, 10) == "1" + "0" * 4997 + "987"
+        assert cli_render.radix_string(12345, 10) == "12345"
     assert sys.get_int_max_str_digits() == previous
 
 
 def test_regrouping_consumes_one_pass_and_drops_only_leading_zeroes() -> None:
-    assert cli_render._power_of_two_radix_string(iter((3, 2, 1, 0)), 4, 8) == "33"
-    assert cli_render._power_of_two_radix_string(iter((0, 0)), 2, 32) == "0"
-    assert cli_render._radix_string_from_lsd(iter((3, 2, 1)), 10) == "123"
+    assert cli_render.power_of_two_radix_string(iter((3, 2, 1, 0)), 4, 8) == "33"
+    assert cli_render.power_of_two_radix_string(iter((0, 0)), 2, 32) == "0"
+    assert cli_render.radix_string_from_lsd(iter((3, 2, 1)), 10) == "123"

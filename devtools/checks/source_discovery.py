@@ -7,7 +7,15 @@ import subprocess
 from pathlib import Path
 
 IGNORED_PARTS = frozenset(
-    {".git", ".venv", ".pytest_cache", "__pycache__", ".mypy_cache", ".ruff_cache"}
+    {
+        ".git",
+        ".venv",
+        ".pytest_cache",
+        "__pycache__",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+    }
 )
 IGNORED_ROOTS = frozenset({"results", "build", "dist", "venv"})
 

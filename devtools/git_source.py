@@ -6,7 +6,7 @@ import contextlib
 import subprocess
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -111,7 +111,7 @@ def _worktree_is_registered(root: Path, checkout: Path) -> bool:
 @contextlib.contextmanager
 def acceptance_checkout(
     root: Path, worktree_parent: Path | None = None
-) -> Iterator[Path]:
+) -> Generator[Path, None, None]:
     """Yield one clean detached worktree and preserve it if a run changes it.
 
     The temporary worktree is created outside the source checkout by default,

@@ -26,7 +26,7 @@ from number_compiler.sequences.collatz.source_cylinder_types import (
     _admit_source_key,
 )
 from number_compiler.sequences.collatz.source_cylinder_types import (
-    _canonical_gain as _canonical_gain,  # noqa: PLC0414 - cache tests patch this hook
+    _canonical_gain as _canonical_gain,  # Cache tests patch this hook.
 )
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,

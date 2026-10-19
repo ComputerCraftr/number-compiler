@@ -55,7 +55,7 @@ def _low_carries(source_low: int, base: int, width: int) -> tuple[int, ...]:
     return tuple(result)
 
 
-def _carry_h5(carries: tuple[int, ...], offset: int) -> tuple[WalshH5, WalshH5]:
+def carry_h5(carries: tuple[int, ...], offset: int) -> tuple[WalshH5, WalshH5]:
     # Carry is ternary, so retain BOTH binary planes rather than collapsing
     # RESET2 to a Boolean. The packet is harmonics of a known border ONLY.
     low_mask = sum((c & 1) << j for j, c in enumerate(carries))
@@ -76,7 +76,7 @@ MAX_BINARY_WINDOW_PRECISION = 4096
 MAX_DECIMAL_WINDOW_PRECISION = 512
 
 
-def _source_radix_prefix(level: int, base: int, places: int) -> int:
+def source_radix_prefix(level: int, base: int, places: int) -> int:
     """Exact low requested 3**(2**t) digits; no candidate-modulus powering."""
     if (
         type(places) is not int
@@ -135,10 +135,10 @@ class RefinedMiddleRelation:
     @property
     def source_authenticated(self) -> bool:
         return self.border.producer_verified and harmonic_verified(
-            self, self._payload(), issuer=_REFINED_MIDDLE_ISSUER
+            self, self.structural_payload(), issuer=_REFINED_MIDDLE_ISSUER
         )
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
             *harmonic_payload(self.border),
             self.windows,
@@ -199,7 +199,7 @@ def refine_middle_source_windows(
     if left > right:
         raise ValueError("negative interior interval")
     possible = frozenset((IDENTITY,))
-    observed = []
+    observed: list[CertifiedMiddleWindow] = []
     prefix = 0
     if windows:
         previous = left
@@ -208,7 +208,7 @@ def refine_middle_source_windows(
                 raise ValueError("source window is outside the unknown interior")
             previous = start + width
         precision = max(start + width for start, width in windows)
-        prefix = _source_radix_prefix(border.level, border.base, precision)
+        prefix = source_radix_prefix(border.level, border.base, precision)
     for item in windows:
         if type(item) is not tuple or len(item) != 2:
             raise TypeError("middle window is (absolute-start,width)")
@@ -227,7 +227,7 @@ def refine_middle_source_windows(
             possible, unknown_middle_transfer_set(border.base, start - left)
         )
         value = prefix // border.base**start % border.base**width
-        digits = []
+        digits: list[int] = []
         remaining = value
         for _ in range(width):
             remaining, digit = divmod(remaining, border.base)
@@ -235,14 +235,14 @@ def refine_middle_source_windows(
         transfer = IDENTITY
         for digit in digits:
             transfer = compose_transfer(transfer, digit_transfer(border.base, digit))
-        h5 = []
+        h5: list[tuple[WalshH5, WalshH5]] = []
         for incoming in range(3):
             carry = incoming
-            carried = []
+            carried: list[int] = []
             for digit in digits:
                 carry = (3 * digit + carry) // border.base
                 carried.append(carry)
-            h5.append(_carry_h5(tuple(carried), start))
+            h5.append(carry_h5(tuple(carried), start))
         observed.append(CertifiedMiddleWindow(start, width, value, transfer, tuple(h5)))
         possible = compose_sets(possible, frozenset((transfer,)))
         left = start + width
@@ -264,7 +264,7 @@ def refine_middle_source_windows(
         allowed,
         tuple(sorted({f[border.low_carry] for f in allowed})),
     )
-    issue_harmonic(result, result._payload(), issuer=_REFINED_MIDDLE_ISSUER)
+    issue_harmonic(result, result.structural_payload(), issuer=_REFINED_MIDDLE_ISSUER)
     return result
 
 
@@ -318,7 +318,7 @@ class RadixBilateralTripling:
         """All carry ingress choices yield the same *upper carry*, not digits."""
         block = self.source_top
         h = self.high_places
-        carry_out = set()
+        carry_out: set[int] = set()
         for incoming in range(3):
             # Full outgoing carry computed on the same block with ingress.
             carry = incoming
@@ -369,13 +369,17 @@ class RadixBilateralTripling:
         # (whole middle CarryFn, actual carry, Phi2lo,Phi3a-lo,Phi3b-lo,
         #  Phi2hi,Phi3a-hi,Phi3b-hi). Every digit is a possible base-b digit;
         # the calculation does NOT sample the source or assume a repeated word.
-        states = {(IDENTITY, self.low_carry, (0, 0, 0, 0, 0, 0))}
+        states: set[tuple[CarryFn, int, tuple[int, int, int, int, int, int]]] = {
+            (IDENTITY, self.low_carry, (0, 0, 0, 0, 0, 0))
+        }
         for step in range(self.unknown_middle_length):
             position = self.low_places + step
             sign = 1 if not position % 2 else -1
             phase = position % 3
             pa, pb = (1, 0) if phase == 0 else ((0, 1) if phase == 1 else (-1, -1))
-            following = set()
+            following: set[tuple[CarryFn, int, tuple[int, int, int, int, int, int]]] = (
+                set()
+            )
             for action, carry, packet in states:
                 for digit in range(self.base):
                     nxt = (3 * digit + carry) // self.base
@@ -395,12 +399,12 @@ class RadixBilateralTripling:
                     if len(following) > 100_000:
                         raise ValueError("middle-harmonic-state-budget")
             states = following
-        accepted = set()
+        accepted: set[CarryFn] = set()
         lookup = dict(self.high_h5_options)
         for action, carry, packet in states:
             if action not in self.allowed_middle_actions or carry not in lookup:
                 continue
-            predicted = []
+            predicted: list[WalshH5] = []
             for plane in range(2):
                 low = self.low_h5[plane]
                 high = lookup[carry][plane]
@@ -468,24 +472,27 @@ def _build_radix_border(
     if not high_ingress:
         raise ArithmeticError("source/target certified radial borders are incompatible")
     possible = unknown_middle_transfer_set(base, middle)
-    allowed = tuple(sorted(fn for fn in possible if fn[low_carry] in high_ingress))
+    allowed: tuple[CarryFn, ...] = tuple(
+        sorted(fn for fn in possible if fn[low_carry] in high_ingress)
+    )
     if not allowed:
         raise ArithmeticError("bilateral carry relation has no admissible middle")
     low_carries = _low_carries(low, base, low_places)
     if low_carries[-1] != low_carry:
         raise ArithmeticError("low carry-stencil mismatch")
-    upper_packets = []
-    for cin in sorted({fn[low_carry] for fn in allowed}):
+    upper_packets: list[tuple[int, tuple[WalshH5, WalshH5]]] = []
+    receiving_carries: set[int] = {fn[low_carry] for fn in allowed}
+    for cin in sorted(receiving_carries):
         state = cin
         temp = source_prefix
-        carries = []
+        carries: list[int] = []
         for _ in range(high_places):
             digit = temp % base
             temp //= base
             state = (3 * digit + state) // base
             carries.append(state)
         upper_packets.append(
-            (cin, _carry_h5(tuple(carries), source_digits - high_places))
+            (cin, carry_h5(tuple(carries), source_digits - high_places))
         )
     result = RadixBilateralTripling(
         index,
@@ -503,7 +510,7 @@ def _build_radix_border(
         middle,
         tuple(high_ingress),
         allowed,
-        _carry_h5(low_carries, 0),
+        carry_h5(low_carries, 0),
         tuple(upper_packets),
     )
     issue_harmonic(result, harmonic_payload(result), issuer=_BILATERAL_ISSUER)
@@ -807,6 +814,7 @@ __all__ = [
     "RefinedMiddleRelation",
     "ThreePowerBilateralInteriorQuotient",
     "ThreePowerBilateralQuotient",
+    "carry_h5",
     "demand_three_power_bilateral_interior",
     "demand_three_power_bilateral_quotient",
     "demand_three_power_inward_phase_quotient",

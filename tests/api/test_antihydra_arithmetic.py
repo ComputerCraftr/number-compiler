@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from number_compiler.api.antihydra_observation import observe_run
+from number_compiler.api.antihydra_observation import AntihydraRunKind, observe_run
 from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
 from number_compiler.api.query_types import AntihydraTermQuery
 from number_compiler.hashlife.execution.dyadic_return_records import (
@@ -137,9 +137,10 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
     workspace = term.arithmetic_workspace
     assert type(workspace) is AntihydraArithmeticImageWorkspace
     assert type(workspace.scheduler) is TileScheduler
-    assert workspace.scheduler._source_only
+    assert workspace.scheduler.is_source_only
     assert workspace.scheduler.ledger is term.ledger
-    assert not term._segments and not term._segments_ready
+    initial_support = term.audit_snapshot()
+    assert initial_support.segment_count == 0 and not initial_support.segments_ready
     assert term.ledger.counters.get("source_image_first_child_contexts", 0) == 0
     assert term.ledger.counters.get("source_image_second_child_contexts", 0) == 0
     assert (
@@ -206,7 +207,8 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
     projected = compiler.project(AntihydraTermQuery(129))
     assert type(projected.payload) is AntihydraTermPayload
     owner = projected.payload.term
-    assert owner._result is None and not owner._segments
+    assert owner.audit_snapshot().result is None
+    assert owner.audit_snapshot().segment_count == 0
     reused = compiler.project(AntihydraTermQuery(129)).payload
     assert type(reused) is AntihydraTermPayload
     assert reused.term is owner
@@ -215,7 +217,7 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
     assert projected.materialize(max_bits=4096) == expected
     arithmetic_result = owner.result()
     arithmetic_work = owner.ledger.counters.get("arithmetic_block_applications", 0)
-    assert arithmetic_work == 0 and not owner._segments
+    assert arithmetic_work == 0 and owner.audit_snapshot().segment_count == 0
     assert projected.payload.info()["h"] == expected
     assert (
         owner.ledger.counters.get("arithmetic_block_applications", 0) == arithmetic_work
@@ -248,8 +250,9 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
         reference.right,
         reference.halted,
     )
-    assert owner.ledger.counters["arithmetic_block_applications"] == len(
-        owner._segments
+    assert (
+        owner.ledger.counters["arithmetic_block_applications"]
+        == owner.audit_snapshot().segment_count
     )
     assert owner.ledger.counters["arithmetic_block_applications"] > arithmetic_work
     assert owner.ledger.counters.get("physical_roof_evaluations", 0) > 0
@@ -283,8 +286,8 @@ def test_output_budget_refuses_before_arithmetic_execution() -> None:
         compiler.nth(AntihydraTermQuery(1000), max_bits=32)
     payload = compiler.project(AntihydraTermQuery(1000)).payload
     assert type(payload) is AntihydraTermPayload
-    assert payload.term._result is None
-    assert not payload.term._segments
+    assert payload.term.audit_snapshot().result is None
+    assert payload.term.audit_snapshot().segment_count == 0
     assert compiler.nth(AntihydraTermQuery(0), max_bits=4) == 8
 
 
@@ -293,7 +296,8 @@ def test_failed_result_publication_rolls_back_retained_support() -> None:
     term.max_state_bits = 4
     with pytest.raises(ValueError, match="state exceeds"):
         term.result()
-    assert term._result is None and not term._segments
+    failed_support = term.audit_snapshot()
+    assert failed_support.result is None and failed_support.segment_count == 0
     assert term.arithmetic_workspace is None
     row = next(
         item
@@ -326,8 +330,9 @@ def test_failed_lazy_segment_publication_preserves_arithmetic_result(
         patch.setattr(AntihydraArithmeticImageWorkspace, "segments", partial)
         with pytest.raises(RuntimeError, match="injected lazy segment failure"):
             _ = term.segments
-    assert term._result is result
-    assert not term._segments and not term._segments_ready
+    support = term.audit_snapshot()
+    assert support.result is result
+    assert support.segment_count == 0 and not support.segments_ready
     row = next(
         item
         for item in term.ledger.inventory()
@@ -365,7 +370,7 @@ def test_balanced_arithmetic_authority_rejects_mutated_internal_nodes(
         object.__setattr__(
             root_image,
             "source",
-            DyadicReturnSourceID(workspace.owner, workspace._SOURCE_KIND, 999),
+            DyadicReturnSourceID(workspace.owner, workspace.SOURCE_KIND, 999),
         )
     with pytest.raises(ValueError, match="Antihydra arithmetic"):
         result.require_source()
@@ -429,7 +434,7 @@ def test_total_h7_arithmetic_continues_past_guarded_first_failure() -> None:
     assert block.minimum == -1
 
     term = AntihydraArithmeticTerm(0)
-    h, balance, _left, _right, completed, halted = term._physical_block(
+    h, balance, _left, _right, completed, halted = term.apply_physical_block(
         block, 7, 0, 0, 0, 0
     )
     assert (h, balance, completed, halted) == (7, -1, 1, True)
@@ -511,21 +516,23 @@ def test_boolean_segment_coordinate_is_rejected_by_runtime_and_audit() -> None:
 @pytest.mark.parametrize(
     "kind",
     (
-        "clock",
-        "modular",
-        "tape",
-        "twisted",
-        "spacetime",
-        "hasse",
-        "hensel",
-        "mahler",
-        "tropical",
-        "factor",
+        AntihydraRunKind.CLOCK,
+        AntihydraRunKind.MODULAR,
+        AntihydraRunKind.TAPE,
+        AntihydraRunKind.TWISTED,
+        AntihydraRunKind.SPACETIME,
+        AntihydraRunKind.HASSE,
+        AntihydraRunKind.HENSEL,
+        AntihydraRunKind.MAHLER,
+        AntihydraRunKind.TROPICAL,
+        AntihydraRunKind.FACTOR,
     ),
 )
-def test_every_direct_observer_rejects_mutated_retained_support(kind: str) -> None:
+def test_every_direct_observer_rejects_mutated_retained_support(
+    kind: AntihydraRunKind,
+) -> None:
     result = run(64)
-    block = result._term.segments[0].cylinder
+    block = result.arithmetic_term.segments[0].cylinder
     object.__setattr__(block, "parity_word", block.parity_word ^ 1)
 
     with pytest.raises(ValueError, match="arithmetic support was changed"):
@@ -554,11 +561,12 @@ def test_retained_support_validation_streams_and_charges_reconstruction(
     original = workspace.segments
     before = term.ledger.counters.get("arithmetic_result_validation_reconstructions", 0)
     result.require_source()
-    assert term.ledger.counters[
-        "arithmetic_result_validation_reconstructions"
-    ] - before == len(term._segments)
+    assert (
+        term.ledger.counters["arithmetic_result_validation_reconstructions"] - before
+        == term.audit_snapshot().segment_count
+    )
 
-    first = term._segments[0].cylinder
+    first = term.segments[0].cylinder
     object.__setattr__(first, "parity_word", first.parity_word ^ 1)
 
     def first_then_forbidden() -> Iterator[tuple[int, ArithmeticCylinder]]:
@@ -577,7 +585,11 @@ def test_run_rejects_forged_arithmetic_publication_type() -> None:
         def require_source(self) -> None:
             return None
 
-    result._term._result = cast(ArithmeticResult, ForgedArithmeticResult())
+    object.__setattr__(
+        result.arithmetic_term,
+        "_result",
+        cast(ArithmeticResult, ForgedArithmeticResult()),
+    )
     with pytest.raises(ValueError, match="unbound Antihydra arithmetic result"):
         result.require_source()
 

@@ -8,17 +8,19 @@ are never materialized.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageID,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-from number_compiler.sequences.prime.successor_action import (
-    PrimeSuccessorActionArena,
-    PrimeSuccessorImageAdapter,
+from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
+from number_compiler.sequences.prime.successor_action_contracts import (
     PrimeSuccessorSource,
+)
+from number_compiler.sequences.prime.successor_image_adapter import (
+    PrimeSuccessorImageAdapter,
 )
 
 
@@ -29,7 +31,7 @@ class PrimePartialSuccessorQuery:
         if type(rank) is not CoprimeRankDAG:
             raise TypeError("prime partial successor query requires its rank owner")
         self.rank = rank
-        self._rank_authority = rank, rank.ledger, rank._factor_store_authority
+        self._rank_authority = rank, rank.ledger, rank.factor_source_identity()
         self._arena: PrimeSuccessorActionArena | None = None
         self._adapter: PrimeSuccessorImageAdapter | None = None
         self._scheduler: TileScheduler | None = None
@@ -42,13 +44,14 @@ class PrimePartialSuccessorQuery:
     def _check_open(self) -> None:
         if self._closed:
             raise RuntimeError("prime partial successor query is closed")
-        rank, ledger, factors = self._rank_authority
+        rank, ledger, source_identity = self._rank_authority
         if (
             self.rank is not rank
             or self.rank.ledger is not ledger
-            or self.rank._factor_store_authority is not factors
+            or not self.rank.validates_factor_source(source_identity)
         ):
             raise ValueError("prime partial query lost its source authority")
+        self._rank_authority = rank, ledger, rank.factor_source_identity()
 
     def _dispose_stage(self) -> None:
         try:
@@ -86,11 +89,12 @@ class PrimePartialSuccessorQuery:
                 or cached_scheduler is None
             ):
                 raise RuntimeError("prime partial stage lost its scheduler")
-            cached_arena._check_open()
+            cached_arena.validate_open()
             return cached_arena, cached_adapter, cached_scheduler
         self._dispose_stage()
         # One admitted factor is needed, not a detached copy of every stage.
-        fresh = self.rank._factor_store_authority[depth - 1]
+        _, _, source_identity = self._rank_authority
+        fresh = self.rank.factor_at(depth - 1, source_identity)
         arena: PrimeSuccessorActionArena | None = None
         scheduler: TileScheduler | None = None
         try:
@@ -110,8 +114,6 @@ class PrimePartialSuccessorQuery:
                 if arena is not None:
                     arena.close()
             raise
-        if arena is None or scheduler is None:
-            raise AssertionError("prime partial stage construction lost its owners")
         self._arena, self._adapter, self._scheduler, self._depth = (
             arena,
             adapter,

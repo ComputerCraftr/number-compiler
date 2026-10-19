@@ -6,7 +6,7 @@ resource limits, and optional chronological support remain scheduler contracts.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -15,11 +15,11 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicCycleSummary,
     DyadicImageSummary,
     DyadicReturnActionID,
+    DyadicReturnImageRecord,
     DyadicReturnSourceID,
-    _ImageNode,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
@@ -67,7 +67,7 @@ class RunArithmeticWorkspace:
         return 0
 
     @contextmanager
-    def scope(self) -> Iterator[RunArithmeticWorkspace]:
+    def scope(self) -> Generator[RunArithmeticWorkspace, None, None]:
         if self.active:
             raise RuntimeError("run arithmetic workspace is already active")
         self.active = True
@@ -120,7 +120,7 @@ def publish_exact_run_candidate(
         raise ValueError("run contraction requires an exact identity source")
     with workspace.composite_transaction():
         support = workspace._append_support(
-            _SupportNode(
+            DyadicReturnSupportRecord(
                 width,
                 admitted.residue,
                 transfer,
@@ -143,9 +143,11 @@ def publish_exact_run_candidate(
             support,
             cycle,
         )
-        payload = workspace._append_image(_ImageNode(source_id, action, summary))
-        workspace._bump("saturated_support_publications")
-        workspace._bump("run_contraction_publications")
+        payload = workspace._append_image(
+            DyadicReturnImageRecord(source_id, action, summary)
+        )
+        workspace.bump_metric("saturated_support_publications")
+        workspace.bump_metric("run_contraction_publications")
         return SourceImageCandidate(
             payload,
             width,

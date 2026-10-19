@@ -173,7 +173,7 @@ def test_source_guarded_moore_envelopes_sharpen_unconstrained_ports() -> None:
                 free = power_temporal_border(lift.edge, steps, observer)
                 real = seed
                 total = 0
-                for tick in range(steps):
+                for _tick in range(steps):
                     edge = edge_from_digits(str(real))
                     next_value = _literal(real)
                     # Output has no unknown digits once actual successor is known.
@@ -267,17 +267,17 @@ def test_carry_safety_reuses_the_term_owned_refinement(
     from number_compiler.sequences.double_reverse import temporal_carry_safety_audit
 
     with DoubleReverseTerm(173488, 0) as term:
-        owner_before = term._ledger.inventory_owner(term._carry_safety_owner)
+        owner_before = term.resource_ledger.inventory_owner(term._carry_safety_owner)
         assert owner_before.role == "double_reverse_temporal_memo"
         assert owner_before.entries == owner_before.nodes == 0
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
         first = term.temporal_carry_safety()
         assert len(term._carry_safety_cache) == 1
-        owner_after = term._ledger.inventory_owner(term._carry_safety_owner)
+        owner_after = term.resource_ledger.inventory_owner(term._carry_safety_owner)
         assert owner_after.entries == 1
         assert owner_after.nodes > owner_after.entries
-        report = collect_ledger_metrics(term._ledger)
+        report = collect_ledger_metrics(term.resource_ledger)
         assert report.resource_audit_complete == 1
         assert report.forbidden_future_payloads == 0
         assert report.resource_accounting_mismatch == 0
@@ -301,7 +301,7 @@ def test_carry_safety_reuses_the_term_owned_refinement(
 
 def test_carry_safety_cache_releases_its_reservation_on_dispose() -> None:
     term = DoubleReverseTerm(173488, 0)
-    ledger = term._ledger
+    ledger = term.resource_ledger
     term.temporal_carry_safety()
     owner = term._carry_safety_owner
     assert ledger.inventory_owner(owner).entries == 1

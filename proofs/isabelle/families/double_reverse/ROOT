@@ -1,7 +1,19 @@
 session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_Carry_Dynamics +
   options [document = false, quick_and_dirty = false]
   theories
+    Double_Reverse_Decimal_Arithmetic
     Double_Reverse_Temporal_Refinement
+    Double_Reverse_Powered_Border_Transfer
     Double_Reverse_Periodic_Ring_Action
+    Double_Reverse_Bitplane_Refinement
+    Double_Reverse_Source_Window_Refinement
+    Double_Reverse_Source_Slice_Refinement
+    Double_Reverse_Packed_Request_Refinement
+    Double_Reverse_Periodic_Worklist_Refinement
+    Double_Reverse_Digit_Carry_Affine
+    Double_Reverse_Carry_Phase_Weights
+    Double_Reverse_F5_Action_Power
+    Double_Reverse_Joint_Lineage_Power
+    Double_Reverse_Joint_Lineage_Endpoint
     Double_Reverse_Birth_Layer_Refinement
     Double_Reverse_Birth_Seam_Quotient

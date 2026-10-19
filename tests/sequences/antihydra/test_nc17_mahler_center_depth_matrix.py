@@ -218,13 +218,18 @@ def test_randomized_full_source_and_crt_transport() -> None:
         d = rng.randrange(1000, 10**12)
         steps = rng.randrange(1, 8)
         cert = T.from_source(d, steps, initial_ledger=3 * steps + 12)
-        p = cert.packet()
+        p = cert.packet(trace=True)
+        detail = cast(dict[str, object], p["trace"])
         assert p["source_certified_physical_ticks"] == steps
         first_center = cast(int, p["pointed_first_center"])
         last_center = cast(int, p["pointed_last_center"])
         assert last_center in cert.matrix.destinations(first_center)
-        assert p["source_mod99_path"] == tuple(s % 99 for s in cert.pointed_sources)
-        assert p["source_mod198_path"] == tuple(s % 198 for s in cert.pointed_sources)
+        assert detail["source_mod99_path"] == tuple(
+            s % 99 for s in cert.pointed_sources
+        )
+        assert detail["source_mod198_path"] == tuple(
+            s % 198 for s in cert.pointed_sources
+        )
         assert cert.safety_matrix.edges <= cert.matrix.edges
         assert cert.conditional_composition.edges >= cert.matrix.edges
 
@@ -263,11 +268,15 @@ def test_compiled_program_horizon_and_real_tick_sources() -> None:
     program = compile_mahler_odd_program(100007, max_events=8)
     available = program.ending_clock - program.clock
     assert available >= 4
-    packet = program.center_transfer_at_tick(program.clock, steps=4, include_rows=True)
+    packet = program.center_transfer_at_tick(
+        program.clock, steps=4, include_rows=True, trace=True
+    )
     assert packet["source_authority"] == "source-finite-trace"
     assert "compiled_program_source_authenticated" not in packet
     assert packet["pointed_first_center"] == 0
-    source_mod99_path = cast(tuple[int, ...], packet["source_mod99_path"])
+    source_mod99_path = cast(
+        tuple[int, ...], cast(dict[str, object], packet["trace"])["source_mod99_path"]
+    )
     assert source_mod99_path[0] == 100007 % 99
     assert packet["sparse_rows"]
     with pytest.raises(ValueError):
@@ -290,11 +299,11 @@ def test_caller_built_program_does_not_claim_compiler_provenance() -> None:
         stop_reason="caller-built",
         source_certified=False,
     )
-    packet = program.center_transfer_at_tick(0, steps=1)
+    packet = program.center_transfer_at_tick(0, steps=1, trace=True)
     assert packet["source_authority"] == "source-finite-trace"
-    assert packet["source_mod99_path"] == (3, 5)
-    assert packet["source_mod198_path"] == (3, 5)
-    assert packet["pointed_center_path"] == (0, 0)
+    assert cast(dict[str, object], packet["trace"])["source_mod99_path"] == (3, 5)
+    assert cast(dict[str, object], packet["trace"])["source_mod198_path"] == (3, 5)
+    assert cast(dict[str, object], packet["trace"])["pointed_center_path"] == (0, 0)
     assert "compiled_program_source_authenticated" not in packet
 
 

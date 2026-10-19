@@ -219,7 +219,7 @@ def test_cold_long_request_keeps_a_bounded_mixed_prefix_for_a_warm_short_request
     argv = _metrics_request(256)
     assert cli_main(argv) == 0
     _read_metrics_response(capsys, 256)
-    ledger = cast(PoweredCollatzTermPayload, captured[0].payload).term._ledger
+    ledger = cast(PoweredCollatzTermPayload, captured[0].payload).term.resource_ledger
     assert ledger.counters["collatz_mixed_clock_classifications"] <= 32
     assert ledger.counters["collatz_hashlife_primitive_steps"] == 32
     assert ledger.counters["collatz_hashlife_mixed_publications"] == 1
@@ -326,7 +326,7 @@ def test_selector_miss_falls_back_and_disposes_temporary_owners(
     assert isinstance(mixed_action, dict)
     assert mixed_action["publications"] == 0
     term = captured[0]
-    ledger = cast(PoweredCollatzTermPayload, term.payload).term._ledger
+    ledger = cast(PoweredCollatzTermPayload, term.payload).term.resource_ledger
     assert ledger.counters["collatz_physical_temporal_balanced_routes"] == 1
     assert ledger.counters.get("collatz_hashlife_mixed_publications", 0) == 0
     temporary = tuple(item for item in ledger.inventory() if item.role == "temporary")

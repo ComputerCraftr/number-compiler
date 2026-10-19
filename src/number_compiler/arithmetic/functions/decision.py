@@ -71,8 +71,8 @@ def _output_word(value: object) -> tuple[int, ...] | None:
 
 
 def _selector_bits(mask: int) -> int:
-    vals = []
-    x = int(mask)
+    vals: list[int] = []
+    x = mask
     while x:
         b = x & -x
         vals.append(b.bit_length() - 1)
@@ -128,7 +128,9 @@ class MultiTerminalDecisionArena:
         "order",
     )
 
-    def __init__(self, domains: Sequence[int], order: Sequence[int] | None = None):
+    def __init__(
+        self, domains: Sequence[int], order: Sequence[int] | None = None
+    ) -> None:
         domains = tuple(map(int, domains))
         if not domains or any(d <= 0 for d in domains):
             raise ValueError(domains)
@@ -253,35 +255,37 @@ class MultiTerminalDecisionArena:
         selector are unioned to a fixed point.  No merge across terminals is
         permitted.
         """
-        work = {
-            (terminal,) + tuple(map(int, selectors))
+        work: set[tuple[object, tuple[int, ...]]] = {
+            (terminal, tuple(map(int, selectors)))
             for terminal, selectors in boxes
             if all(int(mask) != 0 for mask in selectors)
         }
-        if any(len(item) != arity + 1 for item in work):
+        if any(len(selectors) != arity for _, selectors in work):
             raise ValueError("labeled-box arity mismatch")
         changed = True
         while changed and len(work) > 1:
             changed = False
             for coordinate in range(arity):
-                groups: dict[tuple[object, ...], int] = {}
-                for item in work:
-                    terminal, selectors = item[0], cast(tuple[int, ...], item[1:])
+                groups: dict[tuple[object, tuple[int, ...]], int] = {}
+                for terminal, selectors in work:
                     key = (
-                        (terminal,)
-                        + selectors[:coordinate]
-                        + selectors[coordinate + 1 :]
+                        terminal,
+                        selectors[:coordinate] + selectors[coordinate + 1 :],
                     )
                     groups[key] = groups.get(key, 0) | selectors[coordinate]
-                merged = set()
-                for key, mask in groups.items():
-                    terminal, rest = key[0], cast(tuple[int, ...], key[1:])
+                merged: set[tuple[object, tuple[int, ...]]] = set()
+                for (terminal, rest), mask in groups.items():
                     selectors = rest[:coordinate] + (mask,) + rest[coordinate:]
-                    merged.add((terminal,) + selectors)
+                    merged.add((terminal, selectors))
                 if len(merged) < len(work):
                     work = merged
                     changed = True
-        return tuple(sorted(work, key=repr))
+        return tuple(
+            sorted(
+                ((terminal, *selectors) for terminal, selectors in work),
+                key=repr,
+            )
+        )
 
     def build_prefix_union(self, prefixes: Iterable[Sequence[int]]) -> int:
         """Boolean membership in finite prefixes, in this arena's variable order.
@@ -835,7 +839,7 @@ class CanonicalOutputRelation:
         )
 
     def cofactor(self, assignments: Mapping[int, int]) -> int:
-        dense = {}
+        dense: dict[int, int] = {}
         for coordinate, value in assignments.items():
             coordinate = int(coordinate)
             value = int(value)

@@ -135,6 +135,7 @@ def test_birth_modular_clock_predicts_every_source_step() -> None:
             assert width - clock.width == 60 * 10**10
 
 
+@pytest.mark.validation
 def test_seed_specific_periods_generated_by_born_inlets() -> None:
     expected = {
         196: (4, 12, 12, 12, 12, 12, 24, 48),
@@ -332,6 +333,30 @@ def test_birth_layer_query_does_not_render_a_complete_temporal_source(
             record = term.birth_layer_periods(4, lookback_f_steps=12, max_states=128)
         assert record.f_steps == 12
         assert record.final_pairs
+        validate_source_record(record)
+        rows = sum(
+            layer.diagonal_induction.compared_rows
+            for layer in record.layers
+            if layer.diagonal_induction is not None
+        )
+        before = term.metrics()
+        assert before[DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS] == rows
+        record.validated_projection()
+        record.validated_projection()
+        after = term.metrics()
+        for counter in (
+            DOUBLE_REVERSE_BIRTH_LAYER_INDUCTION_ROWS,
+            DOUBLE_REVERSE_BIRTH_LAYER_PERIOD_COMPARISONS,
+        ):
+            assert after[counter] == before[counter]
+        assert not any(layer.indefinite_source_authorized for layer in record.layers)
+        original_phase = record.source_phase
+        try:
+            object.__setattr__(record, "source_phase", (original_phase + 1) % 4)
+            with pytest.raises(ValueError, match="authority"):
+                record.validated_projection()
+        finally:
+            object.__setattr__(record, "source_phase", original_phase)
 
 
 def test_failed_birth_publication_releases_its_reservation(

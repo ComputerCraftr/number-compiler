@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, fields
+from types import MappingProxyType
 from typing import TypeAlias, cast
 
 from number_compiler.arithmetic.contracts.canonical_payload import (
@@ -20,6 +21,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    HigherInterfaceAuditSnapshot,
+)
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
@@ -28,7 +32,7 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherFunctionID,
     HigherSort,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     LocalInterfaceID,
 )
@@ -241,13 +245,22 @@ class HigherLocalInterfaceArena:
                 if output != self._morphism_sort:
                     raise ValueError("higher interface has another morphism sort")
             else:
-                self.semantics._validate_sort(output, readonly=readonly)
+                self.semantics.validate_sort(output, readonly=readonly)
+
+    def validate_interface(
+        self,
+        interface: HigherMacroInterface,
+        *,
+        readonly: bool = False,
+    ) -> None:
+        """Check an interface against this arena's exact component owners."""
+        self._validate_interface(interface, readonly=readonly)
 
     def intern_interface(
         self,
         interface: HigherMacroInterface,
     ) -> PortSignatureID:
-        self._validate_interface(interface)
+        self.validate_interface(interface)
         found = self._higher_signature_keys.get(interface)
         if found is not None:
             self.ledger.bump(_execution_keys.HIGHER_INTERFACE_SIGNATURE_HITS)
@@ -278,7 +291,7 @@ class HigherLocalInterfaceArena:
         )
         return self._higher_signatures[reference.local_id]
 
-    def _validate_components(
+    def validate_components(
         self,
         signature: PortSignatureID,
         components: HigherMacroComponents,
@@ -317,7 +330,7 @@ class HigherLocalInterfaceArena:
         signature: PortSignatureID,
         components: HigherMacroComponents,
     ) -> LocalInterfaceID:
-        self._validate_components(signature, components)
+        self.validate_components(signature, components)
         record = HigherInterfaceRecord(signature, components)
         found = self._higher_keys.get(record)
         if found is not None:
@@ -363,8 +376,41 @@ class HigherLocalInterfaceArena:
         """Higher components arrive canonical; syntax recipes are rejected."""
         if type(components) is not HigherMacroComponents:
             raise TypeError("higher normalization accepts only canonical components")
-        self._validate_components(signature, components)
+        self.validate_components(signature, components)
         return components
+
+    def signature_id(self, local_id: int) -> PortSignatureID:
+        """Return an allocated signature handle for a local index."""
+        if type(local_id) is not int or not 0 <= local_id < len(
+            self._higher_signatures
+        ):
+            raise IndexError("higher signature index is outside the arena")
+        return PortSignatureID(self.owner, self._SIGNATURE_KIND, local_id)
+
+    def local_interface_id(self, local_id: int) -> LocalInterfaceID:
+        """Return an allocated local-interface handle for a local index."""
+        if type(local_id) is not int or not 0 <= local_id < len(self._higher_nodes):
+            raise IndexError("higher interface index is outside the arena")
+        return LocalInterfaceID(self.owner, self._INTERFACE_KIND, local_id)
+
+    def audit_snapshot(self) -> HigherInterfaceAuditSnapshot:
+        """Return immutable views of the exact retained interface stores."""
+        return HigherInterfaceAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            signature_owner=self._higher_signature_owner,
+            signatures=tuple(self._higher_signatures),
+            signature_store=self._higher_signatures,
+            signature_key_owner=self._higher_signature_key_owner,
+            signature_keys=MappingProxyType(self._higher_signature_keys),
+            signature_key_store=self._higher_signature_keys,
+            node_owner=self._higher_node_owner,
+            nodes=tuple(self._higher_nodes),
+            node_store=self._higher_nodes,
+            key_owner=self._higher_key_owner,
+            keys=MappingProxyType(self._higher_keys),
+            key_store=self._higher_keys,
+        )
 
 
 assert tuple(field.name for field in fields(HigherMacroComponents)) == COMPONENT_ROLES

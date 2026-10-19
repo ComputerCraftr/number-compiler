@@ -1,5 +1,8 @@
 # Fermat and Mersenne square actions and terminal certificates
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 Status: **shared square arithmetic and conditional terminal theorems are
 checked; the candidate-derived compact terminal extractor remains missing**.
 

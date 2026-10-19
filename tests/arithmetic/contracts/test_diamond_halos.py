@@ -9,7 +9,11 @@ from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_runtime import build, oracle
 
@@ -28,7 +32,13 @@ def test_primitive_and_composed_halos_preserve_all_small_binary_inputs(
 ) -> None:
     for values in product((0, 1), repeat=3):
         for count in (0, 1, 2, 3):
-            runtime, action = build(effect, values, 8, count)
+            runtime, action = build(
+                effect,
+                values,
+                8,
+                count,
+                family_hooks=collatz_tile_hooks_for_effect(effect),
+            )
             expected = oracle(effect, values, 8, count)
             assert [runtime.point(action, position) for position in (0, 2, 3, 7)] == [
                 expected[p] for p in (0, 2, 3, 7)
@@ -53,15 +63,25 @@ def test_random_distant_queries_preserve_composed_midpoint_contexts() -> None:
     for effect in (CollatzPhysicalBlockEffect(), BaseBlockEffect(3), suffix_parity()):
         for count in (1, 2, 4):
             source = tuple(random.randrange(effect.blank) for _ in range(13))
-            runtime, action = build(effect, source, 24, count)
+            runtime, action = build(
+                effect,
+                source,
+                24,
+                count,
+                family_hooks=collatz_tile_hooks_for_effect(effect),
+            )
             expected = oracle(effect, source, 24, count)
             for position in (0, 7, 12, 13, 22, 23):
                 assert runtime.point(action, position) == expected[position]
 
 
 def test_halo_rejects_foreign_root_before_any_observation() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 8, 4)
-    foreign, other = build(CollatzPhysicalBlockEffect(), (1,), 8, 4)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 4
+    )
+    foreign, other = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1,), 8, 4
+    )
     assert runtime.halos.right(action) == 4
     assert_rejected_atomically(
         runtime.ledger, lambda: runtime.halos.right(other), ValueError

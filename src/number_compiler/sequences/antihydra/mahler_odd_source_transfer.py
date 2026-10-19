@@ -17,6 +17,9 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero, v2_positive
+from number_compiler.sequences.antihydra.mahler_border_identity import (
+    MahlerOddMotifSignature,
+)
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
 )
@@ -27,7 +30,7 @@ if TYPE_CHECKING:
     )
 
 
-class _OddEventExtentExceedsBudget(BlockContextBudgetExceeded):
+class OddEventExtentExceedsBudget(BlockContextBudgetExceeded):
     """A valid next event simply does not fit in the remaining requested span."""
 
 
@@ -100,7 +103,7 @@ def summarize_mahler_odd_event(
     numerator = 3 * source + 1
     exponent = v2_positive(numerator)
     if exponent > max_extent:
-        raise _OddEventExtentExceedsBudget(
+        raise OddEventExtentExceedsBudget(
             "odd event exceeds the remaining requested extent"
         )
     # Compute 3^(a-1) * (numerator >> a), avoiding an intermediate product
@@ -231,7 +234,7 @@ def select_source_certified_odd_macro(
                 max_bits=max_bits,
                 reserve_bits=reserve_bits,
             )
-        except _OddEventExtentExceedsBudget:
+        except OddEventExtentExceedsBudget:
             break
         if consumed + event.extent > available:
             break
@@ -279,7 +282,9 @@ def select_source_certified_odd_macro(
         MahlerMixedOddHarmonicRing,
     )
 
-    ring = MahlerMixedOddHarmonicRing.from_source(current, motif)
+    ring = MahlerMixedOddHarmonicRing.from_source(
+        current, MahlerOddMotifSignature(motif)
+    )
     if ring.capacity != expected_capacity:
         raise ArithmeticError(
             "cheap odd-motif defect disagrees with source-cylinder capacity"
@@ -301,6 +306,7 @@ def select_source_certified_odd_macro(
 __all__ = (
     "MahlerOddEventSummary",
     "MahlerOddMacroSelection",
+    "OddEventExtentExceedsBudget",
     "select_source_certified_odd_macro",
     "summarize_mahler_odd_event",
 )

@@ -14,9 +14,11 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
+    DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     DiamondKey,
-    DiamondQuotientArena,
     MacroComponents,
     MacroInterface,
 )
@@ -24,13 +26,13 @@ from number_compiler.resources.metric_collection import (
     collect_ledger_metrics,
     ledger_metric_values,
 )
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 
 def test_early_normal_form_counter_is_reported_from_actual_work_without_new_retention(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, _ = machine()
+    runtime, _ = collatz_continuation_runtime()
     functions = SemanticFunctionArena(runtime.ledger)
     arena = DiamondQuotientArena(functions, runtime.cells)
     signature = FunctionSignature((), BOOL)

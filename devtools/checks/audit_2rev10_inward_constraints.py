@@ -37,7 +37,7 @@ def compare(
     residues = [seed % 99]
     for width in widths[:-1]:
         residues.append(2 * pow(10, width - 1, 99) * residues[-1] % 99)
-    assert all(r == x % 99 for r, x in zip(residues, reference))
+    assert all(r == x % 99 for r, x in zip(residues, reference, strict=True))
 
     def input_grammar() -> InwardCarryConstraints:
         grammar = InwardCarryConstraints(widths)
@@ -50,14 +50,14 @@ def compare(
 
     forward, joint = input_grammar(), input_grammar()
     f, b = forward.propagate(direction="forward"), joint.propagate(direction="both")
-    newly_narrowed = []
-    newly_forced = []
+    newly_narrowed: list[tuple[int, int]] = []
+    newly_forced: list[tuple[int, int, int]] = []
     for t, digits in enumerate(strings):
         actual_digits = tuple(map(int, digits))
         actual_cells = tuple(enumerate(actual_digits))
         assert all(digit in joint.digits(t, i) for i, digit in actual_cells)
         assert all(int(digit >= 5) in joint.carry(t, i) for i, digit in actual_cells)
-        for i, digit in actual_cells:
+        for i, _digit in actual_cells:
             if len(joint.digits(t, i)) < len(forward.digits(t, i)):
                 newly_narrowed.append((t, i))
             if len(joint.digits(t, i)) == 1 and len(forward.digits(t, i)) != 1:

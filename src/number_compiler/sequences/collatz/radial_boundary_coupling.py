@@ -348,7 +348,7 @@ def _border_return_high_transitions_admitted(
         work_units = max(1, 5 * current_bits + 2 * tail_bits + width)
         operand_bits = 4 * current_bits + 2 * tail_bits + width
         storage_bits = 2 * current_bits + tail_bits + width + 32
-        with evaluator._charge_work(
+        with evaluator.charge_work(
             work_units,
             0,
             operand_bits,

@@ -23,7 +23,7 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+from tests.support.symbolic_innovation import evaluate, polynomial
 
 
 @pytest.mark.parametrize("incoming", [0, 1])
@@ -32,7 +32,7 @@ def test_direct_events_match_literal_carry_for_every_pair_symbol(incoming: int) 
     for pair in ([p] * 3 + [9, 9, 18 - p, 0, 18] for p in range(19)):
         ledger = ResourceLedger()
         arena = SymbolicInnovationArena(ledger)
-        residual = _polynomial(arena, [p - 9 for p in pair])
+        residual = polynomial(arena, [p - 9 for p in pair])
         events = recover_centered_carry_events(
             arena, residual, extent=len(pair), incoming=incoming
         )
@@ -46,10 +46,10 @@ def test_direct_events_match_literal_carry_for_every_pair_symbol(incoming: int) 
             correction[i + 1] = after
             carry = after
         assert events.terminal_carry == carry
-        assert _evaluate(arena, events.reset_jumps) == {
+        assert evaluate(arena, events.reset_jumps) == {
             i: x for i, x in resets.items() if x
         }
-        assert _evaluate(arena, events.correction) == {
+        assert evaluate(arena, events.correction) == {
             i: x for i, x in correction.items() if x
         }
         arena.close()
@@ -99,7 +99,7 @@ def test_direct_neutral_domain_preserves_incoming_without_reset(incoming: int) -
     )
     assert events.terminal_carry == incoming
     assert events.reset_jumps == arena.zero
-    correction = _evaluate(arena, events.correction)
+    correction = evaluate(arena, events.correction)
     assert correction == (
         {0: -10, **dict.fromkeys(range(1, 7), -9), 7: 1} if incoming else {}
     )
@@ -138,9 +138,9 @@ def test_direct_recovery_cancels_before_sign_and_retains_terminal_seam() -> None
         )
     )
     events = recover_centered_carry_events(arena, residual, extent=3)
-    assert _evaluate(arena, events.reset_jumps) == {1: 1}
+    assert evaluate(arena, events.reset_jumps) == {1: 1}
     assert events.terminal_carry == 1
-    assert _evaluate(arena, events.correction) == {1: -10, 2: -9, 3: 1}
+    assert evaluate(arena, events.correction) == {1: -10, 2: -9, 3: 1}
     assert ledger.counters["carry_event_reset_events"] == 1
     arena.close()
 
@@ -238,7 +238,7 @@ def test_pair_residues_flow_through_shared_carry_grammar(
     arena = SymbolicInnovationArena(ledger)
     digits = tuple(map(int, str(seed)[::-1]))
     pair = [a + b for a, b in zip(digits, reversed(digits), strict=True)]
-    expression = _polynomial(arena, pair)
+    expression = polynomial(arena, pair)
     retained = ledger.entries, ledger.nodes
     carry = incoming
     expected_carry: list[int] = []
@@ -305,7 +305,7 @@ def test_invalid_modular_pair_and_precision_fail_without_retention() -> None:
 def test_translated_view_keeps_physical_order() -> None:
     ledger = ResourceLedger()
     arena = SymbolicInnovationArena(ledger)
-    pair = _polynomial(arena, [18, 9, 0])
+    pair = polynomial(arena, [18, 9, 0])
     translated = arena.chart(pair, CylinderChart(1, 10))
     with (
         LiveForcingProjection(arena, translated) as view,
@@ -339,7 +339,7 @@ def test_recovered_modular_carry_is_not_source_admission() -> None:
 def test_centered_clock_uncenters_before_sign_recovery() -> None:
     ledger = ResourceLedger()
     arena = SymbolicInnovationArena(ledger)
-    residual = _polynomial(arena, [-2, 9, -2])  # Delta for original 196
+    residual = polynomial(arena, [-2, 9, -2])  # Delta for original 196
     with project_centered_residue_carries(arena, residual, extent=3) as result:
         assert result.arena.materialize(result.outgoing_root) == (0, 1, 0)
         assert result.arena.materialize(result.closed_jump_root) == (0, 1, -1, 0)
@@ -360,7 +360,7 @@ def test_bounded_orbit_crosses_growth_and_neutral_runs(seed: int) -> None:
             expected.append(carry)
         ledger = ResourceLedger()
         arena = SymbolicInnovationArena(ledger)
-        residual = _polynomial(arena, [p - 9 for p in pair])
+        residual = polynomial(arena, [p - 9 for p in pair])
         with project_centered_residue_carries(
             arena, residual, extent=len(pair)
         ) as result:

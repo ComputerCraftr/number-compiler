@@ -180,7 +180,7 @@ def _single_cell_fixture() -> tuple[
     return (*fixture, forest)
 
 
-def _single_cell_summary_fixture() -> tuple[
+def single_cell_summary_fixture() -> tuple[
     ReverseFieldActionArena,
     FieldCellActionID,
     HigherSemanticArena,
@@ -198,7 +198,7 @@ def _single_cell_summary_fixture() -> tuple[
     return (*fixture[:8], cell, summary)
 
 
-def _observed_macro(
+def observed_macro(
     semantics: HigherSemanticArena,
     interfaces: HigherLocalInterfaceArena,
     sources: SourceCellArena,
@@ -222,7 +222,7 @@ def _observed_macro(
     return outputs, composer, macro, left, right
 
 
-def _compiled_macro_fixture(
+def compiled_macro_fixture(
     word: tuple[int, ...],
 ) -> tuple[
     ReverseFieldActionArena,

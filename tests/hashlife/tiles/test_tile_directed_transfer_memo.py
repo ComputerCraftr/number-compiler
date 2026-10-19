@@ -24,7 +24,7 @@ from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferK
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.dataclass_records import replace_record
-from tests.support.tile_kernel import _runtime_source
+from tests.support.tile_kernel import make_tile_runtime_source
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -43,8 +43,8 @@ def _binding() -> tuple[
     DirectedTransferKey,
     int,
 ]:
-    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
-        BaseBlockEffect(3), (0, 1, 2, 3)
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = (
+        make_tile_runtime_source(BaseBlockEffect(3), (0, 1, 2, 3))
     )
     incoming = adapter.initial_ports(action)[0]
     state = incoming

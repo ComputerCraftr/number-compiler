@@ -492,7 +492,7 @@ class SourceSafetyWorkspace:
         if block.width >= self.max_width:
             self.ledger.bump("safety_refusals")
             raise BlockContextBudgetExceeded("Mahler safety width budget exceeded")
-        children = []
+        children: list[SourceBlockID] = []
         for bit in (0, 1):
             self.ledger.bump("safety_tail_refinements")
             child = self.compose(handle, self.cylinder(1, bit))
@@ -530,7 +530,7 @@ class SourceSafetyWorkspace:
         if self._closed:
             return
         node_count, key_count = len(self._nodes), len(self._keys)
-        self._nodes._rollback_unpublished(0)
+        self._nodes.rollback_unpublished(0)
         self._keys.clear()
         if node_count:
             self.ledger.release(self._nodes_owner, entries=node_count, nodes=node_count)
@@ -605,7 +605,7 @@ def event_prime_lanes(event: SourceEvent) -> tuple[tuple[int, int, int], ...]:
     scale = Q(3**event.exponent, 1 << event.exponent)
     if after != scale * w - Q(2):
         raise ValueError("event is not a diamond-compatible source transport")
-    rows = []
+    rows: list[tuple[int, int, int]] = []
     for p in PRIME_BANK:
         before_lane = w.numerator * pow(2 * w.denominator, -1, p) % p
         after_lane = prime_lane_after("mahler", p, before_lane, event.exponent)

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 import re
-from dataclasses import dataclass
-from typing import ClassVar, cast
 
 import pytest
 
@@ -25,7 +23,6 @@ from number_compiler.api.family_registry import (
 )
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.observation_types import (
-    FamilyId,
     IndexUnit,
     ObservationId,
     OutputStatus,
@@ -33,8 +30,9 @@ from number_compiler.api.observation_types import (
 )
 from number_compiler.api.query_types import (
     CollatzTermQuery,
-    TermQuery,
+    PrimeTermQuery,
 )
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 
 @pytest.mark.parametrize("family", CAPABILITIES)
@@ -58,7 +56,22 @@ def test_family_parser_builds_only_demanded_observation_options(
 
 def test_parser_rejects_unknown_demanded_family() -> None:
     with pytest.raises(ValueError, match="unknown demanded CLI family"):
-        cli_requests.parser(demanded_family="unknown")
+        cli_requests.parser(demanded_family=FamilyId.PRIME, registry={})
+
+
+def test_registry_declarations_reject_forged_internal_ids() -> None:
+    capability = FamilyCapability(IndexUnit.ITERATIONS, (), ())
+    object.__setattr__(capability, "unit", "iterations")
+    with pytest.raises(TypeError, match="IndexUnit"):
+        capability.__post_init__()
+    option = OptionSpec(None, ())
+    object.__setattr__(option, "value_kind", "integer")
+    with pytest.raises(TypeError, match="OptionValueKind"):
+        option.__post_init__()
+    option = OptionSpec(None, ())
+    object.__setattr__(option, "information", ("metrics",))
+    with pytest.raises(TypeError, match="ObservationIds"):
+        option.__post_init__()
 
 
 @pytest.mark.parametrize("family", CAPABILITIES)
@@ -96,7 +109,7 @@ def test_demanded_request_matches_full_parser(
     original = cli_requests.parser
 
     def complete(
-        *, demanded_family: str | None = None, registry: object = None
+        *, demanded_family: FamilyId | None = None, registry: object = None
     ) -> argparse.ArgumentParser:
         return original()
 
@@ -111,7 +124,7 @@ def test_list_request_has_no_term_execution() -> None:
 def test_collatz_help_distinguishes_term_and_event_information(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    command = cli_requests.parser(demanded_family="collatz")
+    command = cli_requests.parser(demanded_family=FamilyId.COLLATZ)
     with pytest.raises(SystemExit) as stopped:
         command.parse_args(["collatz", "--help"])
     assert stopped.value.code == 0
@@ -295,25 +308,15 @@ def test_unknown_command_is_rejected() -> None:
     assert stopped.value.code == 2
 
 
-def test_synthetic_registry_entry_builds_a_typed_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    @dataclass(frozen=True, slots=True)
-    class SyntheticTermQuery:
-        index: int
-
-        family: ClassVar[FamilyId] = FamilyId.PRIME
-        selector: ClassVar[SelectorId] = SelectorId.NTH
-
+def test_synthetic_registry_entry_builds_a_typed_request() -> None:
     spec = FamilySpec(
         FamilyCapability(IndexUnit.PRIME_INDEX, (), (ObservationId.METRICS,)),
-        cast(type[TermQuery], SyntheticTermQuery),
+        PrimeTermQuery,
         AdapterBinding("unused.module", "project"),
         ObservationAdapterBinding("unused.module", "prepare", "admit", "observe"),
         term_observation=ObservationValueBinding(PrimeObservationOptions),
     )
-    registry: dict[FamilyId | str, FamilySpec] = {FamilyId.PRIME: spec}
-    monkeypatch.setitem(CAPABILITIES, FamilyId.PRIME, spec)
+    registry: dict[FamilyId, FamilySpec] = {FamilyId.PRIME: spec}
     command = cli_requests.parser(registry=registry)
     with pytest.raises(SystemExit) as stopped:
         command.parse_args([FamilyId.PRIME.value, "--help"])
@@ -323,6 +326,6 @@ def test_synthetic_registry_entry_builds_a_typed_request(
         registry=registry,
     )
     assert request is not None
-    assert type(cast(object, request.execution)) is SyntheticTermQuery
+    assert type(request.execution) is PrimeTermQuery
     assert request.index == 3
     assert request.index_unit is IndexUnit.PRIME_INDEX

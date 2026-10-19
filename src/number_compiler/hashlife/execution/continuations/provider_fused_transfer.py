@@ -30,6 +30,9 @@ from number_compiler.hashlife.execution.continuations.provider_absorption import
     ProviderBoundary,
 )
 from number_compiler.hashlife.execution.field_images import SourceBindingID
+from number_compiler.resources.field_image_audit_contracts import (
+    ProviderFusedTransferAuditSnapshot,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -97,7 +100,7 @@ class HigherSummaryProviderStrategy:
             side,
             (),
         )
-        cells = self.runtime._range_cells(binding.source, start, end)
+        cells = self.runtime.range_cells(binding.source, start, end)
         ordered = cells if side == 0 else tuple(reversed(cells))
         if not ordered:
             return incoming
@@ -186,7 +189,7 @@ class HigherSummaryProviderStrategy:
 
 
 @dataclass(frozen=True, slots=True)
-class _FusedPointKey:
+class ProviderFusedPointKey:
     binding: FusedProviderBinding
     left: ProviderBoundary
     right: ProviderBoundary
@@ -194,7 +197,7 @@ class _FusedPointKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _FusedWidthKey:
+class ProviderFusedWidthKey:
     binding: FusedProviderBinding
     left: ProviderBoundary
     right: ProviderBoundary
@@ -231,11 +234,11 @@ class ProviderFusedTransfer:
         self._bindings: MutableMapping[FusedProviderBinding, None] = (
             self.ledger.make_dict(self._binding_owner)
         )
-        self._points: MutableMapping[_FusedPointKey, int] = self.ledger.make_dict(
-            self._point_owner,
+        self._points: MutableMapping[ProviderFusedPointKey, int] = (
+            self.ledger.make_dict(self._point_owner)
         )
-        self._widths: MutableMapping[_FusedWidthKey, int] = self.ledger.make_dict(
-            self._width_owner,
+        self._widths: MutableMapping[ProviderFusedWidthKey, int] = (
+            self.ledger.make_dict(self._width_owner)
         )
         for owner, container in (
             (self._binding_owner, self._bindings),
@@ -248,6 +251,33 @@ class ProviderFusedTransfer:
                 payloads=container.items,
                 evict=self.clear,
             )
+
+    def audit_snapshot(self) -> ProviderFusedTransferAuditSnapshot:
+        """Expose exact backing stores through a read-only audit view."""
+        return ProviderFusedTransferAuditSnapshot(
+            self.ledger,
+            self._binding_owner,
+            self._bindings,
+            self._point_owner,
+            self._points,
+            self._width_owner,
+            self._widths,
+        )
+
+    def validate_binding_authority(
+        self, binding: FusedProviderBinding
+    ) -> ProviderBindingKey:
+        """Validate wrapper and underlying source authority for an audit."""
+        if type(binding) is not FusedProviderBinding:
+            raise TypeError("expected a fused provider binding")
+        self.providers.validate_binding_authority(binding.occurrence)
+        if binding not in self._bindings:
+            raise ValueError("fused provider binding was not published")
+        return binding.occurrence
+
+    def validate_boundary(self, boundary: ProviderBoundary) -> None:
+        """Validate a boundary via the provider's configured owner."""
+        self.providers.validate_boundary(boundary)
 
     def clear(self) -> None:
         for owner, container in (
@@ -269,7 +299,7 @@ class ProviderFusedTransfer:
         from number_compiler.hashlife.actions.field_actions import (
             CoordinateOutputMorphismID,
         )
-        from number_compiler.hashlife.interfaces.diamond_quotient import (
+        from number_compiler.hashlife.interfaces.semantic_structures import (
             LocalInterfaceID,
         )
 
@@ -316,7 +346,7 @@ class ProviderFusedTransfer:
         occurrence = self._validate(binding, left, right)
         if not 0 <= coordinate < self.sources.binding_extent(occurrence.source):
             raise IndexError(coordinate)
-        key = _FusedPointKey(binding, left, right, coordinate)
+        key = ProviderFusedPointKey(binding, left, right, coordinate)
         self.ledger.bump(_execution_keys.PROVIDER_FUSED_POINT_REQUESTS)
         found = self._points.get(key)
         if found is not None:
@@ -347,7 +377,7 @@ class ProviderFusedTransfer:
         right: ProviderBoundary,
     ) -> int:
         occurrence = self._validate(binding, left, right)
-        key = _FusedWidthKey(binding, left, right)
+        key = ProviderFusedWidthKey(binding, left, right)
         self.ledger.bump(_execution_keys.PROVIDER_FUSED_WIDTH_REQUESTS)
         found = self._widths.get(key)
         if found is not None:
@@ -375,6 +405,8 @@ class ProviderFusedTransfer:
 __all__ = [
     "FusedProviderBinding",
     "HigherSummaryProviderStrategy",
+    "ProviderFusedPointKey",
     "ProviderFusedStrategy",
     "ProviderFusedTransfer",
+    "ProviderFusedWidthKey",
 ]

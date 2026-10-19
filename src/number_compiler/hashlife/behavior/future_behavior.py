@@ -10,7 +10,7 @@ power, or callback is retained by the certificate.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -49,7 +49,7 @@ _ACTIVE_IDENTITY_VALIDATOR: ContextVar[SemanticIdentityValidator | None] = Conte
 
 
 @contextmanager
-def _identity_validation_scope() -> Iterator[SemanticIdentityValidator]:
+def _identity_validation_scope() -> Generator[SemanticIdentityValidator, None, None]:
     """Own one synchronous union-DAG audit without exposing a public bypass."""
     if _ACTIVE_IDENTITY_VALIDATOR.get() is not None:
         raise RuntimeError("identity validation scope cannot be nested")

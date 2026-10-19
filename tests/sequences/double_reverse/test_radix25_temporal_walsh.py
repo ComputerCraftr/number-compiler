@@ -18,8 +18,10 @@ from number_compiler.sequences.double_reverse._temporal_bank_authority import (
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
+    PeriodicBankFrame,
     ProtectedPeriodicBank,
     ProtectedPeriodicBankRefused,
+    bank_channel_name,
 )
 from number_compiler.sequences.double_reverse.radix25_temporal_bank import (
     BOOL_CHANNELS,
@@ -47,6 +49,27 @@ def _inverse_walsh(coefficients: tuple[int, ...]) -> tuple[int, ...]:
         % 5
         for row in range(64)
     )
+
+
+def _assert_joint_walsh_matches_frames(
+    joint: JointRadix25TemporalBank,
+) -> tuple[PeriodicBankFrame, ...]:
+    """Check each published Walsh channel against its independent frame word."""
+    frames, _authority = joint.protected.authorized_frames(0, 64)
+    assert joint.walsh64.lane_count == 64
+    assert set(joint.walsh64.masks) == {
+        bank_channel_name(channel) for channel in BOOL_CHANNELS
+    }
+    for channel in BOOL_CHANNELS:
+        name = bank_channel_name(channel)
+        expected = tuple(
+            (joint.walsh64.masks[name] >> index) & 1 for index in range(64)
+        )
+        assert _inverse_walsh(joint.walsh64.transform_mod5[name]) == expected
+        assert expected == tuple(frame.scalar(channel) for frame in frames)
+    f5 = tuple(frame.f5 for frame in frames)
+    assert _inverse_walsh(joint.walsh64.f5_transform) == f5
+    return frames
 
 
 def test_radix25_crt_and_guarded_two_step_match_integer_arithmetic() -> None:
@@ -82,17 +105,9 @@ def test_joint_bank_walsh_is_invertible_and_tracks_both_rays() -> None:
         assert joint.physical_prefix == 0
         assert joint.protected.represented_steps == 64
         assert joint.protected.moore_classes is not None
-        assert joint.walsh64.lane_count == 64
-        assert set(joint.walsh64.masks) == set(BOOL_CHANNELS)
-        for name in BOOL_CHANNELS:
-            expected = tuple(
-                (joint.walsh64.masks[name] >> index) & 1 for index in range(64)
-            )
-            assert _inverse_walsh(joint.walsh64.transform_mod5[name]) == expected
-        f5 = tuple(joint.protected.at(index).f5 for index in range(64))
-        assert _inverse_walsh(joint.walsh64.f5_transform) == f5
+        frames = _assert_joint_walsh_matches_frames(joint)
         assert term._image is None
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
         assert joint.source.next_mod10 == _step(seed) % 10**8
 
         value = seed
@@ -101,7 +116,7 @@ def test_joint_bank_walsh_is_invertible_and_tracks_both_rays() -> None:
             left_birth, right_birth = growth_ports(0, tick)
             left = int(digits[150 + left_birth])
             right = int(digits[len(str(seed)) - 1 - 150 + right_birth])
-            frame = joint.protected.at(tick)
+            frame = frames[tick]
             assert frame.digits == (left, right)
             assert frame.carry_xor == (int(left >= 5) ^ int(right >= 5))
             value = _step(_step(value))
@@ -112,15 +127,9 @@ def test_phase_three_walsh_tracks_independent_birth_bits() -> None:
     with DoubleReverseTerm(seed, 128, max_state_bits=4096) as term:
         joint = term.joint_radix25_temporal_bank(150, places=8, period=2)
         assert joint.protected.phase_in == 3
-        frames = tuple(joint.protected.at(tick) for tick in range(64))
+        frames = _assert_joint_walsh_matches_frames(joint)
         assert (frames[0].growth_left, frames[0].growth_right) == (1, 1)
         assert frames[0].growth == 2
-        for name in BOOL_CHANNELS:
-            expected = tuple(
-                (joint.walsh64.masks[name] >> index) & 1 for index in range(64)
-            )
-            assert _inverse_walsh(joint.walsh64.transform_mod5[name]) == expected
-            assert expected == tuple(frame.scalar(name) for frame in frames)
 
 
 def test_temporal_bank_authority_rejects_forgery_and_cross_root_join() -> None:
@@ -141,6 +150,8 @@ def test_temporal_bank_authority_rejects_forgery_and_cross_root_join() -> None:
         )
         with pytest.raises(ValueError, match="authority"):
             temporal_bank_walsh64(forged)
+        with pytest.raises(ValueError, match="authority"):
+            forged.authorized_frames(0, 1)
 
         unrelated_source = second.source_radix25_shift(places=8)
         with pytest.raises(ValueError, match="different source roots"):
@@ -176,6 +187,8 @@ def test_walsh_rejects_closed_source_and_tampered_nested_mask() -> None:
         closed_bank = joint.protected
     with pytest.raises(ValueError, match="authority"):
         temporal_bank_walsh64(closed_bank)
+    with pytest.raises(ValueError, match="authority"):
+        closed_bank.authorized_frames(0, 1)
 
     with DoubleReverseTerm(seed, 128, max_state_bits=4096) as term:
         joint = term.joint_radix25_temporal_bank(150, places=8, period=2)
@@ -256,7 +269,7 @@ def test_short_primitive_uses_binary_shift_and_long_source_stays_an_slp() -> Non
         assert (
             term.metrics().get("double_reverse_spatial_transducer_applications", 0) == 0
         )
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
     long_seed = int("1234567890" * 8)
     with DoubleReverseTerm(long_seed, 1, max_state_bits=1024) as term:

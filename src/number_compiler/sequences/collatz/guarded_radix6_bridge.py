@@ -15,7 +15,7 @@ the ORIGINAL source congruence, including the upper parity inlet.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -28,12 +28,12 @@ from number_compiler.sequences.collatz.collatz_digit_coverage import (
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    MacroTraceGrammar,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceCongruence,
 )
 
 if TYPE_CHECKING:
@@ -400,6 +400,87 @@ class GuardedRadix6Bridge:
         exact affine endpoint upper digits.
         """
         return self.radial_clock.leading_binary(evaluator, width)
+
+    def restrict_to(self, inlet: CollatzTwoSidedCylinder) -> GuardedRadix6Bridge:
+        """Transport an existing proof to a certified source *subset*.
+
+        An upper-digit word or forced base-6 band true for the larger
+        cylinder remains true for its subset. Rebuilding that coverage at
+        each matrix seam was the main overhead of temporal composition.
+        Narrowing can additionally force a 6-adic suffix/birth; those are
+        computed algebraically without revisiting the interior.
+        """
+        if type(inlet) is not CollatzTwoSidedCylinder:
+            raise TypeError("restricted bridge requires an exact source cylinder")
+        if (
+            inlet.first < self.inlet.first
+            or inlet.last > self.inlet.last
+            or (
+                self.inlet.count > 1
+                and inlet.count > 1
+                and (
+                    inlet.modulus % self.inlet.modulus
+                    or inlet.residue % self.inlet.modulus != self.inlet.residue
+                )
+            )
+            or not self.inlet.contains(inlet.first)
+            or not self.inlet.contains(inlet.last)
+        ):
+            raise ValueError(
+                "bridge restriction is not a subset of its certified source"
+            )
+        if inlet == self.inlet:
+            return self
+        target = inlet.transport(self.action)
+        # Reuse formerly proved upper/lower digits; adjust only their
+        # cardinality metadata, never fabricate new uncovered digits.
+        src_cover = (
+            replace(self.source_coverage, alternatives=inlet.count)
+            if self.source_coverage is not None
+            else None
+        )
+        dst_cover = (
+            replace(self.target_coverage, alternatives=target.count)
+            if self.target_coverage is not None
+            else None
+        )
+        v2 = _common_plus_one_valuation(inlet, 2)
+        v3 = _common_plus_one_valuation(inlet, 3)
+        low = min(v2, v3)
+        source_fives = _merge_bands(
+            self.source_fives + ((FiveBand(0, low),) if low else ())
+        )
+        inherited = _merge_bands(
+            self.inherited_fives
+            + _transport_bands(source_fives, self.odd_events, self.action.steps)
+        )
+        born = self.born_fives
+        if self.centered_at_minus_one:
+            if v2 < self.action.steps:
+                raise ArithmeticError(
+                    "narrowed centered action lacks its division guard"
+                )
+            digits = min(v2 - self.action.steps, v3 + self.odd_events)
+            if digits:
+                born = _merge_bands(born + (FiveBand(0, digits),))
+        bands = _merge_bands(self.target_fives + inherited + born)
+        k = (1 << self.action.steps) - self.action.gain
+        d1 = k * inlet.first - self.action.offset
+        d2 = k * inlet.last - self.action.offset
+        return GuardedRadix6Bridge(
+            inlet,
+            target,
+            self.action,
+            self.odd_events,
+            src_cover,
+            dst_cover,
+            source_fives,
+            inherited,
+            born,
+            bands,
+            self.centered_at_minus_one,
+            (min(d1, d2), max(d1, d2)),
+        )
 
     def then(self, after: GuardedRadix6Bridge) -> GuardedRadix6Bridge:
         """Fuse compatible certified macros, retaining *intermediate births*.

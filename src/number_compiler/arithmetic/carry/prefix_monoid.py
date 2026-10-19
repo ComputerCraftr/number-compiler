@@ -129,7 +129,7 @@ def compile_formula_prefix_monoid(
     while offset < width:
         # Positions without a preceding block receive the identity element.
         prefix = arena.range_mask(0, min(offset, width), width)
-        shifted = []
+        shifted: list[Expr] = []
         for element, mask in enumerate(stage):
             z = arena.shl(mask, offset)
             if element == monoid.identity:

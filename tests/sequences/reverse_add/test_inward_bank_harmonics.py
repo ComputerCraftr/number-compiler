@@ -7,13 +7,16 @@ from random import Random
 
 import pytest
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_band,
+)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.inward_bank_harmonics import (
-    BANDS,
     InwardBankWindow,
     inward_bank_select,
-    pair_band,
 )
 from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
     GuardedPairStencil,
@@ -66,13 +69,16 @@ def test_no_future_integer_is_needed_for_exact_selected_bands() -> None:
                     inward_lookahead=budget,
                 )
                 assert target[i] in result.possible_coefficients
-                assert pair_band(target[i]) in result.possible_bands
+                assert decimal_pair_band(target[i]) in result.possible_bands
                 assert result.possible_f5 and target[i] % 5 in result.possible_f5
                 if result.forced_band is not None:
-                    assert result.forced_band == pair_band(target[i])
+                    assert result.forced_band == decimal_pair_band(target[i])
                 if result.forced_coefficient is not None:
                     assert result.forced_coefficient == target[i]
-                assert all(result.forced_masks[band] in (0, 1, None) for band in BANDS)
+                assert all(
+                    result.forced_masks[band] in (0, 1, None)
+                    for band in DECIMAL_PAIR_BANDS
+                )
                 assert sum(bit == 1 for bit in result.forced_masks.values()) <= 1
                 if budget == 100:
                     assert result.forced_coefficient == target[i]
@@ -168,12 +174,12 @@ def test_symbolic_walsh_is_issued_only_for_forced_64_lanes() -> None:
             owner, start=20, count=64, inward_lookahead=1
         )
         assert len(window.selections) == 64
-        assert window.mask_domain("lt_low") == (1,) * 64
-        assert window.must_may_masks("lt_low") == (2**64 - 1,) * 2
-        assert window.walsh64_mod5("lt_low") == (4,) + (0,) * 63
-        assert window.walsh64_mod5("gt_high") == (0,) * 64
+        assert window.mask_domain(DecimalPairBand.LT_LOW) == (1,) * 64
+        assert window.must_may_masks(DecimalPairBand.LT_LOW) == (2**64 - 1,) * 2
+        assert window.walsh64_mod5(DecimalPairBand.LT_LOW) == (4,) + (0,) * 63
+        assert window.walsh64_mod5(DecimalPairBand.GT_HIGH) == (0,) * 64
         with pytest.raises(ValueError):
-            window.mask_domain("nonexistent")
+            DecimalPairBand("nonexistent")
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0
@@ -204,8 +210,8 @@ def test_symbolic_walsh_is_issued_only_for_forced_64_lanes() -> None:
             for i in range(64)
         )
         win = InwardBankWindow(0, sels)
-        if any(v is None for band in BANDS for v in win.mask_domain(band)):
-            for band in BANDS:
+        if any(v is None for band in DECIMAL_PAIR_BANDS for v in win.mask_domain(band)):
+            for band in DECIMAL_PAIR_BANDS:
                 if None in win.mask_domain(band):
                     with pytest.raises(ValueError):
                         win.walsh64_mod5(band)

@@ -14,6 +14,8 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageID,
     SourceImageProjection,

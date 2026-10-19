@@ -239,6 +239,14 @@ REVERSE_Q19_TEMPORAL_RING_OUTPUT_LANE_VISITS: Final = (
 REVERSE_Q19_TEMPORAL_RING_PROPAGATION_ROUNDS: Final = (
     "reverse_q19_temporal_ring_propagation_rounds"
 )
+REVERSE_Q19_BATCHED_DIGIT_REQUESTS: Final = "reverse_q19_batched_digit_requests"
+REVERSE_Q19_BATCHED_DIGIT_POSITIONS: Final = "reverse_q19_batched_digit_positions"
+REVERSE_Q19_BATCHED_PREFIX_REGION_FOLDS: Final = (
+    "reverse_q19_batched_prefix_region_folds"
+)
+REVERSE_Q19_BATCHED_FAILED_DIGIT_BATCHES: Final = (
+    "reverse_q19_batched_failed_digit_batches"
+)
 REVERSE_Q19_INWARD_SYMMETRIC_FILTER_VALUE_VISITS: Final = (
     "reverse_q19_inward_symmetric_filter_value_visits"
 )

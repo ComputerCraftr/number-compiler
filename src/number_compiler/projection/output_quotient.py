@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent, Extent
 
@@ -178,7 +178,7 @@ def audit_binary_source_factor(
     return BinarySourceFactorAudit(bits, values, false_values, true_values)
 
 
-class SpecialOutputMode(str, Enum):
+class SpecialOutputMode(StrEnum):
     CONCRETE = "Concrete"
     GUARDED = "Guarded"
     RESOLVED = "Resolved"

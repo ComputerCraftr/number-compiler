@@ -194,11 +194,11 @@ class CocycleReverseCarrier:
     def _bool_add(self, left: PlaneID, right: PlaneID) -> PlaneID:
         return self.planes.apply(_BOOL_ADD, left, right)
 
-    def _add(self, left: PlaneID, right: PlaneID) -> PlaneID:
-        return self._factored._add(left, right)
+    def add_planes(self, left: PlaneID, right: PlaneID) -> PlaneID:
+        return self._factored.add_planes(left, right)
 
-    def _scale(self, plane: PlaneID, scalar: int) -> PlaneID:
-        return self._factored._scale(plane, scalar)
+    def scale_plane(self, plane: PlaneID, scalar: int) -> PlaneID:
+        return self._factored.scale_plane(plane, scalar)
 
     def successor_with_action(
         self, cell: CocycleCell
@@ -246,7 +246,7 @@ class CocycleReverseCarrier:
                 carry = p.concat(carry, p.constant("bool", 1, 1))
 
             reflected_carry = p.reverse(carry)
-            f5_forcing = self._factored._add(
+            f5_forcing = self._factored.add_planes(
                 p.apply(_F5_CARRY, carry), p.apply(_F5_CARRY, reflected_carry)
             )
             epsilon_forcing = self._bool_add(carry, reflected_carry)
@@ -256,8 +256,8 @@ class CocycleReverseCarrier:
                 source_alpha,
                 f5_forcing,
                 shift=p.shift,
-                add=self._factored._add,
-                scale=self._factored._scale,
+                add=self._factored.add_planes,
+                scale=self._factored.scale_plane,
             )
             epsilon = epsilon_linear.apply_with_output_forcing(
                 source_epsilon,

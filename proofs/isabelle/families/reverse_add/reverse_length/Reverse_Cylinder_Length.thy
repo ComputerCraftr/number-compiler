@@ -7,29 +7,9 @@ needed by a source-bound reverse/add publisher.  It reasons through the
 carry fold and queried pair positions; it does not introduce a recursive
 normalizer or a complexity claim.\<close>
 
-fun first_reset :: "nat list \<Rightarrow> bool option" where
-  "first_reset [] = None"
-| "first_reset (s # ss) =
-    (if s = 9 then first_reset ss else Some (10 \<le> s))"
-
 definition first_non_neutral_carry :: "nat list \<Rightarrow> bool" where
   "first_non_neutral_carry ss =
     (case first_reset ss of None \<Rightarrow> False | Some c \<Rightarrow> c)"
-
-lemma first_reset_append:
-  "first_reset (xs@ys) =
-    (case first_reset xs of None \<Rightarrow> first_reset ys | Some c \<Rightarrow> Some c)"
-  by (induct xs; auto split: option.splits)
-
-lemma first_reset_none_iff:
-  "first_reset ss = None \<longleftrightarrow> (\<forall>x\<in>set ss. x = 9)"
-  by (induct ss; auto)
-
-lemma carry_out_reverse_first_reset:
-  "carry_out c (rev ss) =
-    (case first_reset ss of None \<Rightarrow> c | Some b \<Rightarrow> b)"
-  by (induct ss; auto simp: carry_out_append carry_out_def domain_def
-      split: option.splits)
 
 lemma palindrome_terminal_carry_first_non_neutral:
   assumes palindrome: "rev ss = ss"

@@ -105,7 +105,7 @@ class StateReductionMetrics:
 
 @exact_oracle()
 def reverse_growth_profiles() -> tuple[ReverseGrowthReductionProfile, ...]:
-    rows = []
+    rows: list[ReverseGrowthReductionProfile] = []
     for base, width in ((3, 8), (10, 8), (10, 32), (16, 64)):
         half = (width + 1) // 2
         source_states = (2 * base - 1) ** half
@@ -129,12 +129,12 @@ def reverse_growth_closure_profile(
     *, seed_stop: int = 1000, steps: int = 32, base: int = 10
 ) -> ReverseGrowthClosureProfile:
     seen: dict[tuple[object, ...], tuple[object, ...]] = {}
-    keys = set()
+    keys: set[tuple[object, ...]] = set()
     conflicts = 0
     first_seed = first_step = None
     for seed in range(1, int(seed_stop) + 1):
         value = seed
-        states = []
+        states: list[tuple[object, ...]] = []
         for _ in range(int(steps) + 1):
             state = ReverseAddGrowthState.from_pair(
                 reverse_pair_sums(value, base), base=base
@@ -160,11 +160,11 @@ def reverse196_compression_profile(
     *, steps: int = 256, base: int = 10
 ) -> Reverse196CompressionProfile:
     value = 196
-    growth_states = []
-    reset_bits = []
-    pair_bits = []
-    growths = []
-    widths = []
+    growth_states: list[ReverseAddGrowthState] = []
+    reset_bits: list[int] = []
+    pair_bits: list[int] = []
+    growths: list[int] = []
+    widths: list[int] = []
     for step in range(int(steps) + 1):
         pair = reverse_pair_sums(value, base)
         widths.append(len(pair))
@@ -193,7 +193,7 @@ def reverse196_compression_profile(
 @exact_oracle()
 def collatz_action_profile(*, max_source: int = 65535) -> CollatzActionReductionProfile:
     seen: dict[tuple[object, ...], tuple[object, ...]] = {}
-    distinct = set()
+    distinct: set[tuple[object, ...]] = set()
     maximum = 0
     exact = True
     conflicts = 0

@@ -171,7 +171,7 @@ def mersenne_difference_moment_matrix(max_power: int) -> tuple[tuple[int, ...], 
         second = _poly_scale_shift(polys[-2], 12, 1)
         polys.append(_poly_add(first, second))
     size = max_power + 1
-    rows = []
+    rows: list[tuple[int, ...]] = []
     for poly in polys:
         rows.append(tuple(poly[i] if i < len(poly) else 0 for i in range(size)))
     return tuple(rows)
@@ -410,7 +410,7 @@ def _power_in_binomial_algebra(
 def _nontrivial_coefficient_gcds(
     defect: tuple[int, ...], modulus: int
 ) -> tuple[int, ...]:
-    out = []
+    out: list[int] = []
     for coefficient in defect:
         common = gcd(int(coefficient), int(modulus))
         if 1 < common < modulus and common not in out:

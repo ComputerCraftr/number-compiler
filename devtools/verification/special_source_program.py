@@ -210,8 +210,6 @@ class FoldedSupportProgram:
         return total
 
     def evaluate(self, spec: SpecialFrobeniusChunkSpec) -> FoldedSupportEvaluation:
-        if not isinstance(spec, SpecialFrobeniusChunkSpec):
-            raise TypeError(type(spec))
         modulus = _special_modulus(spec)
         values: list[int] = []
         adds = muls = gcds = atoms = 0

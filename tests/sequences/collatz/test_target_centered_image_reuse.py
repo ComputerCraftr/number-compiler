@@ -9,7 +9,6 @@ from number_compiler.arithmetic.fields.skew_transfer import (
 )
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnImageID,
-    _SourceNode,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.physical_images import (
@@ -21,12 +20,10 @@ from tests.support.reference_arithmetic import collatz_literal as _literal
 def _apply(
     workspace: CollatzPhysicalImageWorkspace, residue: int, width: int, lift: int
 ) -> int:
-    source = workspace._append_source(
-        _SourceNode(residue, width, lift, None, None, None, 0, True)
-    )
-    action = workspace._action(width)
+    source = workspace.admitted_source(residue + (lift << width), width)
+    action = workspace.action_for_extent(width)
     image = workspace.scheduler.source_image(workspace, source, action)
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_view(workspace, image).payload
     assert type(payload) is DyadicReturnImageID
     summary = workspace.image_node(payload).summary
     chart = integer_dyadic_fiber_action(summary.transfer, residue, width)
@@ -82,12 +79,17 @@ def test_direct_reuse_cannot_bypass_the_exact_run_key() -> None:
     workspace = CollatzPhysicalImageWorkspace(
         ResourceLedger(), 27, 0, retain_chronology=False
     )
-    action = workspace._action(8)
-    first = workspace._append_source(_SourceNode(27, 8, 8, None, None, None, 0, True))
-    second = workspace._append_source(_SourceNode(27, 8, 9, None, None, None, 0, True))
-    core = workspace.scheduler._source_image_core()
-    first_origin = core.view(core._origin(workspace, first))
-    second_origin = core.view(core._origin(workspace, second))
-    first_result = core.view(workspace.scheduler.source_image(workspace, first, action))
+    action = workspace.action_for_extent(8)
+    first = workspace.admitted_source(27 + (8 << 8), 8)
+    second = workspace.admitted_source(27 + (9 << 8), 8)
+    first_origin = workspace.scheduler.source_image_view(
+        workspace, workspace.scheduler.source_image_origin(workspace, first)
+    )
+    second_origin = workspace.scheduler.source_image_view(
+        workspace, workspace.scheduler.source_image_origin(workspace, second)
+    )
+    first_result = workspace.scheduler.source_image_view(
+        workspace, workspace.scheduler.source_image(workspace, first, action)
+    )
     with pytest.raises(ValueError, match="same admitted cylinder"):
         workspace.transport_reuse(action, first_origin, first_result, second_origin)

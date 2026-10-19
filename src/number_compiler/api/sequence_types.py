@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from number_compiler.api.observation_types import FamilyId
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.symbolic_extent import Extent
 from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
 from number_compiler.sequences.power_numbers.numbers import MersenneNumberSpec

@@ -6,15 +6,15 @@ import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
+    MacroBindingKey,
     SourceBoundHigherMacro,
-    _MacroBindingKey,
 )
 from number_compiler.hashlife.execution.field_images import SourceForestID
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_runtime import (
-    _compiled_macro_fixture,
     _fixture,
     _macro_composer,
+    compiled_macro_fixture,
 )
 
 
@@ -33,7 +33,7 @@ def test_reverse_macro_probes_the_source_parent_before_descending(
         _unused_outputs_binding,
         composer,
         expected,
-    ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
+    ) = compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     visits = semantics.ledger.counters.get("source_leaf_visits", 0)
 
     def forbidden(_source: object) -> Never:
@@ -61,7 +61,7 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
     )
     composer.compile(binding)
 
-    class PoisonedBindings(dict[_MacroBindingKey, SourceBoundHigherMacro]):
+    class PoisonedBindings(dict[MacroBindingKey, SourceBoundHigherMacro]):
         def get(self, _key: object, _default: object = None) -> Never:
             raise AssertionError("invalid source reached the warm binding cache")
 
@@ -106,7 +106,7 @@ def test_spatial_warm_binding_rejects_changed_consumer_declaration(
         _unused_outputs_binding,
         composer,
         macro,
-    ) = _compiled_macro_fixture((7, 18, 7, 19))
+    ) = compiled_macro_fixture((7, 18, 7, 19))
     changed = (
         actions.identity
         if replacement == "identity"
@@ -138,7 +138,7 @@ def test_spatial_declaration_seal_blocks_coordinated_key_and_composer_mutation(
         _unused_outputs_binding,
         composer,
         macro,
-    ) = _compiled_macro_fixture((7, 18, 7, 19))
+    ) = compiled_macro_fixture((7, 18, 7, 19))
     with monkeypatch.context() as patch:
         patch.setattr(composer, "blank", 0)
         object.__setattr__(composer._declaration, "blank", 0)
@@ -180,7 +180,7 @@ def test_spatial_provider_binding_checks_source_action_and_output_together() -> 
         _unused_outputs_binding,
         composer,
         full,
-    ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
+    ) = compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     short_source = sources.forest(0, 4)
     short = composer.compile(short_source)
     assert full.output != short.output

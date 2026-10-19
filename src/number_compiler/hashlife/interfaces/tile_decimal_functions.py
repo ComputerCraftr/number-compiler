@@ -18,8 +18,8 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
 )
 
 
@@ -53,7 +53,7 @@ def decimal_leaf_output(
         or output_sort.cardinality != kernel.blank + 1
     ):
         raise ValueError("decimal output requires its exact two-sided signature")
-    circuit = _Circuit(bits.functions, ports)
+    circuit = BooleanCircuit(bits.functions, ports)
     variables = tuple(
         PortVariable(port.variable.time, port.variable.side, port.variable.role, bit)
         for port in (left_port, right_port)
@@ -98,7 +98,7 @@ def decimal_leaf_output(
         values[0],
         circuit.admitted(),
     )
-    return bits._publish(circuit, (result,))[0]
+    return bits.publish_circuit(circuit, (result,))[0]
 
 
 __all__ = ["decimal_leaf_output"]

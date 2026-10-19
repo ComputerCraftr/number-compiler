@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -12,7 +13,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageID,
 )
@@ -21,8 +22,10 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.reverse_add.source_actions import (
     ReverseActionArena,
+    ReverseActionID,
     ReverseSource,
 )
 
@@ -39,10 +42,44 @@ if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.q19_spatial_bank_morphism import (
         ReverseAddSpatialBankMorphism,
     )
+    from number_compiler.sequences.reverse_add.source_images import (
+        ReverseSourceImageAdapter,
+    )
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
     from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
         ReverseAddTemporalRingBank,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseSourceImageWorkspaceAuditSnapshot:
+    """Fresh authority and retained-store identities for explicit audits."""
+
+    ledger: ResourceLedger
+    actions: ReverseActionArena
+    source: ReverseSource
+    root_action: ReverseActionID
+    scheduler: TileScheduler
+    adapter: ReverseSourceImageAdapter
+    steps: int
+    base: int
+    request_binding: tuple[int, int, int]
+    authority: tuple[object, ...]
+    disposed: bool
+    cleanup_complete: bool
+    image: SourceImageID | None
+    image_cache_owner: ArenaToken
+    pointed_gt_banks: OwnedMemoAuditSnapshot[
+        tuple[ReverseSource, int, int], SourceGuardedGTBankAction
+    ]
+    pointed_gt_store: object
+    audit_action_nodes: object
+    audit_action_normal: object
+    audit_sources: object
+    audit_action_workspace: object
+    audit_recursive_occurrences: object
+    audit_pointed_gt_banks: object
+    audit_source_contract_key: object
 
 
 class ReverseSourceImageWorkspace:
@@ -73,7 +110,7 @@ class ReverseSourceImageWorkspace:
         with cleanup_on_error(rollback.close):
             from number_compiler.sequences.reverse_add.source_images import (
                 MAX_COMPLETED_CHILD_FALLBACK_STEPS,
-                _ReverseSourceImageAdapter,
+                ReverseSourceImageAdapter,
             )
 
             actions = ReverseActionArena(ledger)
@@ -82,7 +119,7 @@ class ReverseSourceImageWorkspace:
             root_action = actions.action(steps)
             scheduler = TileScheduler.source_only(ledger)
             rollback.callback(scheduler.dispose_source_images)
-            adapter = _ReverseSourceImageAdapter(actions)
+            adapter = ReverseSourceImageAdapter(actions)
             rollback.callback(adapter.dispose)
             pointed_owner = ledger.register(
                 f"reverse-source-pointed-bank-{ledger.owner_count}",
@@ -140,6 +177,35 @@ class ReverseSourceImageWorkspace:
             rollback.callback(self._remove_source_payload_audit_contract)
             self._register_source_payload_audit_contract()
             rollback.pop_all()
+
+    def audit_snapshot(self) -> ReverseSourceImageWorkspaceAuditSnapshot:
+        """Expose current immutable authority references to resource auditors."""
+        pointed = self._pointed_gt_banks.audit_snapshot()
+        return ReverseSourceImageWorkspaceAuditSnapshot(
+            ledger=self.ledger,
+            actions=self.actions,
+            source=self.source,
+            root_action=self.root_action,
+            scheduler=self.scheduler,
+            adapter=self.adapter,
+            steps=self.steps,
+            base=self.base,
+            request_binding=self._request_binding,
+            authority=self._authority,
+            disposed=self._disposed,
+            cleanup_complete=self._cleanup_complete,
+            image=self._image,
+            image_cache_owner=self._image_cache_owner,
+            pointed_gt_banks=pointed,
+            pointed_gt_store=self._pointed_gt_banks,
+            audit_action_nodes=self._audit_action_nodes,
+            audit_action_normal=self._audit_action_normal,
+            audit_sources=self._audit_sources,
+            audit_action_workspace=self._audit_action_workspace,
+            audit_recursive_occurrences=self._audit_recursive_occurrences,
+            audit_pointed_gt_banks=self._audit_pointed_gt_banks,
+            audit_source_contract_key=self._audit_source_contract_key,
+        )
 
     def _remove_source_payload_audit_contract(self) -> None:
         # The ledger may publish the contract before registration raises, so

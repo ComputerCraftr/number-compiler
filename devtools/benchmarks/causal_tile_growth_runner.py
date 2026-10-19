@@ -13,13 +13,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, fields, replace
 from pathlib import Path
 from time import perf_counter
-from typing import Required, TypedDict, cast
+from typing import Required, TypedDict, TypeGuard
 
 from devtools.benchmarks.causal_tile_growth_probe import (
     CausalGrowthRow,
     CausalSeriesReport,
-    _power_of_two_at_least,
     cold_row,
+    power_of_two_at_least,
     series_report,
 )
 from devtools.checks.process_guard import run_guarded
@@ -173,32 +173,275 @@ def _failure(
     }
 
 
-def _parse_row(value: object) -> CausalGrowthRow | None:
-    if type(value) is not dict:
+def _json_object(value: object) -> TypeGuard[dict[str, object]]:
+    return type(value) is dict and all(type(key) is str for key in value)
+
+
+def _required_text(value: Mapping[str, object], name: str) -> str:
+    item = value.get(name)
+    if type(item) is not str:
+        raise ValueError(f"{name} must be text")
+    return item
+
+
+def _required_counter(value: Mapping[str, object], name: str) -> int:
+    item = value.get(name)
+    if type(item) is not int or item < 0:
+        raise ValueError(f"{name} must be a nonnegative exact integer")
+    return item
+
+
+def _optional_counter(value: Mapping[str, object], name: str) -> int | None:
+    item = value.get(name)
+    if item is None:
+        return None
+    if type(item) is not int or item < 0:
+        raise ValueError(f"{name} must be a nonnegative exact integer or null")
+    return item
+
+
+def _required_seconds(value: Mapping[str, object], name: str) -> float:
+    item = value.get(name)
+    if type(item) is int:
+        try:
+            seconds = float(item)
+        except OverflowError as error:
+            raise ValueError(f"{name} must be a finite nonnegative number") from error
+    elif type(item) is float:
+        seconds = item
+    else:
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    return seconds
+
+
+def parse_causal_growth_row(value: object) -> CausalGrowthRow | None:
+    if not _json_object(value):
         return None
     expected = {item.name for item in fields(CausalGrowthRow)}
     if set(value) != expected:
         return None
     try:
-        row = CausalGrowthRow(**value)
-    except (TypeError, ValueError):
+        return CausalGrowthRow(
+            scenario=_required_text(value, "scenario"),
+            temporal_steps=_required_counter(value, "temporal_steps"),
+            spatial_width=_required_counter(value, "spatial_width"),
+            coordinate=_required_counter(value, "coordinate"),
+            temporal_exponent=_required_counter(value, "temporal_exponent"),
+            spatial_exponent=_required_counter(value, "spatial_exponent"),
+            action_physical_ticks=_required_counter(value, "action_physical_ticks"),
+            digit=_required_counter(value, "digit"),
+            setup_seconds=_required_seconds(value, "setup_seconds"),
+            observation_seconds=_required_seconds(value, "observation_seconds"),
+            diagnostics_seconds=_required_seconds(value, "diagnostics_seconds"),
+            cold_seconds=_required_seconds(value, "cold_seconds"),
+            causal_accounting_version=_required_counter(
+                value, "causal_accounting_version"
+            ),
+            causal_frames=_required_counter(value, "causal_frames"),
+            task_memo_evaluations=_required_counter(value, "task_memo_evaluations"),
+            task_memo_hits=_required_counter(value, "task_memo_hits"),
+            primitive_emits=_required_counter(value, "primitive_emits"),
+            finite_pair_transfers=_required_counter(value, "finite_pair_transfers"),
+            finite_transfer_parent_observations=_required_counter(
+                value, "finite_transfer_parent_observations"
+            ),
+            result_evaluations=_required_counter(value, "result_evaluations"),
+            result_hits=_required_counter(value, "result_hits"),
+            midpoint_reuse=_required_counter(value, "midpoint_reuse"),
+            demand_descents=_required_counter(value, "demand_descents"),
+            workspace_peak_slots=_required_counter(value, "workspace_peak_slots"),
+            boundary_output_requests=_optional_counter(
+                value, "boundary_output_requests"
+            ),
+            boundary_output_hits=_optional_counter(value, "boundary_output_hits"),
+            boundary_output_evaluations=_required_counter(
+                value, "boundary_output_evaluations"
+            ),
+            boundary_output_completions=_required_counter(
+                value, "boundary_output_completions"
+            ),
+            boundary_output_failures=_optional_counter(
+                value, "boundary_output_failures"
+            ),
+            boundary_requested_extent=_required_counter(
+                value, "boundary_requested_extent"
+            ),
+            boundary_cached_extent=_required_counter(value, "boundary_cached_extent"),
+            boundary_output_piece_normalizations=_required_counter(
+                value, "boundary_output_piece_normalizations"
+            ),
+            spatial_buffer_allocations=_required_counter(
+                value, "spatial_buffer_allocations"
+            ),
+            spatial_buffer_allocated_bytes=_required_counter(
+                value, "spatial_buffer_allocated_bytes"
+            ),
+            spatial_buffer_appends=_required_counter(value, "spatial_buffer_appends"),
+            spatial_buffer_reversal_visits=_required_counter(
+                value, "spatial_buffer_reversal_visits"
+            ),
+            spatial_buffer_live_slots=_required_counter(
+                value, "spatial_buffer_live_slots"
+            ),
+            spatial_buffer_live_bytes=_required_counter(
+                value, "spatial_buffer_live_bytes"
+            ),
+            spatial_buffer_peak_slots=_required_counter(
+                value, "spatial_buffer_peak_slots"
+            ),
+            spatial_buffer_peak_bytes=_required_counter(
+                value, "spatial_buffer_peak_bytes"
+            ),
+            boundary_transfer_requests=_required_counter(
+                value, "boundary_transfer_requests"
+            ),
+            boundary_transfer_frames=_required_counter(
+                value, "boundary_transfer_frames"
+            ),
+            boundary_transfer_parent_observations=_required_counter(
+                value, "boundary_transfer_parent_observations"
+            ),
+            boundary_transfer_descents=_required_counter(
+                value, "boundary_transfer_descents"
+            ),
+            boundary_transfer_workspace_peak=_required_counter(
+                value, "boundary_transfer_workspace_peak"
+            ),
+            directed_transfer_requests=_required_counter(
+                value, "directed_transfer_requests"
+            ),
+            directed_transfer_early_hits=_required_counter(
+                value, "directed_transfer_early_hits"
+            ),
+            directed_transfer_publication_requests=_required_counter(
+                value, "directed_transfer_publication_requests"
+            ),
+            directed_transfer_publications=_required_counter(
+                value, "directed_transfer_publications"
+            ),
+            directed_transfer_late_duplicates=_required_counter(
+                value, "directed_transfer_late_duplicates"
+            ),
+            directed_transfer_leaf_evaluations=_required_counter(
+                value, "directed_transfer_leaf_evaluations"
+            ),
+            directed_transfer_parent_evaluations=_required_counter(
+                value, "directed_transfer_parent_evaluations"
+            ),
+            directed_transfer_workspace_peak=_required_counter(
+                value, "directed_transfer_workspace_peak"
+            ),
+            causal_frame_publications=_required_counter(
+                value, "causal_frame_publications"
+            ),
+            causal_frame_payload_reference_publications=_required_counter(
+                value, "causal_frame_payload_reference_publications"
+            ),
+            causal_frame_peak_slots=_required_counter(value, "causal_frame_peak_slots"),
+            completed_result_port_validation_requests=_required_counter(
+                value, "completed_result_port_validation_requests"
+            ),
+            completed_result_port_validation_visits=_required_counter(
+                value, "completed_result_port_validation_visits"
+            ),
+            directed_transfer_validation_requests=_required_counter(
+                value, "directed_transfer_validation_requests"
+            ),
+            directed_transfer_validation_visits=_required_counter(
+                value, "directed_transfer_validation_visits"
+            ),
+            action_nodes=_required_counter(value, "action_nodes"),
+            action_composition_entries=_required_counter(
+                value, "action_composition_entries"
+            ),
+            completed_result_entries=_required_counter(
+                value, "completed_result_entries"
+            ),
+            directed_transfer_entries=_required_counter(
+                value, "directed_transfer_entries"
+            ),
+            causal_interface_entries=_required_counter(
+                value, "causal_interface_entries"
+            ),
+            powered_interface_entries=_required_counter(
+                value, "powered_interface_entries"
+            ),
+            fused_interface_entries=_required_counter(value, "fused_interface_entries"),
+            spatial_interface_entries=_required_counter(
+                value, "spatial_interface_entries"
+            ),
+            other_result_memo_entries=_required_counter(
+                value, "other_result_memo_entries"
+            ),
+            canonical_tile_nodes=_required_counter(value, "canonical_tile_nodes"),
+            retained_entries=_required_counter(value, "retained_entries"),
+            retained_nodes=_required_counter(value, "retained_nodes"),
+            peak_entries=_required_counter(value, "peak_entries"),
+            peak_nodes=_required_counter(value, "peak_nodes"),
+            semantic_contract_classes=_required_counter(
+                value, "semantic_contract_classes"
+            ),
+            temporal_edge_classes=_required_counter(value, "temporal_edge_classes"),
+            retained_spatial_interval_bindings=_required_counter(
+                value, "retained_spatial_interval_bindings"
+            ),
+            retained_spatial_interval_union_cells=_required_counter(
+                value, "retained_spatial_interval_union_cells"
+            ),
+            sequential_generation_advances=_required_counter(
+                value, "sequential_generation_advances"
+            ),
+            whole_word_sweeps=_required_counter(value, "whole_word_sweeps"),
+            whole_word_symbol_visits=_required_counter(
+                value, "whole_word_symbol_visits"
+            ),
+            proof_machine_applications=_required_counter(
+                value, "proof_machine_applications"
+            ),
+            future_behavior_requests=_optional_counter(
+                value, "future_behavior_requests"
+            ),
+            future_behavior_binding_requests=_optional_counter(
+                value, "future_behavior_binding_requests"
+            ),
+            future_behavior_binding_early_hits=_optional_counter(
+                value, "future_behavior_binding_early_hits"
+            ),
+            future_behavior_classification_evaluations=_optional_counter(
+                value, "future_behavior_classification_evaluations"
+            ),
+            future_behavior_refinement_observation_checks=_optional_counter(
+                value, "future_behavior_refinement_observation_checks"
+            ),
+            future_behavior_refinement_successor_checks=_optional_counter(
+                value, "future_behavior_refinement_successor_checks"
+            ),
+            behavior_classification_summary_checks=_optional_counter(
+                value, "behavior_classification_summary_checks"
+            ),
+            behavior_classification_port_checks=_optional_counter(
+                value, "behavior_classification_port_checks"
+            ),
+            behavior_point_observations=_optional_counter(
+                value, "behavior_point_observations"
+            ),
+            behavior_width_observations=_optional_counter(
+                value, "behavior_width_observations"
+            ),
+            exact_causal_fallback_requests=_optional_counter(
+                value, "exact_causal_fallback_requests"
+            ),
+            tile_region_application_validation_visits=_optional_counter(
+                value, "tile_region_application_validation_visits"
+            ),
+            causal_extent_discharged_by_behavior=_optional_counter(
+                value, "causal_extent_discharged_by_behavior"
+            ),
+        )
+    except ValueError:
         return None
-    if type(row.scenario) is not str or any(
-        type(getattr(row, name)) not in (int, float)
-        or not math.isfinite(getattr(row, name))
-        or getattr(row, name) < 0
-        for name in _TIMING_FIELDS
-    ):
-        return None
-    for item in fields(CausalGrowthRow):
-        if item.name == "scenario" or item.name in _TIMING_FIELDS:
-            continue
-        field_value = getattr(row, item.name)
-        if field_value is not None and type(field_value) is not int:
-            return None
-        if type(field_value) is int and field_value < 0:
-            return None
-    return row
 
 
 def _command(
@@ -220,7 +463,7 @@ def _command(
     ]
 
 
-def _one_trial(
+def run_causal_growth_trial(
     request: tuple[str, int, int, int],
     trial: int,
     source: GitSource,
@@ -295,7 +538,7 @@ def _one_trial(
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
-    if type(parsed) is not dict:
+    if not _json_object(parsed):
         failure = _failure(
             *request, trial, "failed", reason="worker returned another record"
         )
@@ -322,7 +565,7 @@ def _one_trial(
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
-    row = _parse_row(parsed.get("row"))
+    row = parse_causal_growth_row(parsed.get("row"))
     if (
         row is None
         or (
@@ -338,22 +581,32 @@ def _one_trial(
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
-    parsed["trial"] = trial
-    parsed["status"] = "passed"
-    parsed["process_wall_seconds"] = process_wall_seconds
-    parsed["sampled_peak_bytes"] = guard.sampled_peak_bytes
-    parsed["memory_measurement"] = guard.memory_measurement
-    parsed["memory_samples"] = guard.samples
-    return cast("TrialRecord", parsed)
+    return {
+        "scenario": request[0],
+        "temporal_steps": request[1],
+        "spatial_width": request[2],
+        "coordinate": request[3],
+        "trial": trial,
+        "status": "passed",
+        "git_source_before": source.as_dict(),
+        "git_source_after": source.as_dict(),
+        "row": asdict(row),
+        "process_wall_seconds": process_wall_seconds,
+        "sampled_peak_bytes": guard.sampled_peak_bytes,
+        "memory_measurement": guard.memory_measurement,
+        "memory_samples": guard.samples,
+    }
 
 
-def _aggregate(
+def aggregate_causal_growth_trials(
     request: tuple[str, int, int, int],
     trials: Sequence[Mapping[str, object]],
     expected_trials: int,
 ) -> tuple[CausalGrowthRow | None, SampleReport]:
     parsed_rows = [
-        _parse_row(item.get("row")) for item in trials if item.get("status") == "passed"
+        parse_causal_growth_row(item.get("row"))
+        for item in trials
+        if item.get("status") == "passed"
     ]
     rows = [row for row in parsed_rows if row is not None]
     complete = len(trials) == expected_trials and len(rows) == expected_trials
@@ -390,7 +643,7 @@ def _aggregate(
                 "spread": max(seconds) - min(seconds),
             }
         process_seconds = [
-            float(cast("float", item["process_wall_seconds"])) for item in trials
+            _required_seconds(item, "process_wall_seconds") for item in trials
         ]
         process_timing = {
             "minimum": min(process_seconds),
@@ -401,14 +654,14 @@ def _aggregate(
         if stable:
             representative = replace(
                 rows[0],
-                setup_seconds=float(cast("float", timing["setup_seconds"]["median"])),
-                observation_seconds=float(
-                    cast("float", timing["observation_seconds"]["median"])
+                setup_seconds=statistics.median([row.setup_seconds for row in rows]),
+                observation_seconds=statistics.median(
+                    [row.observation_seconds for row in rows]
                 ),
-                diagnostics_seconds=float(
-                    cast("float", timing["diagnostics_seconds"]["median"])
+                diagnostics_seconds=statistics.median(
+                    [row.diagnostics_seconds for row in rows]
                 ),
-                cold_seconds=float(cast("float", timing["cold_seconds"]["median"])),
+                cold_seconds=statistics.median([row.cold_seconds for row in rows]),
             )
     blockers: list[str] = []
     if not complete:
@@ -449,7 +702,7 @@ def _requests(
             (
                 "growing-196",
                 horizon,
-                _power_of_two_at_least(3 + horizon),
+                power_of_two_at_least(3 + horizon),
                 0,
             )
             for horizon in horizons
@@ -472,7 +725,7 @@ def _request_record(request: tuple[str, int, int, int]) -> RequestRecord:
     }
 
 
-def _manifest(
+def build_causal_growth_manifest(
     horizons: tuple[int, ...],
     spatial_widths: tuple[int, ...],
     fixed_width: int,
@@ -514,8 +767,13 @@ def run_fresh_process_probe(
         samples[label] = []
         representatives[label] = []
         for request in requests:
-            trial_rows = [_one_trial(request, trial, source) for trial in range(trials)]
-            representative, sample = _aggregate(request, trial_rows, trials)
+            trial_rows = [
+                run_causal_growth_trial(request, trial, source)
+                for trial in range(trials)
+            ]
+            representative, sample = aggregate_causal_growth_trials(
+                request, trial_rows, trials
+            )
             samples[label].append(sample)
             if representative is not None:
                 representatives[label].append(representative)
@@ -596,8 +854,10 @@ def run_fresh_process_probe(
         },
         "default_release_horizons": list(HORIZONS),
         "release_manifest_complete": release_manifest_complete,
-        "requested_manifest": _manifest(horizons, spatial_widths, fixed_width, trials),
-        "required_manifest": _manifest(
+        "requested_manifest": build_causal_growth_manifest(
+            horizons, spatial_widths, fixed_width, trials
+        ),
+        "required_manifest": build_causal_growth_manifest(
             HORIZONS,
             HORIZONS,
             RELEASE_FIXED_WIDTH,

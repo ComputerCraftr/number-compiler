@@ -29,8 +29,10 @@ from number_compiler.hashlife.execution.tile_scheduler import (
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
     LocalInterfaceID,
     MacroComponents,
     MacroInterface,
@@ -404,7 +406,9 @@ def _application_fixture() -> tuple[_Runtime, TileApplication, int]:
 
 def _assert_pin_rollback(runtime: _Runtime, leases_before: int) -> None:
     assert len(runtime.tiles._leases) == leases_before
-    account = runtime.ledger.inventory()[runtime.scheduler._pin_owner]
+    pin_owner = runtime.scheduler.audit_snapshot().pin_owner
+    assert pin_owner is not None
+    account = runtime.ledger.inventory()[pin_owner]
     assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
 
 
@@ -414,7 +418,7 @@ def test_physical_constructor_installs_deferred_scheduler_dependencies() -> None
         assert type(runtime.scheduler.tiles) is TileArena
         assert type(runtime.scheduler.results) is CompletedResultArena
         assert type(runtime.scheduler) is TileScheduler
-        assert not runtime.scheduler._source_only
+        assert not runtime.scheduler.is_source_only
     finally:
         runtime.close()
 
@@ -617,11 +621,11 @@ def test_incomplete_application_pins_and_reuses_demanded_leaf_result() -> None:
     try:
         assert application.point(2) == 0
         leaf_calls = runtime.adapter.leaf_calls
-        assert len(runtime.scheduler._pins) == 1
+        assert len(runtime.scheduler.audit_snapshot().pins) == 1
         assert application.point(2) == 0
         assert runtime.adapter.leaf_calls == leaf_calls
         application.complete()
-        assert not runtime.scheduler._pins
+        assert not runtime.scheduler.audit_snapshot().pins
     finally:
         application.close()
         runtime.close()
@@ -875,7 +879,7 @@ def test_result_semantics_preserves_exact_outgoing_boundary_operands() -> None:
             with pytest.raises(
                 UnsupportedInterfaceError, match="boundary-tile execution law"
             ):
-                runtime.scheduler._validate_execution_key(key)
+                runtime.scheduler.validate_execution_key(key)
             after = runtime.ledger.snapshot()
             assert before.entries == after.entries
             assert before.nodes == after.nodes
@@ -896,7 +900,7 @@ def test_failed_demanded_pin_reservation_releases_result_lease(
     reserve = runtime.ledger.reserve
 
     def reject_pin(owner: int, entries: int = 0, nodes: int = 0) -> None:
-        if owner == runtime.scheduler._pin_owner:
+        if owner == runtime.scheduler.audit_snapshot().pin_owner:
             raise BlockContextBudgetExceeded("injected pin reservation failure")
         return reserve(owner, entries, nodes)
 
@@ -904,7 +908,7 @@ def test_failed_demanded_pin_reservation_releases_result_lease(
     try:
         with pytest.raises(BlockContextBudgetExceeded, match="pin reservation"):
             application.point(2)
-        assert not runtime.scheduler._pins
+        assert not runtime.scheduler.audit_snapshot().pins
         _assert_pin_rollback(runtime, leases_before)
     finally:
         application.close()
@@ -921,14 +925,14 @@ def test_partial_demanded_pin_publication_rolls_back(
         store: LedgerDict[KeyT, ValueT], key: KeyT, value: ValueT
     ) -> None:
         write(store, key, value)
-        if store is runtime.scheduler._pins:
+        if store is runtime.scheduler.audit_snapshot().pin_store:
             raise RuntimeError("injected partial pin publication")
 
     monkeypatch.setattr(LedgerDict, "__setitem__", fail_after_write)
     try:
         with pytest.raises(RuntimeError, match="partial pin publication"):
             application.point(2)
-        assert not runtime.scheduler._pins
+        assert not runtime.scheduler.audit_snapshot().pins
         _assert_pin_rollback(runtime, leases_before)
     finally:
         application.close()

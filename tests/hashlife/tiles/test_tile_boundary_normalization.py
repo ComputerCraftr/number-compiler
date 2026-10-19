@@ -13,7 +13,7 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     normalize_boundary_view,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import (
@@ -46,10 +46,16 @@ def _retained_state(
 
 
 def test_equal_clips_with_different_backing_and_orientation_share_content() -> None:
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     with (
-        _tile(tiles, adapter, primitive, (4, 0, 1, 2, 4, 4, 4, 4)) as forward,
-        _tile(tiles, adapter, primitive, (4, 4, 2, 1, 0, 3, 3, 3)) as reverse,
+        make_tile_from_symbols(
+            tiles, adapter, primitive, (4, 0, 1, 2, 4, 4, 4, 4)
+        ) as forward,
+        make_tile_from_symbols(
+            tiles, adapter, primitive, (4, 4, 2, 1, 0, 3, 3, 3)
+        ) as reverse,
     ):
         first, first_lease = normalize_boundary_view(
             tiles,
@@ -76,8 +82,10 @@ def test_equal_clips_with_different_backing_and_orientation_share_content() -> N
 def test_normalization_rejects_empty_and_foreign_views_before_retained_mutation() -> (
     None
 ):
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
+    _ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         before = _retained_state(tiles)
         with pytest.raises(ValueError, match="nonempty"):
             normalize_boundary_view(
@@ -95,8 +103,12 @@ def test_normalization_rejects_empty_and_foreign_views_before_retained_mutation(
 def test_normalization_failure_releases_intermediate_leases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)) as source:
+    _ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (0, 1, 2, 3, 4, 0, 1, 2)
+    ) as source:
         before = _retained_state(tiles)
         join = tiles.join
         calls = 0

@@ -30,7 +30,7 @@ from number_compiler.arithmetic.formula.formula import (
     canonical_root_key,
     literal_planes,
 )
-from number_compiler.arithmetic.formula.types import Expr
+from number_compiler.arithmetic.formula.types import Expr, FormulaMasks
 
 _bits = bit_width
 
@@ -238,12 +238,12 @@ def digit_value_masks(
         raise ValueError((root.plane_count, spec.plane_count))
     key = ("digit-value-masks", spec.base, canonical_root_key(root, arena))
     cached = arena.metadata_get(key)
-    if isinstance(cached, tuple) and len(cached) == spec.base:
-        return cached
+    if isinstance(cached, FormulaMasks) and len(cached.values) == spec.base:
+        return cached.values
     masks = tuple(
         arena.predicate("EQ", digit, root.planes) for digit in range(spec.base)
     )
-    arena.metadata_set(key, masks)
+    arena.metadata_set(key, FormulaMasks(masks))
     return masks
 
 
@@ -290,7 +290,9 @@ class CompiledDigitTransduction:
             raise IndexError(position)
         hits = [
             int(q)
-            for q, mask in zip(self.transducer.states, self.incoming_state_masks)
+            for q, mask in zip(
+                self.transducer.states, self.incoming_state_masks, strict=True
+            )
             if arena.eval_closed_bit(mask, position)
         ]
         if len(hits) != 1:
@@ -303,7 +305,9 @@ class CompiledDigitTransduction:
             raise IndexError(position)
         hits = [
             int(q)
-            for q, mask in zip(self.transducer.states, self.outgoing_state_masks)
+            for q, mask in zip(
+                self.transducer.states, self.outgoing_state_masks, strict=True
+            )
             if arena.eval_closed_bit(mask, position)
         ]
         if len(hits) != 1:
@@ -317,7 +321,9 @@ class CompiledDigitTransduction:
         pos = self.output.width - 1 if self.transducer.direction == "lsd" else 0
         hits = [
             q
-            for q, mask in zip(self.transducer.states, self.outgoing_state_masks)
+            for q, mask in zip(
+                self.transducer.states, self.outgoing_state_masks, strict=True
+            )
             if arena.eval_closed_bit(mask, pos)
         ]
         if len(hits) != 1:

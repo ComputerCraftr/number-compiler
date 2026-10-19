@@ -11,7 +11,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnLaw,
 )
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnCycle
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageView,
@@ -68,7 +68,9 @@ def forbid_replay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(observers, "_expanded_saturated_support", forbidden)
     monkeypatch.setattr(observers, "balanced_residue_macro", forbidden)
     monkeypatch.setattr(DyadicReturnImageWorkspace, "_source_value", forbidden)
-    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "_runs", forbidden)
+    monkeypatch.setattr(
+        AntihydraArithmeticImageWorkspace, "_punctured_steps", forbidden
+    )
 
 
 @pytest.mark.parametrize("seed,width", [(1, 129), (1 << 70, 160), (1 << 80, 129)])

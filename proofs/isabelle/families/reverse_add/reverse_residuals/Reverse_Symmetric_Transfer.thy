@@ -270,11 +270,51 @@ lemma inward_symmetric_all_equal_keeps_center:
   "inward_symmetric_transfer (replicate n 9) center = center"
   by (induction n) simp_all
 
+text \<open>The inward reflected carry must retain its incoming value as a
+separate object. If \<open>K_q c = [q+c \<ge> 10]\<close> is the local carry map and
+\<open>F\<close> is the already-composed deeper transfer, the reflected incoming
+carry is \<open>F (K_q a)\<close>; the outgoing upper carry is then
+\<open>K_q (F (K_q a))\<close>. Using that outgoing carry again as the incoming
+carry loses information at the reflection seam.\<close>
+
+definition reverse_reflected_carry_pair ::
+    "nat \<Rightarrow> (bool \<Rightarrow> bool) \<Rightarrow> bool \<Rightarrow> bool \<times> bool"
+    where
+  "reverse_reflected_carry_pair q deeper lower_carry =
+    (let reflected = deeper (carry_apply (domain q) lower_carry)
+     in (reflected, carry_apply (domain q) reflected))"
+
+lemma reverse_reflected_carry_pair_components:
+  "reverse_reflected_carry_pair q deeper lower_carry =
+    (deeper (carry_apply (domain q) lower_carry),
+      carry_apply (domain q)
+        (deeper (carry_apply (domain q) lower_carry)))"
+  by (simp add: reverse_reflected_carry_pair_def Let_def)
+
+lemma reverse_reflected_carry_q5_case:
+  assumes deeper: "deeper False = True"
+  shows "carry_apply (domain 5) False = False \<and>
+    reverse_reflected_carry_pair 5 deeper False = (True,False)"
+  using deeper
+  by (simp add: carry_apply_decimal_threshold reverse_reflected_carry_pair_def
+      Let_def)
+
+lemma reverse_reflected_carry_q5_incoming_differs_from_outgoing:
+  assumes deeper: "deeper False = True"
+  shows "fst (reverse_reflected_carry_pair 5 deeper False) \<noteq>
+    snd (reverse_reflected_carry_pair 5 deeper False)"
+  using deeper
+  by (simp add: carry_apply_decimal_threshold reverse_reflected_carry_pair_def
+      Let_def)
+
 ML \<open>
   val checked = @{thms inward_symmetric_transfer_range_exact
     inward_symmetric_transfer_admitted
     inward_symmetric_first_non_nine_resets
-    inward_symmetric_all_equal_keeps_center};
+    inward_symmetric_all_equal_keeps_center
+    reverse_reflected_carry_pair_components
+    reverse_reflected_carry_q5_case
+    reverse_reflected_carry_q5_incoming_differs_from_outgoing};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Symmetric transfer depends on an oracle";
 \<close>

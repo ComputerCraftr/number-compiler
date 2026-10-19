@@ -75,7 +75,7 @@ def _validate_key(arena: CompletedResultArena, key: NormalizedRegionKey) -> None
         raise ValueError("region normalization requires a nonempty clipped view")
 
 
-def _validate_value(
+def validate_normalized_region_value(
     arena: CompletedResultArena,
     key: NormalizedRegionKey,
     value: NormalizedRegionResult,
@@ -130,7 +130,7 @@ def lookup_normalized_region(
         return None
     if type(found) is not NormalizedRegionResult:
         raise TypeError("normalized region memo contains another value sort")
-    _validate_value(arena, key, found, published=True)
+    validate_normalized_region_value(arena, key, found, published=True)
     arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_EARLY_HITS)
     return found
 
@@ -141,13 +141,13 @@ def _publish(
     value: NormalizedRegionResult,
 ) -> tuple[NormalizedRegionResult, bool]:
     _validate_key(arena, key)
-    _validate_value(arena, key, value, published=True)
+    validate_normalized_region_value(arena, key, value, published=True)
     found = arena._memo.get(key)
     arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not NormalizedRegionResult:
             raise TypeError("normalized region memo contains another value sort")
-        _validate_value(arena, key, found, published=True)
+        validate_normalized_region_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("clipped region already has another canonical result")
         arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_LATE_DUPLICATES)

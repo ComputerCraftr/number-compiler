@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+from typing import TypeGuard, TypeVar
+
+_T = TypeVar("_T")
+
+
+def is_object_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    """Narrow tuple payloads without changing their runtime admission rule."""
+    return isinstance(value, tuple)
+
+
+def require_instance(value: object, expected: type[_T]) -> _T:
+    """Admit a runtime instance while preserving the original TypeError args."""
+    if not isinstance(value, expected):
+        raise TypeError(type(value))
+    return value
+
 
 def require_integer(
     value: object, name: str, minimum: int | None = None, maximum: int | None = None
@@ -35,7 +51,7 @@ def normalized_integer_pair(
     return left, right
 
 
-__all__ = ["require_integer"]
+__all__ = ["is_object_tuple", "require_instance", "require_integer"]
 
 
 def normalized_odd_modulus(value: int, *, minimum: int = 3) -> int:

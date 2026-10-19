@@ -97,7 +97,7 @@ class FactoredPrimeAutomaton:
         if len(state.residues) != len(self.moduli):
             raise ValueError("state belongs to another automaton")
         calls = 0
-        for residue, modulus in zip(state.residues, self.moduli):
+        for residue, modulus in zip(state.residues, self.moduli, strict=True):
             calls += 1
             if gcd(int(residue), modulus) > 1:
                 return False, calls
@@ -241,7 +241,7 @@ def compile_prime_block_factored_decision(
                 offset = 2 * digit + (1 - base) * start
                 residues = tuple(
                     (base * r + offset) % m
-                    for r, m in zip(state.residues, automaton.moduli)
+                    for r, m in zip(state.residues, automaton.moduli, strict=True)
                 )
                 transitions += len(automaton.moduli)
                 frames.append(

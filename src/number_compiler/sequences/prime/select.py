@@ -11,9 +11,12 @@ from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from math import isqrt
 from os import urandom
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final
 
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+    require_integer,
+)
 from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.resources.process_cache import (
     MISSING,
@@ -23,12 +26,19 @@ from number_compiler.resources.process_cache import (
 )
 from number_compiler.sequences.prime.coprime_rank import (
     MAX_SHARED_FACTOR_STAGES,
+    CachedPrimePrefixCapability,
     CoprimeRankDAG,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.prime.partial_successor_image import (
+        PrimePartialSuccessorQuery,
+    )
 
 _PRIME_CACHE_NAMESPACE = "prime.coprime-rank"
 _PRIME_CACHE_VERSION: Final[str] = "positive-integers-least-survivor-v1"
 _PRIME_CACHE_ISSUER = urandom(32)
+_PRIME_CACHE_RECORD_ISSUER = object()
 _PRIME_CACHE_SOURCE = (
     "positive-integers",
     "consecutive-prime-prefix",
@@ -67,14 +77,21 @@ class PrimeRankSelectMetrics:
     scheduler_counters: tuple[tuple[str, int], ...] = ()
 
 
-def _validate_cached_prefix(payload: object) -> tuple[int, tuple[int, ...], int, int]:
+def _validate_cached_prefix(
+    payload: object,
+) -> tuple[int, tuple[object, ...], int, int]:
     """Validate the issued manifest header; demanded factors are admitted lazily."""
-    if type(payload) is not tuple or len(payload) != 3:
+    if not is_object_tuple(payload) or len(payload) != 3:
         raise RuntimeError("invalid shared prime prefix manifest")
-    covered_root, raw_factors, state_count = payload
+    if type(payload) is not tuple:
+        raise RuntimeError("invalid shared prime prefix manifest")
+    covered_root: object = payload[0]
+    raw_factors: object = payload[1]
+    state_count: object = payload[2]
     if (
         type(covered_root) is not int
         or covered_root < 2
+        or not is_object_tuple(raw_factors)
         or type(raw_factors) is not tuple
         or not raw_factors
         or len(raw_factors) > MAX_SHARED_FACTOR_STAGES
@@ -82,12 +99,17 @@ def _validate_cached_prefix(payload: object) -> tuple[int, tuple[int, ...], int,
         or state_count < 0
     ):
         raise RuntimeError("invalid shared prime prefix manifest")
-    factors = cast(tuple[int, ...], raw_factors)
+    factor_items: list[object] = []
+    for factor in raw_factors:
+        factor_items.append(factor)
+    factors = tuple(factor_items)
+    first_factor = factors[0]
+    last_factor = factors[-1]
     if (
-        type(factors[0]) is not int
-        or type(factors[-1]) is not int
-        or factors[0] != 2
-        or factors[-1] > covered_root
+        type(first_factor) is not int
+        or type(last_factor) is not int
+        or first_factor != 2
+        or last_factor > covered_root
     ):
         raise RuntimeError("invalid shared prime prefix manifest")
     return covered_root, factors, state_count, 1
@@ -118,12 +140,13 @@ class PrimePrefixRank:
         self._lease: CacheLease | None = None
         self._cache_start: CacheStats | None = None
         self._imported_states = 0
-        self._cached_factors: tuple[int, ...] = (2,)
+        self._cached_factors: tuple[object, ...] = (2,)
         self._cached_covered_root = 2
         self._cached_validated_count = 1
         self.admission_work = 0
-        factors: tuple[int, ...] = (2,)
+        factors: tuple[object, ...] = (2,)
         covered_root, validation_work = 2, 0
+        cached_manifest_found = False
         if shared_cache:
             lease = get_process_cache().acquire(
                 _PRIME_CACHE_NAMESPACE, _PRIME_CACHE_VERSION, _PRIME_CACHE_SOURCE
@@ -131,8 +154,11 @@ class PrimePrefixRank:
             self._lease = lease
             self._cache_start = lease.stats()
             try:
-                cached = lease.get(_PREFIX_KEY, MISSING)
+                cached = lease.get_issued(
+                    _PREFIX_KEY, _PRIME_CACHE_RECORD_ISSUER, MISSING
+                )
                 if cached is not MISSING:
+                    cached_manifest_found = True
                     covered_root, factors, self._imported_states, validation_work = (
                         _validate_cached_prefix(cached)
                     )
@@ -142,8 +168,10 @@ class PrimePrefixRank:
                 lease.close()
                 self._lease = None
                 raise
+        dag: CoprimeRankDAG | None = None
+        cached_prefix_capability: CachedPrimePrefixCapability | None = None
         try:
-            self.dag = CoprimeRankDAG(
+            dag = CoprimeRankDAG(
                 (2,),
                 max_states=max_states,
                 max_work=max_work,
@@ -153,22 +181,47 @@ class PrimePrefixRank:
                 shared_lease=(
                     self._lease if self._imported_states <= max_states else None
                 ),
+                cache_import_issuer=(
+                    _PRIME_CACHE_RECORD_ISSUER if shared_cache else None
+                ),
             )
-            self.dag.charge_many(validation_work)
+            dag.charge_many(validation_work)
+            if cached_manifest_found:
+                cached_prefix_capability = dag.issue_cached_prefix_capability(
+                    self._cached_factors, _PRIME_CACHE_RECORD_ISSUER
+                )
             self.admission_work = validation_work
         except BaseException:
-            if self._lease is not None:
-                self._lease.close()
-                self._lease = None
+            try:
+                if dag is not None:
+                    dag.close()
+            finally:
+                if self._lease is not None:
+                    self._lease.close()
+                    self._lease = None
             raise
+        self.dag = dag
         self.covered_root = 2
         self._committed_covered_root = 2
-        self._covered_factor_authority = self.dag._factor_store_authority
+        self._covered_factor_authority = self.dag.factor_source_identity()
+        self._cached_prefix_capability = cached_prefix_capability
         self._covered_factor_count = self.dag.factor_count
         self._covered_last_factor = self.dag.last_factor
         self._coverage_publishable = True
         self.discovery_queries = 0
-        self._partial_query: object | None = None
+        self._partial_query: PrimePartialSuccessorQuery | None = None
+
+    @property
+    def partial_successor_query(self) -> PrimePartialSuccessorQuery | None:
+        """Read the exact query child without exposing an untyped slot."""
+        from number_compiler.sequences.prime.partial_successor_image import (
+            PrimePartialSuccessorQuery,
+        )
+
+        query = self._partial_query
+        if query is not None and type(query) is not PrimePartialSuccessorQuery:
+            raise RuntimeError("prime query contains another image owner")
+        return query
 
     def _admit_cached_factors(self, root: int) -> None:
         """Import only the prefix required by this request's square-root bound."""
@@ -186,11 +239,13 @@ class PrimePrefixRank:
         required = self.dag.factor_count
         while required < len(self._cached_factors):
             factor = self._cached_factors[required]
+            if type(factor) is not int:
+                raise RuntimeError("invalid shared prime prefix manifest")
             if required >= self._cached_validated_count:
                 self.dag.charge()
                 self.admission_work += 1
                 previous = self._cached_factors[required - 1]
-                if type(factor) is not int or factor <= previous:
+                if type(previous) is not int or factor <= previous:
                     raise RuntimeError("invalid shared prime prefix manifest")
                 self._cached_validated_count = required + 1
             if factor > root:
@@ -198,13 +253,17 @@ class PrimePrefixRank:
             required += 1
         if required > self.max_stages:
             raise ValueError("prime stage budget exceeded (--max-prime-stages)")
-        for factor in self._cached_factors[self.dag.factor_count : required]:
-            # The cache partition includes a process-private issuer capability;
-            # public/foreign partitions cannot enter this source binding.
-            self.dag._append_issued_consecutive_factor(factor)
+        capability = self._cached_prefix_capability
+        if required > self.dag.factor_count and capability is None:
+            raise RuntimeError("cached prime prefix has no import capability")
+        for _ in range(self.dag.factor_count, required):
+            if capability is None:
+                raise RuntimeError("cached prime prefix has no import capability")
+            self.dag.append_next_cached_prefix_factor(capability)
             self.admission_work += 1
         self.covered_root = max(self.covered_root, root)
         self._committed_covered_root = self.covered_root
+        self._covered_factor_authority = self.dag.factor_source_identity()
         self._covered_factor_count = self.dag.factor_count
         self._covered_last_factor = self.dag.last_factor
         self._coverage_publishable = True
@@ -233,6 +292,7 @@ class PrimePrefixRank:
                 if self.dag.count(root) == 1:
                     self.covered_root = root
                     self._committed_covered_root = root
+                    self._covered_factor_authority = self.dag.factor_source_identity()
                     self._covered_factor_count = self.dag.factor_count
                     self._covered_last_factor = self.dag.last_factor
                     self._coverage_publishable = True
@@ -280,12 +340,10 @@ class PrimePrefixRank:
             PrimePartialSuccessorQuery,
         )
 
-        query = self._partial_query
+        query = self.partial_successor_query
         if query is None:
             query = PrimePartialSuccessorQuery(self.dag)
             self._partial_query = query
-        if type(query) is not PrimePartialSuccessorQuery:
-            raise RuntimeError("prime query contains another image owner")
         return query.count_primes(lower, upper, self.dag.factor_count)
 
     def close(self) -> None:
@@ -296,13 +354,9 @@ class PrimePrefixRank:
                 cleanup.callback(self._lease.close)
             cleanup.callback(self.dag.close)
             if self._partial_query is not None:
-                from number_compiler.sequences.prime.partial_successor_image import (
-                    PrimePartialSuccessorQuery,
-                )
-
-                query = self._partial_query
-                if type(query) is not PrimePartialSuccessorQuery:
-                    raise RuntimeError("prime query contains another image owner")
+                query = self.partial_successor_query
+                if query is None:
+                    raise RuntimeError("prime query lost its partial successor")
                 query.close()
                 self._partial_query = None
         self._lease = None
@@ -313,7 +367,7 @@ class PrimePrefixRank:
             not self._coverage_publishable
             or type(self.covered_root) is not int
             or self.covered_root != self._committed_covered_root
-            or self.dag._factor_store_authority is not self._covered_factor_authority
+            or not self.dag.is_current_factor_source(self._covered_factor_authority)
             or self.dag.factor_count != self._covered_factor_count
             or self.dag.last_factor != self._covered_last_factor
         ):
@@ -327,7 +381,11 @@ class PrimePrefixRank:
         # therefore cannot use reuse to evade its state budget.
         state_count = max(self._imported_states, len(self.dag.memo))
         factors = self.dag.primes
-        self._lease.put(_PREFIX_KEY, (self.covered_root, factors, state_count))
+        self._lease.put_issued(
+            _PREFIX_KEY,
+            (self.covered_root, factors, state_count),
+            _PRIME_CACHE_RECORD_ISSUER,
+        )
 
     def shared_metrics(self) -> tuple[int, int, int, int, int, int, int]:
         if self._lease is None or self._cache_start is None:
@@ -419,12 +477,8 @@ def nth_prime_at_or_after(
                 length -= left_length
             descents += 1
         dag = context.dag
-        from number_compiler.sequences.prime.partial_successor_image import (
-            PrimePartialSuccessorQuery,
-        )
-
-        partial = context._partial_query
-        if type(partial) is not PrimePartialSuccessorQuery:
+        partial = context.partial_successor_query
+        if partial is None:
             raise RuntimeError("prime selection did not publish its partial successor")
         scheduler_work = dag.ledger.counters.get(
             _prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK, 0

@@ -20,8 +20,8 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 )
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.fields.event_innovation import normalize_event_sum
+from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    InnovationID,
     SymbolicInnovationArena,
 )
 

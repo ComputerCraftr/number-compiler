@@ -42,15 +42,17 @@ from number_compiler.hashlife.execution.field_transfer import (
 )
 from number_compiler.hashlife.execution.field_transfers import FieldTransferArena
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
     MacroComponents,
     MacroInterface,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.defect_arena import CollatzDefectArena
 from number_compiler.sequences.collatz.field_action import (
     CollatzCocyclePrograms,
-    CollatzDefectArena,
     CollatzFieldActionArena,
     CollatzFieldActionID,
     ProgramRole,
@@ -383,6 +385,15 @@ class _SymbolicPrograms:
         role: ProgramRole,
         reference: ActionProgramID,
     ) -> SemanticIdentity:
+        self.validate(role, reference)
+        return SemanticIdentity("", ("collatz-local-test-program-v1", role))
+
+    def audit_semantic_identity(
+        self,
+        role: ProgramRole,
+        reference: ActionProgramID,
+    ) -> SemanticIdentity:
+        """Expose the fixture's already-defined identity without mutation."""
         self.validate(role, reference)
         return SemanticIdentity("", ("collatz-local-test-program-v1", role))
 

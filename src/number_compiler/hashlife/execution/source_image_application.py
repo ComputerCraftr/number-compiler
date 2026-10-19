@@ -14,15 +14,17 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundCompositeAdapter,
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+    SourceImageApplyFrame,
+    SourceImageApplyKey,
+    SourceImageRelativeKey,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
     SourceImageView,
-    _ApplyFrame,
-    _ApplyKey,
-    _RelativeKey,
 )
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
@@ -85,13 +87,13 @@ def apply_source_image(
     def candidate_transaction() -> AbstractContextManager[None]:
         return nullcontext() if transaction_factory is None else transaction_factory()
 
-    origin = self._origin(adapter, source)
+    origin = self.origin(adapter, source)
     workspace = self._workspace
     if workspace.running or len(workspace):
         raise RuntimeError("source image workspace is already active")
     workspace_credit = 0
 
-    def push_frame(frame: _ApplyFrame) -> None:
+    def push_frame(frame: SourceImageApplyFrame) -> None:
         nonlocal workspace_credit
         self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
         try:
@@ -118,7 +120,7 @@ def apply_source_image(
 
     try:
         workspace.running = True
-        push_frame(_ApplyFrame(origin, action))
+        push_frame(SourceImageApplyFrame(origin, action))
         while workspace.has_frames():
             peak = len(workspace)
             previous = self.ledger.counters.get(
@@ -132,7 +134,7 @@ def apply_source_image(
             self.ledger.bump(_execution_keys.SOURCE_IMAGE_POSTORDER_FRAMES)
             frame = workspace.pop_frame()
             release_workspace()
-            apply_key = _ApplyKey(adapter_key, frame.source, frame.action)
+            apply_key = SourceImageApplyKey(adapter_key, frame.source, frame.action)
             action_key = adapter_key[0], adapter_key[1], frame.action
             if frame.stage == 0:
                 self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_ATTEMPTS)
@@ -143,7 +145,7 @@ def apply_source_image(
                     raise ValueError("split contexts cannot transport guarded failure")
                 found = self._applications.get(apply_key)
                 if found is not None:
-                    self._validate_application_binding(adapter, apply_key, found)
+                    self.validate_application_binding(adapter, apply_key, found)
                     if (
                         split is not None
                         and self.view(found).failure_prefix is not None
@@ -159,23 +161,25 @@ def apply_source_image(
                 relative_key = None
                 if admitted_input is not None:
                     self._validate_key(admitted_input, "source image admitted input")
-                    relative_key = _RelativeKey(
+                    relative_key = SourceImageRelativeKey(
                         adapter_key, frame.action, admitted_input
                     )
                     cached = self._relative.get(relative_key)
                     if cached is not None:
                         cached_source = self.view(cached.source)
                         cached_result = self.view(cached.result)
-                        if not _typed_equal(
+                        if not typed_payload_equal(
                             adapter.admitted_input_key(frame.action, cached_source),
                             admitted_input,
                         ):
                             raise ValueError(
                                 "relative transfer has another admitted input"
                             )
-                        self._validate_application_binding(
+                        self.validate_application_binding(
                             adapter,
-                            _ApplyKey(adapter_key, cached.source, frame.action),
+                            SourceImageApplyKey(
+                                adapter_key, cached.source, frame.action
+                            ),
                             cached.result,
                         )
                         with candidate_transaction():
@@ -233,7 +237,7 @@ def apply_source_image(
                     )
                 if workspace.contains_active(action_key):
                     raise ValueError("source image action graph contains a cycle")
-                if not _typed_equal(
+                if not typed_payload_equal(
                     adapter.compose_actions(before, after), frame.action
                 ):
                     raise ValueError(
@@ -280,7 +284,7 @@ def apply_source_image(
                 frame.before_source = (
                     frame.source
                     if split is None
-                    else self._origin(
+                    else self.origin(
                         adapter,
                         split.first_child_source(
                             frame.action, source_view, before, after
@@ -290,7 +294,7 @@ def apply_source_image(
                 if split is not None:
                     self.ledger.bump(_execution_keys.SOURCE_IMAGE_FIRST_CHILD_CONTEXTS)
                 push_frame(frame)
-                push_frame(_ApplyFrame(frame.before_source, before))
+                push_frame(SourceImageApplyFrame(frame.before_source, before))
                 continue
             if frame.stage == 1:
                 if (
@@ -302,16 +306,18 @@ def apply_source_image(
                 before_image = workspace.pop_value()
                 release_workspace()
                 if split is not None:
-                    self._validate_application_binding(
+                    self.validate_application_binding(
                         adapter,
-                        _ApplyKey(adapter_key, frame.before_source, frame.children[0]),
+                        SourceImageApplyKey(
+                            adapter_key, frame.before_source, frame.children[0]
+                        ),
                         before_image,
                     )
                 frame.stage, frame.before = 2, before_image
                 frame.after_source = (
                     before_image
                     if split is None
-                    else self._origin(
+                    else self.origin(
                         adapter,
                         split.second_child_source(
                             frame.action,
@@ -324,7 +330,7 @@ def apply_source_image(
                 if split is not None:
                     self.ledger.bump(_execution_keys.SOURCE_IMAGE_SECOND_CHILD_CONTEXTS)
                 push_frame(frame)
-                push_frame(_ApplyFrame(frame.after_source, frame.children[1]))
+                push_frame(SourceImageApplyFrame(frame.after_source, frame.children[1]))
                 continue
             if (
                 frame.children is None
@@ -341,13 +347,17 @@ def apply_source_image(
             before_view = self.view(frame.before)
             after_view = self.view(after_image)
             if split is not None:
-                self._validate_application_binding(
+                self.validate_application_binding(
                     adapter,
-                    _ApplyKey(adapter_key, frame.after_source, frame.children[1]),
+                    SourceImageApplyKey(
+                        adapter_key, frame.after_source, frame.children[1]
+                    ),
                     after_image,
                 )
             expected = adapter.compose_actions(source_view.binding.action, frame.action)
-            if split is None and not _typed_equal(after_view.binding.action, expected):
+            if split is None and not typed_payload_equal(
+                after_view.binding.action, expected
+            ):
                 raise ValueError(
                     "source image chronology produced another action binding"
                 )
@@ -397,11 +407,11 @@ def apply_source_image(
 def _publish_candidate(
     core: SourceBoundSchedulerCore,
     adapter: SourceBoundImageAdapter,
-    key: _ApplyKey,
+    key: SourceImageApplyKey,
     source: SourceImageView,
     action: Hashable,
     candidate: SourceImageCandidate,
-    relative_key: _RelativeKey | None,
+    relative_key: SourceImageRelativeKey | None,
     total: bool,
 ) -> SourceImageID:
     """Admit totality and cumulative action identically for primitive/composite publication."""

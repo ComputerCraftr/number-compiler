@@ -103,7 +103,7 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
         raise ValueError("behavior probe requires positive exact temporal depth")
     if type(width) is not int or width < 2 or width & (width - 1):
         raise ValueError("behavior probe requires a dyadic width of at least two")
-    source = git_source(ROOT).as_dict()
+    git_provenance = git_source(ROOT).as_dict()
     start = perf_counter()
     ledger, tiles, adapter, primitive, scheduler = _runtime(10)
     alphabet = adapter.alphabet(primitive)
@@ -153,7 +153,7 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
                 "steps": steps,
                 "width": width,
                 "pid": os.getpid(),
-                "git_source": source,
+                "git_source": git_provenance,
                 "evidence_mode": "development",
                 "cacheable": False,
                 "cold_seconds": query_end - start,
@@ -178,7 +178,7 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
 
 def fresh_series(output: Path, width: int) -> None:
     records: list[dict[str, object]] = []
-    source = git_source(ROOT).as_dict()
+    git_provenance = git_source(ROOT).as_dict()
     for enabled in (True, False):
         for steps in HORIZONS:
             for trial in range(5):
@@ -205,7 +205,7 @@ def fresh_series(output: Path, width: int) -> None:
                     row = json.loads(result.stdout)
                     status = (
                         "complete"
-                        if row["git_source"] == source
+                        if row["git_source"] == git_provenance
                         else "git_state_changed"
                     )
                 except (subprocess.SubprocessError, ValueError, KeyError) as error:
@@ -223,7 +223,7 @@ def fresh_series(output: Path, width: int) -> None:
                 output.write_text(
                     json.dumps(
                         {
-                            "git_source": source,
+                            "git_source": git_provenance,
                             "evidence_mode": "development",
                             "cacheable": False,
                             "records": records,

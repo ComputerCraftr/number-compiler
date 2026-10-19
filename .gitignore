@@ -225,3 +225,4 @@ __marimo__/
 .isabelle/
 .env.*
 !.env.example
+devtools/typing/node_modules/

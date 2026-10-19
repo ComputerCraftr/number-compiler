@@ -27,12 +27,12 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldGeometryID,
 )
 from number_compiler.hashlife.execution.field_image_domains import (
+    FieldImageDomain,
+    FieldImageDomainEntry,
+    FieldImageDomainKey,
+    FieldImageInterfaceAuthority,
+    FieldImageOutputAuthority,
     FieldInterfaceArena,
-    _DomainEntry,
-    _DomainLookupKey,
-    _FieldImageDomain,
-    _InterfaceAuthority,
-    _OutputAuthority,
     register_field_image_domain,
     validate_field_image_authorities,
 )
@@ -42,17 +42,22 @@ from number_compiler.hashlife.execution.field_image_summaries import (
     ParametricFieldImageSummary,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
-    _require_immutable_key,
-    _TypedKey,
+    TypedPayloadKey,
+    require_immutable_key,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    LocalInterfaceID,
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
+from number_compiler.resources.field_image_audit_contracts import (
+    RecursiveFieldImageAuditSnapshot,
+    SourceCellArenaAuditSnapshot,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
-from number_compiler.resources.stores import append_indexed_node, make_node_index
+from number_compiler.resources.stores import (
+    NodeIndexFactory,
+    append_indexed_node,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,45 +147,31 @@ class SourceCellArena:
         self._key_owner = self.ledger.register(
             prefix + "-interner", "source_cell_interner"
         )
-        self._nodes = self.ledger.make_list(self._node_owner)
-        self._keys = self.ledger.make_dict(self._key_owner)
+        self._nodes, self._keys = NodeIndexFactory[SourceCellRecord, DyadicTile].dense(
+            self.ledger, self._node_owner, self._key_owner
+        )
         self._forest_node_owner = self.ledger.register(
             prefix + "-forest-nodes", "source_forest"
         )
         self._forest_key_owner = self.ledger.register(
             prefix + "-forest-keys", "source_forest_interner"
         )
-        self._forests: MutableSequence[SourceForestRecord] = self.ledger.make_list(
-            self._forest_node_owner
-        )
-        self._forest_keys: MutableMapping[tuple[tuple[int, ...], int], int] = (
-            self.ledger.make_dict(self._forest_key_owner)
-        )
-        self.ledger.register_container(
-            self._node_owner,
-            self._nodes,
-            node_count=lambda: len(self._nodes),
-            payloads=lambda: self._nodes,
-        )
-        self.ledger.register_container(
-            self._key_owner,
-            self._keys,
-            payloads=self._keys.items,
-        )
-        self.ledger.register_container(
-            self._forest_node_owner,
-            self._forests,
-            node_count=lambda: len(self._forests),
-            payloads=lambda: self._forests,
-        )
-        self.ledger.register_container(
-            self._forest_key_owner,
-            self._forest_keys,
-            payloads=self._forest_keys.items,
-        )
+        self._forests, self._forest_keys = NodeIndexFactory[
+            SourceForestRecord, tuple[tuple[int, ...], int]
+        ].dense(self.ledger, self._forest_node_owner, self._forest_key_owner)
 
     def _handle(self, local_id: int) -> SourceCellID:
         return SourceCellID(self.owner, self._KIND, local_id)
+
+    @property
+    def source_kind(self) -> str:
+        """Nominal handle kind for original source cells."""
+        return self._KIND
+
+    @property
+    def forest_kind(self) -> str:
+        """Nominal handle kind for complete source forests."""
+        return self._FOREST_KIND
 
     def _forest_handle(self, local_id: int) -> SourceForestID:
         return SourceForestID(self.owner, self._FOREST_KIND, local_id)
@@ -196,6 +187,23 @@ class SourceCellArena:
             raise TypeError("expected an original source-forest ID")
         reference.validate(self.owner, self._FOREST_KIND, size=len(self._forests))
         return self._forests[reference.local_id]
+
+    def audit_snapshot(self) -> SourceCellArenaAuditSnapshot:
+        """Expose current stores read-only to the explicit forensic auditor."""
+        return SourceCellArenaAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+            self._FOREST_KIND,
+            self._forest_node_owner,
+            self._forests,
+            self._forest_key_owner,
+            self._forest_keys,
+        )
 
     def forest(self, start: int, extent: int) -> SourceForestID:
         """Intern a complete occurrence using only existing original source cells."""
@@ -460,7 +468,7 @@ class ImageRequestKey:
                 self.geometry,
                 self.signature,
                 self.active_extent,
-                _TypedKey(self.context),
+                TypedPayloadKey(self.context),
             )
         )
 
@@ -472,12 +480,12 @@ class ImageRequestKey:
             and self.geometry == other.geometry
             and self.signature == other.signature
             and self.active_extent == other.active_extent
-            and _TypedKey(self.context) == _TypedKey(other.context)
+            and TypedPayloadKey(self.context) == TypedPayloadKey(other.context)
         )
 
 
 @dataclass(frozen=True, slots=True)
-class _ImageKey:
+class FieldImageSemanticKey:
     level: int
     left: FieldImageID | None
     right: FieldImageID | None
@@ -503,7 +511,7 @@ class RecursiveFieldImageArena:
     """
 
     _nodes: MutableMapping[int, FieldImageRecord]
-    _keys: MutableMapping[_ImageKey, int]
+    _keys: MutableMapping[FieldImageSemanticKey, int]
 
     _KIND = "field-image"
 
@@ -596,7 +604,7 @@ class RecursiveFieldImageArena:
         self._domain_owner = ledger.register(
             prefix + "-domains", "field_image_semantic_domain"
         )
-        self._domains: MutableMapping[_DomainLookupKey, _DomainEntry] = (
+        self._domains: MutableMapping[FieldImageDomainKey, FieldImageDomainEntry] = (
             ledger.make_dict(self._domain_owner)
         )
         self.ledger.register_container(
@@ -624,22 +632,11 @@ class RecursiveFieldImageArena:
         self._node_owner = ledger.register(prefix + "-nodes", "field_image")
         self._key_owner = ledger.register(prefix + "-interner", "field_image_interner")
         self._binding_owner = ledger.register(prefix + "-bindings", "spatial_binding")
-        self._nodes, self._keys = make_node_index(
-            ledger, self._node_owner, self._key_owner
-        )
+        self._nodes, self._keys = NodeIndexFactory[
+            FieldImageRecord, FieldImageSemanticKey
+        ].sparse(ledger, self._node_owner, self._key_owner)
         self._bindings: MutableMapping[ImageRequestKey, FieldImageID] = (
             ledger.make_dict(self._binding_owner)
-        )
-        self.ledger.register_container(
-            self._node_owner,
-            self._nodes,
-            node_count=lambda: len(self._nodes),
-            payloads=self._nodes.items,
-        )
-        self.ledger.register_container(
-            self._key_owner,
-            self._keys,
-            payloads=self._keys.items,
         )
         self.ledger.register_container(
             self._binding_owner,
@@ -684,12 +681,14 @@ class RecursiveFieldImageArena:
             signature_authority=signature_authority,
         )
 
-    def _domain(self, action: FieldCellActionID) -> _FieldImageDomain:
+    def _domain(self, action: FieldCellActionID) -> FieldImageDomain:
         if type(action) is not FieldCellActionID:
             raise TypeError("image request requires a field action")
         ArenaHandle.__post_init__(action)
-        found = self._domains.get(_DomainLookupKey("action", action.owner, action.kind))
-        if type(found) is not _FieldImageDomain:
+        found = self._domains.get(
+            FieldImageDomainKey("action", action.owner, action.kind)
+        )
+        if type(found) is not FieldImageDomain:
             raise ValueError("field action belongs to a different arena or node kind")
         action.validate(found.action_owner, found.action_kind)
         found.action_validate(action)
@@ -701,9 +700,9 @@ class RecursiveFieldImageArena:
             raise TypeError("field image requires a local interface ID")
         ArenaHandle.__post_init__(reference)
         found = self._domains.get(
-            _DomainLookupKey("interface", reference.owner, reference.kind),
+            FieldImageDomainKey("interface", reference.owner, reference.kind),
         )
-        if type(found) is not _InterfaceAuthority:
+        if type(found) is not FieldImageInterfaceAuthority:
             raise ValueError("local interface belongs to an unregistered image domain")
         return cast(_InterfaceRecord, found.arena.resolve(reference))
 
@@ -719,20 +718,37 @@ class RecursiveFieldImageArena:
             raise ValueError("field-image ID is stale or was never published")
         return found
 
+    def audit_snapshot(self) -> RecursiveFieldImageAuditSnapshot:
+        """Expose current stores read-only to the explicit forensic auditor."""
+        return RecursiveFieldImageAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._next_id,
+            self._domain_owner,
+            self._domains,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+            self._binding_owner,
+            self._bindings,
+        )
+
     def validate_request(self, key: ImageRequestKey) -> None:
         """Validate every scoped component before consulting an image cache."""
         if type(key) is not ImageRequestKey:
             raise TypeError("expected a canonical image request")
         domain = self._domain(key.action)
         if type(key.source) is SourceCellID:
-            key.source.validate(self.sources.owner, self.sources._KIND)
+            key.source.validate(self.sources.owner, self.sources.source_kind)
         elif type(key.source) is SourceForestID:
-            key.source.validate(self.sources.owner, self.sources._FOREST_KIND)
+            key.source.validate(self.sources.owner, self.sources.forest_kind)
         else:
             raise TypeError("image request requires a scoped source binding")
         if type(key.geometry) is not FieldGeometryID:
             raise TypeError("image request requires normalized geometry")
-        key.geometry.validate(self.geometries.owner, self.geometries._KIND)
+        key.geometry.validate(self.geometries.owner, self.geometries.geometry_kind)
         if type(key.signature) is not PortSignatureID:
             raise TypeError("image request requires a scoped port signature")
         key.signature.validate(domain.interfaces.owner, domain.signature_kind)
@@ -747,7 +763,7 @@ class RecursiveFieldImageArena:
         ):
             raise ValueError("image request active extent lies outside its source")
         if key.context is not None:
-            _require_immutable_key(key.context, "provider image request context")
+            require_immutable_key(key.context, "provider image request context")
         geometry = self.geometries.resolve(key.geometry)
         # The quotient arena owns every production signature.  Validating its
         # allocated range closes the same-owner forged-integer hole before the
@@ -773,9 +789,9 @@ class RecursiveFieldImageArena:
             raise TypeError("field image requires a coordinate output morphism")
         ArenaHandle.__post_init__(output)
         found = self._domains.get(
-            _DomainLookupKey("output", output.owner, output.kind),
+            FieldImageDomainKey("output", output.owner, output.kind),
         )
-        if type(found) is not _OutputAuthority:
+        if type(found) is not FieldImageOutputAuthority:
             raise ValueError(
                 "coordinate output belongs to an unregistered image domain"
             )
@@ -863,7 +879,7 @@ class RecursiveFieldImageArena:
                     "field image request already has a different semantic result"
                 )
             return existing
-        semantic = _ImageKey(
+        semantic = FieldImageSemanticKey(
             record.level,
             record.left,
             record.right,
@@ -913,6 +929,7 @@ class RecursiveFieldImageArena:
 
 
 __all__ = [
+    "FieldImageSemanticKey",
     "FieldImageID",
     "FieldImageRecord",
     "FieldImageSummary",

@@ -17,7 +17,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnLaw,
     DyadicReturnSupportID,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
     balanced_residue_effect,
@@ -47,7 +47,9 @@ def _literal(
     return value, branch_word, odd_steps, delta, minimum
 
 
-def _assert_physical_effect(effect: _SupportNode, residue: int, width: int) -> None:
+def _assert_physical_effect(
+    effect: DyadicReturnSupportRecord, residue: int, width: int
+) -> None:
     endpoint, _word, odd_steps, delta, minimum = _literal(
         COLLATZ_PHYSICAL_LAW, residue, width
     )

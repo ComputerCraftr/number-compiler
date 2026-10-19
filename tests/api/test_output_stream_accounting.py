@@ -23,7 +23,7 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 def test_collatz_partial_binary_stream_counts_only_pulled_digits() -> None:
     term = PoweredCollatzTerm(27, 1)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["collatz_output_stream_requests"] == 0
     stream = term.iter_digits()
     assert counters["collatz_output_stream_requests"] == 0
@@ -43,7 +43,7 @@ def test_collatz_radix_conversion_has_separate_operand_and_output_counts() -> No
     payload = PoweredCollatzTermPayload(term, radix=10)
 
     assert tuple(payload.iter_digits()) == tuple(digits_lsd(82, 10))
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["collatz_output_stream_requests"] == 1
     assert counters["collatz_output_stream_emitted_digits"] == 2
     assert counters["collatz_radix_conversion_requests"] == 1
@@ -58,7 +58,7 @@ def test_reverse_output_stream_counts_terminal_output_and_partial_close() -> Non
     assert isinstance(stream, Generator)
     stream.close()
 
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["reverse_output_stream_requests"] == 1
     assert counters["reverse_output_stream_emitted_digits"] == 1
     assert counters["reverse_output_stream_cancellations"] == 1
@@ -111,12 +111,12 @@ def test_reverse_final_stream_metrics_include_terminal_carry() -> None:
         expected, _ = reverse_add_digit_step(expected, 10)
     term = ReverseAddPoweredTerm(196, 8)
     assert tuple(term.iter_digits()) == expected
-    counters = dict(term._ledger.counters)
-    report = collect_temporal_diagnostics_snapshot(term._ledger)
+    counters = dict(term.resource_ledger.counters)
+    report = collect_temporal_diagnostics_snapshot(term.resource_ledger)
     assert report.stream.requests == 1
     assert report.stream.emitted == len(expected) == 7
     assert report.stream.cancellations == report.stream.failures == 0
     # Q19's paired recurrence emits six pair digits here and the authenticated
     # final carry supplies the seventh public digit.
     assert counters["recursive_output_stream_emitted_digits"] == len(expected) == 7
-    assert term._ledger.counters == counters
+    assert term.resource_ledger.counters == counters

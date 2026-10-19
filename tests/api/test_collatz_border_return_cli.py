@@ -237,6 +237,7 @@ def test_public_source_ending_in_nine_keeps_the_standalone_989_route(
         "cycle": [8, 9],
         "entry_phase": 1,
         "entry_digit": 9,
+        "selector_guard": [9, 10, 1],
         "run_parameters": [2],
         "display_label": "989",
     }

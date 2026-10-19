@@ -36,7 +36,10 @@ def test_collatz_radix_projection_reports_source_image_work() -> None:
     assert projected_term._power is None
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.sequential_generation_advances == 0
-    assert collect_ledger_metrics(projected_term._ledger).forbidden_future_payloads == 0
+    assert (
+        collect_ledger_metrics(projected_term.resource_ledger).forbidden_future_payloads
+        == 0
+    )
 
 
 @pytest.mark.parametrize("seed,steps", ((27, 8),), ids=("collatz",))
@@ -48,7 +51,7 @@ def test_collatz_runtime_image_matches_oracle_and_replays_without_republication(
     expected = physical_collatz_literal(seed, steps)
     expected_low = expected & 1
     assert term.digit(0) == expected_low
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     metrics = term.metrics()
     behavior = term.behavior_metrics()
     assert behavior.temporal_quotient_family == "collatz-dyadic-source-image"
@@ -57,7 +60,7 @@ def test_collatz_runtime_image_matches_oracle_and_replays_without_republication(
     assert metrics.forbidden_future_payloads == 0
     assert metrics.retained_unbounded_future_integers == 0
     assert term.materialize(max_bits=10_000) == expected
-    replay_counters = dict(term._ledger.counters)
+    replay_counters = dict(term.resource_ledger.counters)
     assert term.materialize(max_bits=10_000) == expected
-    after = term._ledger.counters
+    after = term.resource_ledger.counters
     assert_source_image_replay_stable(replay_counters, after)

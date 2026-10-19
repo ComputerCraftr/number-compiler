@@ -27,7 +27,7 @@ def binder_depth(
         if local_id in seen:
             continue
         seen.add(local_id)
-        node = arena._expressions[local_id]
+        node = arena.expression(arena.expression_id(local_id))
         pending.extend(node.children)
         if node.function is None:
             continue
@@ -45,8 +45,7 @@ def free_variables(
 ) -> tuple[HigherExpressionID, ...]:
     arena.expression(expression)
     return tuple(
-        arena._expression_handle(item)
-        for item in arena._expression_free_ids[expression.local_id]
+        arena.expression_id(item) for item in arena.free_variable_local_ids(expression)
     )
 
 
@@ -66,7 +65,7 @@ def reachable_size(
         seen.add(local_id)
         if len(seen) > limit:
             return None
-        node = arena._expressions[local_id]
+        node = arena.expression(arena.expression_id(local_id))
         pending.extend(node.children)
         if node.function is not None:
             pending.append(arena.function_record(node.function).body.local_id)

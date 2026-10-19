@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from number_compiler.resources.causal_types import CausalMemoKey
 from number_compiler.resources.causal_workspace import CausalTaskWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.ledger_failures import inject_release_failure
@@ -12,13 +13,13 @@ from tests.support.ledger_failures import inject_release_failure
 def _workspace_with_memo_entry() -> tuple[
     ResourceLedger,
     CausalTaskWorkspace,
-    tuple[str, tuple[object, ...]],
+    CausalMemoKey,
 ]:
     ledger = ResourceLedger()
     workspace = CausalTaskWorkspace(ledger, "causal-clear-test")
     key = ("test", ())
     ledger.reserve(workspace.memo_owner, entries=1)
-    workspace.memo[key] = object()
+    workspace.memo[key] = False
     return ledger, workspace, key
 
 

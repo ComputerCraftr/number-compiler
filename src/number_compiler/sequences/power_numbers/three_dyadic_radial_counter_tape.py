@@ -22,7 +22,7 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
 from number_compiler.arithmetic.fields.walsh import WalshH5, walsh_h5_at_offset
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 from number_compiler.sequences.power_numbers.three_dyadic_boolean_counter import (
     MAX_COUNTER_FOLD_WIDTH,
     MAX_COUNTER_PRECISION,
@@ -43,7 +43,9 @@ class _TapeProvenance:
 
 def _seal_tape(tape: DyadicCertifiedTape) -> None:
     object.__setattr__(
-        tape, "_issuer", _TapeProvenance(_TAPE_ISSUER, ref(tape), tape._snapshot())
+        tape,
+        "_issuer",
+        _TapeProvenance(_TAPE_ISSUER, ref(tape), tape.structural_snapshot()),
     )
 
 
@@ -71,7 +73,7 @@ class DyadicCertifiedTape:
     next_unit_low: int
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def structural_snapshot(self) -> tuple[object, ...]:
         return (
             self.source_level,
             self.fermat_width,
@@ -92,8 +94,7 @@ class DyadicCertifiedTape:
                 (h.length_mod6, h.phi2, h.phi3_a, h.phi3_b)
                 for h in self.counter.harmonics
             ),
-            self.counter._output_words,
-            self.counter._xor_masks,
+            self.counter.structural_snapshot(),
         )
 
     @property
@@ -103,7 +104,7 @@ class DyadicCertifiedTape:
             type(issuer) is _TapeProvenance
             and issuer.issuer is _TAPE_ISSUER
             and issuer.record() is self
-            and _typed_equal(issuer.snapshot, self._snapshot())
+            and typed_payload_equal(issuer.snapshot, self.structural_snapshot())
         )
 
     def _require_verified(self) -> None:

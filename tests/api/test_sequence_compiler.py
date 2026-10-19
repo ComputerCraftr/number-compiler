@@ -113,7 +113,7 @@ def test_production_compiler_import_graph_excludes_tests_bench_release_and_analy
 ):
     path = Path(number_compiler.__file__).with_name("api") / "sequence_compiler.py"
     tree = ast.parse(path.read_text())
-    imported = set()
+    imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.lstrip("."))
@@ -124,11 +124,7 @@ def test_production_compiler_import_graph_excludes_tests_bench_release_and_analy
     assert not hasattr(number_compiler, "trial_factor")
 
 
-@pytest.mark.parametrize("seed", [1, 195, 196, 197])
-@pytest.mark.parametrize("base", [2, 3, 4, 5, 7, 8, 10, 12, 16])
-def test_reverse_add_seed_base_matrix_compiles_exact_radix_values(
-    seed: int, base: int
-) -> None:
+def _assert_reverse_add_radix_values(seed: int, base: int) -> None:
     steps = 4
     got = CanonicalSequenceCompiler().compile_diagnostic(
         ReverseAddSequenceSpec(seed, base, steps)
@@ -140,6 +136,36 @@ def test_reverse_add_seed_base_matrix_compiles_exact_radix_values(
         len(digits_lsd(b, base)) - len(digits_lsd(a, base))
         for a, b in itertools.pairwise(want)
     )
+
+
+@pytest.mark.parametrize("seed", [1, 195, 196, 197])
+@pytest.mark.parametrize("base", [2, 3, 4, 5, 7, 8, 10, 12, 16])
+@pytest.mark.validation
+def test_reverse_add_seed_base_matrix_compiles_exact_radix_values(
+    seed: int, base: int
+) -> None:
+    _assert_reverse_add_radix_values(seed, base)
+
+
+def test_reverse_add_seed_base_unit_boundaries() -> None:
+    # Keep every radix and every seed boundary in unit coverage. The full
+    # Cartesian differential matrix remains intact in the validation tier.
+    representatives = (
+        (1, 2),
+        (195, 3),
+        (196, 4),
+        (197, 5),
+        (1, 7),
+        (195, 8),
+        (196, 12),
+        (197, 16),
+        (1, 10),
+        (195, 10),
+        (196, 10),
+        (197, 10),
+    )
+    for seed, base in representatives:
+        _assert_reverse_add_radix_values(seed, base)
 
 
 def test_fermat_and_mersenne_are_actual_symbolic_radix_compilations_not_materialized_bitmaps() -> (
@@ -350,7 +376,7 @@ def test_special_source_compile_never_calls_factor_or_certificate_hot_paths(
     monkeypatch.setattr(
         congruence.FactoredPrimeAutomaton,
         "build",
-        classmethod(lambda cls, *args, **kwargs: forbidden()),
+        forbidden,
     )
 
     compiler = CanonicalSequenceCompiler()
@@ -653,7 +679,7 @@ def test_default_special_theorem_fails_closed_without_factor_or_recurrence(
     monkeypatch.setattr(
         congruence.FactoredPrimeAutomaton,
         "build",
-        classmethod(lambda cls, *args, **kwargs: forbidden()),
+        forbidden,
     )
     compiler = CanonicalSequenceCompiler()
     f4 = compiler.resolve_special_theorem("fermat", 4)

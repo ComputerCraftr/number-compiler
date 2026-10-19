@@ -24,12 +24,13 @@ from typing import Protocol, cast
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
 from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.skew_moments import SkewMoment
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
     issue_source_record,
     validate_source_record,
 )
@@ -52,53 +53,19 @@ PHYSICAL_GROWTH_CYCLES: tuple[tuple[int, int, int, int], ...] = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class WidthMoments:
-    """(duration, width increments, weighted increments) under concatenation."""
-
-    steps: int = 0
-    growth: int = 0
-    skew: int = 0
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.steps) is not int
-            or type(self.growth) is not int
-            or type(self.skew) is not int
-            or self.steps < 0
-            or self.growth < 0
-            or self.skew < 0
-        ):
-            raise ValueError("invalid physical width-moment action")
-
-    def then(self, later: WidthMoments) -> WidthMoments:
-        if not isinstance(later, WidthMoments):
-            raise TypeError("width actions must compose with width actions")
-        return WidthMoments(
-            self.steps + later.steps,
-            self.growth + later.growth,
-            self.skew + later.skew + later.steps * self.growth,
-        )
-
-    def power(self, repeats: int) -> WidthMoments:
-        if type(repeats) is not int or repeats < 0:
-            raise ValueError("repeat count must be nonnegative")
-        return binary_power(
-            self,
-            repeats,
-            identity=WidthMoments(),
-            compose=lambda first, second: first.then(second),
-        ).value
-
-    @classmethod
-    def from_growth(cls, word: tuple[int, ...]) -> WidthMoments:
-        if any(type(g) is not int or g not in (0, 1) for g in word):
-            raise ValueError("physical growth letters must be bits")
-        n = len(word)
-        return cls(n, sum(word), sum((n - i - 1) * g for i, g in enumerate(word)))
+def _growth_moment(word: tuple[int, ...]) -> SkewMoment:
+    """Convert an admitted physical growth word into the shared skew monoid."""
+    if any(type(growth) is not int or growth not in (0, 1) for growth in word):
+        raise ValueError("physical growth letters must be bits")
+    steps = len(word)
+    return SkewMoment(
+        steps,
+        sum(word),
+        sum((steps - index - 1) * growth for index, growth in enumerate(word)),
+    )
 
 
-def certified_width_moments(phase: int, steps: int) -> WidthMoments:
+def certified_width_moments(phase: int, steps: int) -> SkewMoment:
     """Binary-powered growth and quadratic skew for a certified border phase."""
     if type(phase) is not int or phase not in range(4):
         raise ValueError("an authenticated edge phase is required")
@@ -107,34 +74,32 @@ def certified_width_moments(phase: int, steps: int) -> WidthMoments:
     word = PHYSICAL_GROWTH_CYCLES[phase]
     repeat, remainder = divmod(steps, 4)
     return (
-        WidthMoments.from_growth(word)
-        .power(repeat)
-        .then(WidthMoments.from_growth(word[:remainder]))
+        _growth_moment(word).power_formal(repeat).then(_growth_moment(word[:remainder]))
     )
 
 
 @dataclass(frozen=True, slots=True)
-class _SLPResidues:
+class SLPResidues:
     """A concatenation monoid with two numerical residues, no digit expansion."""
 
     length: int
     modulo99: int
     modulo198: int
 
-    def then(self, later: _SLPResidues) -> _SLPResidues:
-        return _SLPResidues(
+    def then(self, later: SLPResidues) -> SLPResidues:
+        return SLPResidues(
             self.length + later.length,
             (self.modulo99 * pow(10, later.length, 99) + later.modulo99) % 99,
             (self.modulo198 * pow(10, later.length, 198) + later.modulo198) % 198,
         )
 
-    def power(self, times: int) -> _SLPResidues:
+    def power(self, times: int) -> SLPResidues:
         if type(times) is not int or times < 0:
             raise ValueError("negative SLP repeat count")
         return binary_power(
             self,
             times,
-            identity=_SLPResidues(0, 0, 0),
+            identity=SLPResidues(0, 0, 0),
             compose=lambda first, second: first.then(second),
         ).value
 
@@ -161,8 +126,8 @@ def decimal_residues_from_slp(
         values = fold_slp_dag(
             arena,
             root,
-            empty_value=_SLPResidues(0, 0, 0),
-            terminal_value=lambda d: _SLPResidues(1, d % 99, d % 198),
+            empty_value=SLPResidues(0, 0, 0),
+            terminal_value=lambda d: SLPResidues(1, d % 99, d % 198),
             concatenate=lambda a, b: a.then(b),
             repeat=lambda a, count: a.power(count),
             on_reduce=(
@@ -228,7 +193,7 @@ def source_residue_quotient(
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedResidueTemporalAction(_SourceAuthorizedRecord):
+class CertifiedResidueTemporalAction(SourceAuthorizedRecord):
     """Closed predictive modulus-99/198 action, NOT a whole-integer closed form."""
 
     phase: int
@@ -278,7 +243,7 @@ def certified_residue_action(
     ):
         raise ValueError("incompatible source residue ports")
     moments = certified_width_moments(phase, duration)
-    exponent = moments.steps * (width - 1) + moments.skew
+    exponent = moments.duration * (width - 1) + moments.V
     # This is the exact width-dependent temporal action, not an endpoint
     # arithmetic check.  10**2 = 1 modulo 99; the modulo-198 formula retains
     # the doubled reversal congruence for all positive durations.
@@ -288,9 +253,9 @@ def certified_residue_action(
         phase,
         width,
         duration,
-        moments.growth,
-        moments.skew,
-        width + moments.growth,
+        moments.U,
+        moments.V,
+        width + moments.U,
         mul99,
         mul198,
         source_mod99,

@@ -79,7 +79,7 @@ def test_equal_control_does_not_erase_terminal_gain_or_literal_weight() -> None:
 
 
 def test_internal_entry_catalog_includes_offsets_through_98() -> None:
-    periods, decade_classes = candidates._phase_factorization_profile()
+    periods, decade_classes = candidates.phase_factorization_profile()
     assert sum(periods.values()) == 116
     assert decade_classes == 6454
     assert (

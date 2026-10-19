@@ -311,6 +311,30 @@ class ParityCarryTape:
     def prefix_odds(self, time: int) -> int:
         return sum(count * node.odds for node, count in self._prefix_chunks(time))
 
+    def prefix_letters(self, time: int) -> tuple[int, ...]:
+        """Emit one bounded literal prefix from this retained parity SLP."""
+        if type(time) is not int or not 0 <= time <= self.steps:
+            raise ValueError("parity tape prefix lies outside its certified word")
+        result: list[int] = []
+        for index in range(time):
+            node = self
+            offset = index
+            while node.kind != "word":
+                if node.kind == "repeat":
+                    child = node.children[0]
+                    offset %= child.steps
+                    node = child
+                    continue
+                for child in node.children:
+                    if offset < child.steps:
+                        node = child
+                        break
+                    offset -= child.steps
+                else:
+                    raise ArithmeticError("parity SLP index escaped its concatenation")
+            result.append(node.word[offset])
+        return tuple(result)
+
     def prefix_units(self, time: int) -> UnitsCarryMatrix:
         from number_compiler.sequences.collatz.named_border_carry_matrix import (
             UnitsCarryMatrix,

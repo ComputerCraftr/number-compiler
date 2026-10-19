@@ -25,7 +25,7 @@ from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
     admit_routed_boundary_macro_plan,
     boundary_macro_26847_phase,
-    boundary_metric_suffix,
+    boundary_metric_key,
     select_admitted_boundary_macro,
     validate_admitted_boundary_macro_plan,
 )
@@ -170,12 +170,13 @@ def consume_border_return(
             border.odd_symbols,
             trace=border.zero_tails,
             ledger=ledger,
+            macro=border,
+            pointed_pair=matrix.pair,
         )
-        _, final = joined.require_pointed(before)
         if (
-            final is None
-            or final.output_pair != matrix.pair.output_pair
-            or final.output_pair != border.endpoint % 100
+            matrix.pair.output_pair != border.endpoint % 100
+            or joined.port.endpoint(before) != border.endpoint
+            or not joined.bridge.target.contains(border.endpoint)
         ):
             raise ArithmeticError("6305 source-punctured port lost its endpoint pair")
         ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS)
@@ -310,12 +311,13 @@ def consume_named_boundary(
             boundary.fields,
             boundary.odd_symbols,
             ledger=ledger,
+            macro=boundary,
+            pointed_pair=matrix.pair,
         )
-        _, final = joined.require_pointed(state.current)
         if (
-            final is None
-            or final.output_pair != matrix.pair.output_pair
-            or final.output_pair != boundary.endpoint % 100
+            matrix.pair.output_pair != boundary.endpoint % 100
+            or joined.port.endpoint(state.current) != boundary.endpoint
+            or not joined.bridge.target.contains(boundary.endpoint)
         ):
             raise ArithmeticError("named source-punctured port lost its endpoint pair")
         ledger.bump(_collatz_keys.COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS)
@@ -331,14 +333,19 @@ def consume_named_boundary(
     if width_spine.complete:
         width_spine.record(boundary.width_blank)
     normalized_f5, physical_f5 = _compose_f5_actions(state, boundary)
-    metric_suffix = boundary_metric_suffix(plan.identity)
-    ledger.bump(f"collatz_physical_boundary_{metric_suffix}_macro_actions")
     ledger.bump(
-        f"collatz_physical_boundary_{metric_suffix}_macro_repetitions",
+        boundary_metric_key(plan.identity, _collatz_keys.BoundaryMacroMetric.ACTIONS)
+    )
+    ledger.bump(
+        boundary_metric_key(
+            plan.identity, _collatz_keys.BoundaryMacroMetric.REPETITIONS
+        ),
         boundary.repetitions,
     )
     ledger.bump(
-        f"collatz_physical_boundary_{metric_suffix}_macro_physical_ticks",
+        boundary_metric_key(
+            plan.identity, _collatz_keys.BoundaryMacroMetric.PHYSICAL_TICKS
+        ),
         boundary.physical_ticks,
     )
     ledger.bump(

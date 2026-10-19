@@ -125,7 +125,11 @@ def test_sample_journal_survives_failure_without_rewriting_the_growing_report(
     from devtools.benchmarks import public_query_comparison as module
 
     output = tmp_path / "comparison.json"
-    monkeypatch.setattr(module, "report_output", lambda *_args: output)
+    monkeypatch.setattr(
+        module,
+        "report_output",
+        lambda _module, _filename: output,
+    )
     monkeypatch.setattr(sys, "argv", ["comparison"])
     writes: list[Path] = []
     write_text = Path.write_text

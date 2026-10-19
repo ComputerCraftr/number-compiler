@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sized
+from collections.abc import Callable, Generator, Iterable, Iterator, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -16,27 +16,30 @@ from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.owned_memo import (
     LedgerReservation,
     OwnedMemo,
-    _DynamicMemoValue,
 )
 from number_compiler.resources.payload_contracts import (
+    PayloadAuditBinding,
     PayloadAuditContractAudit,
     PayloadAuditContribution,
     PayloadAuditStoreBinding,
-    _drop_owner_contracts,
-    _drop_root_contracts,
-    _PayloadAuditBinding,
     audit_payload_contracts,
     clear_payload_audit_contracts,
+    drop_owner_contracts,
+    drop_root_contracts,
     register_payload_audit_contract,
     remove_payload_audit_contract,
 )
-from number_compiler.resources.stores import LedgerDict, LedgerList, _TrackedDict
+from number_compiler.resources.stores import LedgerDict, LedgerList, TrackedDict
 
-__all__ = ("LedgerReservation", "OwnedMemo", "_DynamicMemoValue")
+__all__ = ("LedgerReservation", "OwnedMemo")
 
 _StoreK = TypeVar("_StoreK")
 _StoreV = TypeVar("_StoreV")
 _StoreT = TypeVar("_StoreT")
+
+
+def _empty_root_map() -> dict[ArenaHandle, None]:
+    return {}
 
 
 class ResourceScope(StrEnum):
@@ -87,11 +90,11 @@ class _Account:
     scope: ResourceScope
     entries: int = 0
     nodes: int = 0
-    roots: dict[ArenaHandle, None] = field(default_factory=dict)
+    roots: dict[ArenaHandle, None] = field(default_factory=_empty_root_map)
     container: Sized | None = None
     node_count: Callable[[], int] | None = None
     payloads: Callable[[], Iterable[object]] | None = None
-    root_resolver: Callable[[], Iterable[ArenaHandle]] | None = None
+    root_resolver: Callable[[], Iterable[object]] | None = None
     evict: Callable[[], None] | None = None
     composition_count: Callable[[], int] | None = None
     disposed: bool = False
@@ -114,12 +117,12 @@ class ResourceLedger:
         self.counters: dict[str, int] = {}
         self._accounts: list[_Account] = []
         self._names: dict[str, int] = {}
-        self._reservations: _TrackedDict[object, tuple[int, int, int]] = _TrackedDict(
+        self._reservations: TrackedDict[object, tuple[int, int, int]] = TrackedDict(
             self
         )
         self._factory_containers: set[int] = set()
         self._execution_roots: dict[int, ReferenceType[object]] = {}
-        self._payload_audit_contracts: dict[tuple[int, str], _PayloadAuditBinding] = {}
+        self._payload_audit_contracts: dict[tuple[int, str], PayloadAuditBinding] = {}
         self._payload_audit_snapshot: PayloadAuditContractAudit | None = None
         self.entries = 0
         self.nodes = 0
@@ -268,6 +271,11 @@ class ResourceLedger:
             raise
         self.note_store_mutation()
 
+    def owns_execution_root(self, root: object) -> bool:
+        """Check exact weak-root registration without exposing the root map."""
+        reference = self._execution_roots.get(id(root))
+        return reference is not None and reference() is root
+
     def _expire_execution_root(
         self,
         identity: int,
@@ -277,7 +285,7 @@ class ResourceLedger:
         if expected is not None and current is not expected:
             return
         self._execution_roots.pop(identity, None)
-        _drop_root_contracts(self, identity)
+        drop_root_contracts(self, identity)
         self.note_store_mutation()
 
     def register_payload_audit_contract(
@@ -370,7 +378,7 @@ class ResourceLedger:
             for identity, reference in expired:
                 if self._execution_roots.get(identity) is reference:
                     self._execution_roots.pop(identity, None)
-                    _drop_root_contracts(self, identity)
+                    drop_root_contracts(self, identity)
                     removed = True
             if removed:
                 self.note_store_mutation()
@@ -501,7 +509,7 @@ class ResourceLedger:
     def _close_reservation(self, reservation: object) -> None:
         if type(reservation) is not LedgerReservation:
             raise TypeError("resource reservation needs its exact tracker")
-        if reservation._ledger is not self:
+        if not reservation.belongs_to(self):
             raise ValueError("cannot close a reservation from another ledger")
         state = self._reservations.get(reservation)
         if state is None:
@@ -513,7 +521,7 @@ class ResourceLedger:
     @contextmanager
     def reservation(
         self, owner: int, *, entries: int = 0, nodes: int = 0
-    ) -> Iterator[None]:
+    ) -> Generator[None, None, None]:
         """Temporarily reserve capacity on an existing owner, without retiring it.
 
         The body must drop any storage using this capacity before exit. Failed
@@ -537,8 +545,22 @@ class ResourceLedger:
             )
 
     def make_dict(
-        self, owner: int, *, nodes_per_entry: int = 0, write_once: bool = False
+        self,
+        owner: int,
+        *,
+        nodes_per_entry: int = 0,
+        write_once: bool = False,
+        key_type: type[_StoreK] | None = None,
+        value_type: type[_StoreV] | None = None,
     ) -> LedgerDict[_StoreK, _StoreV]:
+        """Create a typed, ledger-accounted map.
+
+        Optional type parameters are static inference anchors for callers that
+        do not have an assignment context. Runtime values remain checked by
+        the owning operation at its authority boundary.
+        """
+        if (key_type is None) != (value_type is None):
+            raise TypeError("map type parameters must be supplied together")
         require_integer(nodes_per_entry, "nodes per entry", 0)
         if type(write_once) is not bool:
             raise TypeError("mapping write-once policy must be Boolean")
@@ -549,14 +571,20 @@ class ResourceLedger:
             owner,
             result,
             node_count=lambda: len(result) * nodes_per_entry,
-            payloads=lambda: result._data.items(),
+            payloads=lambda: result.items(),
         )
         self._factory_containers.add(id(result))
         return result
 
     def make_list(
-        self, owner: int, *, nodes_per_entry: int = 1, append_only: bool = True
+        self,
+        owner: int,
+        *,
+        nodes_per_entry: int = 1,
+        append_only: bool = True,
+        item_type: type[_StoreT] | None = None,
     ) -> LedgerList[_StoreT]:
+        """Create a typed, ledger-accounted sequence store."""
         require_integer(nodes_per_entry, "nodes per entry", 0)
         if type(append_only) is not bool:
             raise TypeError("append_only must be a boolean")
@@ -694,7 +722,7 @@ class ResourceLedger:
         self.entries -= entries
         self.nodes -= nodes
 
-    def register_root(self, owner: int, root: ArenaHandle) -> None:
+    def register_root(self, owner: int, root: object) -> None:
         account = self._account(owner)
         if account.disposed:
             raise RuntimeError("resource owner has been disposed")
@@ -703,7 +731,7 @@ class ResourceLedger:
         ArenaHandle.validate(root, root.owner, root.kind)
         account.roots[root] = None
 
-    def unregister_root(self, owner: int, root: ArenaHandle) -> None:
+    def unregister_root(self, owner: int, root: object) -> None:
         if not isinstance(root, ArenaHandle):
             raise TypeError("ledger roots must be typed arena handles")
         ArenaHandle.validate(root, root.owner, root.kind)
@@ -772,7 +800,7 @@ class ResourceLedger:
 
     def evict_query_memos(self) -> tuple[int, ...]:
         """Clear opted-in query caches; canonical programs and sources remain live."""
-        evicted = []
+        evicted: list[int] = []
         for owner, account in enumerate(self._accounts):
             if account.evict is None:
                 continue
@@ -802,7 +830,7 @@ class ResourceLedger:
         if account.disposed:
             return
         account.disposed = True
-        _drop_owner_contracts(self, owner)
+        drop_owner_contracts(self, owner)
         self.note_store_mutation()
 
     def iter_containers(self) -> Iterator[tuple[int, object]]:
@@ -867,13 +895,15 @@ class ResourceLedger:
             ArenaHandle.validate(root, root.owner, root.kind)
             roots[root] = None
         if account.root_resolver is not None:
-            for root in account.root_resolver():
-                if not isinstance(root, ArenaHandle):
+            for resolved_root in account.root_resolver():
+                if not isinstance(resolved_root, ArenaHandle):
                     raise TypeError("container root resolver returned an untyped root")
                 # Revalidate before hashing: Boolean/float IDs must not alias an
                 # existing root in either a full or an owner-local inventory.
-                ArenaHandle.validate(root, root.owner, root.kind)
-                roots[root] = None
+                ArenaHandle.validate(
+                    resolved_root, resolved_root.owner, resolved_root.kind
+                )
+                roots[resolved_root] = None
         return ResourceInventory(
             owner,
             account.name,

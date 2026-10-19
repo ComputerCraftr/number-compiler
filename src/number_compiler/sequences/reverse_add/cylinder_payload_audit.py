@@ -32,15 +32,16 @@ def register_primitive_successor_clause_contract(
     """Register the clause's exact source-binding and seal stores."""
     from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 
-    root.arena.ledger.register_payload_audit_contract(
+    state = root.audit_snapshot()
+    state.arena.ledger.register_payload_audit_contract(
         root,
         "reverse_add",
         (
             PayloadAuditStoreBinding(
-                root._binding_owner, "_binding_store", "spatial_binding"
+                state.binding_owner, "_binding_store", "spatial_binding"
             ),
             PayloadAuditStoreBinding(
-                root._seal_owner, "_seals", "reverse_action_interner"
+                state.seal_owner, "_seals", "reverse_action_interner"
             ),
         ),
         audit_primitive_successor_clause_owner,
@@ -56,7 +57,6 @@ def audit_primitive_successor_clause_owner(
     )
     from number_compiler.resources.stores import LedgerDict, LedgerList
     from number_compiler.sequences.reverse_add.cylinder_innovation import (
-        PrimitiveCarryAtomBinding,
         PrimitiveSuccessorClause,
     )
 
@@ -66,63 +66,76 @@ def audit_primitive_successor_clause_owner(
         raise TypeError("clause auditor received a foreign root")
     ledger = ledger_value
     root = root_value
+    state = root.audit_snapshot()
+    binding = state.carry_atom.audit_snapshot()
+    arena_state = state.arena.audit_snapshot()
     binding_owner, seal_owner, workspace_owner = (
-        root._binding_owner,
-        root._seal_owner,
-        root._workspace_owner,
+        state.binding_owner,
+        state.seal_owner,
+        state.workspace_owner,
     )
     if any(
         type(owner) is not int for owner in (binding_owner, seal_owner, workspace_owner)
     ):
         raise ValueError("clause owner identifiers are malformed")
-    binding_account = ledger._account(binding_owner)
-    seal_account = ledger._account(seal_owner)
-    workspace_account = ledger._account(workspace_owner)
+    binding_account = ledger.inventory_owner(binding_owner)
+    seal_account = ledger.inventory_owner(seal_owner)
+    workspace_account = ledger.inventory_owner(workspace_owner)
+    binding_container = ledger.registered_container(binding_owner)
+    seal_container = ledger.registered_container(seal_owner)
+    workspace_container = ledger.registered_container(workspace_owner)
+    binding_store = state.binding_store
+    seal_store = state.seals
     valid = (
-        type(root.arena) is SymbolicInnovationArena
-        and root.arena.ledger is ledger
-        and type(root.carry_atom) is PrimitiveCarryAtomBinding
-        and type(root.carry_atom._closed) is bool
-        and type(root._closed) is bool
-        and type(root._binding_store) is LedgerList
-        and root._binding_store.ledger is ledger
-        and root._binding_store.owner == binding_owner
-        and root._binding_store.nodes_per_entry == 1
-        and root._binding_store.append_only
-        and ledger.is_factory_container(root._binding_store)
-        and binding_account.container is root._binding_store
+        type(state.arena) is SymbolicInnovationArena
+        and arena_state.ledger is ledger
+        and binding.ledger is ledger
+        and binding.arena is state.arena
+        and binding.ports.resource_ledger is ledger
+        and type(binding_store) is LedgerList
+        and binding_store.ledger is ledger
+        and binding_store.owner == binding_owner
+        and binding_store.nodes_per_entry == 1
+        and binding_store.append_only
+        and ledger.is_factory_container(binding_store)
+        and binding_container is binding_store
         and binding_account.role == "spatial_binding"
         and not binding_account.disposed
-        and type(root._seals) is LedgerDict
-        and root._seals.ledger is ledger
-        and root._seals.owner == seal_owner
-        and root._seals.nodes_per_entry == 0
-        and ledger.is_factory_container(root._seals)
-        and seal_account.container is root._seals
+        and type(seal_store) is LedgerDict
+        and seal_store.ledger is ledger
+        and seal_store.owner == seal_owner
+        and seal_store.nodes_per_entry == 0
+        and ledger.is_factory_container(seal_store)
+        and seal_container is seal_store
         and seal_account.role == "reverse_action_interner"
         and not seal_account.disposed
-        and workspace_account.container is None
+        and workspace_container is None
         and workspace_account.role == "reverse_primitive_cylinder_workspace"
         and workspace_account.entries == workspace_account.nodes == 0
         and not workspace_account.disposed
-        and not root._closed
-        and not root.carry_atom._closed
-        and not root.arena._closed
+        and not state.closed
+        and not binding.closed
+        and not arena_state.closed
         and binding_account.entries == binding_account.nodes == 1
         and seal_account.entries == 1
         and seal_account.nodes == 0
-        and len(root._binding_store) == 1
-        and len(root._seals) == 1
+        and len(state.binding_rows) == 1
+        and len(state.seal_rows) == 1
     )
     if not valid:
         raise ValueError("clause store or lifecycle authority is invalid")
     if not _valid_live_clause(root, ledger):
         raise ValueError("clause arithmetic authority is invalid")
-    record = root._binding_store[0]
+    if len(state.binding_rows) != 1 or len(state.seal_rows) != 1:
+        raise ValueError("clause stores do not contain exactly one binding")
+    record = state.binding_rows[0]
+    seal_record, seal_value = state.seal_rows[0]
     if (
-        record is not root._record
-        or root._seals.get(record) != 0
-        or not _valid_semantic(root._record.authority)
+        record is not state.record
+        or seal_record is not record
+        or type(seal_value) is not int
+        or seal_value != 0
+        or not _valid_semantic(record.authority)
     ):
         raise ValueError("clause record seal or semantic authority is invalid")
     return PayloadAuditContribution(
@@ -137,72 +150,78 @@ def audit_primitive_successor_clause_owner(
 def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -> bool:
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-    from number_compiler.arithmetic.fields.symbolic_innovation import (
+    from number_compiler.arithmetic.fields.radial_innovation import (
+        InnovationAdd,
+        InnovationAtom,
         InnovationID,
         RadialMultiplier,
-        SymbolicInnovationArena,
         SymbolicRadialInnovation,
-        _Add,
-        _Atom,
+    )
+    from number_compiler.arithmetic.fields.symbolic_innovation import (
+        SymbolicInnovationArena,
     )
     from number_compiler.sequences.reverse_add.cylinder_innovation import (
-        PrimitiveCarryAtomBinding,
+        PrimitiveCarryAtomAuditSnapshot,
+        PrimitiveClauseRecord,
         PrimitiveSuccessorClause,
-        _PrimitiveClauseRecord,
     )
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
     if type(root) is not PrimitiveSuccessorClause:
         return False
-    binding = root.carry_atom
+    state = root.audit_snapshot()
+    binding = state.carry_atom.audit_snapshot()
+    ports = binding.ports.audit_snapshot()
+    arena = state.arena
+    arena_state = arena.audit_snapshot()
     if (
-        type(binding) is not PrimitiveCarryAtomBinding
-        or type(binding._arena) is not SymbolicInnovationArena
-        or binding._arena is not root.arena
-        or binding._ledger is not ledger
-        or type(binding._ports) is not SourceCarryPorts
-        or binding._ports._ledger is not ledger
-        or type(binding._source) is not ExactSource
-        or binding._source is not binding._ports._source
-        or binding._ports._closed
-        or binding._source.digits is not binding._ports._authority[1]
-        or binding._ports._authority[0] is not binding._source
-        or binding._ports._authority[2] != binding._source.base
-        or binding._ports._authority[3] != binding._source.orbit
-        or binding._ports._authority[4] != binding._source.blank
-        or binding._ports._authority[5] != binding._source.extent
-        or binding._ports._authority[6] != binding._source.alphabet_size
-        or binding._ports._authority[7] is not ledger
-        or binding._ports._authority[8] is not binding._ports._cache
-        or binding._ports._authority[9] != binding._source_owner
-        or binding._ports._cache.owner != binding._source_owner
-        or binding._ports._cache.ledger is not ledger
-        or binding._ports._width != len(binding._source.digits)
-        or binding._ports._workspace_owner != binding._ports._workspace_authority
-        or type(binding._source_owner) is not int
-        or type(binding._extent) is not int
-        or type(binding._growth) is not int
-        or type(binding._base) is not int
-        or binding._extent != binding._ports._width
-        or binding._growth != root.growth
-        or binding._base != binding._source.base
-        or type(root.extent) is not int
-        or root.extent < 1
-        or root.extent != binding._extent
-        or type(root.base) is not int
-        or root.base != binding._base
-        or type(root.growth) is not int
-        or root.growth not in (0, 1)
-        or type(root.output_extent) is not int
-        or root.output_extent != root.extent + root.growth
-        or type(root.action) is not SymbolicRadialInnovation
-        or type(root._correction) is not InnovationID
-        or type(root._beta) is not InnovationID
-        or type(root._record) is not _PrimitiveClauseRecord
+        type(binding) is not PrimitiveCarryAtomAuditSnapshot
+        or type(binding.arena) is not SymbolicInnovationArena
+        or binding.arena is not arena
+        or binding.ledger is not ledger
+        or type(binding.ports) is not SourceCarryPorts
+        or ports.ledger is not ledger
+        or type(binding.source) is not ExactSource
+        or binding.source is not ports.source
+        or ports.closed
+        or binding.source.digits is not ports.authority[1]
+        or ports.authority[0] is not binding.source
+        or ports.authority[2] != binding.source.base
+        or ports.authority[3] != binding.source.orbit
+        or ports.authority[4] != binding.source.blank
+        or ports.authority[5] != binding.source.extent
+        or ports.authority[6] != binding.source.alphabet_size
+        or ports.authority[7] is not ledger
+        or ports.authority[8] is not ports.cache_identity
+        or ports.authority[9] != binding.source_owner
+        or ports.cache.owner != binding.source_owner
+        or ports.cache.ledger is not ledger
+        or ports.width != len(binding.source.digits)
+        or ports.workspace_owner != ports.workspace_authority
+        or type(binding.source_owner) is not int
+        or type(binding.extent) is not int
+        or type(binding.growth) is not int
+        or type(binding.base) is not int
+        or binding.extent != ports.width
+        or binding.growth != state.growth
+        or binding.base != binding.source.base
+        or type(state.extent) is not int
+        or state.extent < 1
+        or state.extent != binding.extent
+        or type(state.base) is not int
+        or state.base != binding.base
+        or type(state.growth) is not int
+        or state.growth not in (0, 1)
+        or type(state.output_extent) is not int
+        or state.output_extent != state.extent + state.growth
+        or type(state.action) is not SymbolicRadialInnovation
+        or type(state.correction) is not InnovationID
+        or type(state.beta) is not InnovationID
+        or type(state.record) is not PrimitiveClauseRecord
     ):
         return False
-    source = binding._source
-    record = root._record
+    source = binding.source
+    record = state.record
     alphabet = source.base if source.alphabet_size is None else source.alphabet_size
     if (
         type(source.digits) is not tuple
@@ -219,7 +238,8 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
     ):
         return False
     if (
-        root._binding_store[0] is not record
+        len(state.binding_rows) != 1
+        or state.binding_rows[0] is not record
         or any(
             type(value) is not int
             for value in (
@@ -235,20 +255,20 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
                 record.workspace_owner,
             )
         )
-        or record.source_owner != binding._source_owner
-        or record.arena_node_owner != root.arena._node_owner
-        or record.arena_key_owner != root.arena._key_owner
-        or not _same_handle(record.q, binding._atom)
-        or root.extent != record.extent
-        or root.growth != record.growth
-        or root.output_extent != record.output_extent
-        or root.base != record.base
-        or not _same_handle(root._correction, record.correction)
-        or not _same_handle(root._beta, record.beta)
-        or root.action != record.action
-        or root._binding_owner != record.binding_owner
-        or root._seal_owner != record.seal_owner
-        or root._workspace_owner != record.workspace_owner
+        or record.source_owner != binding.source_owner
+        or record.arena_node_owner != arena_state.node_owner
+        or record.arena_key_owner != arena_state.key_owner
+        or not _same_handle(record.q, binding.atom)
+        or state.extent != record.extent
+        or state.growth != record.growth
+        or state.output_extent != record.output_extent
+        or state.base != record.base
+        or not _same_handle(state.correction, record.correction)
+        or not _same_handle(state.beta, record.beta)
+        or state.action != record.action
+        or state.binding_owner != record.binding_owner
+        or state.seal_owner != record.seal_owner
+        or state.workspace_owner != record.workspace_owner
         or type(record.authority) is not SemanticIdentity
     ):
         return False
@@ -258,45 +278,45 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
             return False
         pair = digit + source.digits[-1 - index]
         carry = int(pair + carry >= source.base)
-    if root.growth != carry:
+    if state.growth != carry:
         return False
     expected_multiplier = RadialMultiplier(1 - carry, carry)
     if (
-        type(root.action.multiplier.no_growth) is not int
-        or type(root.action.multiplier.growth) is not int
-        or root.action.multiplier != expected_multiplier
-        or not _same_handle(root.action.innovation, root._beta)
-        or not _valid_handle(binding._atom, root.arena)
+        type(state.action.multiplier.no_growth) is not int
+        or type(state.action.multiplier.growth) is not int
+        or state.action.multiplier != expected_multiplier
+        or not _same_handle(state.action.innovation, state.beta)
+        or not _valid_handle(binding.atom, arena)
     ):
         return False
-    atom = _node(root.arena, binding._atom)
+    atom = _node(arena, binding.atom)
     expected_atom_semantic = SemanticIdentity(
         SemanticIdentityDomain.REVERSE_ADD_SOURCE_CARRY,
         (
             REVERSE_ADD_SOURCE_CARRY_TAG,
-            binding._source_owner,
-            root.base,
-            root.extent,
-            root.growth,
+            binding.source_owner,
+            state.base,
+            state.extent,
+            state.growth,
         ),
     )
     if (
-        type(atom) is not _Atom
-        or type(binding._semantic) is not SemanticIdentity
-        or binding._semantic != expected_atom_semantic
-        or atom.semantic != binding._semantic
-        or not _valid_semantic(binding._semantic)
+        type(atom) is not InnovationAtom
+        or type(binding.semantic) is not SemanticIdentity
+        or binding.semantic != expected_atom_semantic
+        or atom.semantic != binding.semantic
+        or not _valid_semantic(binding.semantic)
     ):
         return False
-    correction = _node(root.arena, root._correction)
-    if type(correction) is not _Add:
+    correction = _node(arena, state.correction)
+    if type(correction) is not InnovationAdd:
         return False
     correction_children = (correction.left, correction.right)
     shifted = next(
         (
             child
             for child in correction_children
-            if _is_chart(root.arena, child, 1, -1, binding._atom)
+            if _is_chart(arena, child, 1, -1, binding.atom)
         ),
         None,
     )
@@ -304,14 +324,14 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
         (
             child
             for child in correction_children
-            if _is_scale(root.arena, child, -root.base, binding._atom)
+            if _is_scale(arena, child, -state.base, binding.atom)
         ),
         None,
     )
     if shifted is None or scaled is None or _same_handle(shifted, scaled):
         return False
-    beta = _node(root.arena, root._beta)
-    if type(beta) is not _Add:
+    beta = _node(arena, state.beta)
+    if type(beta) is not InnovationAdd:
         return False
     beta_children = (beta.left, beta.right)
     reflected = next(
@@ -319,73 +339,74 @@ def _valid_live_clause(root: PrimitiveSuccessorClause, ledger: ResourceLedger) -
             child
             for child in beta_children
             if _is_chart(
-                root.arena,
+                arena,
                 child,
                 -1,
-                root.extent + root.growth - 1,
-                root._correction,
+                state.extent + state.growth - 1,
+                state.correction,
             )
         ),
         None,
     )
     if reflected is None or not any(
-        _same_handle(child, root._correction) for child in beta_children
+        _same_handle(child, state.correction) for child in beta_children
     ):
         return False
     expected_behavior = (
         REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
-        binding._source_owner,
-        root.arena._node_owner,
-        root.arena._key_owner,
-        binding._atom.local_id,
-        binding._atom.seal,
-        root.extent,
-        root.growth,
-        root.output_extent,
-        root.base,
-        root._correction.local_id,
-        root._correction.seal,
-        root._beta.local_id,
-        root._beta.seal,
-        root.action.innovation.local_id,
-        root.action.innovation.seal,
-        root.action.multiplier.no_growth,
-        root.action.multiplier.growth,
-        root._binding_owner,
-        root._seal_owner,
-        root._workspace_owner,
+        binding.source_owner,
+        arena_state.node_owner,
+        arena_state.key_owner,
+        binding.atom.local_id,
+        binding.atom.seal,
+        state.extent,
+        state.growth,
+        state.output_extent,
+        state.base,
+        state.correction.local_id,
+        state.correction.seal,
+        state.beta.local_id,
+        state.beta.seal,
+        state.action.innovation.local_id,
+        state.action.innovation.seal,
+        state.action.multiplier.no_growth,
+        state.action.multiplier.growth,
+        state.binding_owner,
+        state.seal_owner,
+        state.workspace_owner,
     )
     return record.authority.behavior == expected_behavior
 
 
 def _valid_handle(reference: object, arena: SymbolicInnovationArena) -> bool:
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationID
     from number_compiler.arithmetic.fields.symbolic_innovation import (
-        InnovationID,
         SymbolicInnovationArena,
     )
 
+    snapshot = arena.audit_snapshot()
     return (
         type(arena) is SymbolicInnovationArena
         and type(reference) is InnovationID
-        and reference.owner is arena.owner
-        and reference.kind == arena._KIND
+        and reference.owner is snapshot.owner
+        and reference.kind == "symbolic-innovation"
         and type(reference.local_id) is int
-        and 0 <= reference.local_id < len(arena._nodes)
-        and reference.seal == f"{id(arena.owner):x}:{reference.local_id}"
+        and 0 <= reference.local_id < len(snapshot.nodes)
+        and reference.seal == f"{id(snapshot.owner):x}:{reference.local_id}"
     )
 
 
 def _node(arena: SymbolicInnovationArena, reference: object) -> object:
-    from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 
     if not _valid_handle(reference, arena):
         raise ValueError("invalid cylinder innovation handle")
     assert type(reference) is InnovationID
-    return arena._nodes[reference.local_id]
+    return arena.audit_snapshot().nodes[reference.local_id]
 
 
 def _same_handle(left: object, right: object) -> bool:
-    from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 
     return (
         type(left) is InnovationID
@@ -404,14 +425,14 @@ def _is_chart(
     offset: int,
     child: object,
 ) -> bool:
-    from number_compiler.arithmetic.fields.symbolic_innovation import _Charted
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationCharted
 
     try:
         node = _node(arena, reference)
     except (AttributeError, IndexError, TypeError, ValueError):
         return False
     return (
-        type(node) is _Charted
+        type(node) is InnovationCharted
         and type(node.chart.slope) is int
         and type(node.chart.offset) is int
         and type(node.chart.extent_scale) is int
@@ -429,14 +450,14 @@ def _is_scale(
     coefficient: int,
     child: object,
 ) -> bool:
-    from number_compiler.arithmetic.fields.symbolic_innovation import _Scale
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationScale
 
     try:
         node = _node(arena, reference)
     except (AttributeError, IndexError, TypeError, ValueError):
         return False
     return (
-        type(node) is _Scale
+        type(node) is InnovationScale
         and type(node.coefficient) is int
         and node.coefficient == coefficient
         and _same_handle(node.child, child)

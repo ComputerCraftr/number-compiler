@@ -31,18 +31,20 @@ from number_compiler.arithmetic.fields.centered_carry import (
     carry_coboundary,
     reflected_innovation,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAdd,
+    InnovationAtom,
+    InnovationCharted,
     InnovationID,
+    InnovationRadial,
+    InnovationScale,
+    InnovationZero,
     RadialMultiplier,
-    SymbolicInnovationArena,
     SymbolicRadialInnovation,
-    _Add,
-    _Atom,
-    _Charted,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
+    SymbolicInnovationArena,
     _node_units,
-    _Radial,
-    _Scale,
-    _Zero,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
@@ -80,7 +82,9 @@ def _planned_primitive_nodes(
     missing = 0
     units = 0
 
-    def reference(node: _Atom | _Charted | _Scale | _Add) -> InnovationID:
+    def reference(
+        node: InnovationAtom | InnovationCharted | InnovationScale | InnovationAdd,
+    ) -> InnovationID:
         nonlocal missing, units
         found = arena._keys.get(node)
         if found is not None:
@@ -91,22 +95,22 @@ def _planned_primitive_nodes(
         units += _node_units(node)
         return result
 
-    q = reference(_Atom(deepcopy(semantic)))
-    shifted = reference(_Charted(CylinderChart(1, -1), _copy_reference(q)))
-    scaled = reference(_Scale(-base, _copy_reference(q)))
+    q = reference(InnovationAtom(deepcopy(semantic)))
+    shifted = reference(InnovationCharted(CylinderChart(1, -1), _copy_reference(q)))
+    scaled = reference(InnovationScale(-base, _copy_reference(q)))
     left, right = (
         (scaled, shifted) if scaled.local_id < shifted.local_id else (shifted, scaled)
     )
-    correction = reference(_Add(_copy_reference(left), _copy_reference(right)))
+    correction = reference(InnovationAdd(_copy_reference(left), _copy_reference(right)))
     reflected = reference(
-        _Charted(CylinderChart(-1, reflection), _copy_reference(correction))
+        InnovationCharted(CylinderChart(-1, reflection), _copy_reference(correction))
     )
     left, right = (
         (correction, reflected)
         if correction.local_id < reflected.local_id
         else (reflected, correction)
     )
-    reference(_Add(_copy_reference(left), _copy_reference(right)))
+    reference(InnovationAdd(_copy_reference(left), _copy_reference(right)))
     return missing, units
 
 
@@ -125,6 +129,11 @@ class PrimitiveCarryAtomBinding:
     _semantic: SemanticIdentity
     _atom: InnovationID
     _closed: bool = False
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Return exact ledger ownership metadata, even after the binding closes."""
+        return self._ledger
 
     @classmethod
     def create(
@@ -179,6 +188,22 @@ class PrimitiveCarryAtomBinding:
         self.validate()
         return self._semantic
 
+    def audit_snapshot(self) -> PrimitiveCarryAtomAuditSnapshot:
+        """Return the exact binding fields for a fresh, non-mutating audit."""
+        return PrimitiveCarryAtomAuditSnapshot(
+            self._arena,
+            self._ports,
+            self._source,
+            self._ledger,
+            self._source_owner,
+            self._extent,
+            self._growth,
+            self._base,
+            self._semantic,
+            self._atom,
+            self._closed,
+        )
+
     def validate(self) -> None:
         if self._closed:
             raise ValueError("disposed primitive carry atom binding")
@@ -188,7 +213,7 @@ class PrimitiveCarryAtomBinding:
             or type(self._source) is not ExactSource
             or type(self._ledger) is not ResourceLedger
             or self._arena.ledger is not self._ledger
-            or self._ports._ledger is not self._ledger
+            or self._ports.resource_ledger is not self._ledger
         ):
             raise ValueError("primitive carry atom has a foreign owner")
         self._ports.check_source(self._source)
@@ -205,7 +230,7 @@ class PrimitiveCarryAtomBinding:
         if self._semantic != expected_semantic:
             raise ValueError("primitive carry atom semantic binding was altered")
         node = self._arena.resolve(self._atom)
-        if type(node) is not _Atom or node.semantic != self._semantic:
+        if type(node) is not InnovationAtom or node.semantic != self._semantic:
             raise ValueError("primitive carry atom no longer names its bound variable")
 
     def coefficient(self, index: int) -> int:
@@ -274,7 +299,7 @@ def _clause_authority(
 
 
 @dataclass(frozen=True, slots=True)
-class _PrimitiveClauseRecord:
+class PrimitiveClauseRecord:
     source_owner: int
     arena_node_owner: int
     arena_key_owner: int
@@ -292,6 +317,47 @@ class _PrimitiveClauseRecord:
     authority: SemanticIdentity
 
 
+@dataclass(frozen=True, slots=True)
+class PrimitiveCarryAtomAuditSnapshot:
+    """Immutable owner-bound source and semantic identity for audit consumers."""
+
+    arena: SymbolicInnovationArena
+    ports: SourceCarryPorts
+    source: ExactSource
+    ledger: ResourceLedger
+    source_owner: int
+    extent: int
+    growth: int
+    base: int
+    semantic: SemanticIdentity
+    atom: InnovationID
+    closed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PrimitiveSuccessorClauseAuditSnapshot:
+    """Fresh exact binding/store evidence for independent clause auditing."""
+
+    arena: SymbolicInnovationArena
+    carry_atom: PrimitiveCarryAtomBinding
+    extent: int
+    growth: int
+    output_extent: int
+    base: int
+    action: SymbolicRadialInnovation
+    correction: InnovationID
+    beta: InnovationID
+    record: PrimitiveClauseRecord
+    binding_owner: int
+    binding_store: LedgerList[PrimitiveClauseRecord]
+    binding_rows: tuple[PrimitiveClauseRecord, ...]
+    seal_owner: int
+    seals: LedgerDict[PrimitiveClauseRecord, int]
+    seal_rows: tuple[tuple[PrimitiveClauseRecord, int], ...]
+    workspace_owner: int
+    closed: bool
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class PrimitiveSuccessorClause:
     """Exact primitive affine identity bound to one original source occurrence."""
@@ -305,11 +371,11 @@ class PrimitiveSuccessorClause:
     action: SymbolicRadialInnovation
     _correction: InnovationID
     _beta: InnovationID
-    _record: _PrimitiveClauseRecord
+    _record: PrimitiveClauseRecord
     _binding_owner: int
-    _binding_store: LedgerList[_PrimitiveClauseRecord]
+    _binding_store: LedgerList[PrimitiveClauseRecord]
     _seal_owner: int
-    _seals: LedgerDict[_PrimitiveClauseRecord, int]
+    _seals: LedgerDict[PrimitiveClauseRecord, int]
     _workspace_owner: int
     _closed: bool = False
 
@@ -343,7 +409,7 @@ class PrimitiveSuccessorClause:
             or type(self.action) is not SymbolicRadialInnovation
             or type(self._correction) is not InnovationID
             or type(self._beta) is not InnovationID
-            or type(self._record) is not _PrimitiveClauseRecord
+            or type(self._record) is not PrimitiveClauseRecord
             or type(self._binding_owner) is not int
             or type(self._binding_store) is not LedgerList
             or type(self._seal_owner) is not int
@@ -419,6 +485,29 @@ class PrimitiveSuccessorClause:
         self.arena.resolve(self.action.innovation)
         self.arena.resolve(self._beta)
 
+    def audit_snapshot(self) -> PrimitiveSuccessorClauseAuditSnapshot:
+        """Return a fresh immutable view while preserving backing identities."""
+        return PrimitiveSuccessorClauseAuditSnapshot(
+            self.arena,
+            self.carry_atom,
+            self.extent,
+            self.growth,
+            self.output_extent,
+            self.base,
+            self.action,
+            self._correction,
+            self._beta,
+            self._record,
+            self._binding_owner,
+            self._binding_store,
+            tuple(self._binding_store),
+            self._seal_owner,
+            self._seals,
+            tuple(self._seals.items()),
+            self._workspace_owner,
+            self._closed,
+        )
+
     @property
     def beta(self) -> InnovationID:
         self.validate()
@@ -454,19 +543,19 @@ class PrimitiveSuccessorClause:
                     _reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_DAG_VISITS
                 )
                 node = self.arena.resolve(reference)
-                if type(node) is _Zero:
+                if type(node) is InnovationZero:
                     continue
-                if type(node) is _Atom:
+                if type(node) is InnovationAtom:
                     if node.semantic != self.carry_atom._semantic:
                         raise ValueError(
                             "primitive clause contains a foreign carry atom"
                         )
                     total += scale * self.carry_atom.coefficient(coordinate)
                     continue
-                if type(node) is _Scale:
+                if type(node) is InnovationScale:
                     push((node.child, coordinate, scale * node.coefficient))
                     continue
-                if type(node) is _Charted:
+                if type(node) is InnovationCharted:
                     chart = node.chart
                     if chart.extent_scale or chart.growth_scale:
                         raise ValueError("primitive beta contains an unbound chart")
@@ -478,11 +567,11 @@ class PrimitiveSuccessorClause:
                         )
                     )
                     continue
-                if type(node) is _Add:
+                if type(node) is InnovationAdd:
                     push((node.left, coordinate, scale))
                     push((node.right, coordinate, scale))
                     continue
-                if type(node) is _Radial:
+                if type(node) is InnovationRadial:
                     raise ValueError(
                         "primitive beta contains an unexpected radial node"
                     )
@@ -523,7 +612,7 @@ class PrimitiveSuccessorClause:
             return
         self.arena.ledger.remove_payload_audit_contract(self, "reverse_add")
         count = len(self._binding_store)
-        self._binding_store._rollback_unpublished(0)
+        self._binding_store.rollback_unpublished(0)
         seal_count = len(self._seals)
         self._seals.clear()
         if count:
@@ -550,7 +639,7 @@ def primitive_successor_clause(
         raise TypeError("primitive cylinder construction requires a symbolic arena")
     if type(ports) is not SourceCarryPorts:
         raise TypeError("primitive cylinder construction requires source carry ports")
-    if arena.ledger is not ports._ledger:
+    if arena.ledger is not ports.resource_ledger:
         raise ValueError("primitive cylinder ports and arena require one ledger")
     source = ports.source
     extent = ports.width
@@ -581,10 +670,10 @@ def primitive_successor_clause(
         f"reverse-primitive-cylinder-workspace-{arena.ledger.owner_count}",
         "reverse_primitive_cylinder_workspace",
     )
-    binding_store: LedgerList[_PrimitiveClauseRecord] = arena.ledger.make_list(
+    binding_store: LedgerList[PrimitiveClauseRecord] = arena.ledger.make_list(
         binding_owner, nodes_per_entry=1, append_only=True
     )
-    seals: LedgerDict[_PrimitiveClauseRecord, int] = arena.ledger.make_dict(seal_owner)
+    seals: LedgerDict[PrimitiveClauseRecord, int] = arena.ledger.make_dict(seal_owner)
     binding: PrimitiveCarryAtomBinding | None = None
     result: PrimitiveSuccessorClause | None = None
     reserved = False
@@ -621,7 +710,7 @@ def primitive_successor_clause(
             seal_owner=seal_owner,
             workspace_owner=workspace_owner,
         )
-        record = _PrimitiveClauseRecord(
+        record = PrimitiveClauseRecord(
             binding._source_owner,
             arena._node_owner,
             arena._key_owner,
@@ -670,7 +759,7 @@ def primitive_successor_clause(
         if result is not None:
             result.close()
         else:
-            binding_store._rollback_unpublished(0)
+            binding_store.rollback_unpublished(0)
             seals.clear()
             if reserved:
                 arena.ledger.release(binding_owner, entries=1, nodes=1)

@@ -167,7 +167,7 @@ class ExactNormalizedSquareResponse:
     _temporal_payload: tuple[object, ...]
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
             self.index,
             self.source_level,
@@ -186,7 +186,9 @@ class ExactNormalizedSquareResponse:
 
     @property
     def producer_verified(self) -> bool:
-        return harmonic_verified(self, self._payload(), issuer=_SQUARE_RESPONSE_ISSUER)
+        return harmonic_verified(
+            self, self.structural_payload(), issuer=_SQUARE_RESPONSE_ISSUER
+        )
 
     @property
     def next_source_admitted(self) -> bool:
@@ -222,13 +224,13 @@ class CertifiedFermatRootTemporalMorphism:
     last: SourceRestrictedPhaseRelation = field(repr=False)
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
             self.index,
             self.source_level,
             self.dyadic_steps,
-            self.first._payload(),
-            self.last._payload(),
+            self.first.structural_payload(),
+            self.last.structural_payload(),
         )
 
     @property
@@ -245,7 +247,9 @@ class CertifiedFermatRootTemporalMorphism:
 
     @property
     def producer_verified(self) -> bool:
-        if not harmonic_verified(self, self._payload(), issuer=_TEMPORAL_ISSUER):
+        if not harmonic_verified(
+            self, self.structural_payload(), issuer=_TEMPORAL_ISSUER
+        ):
             return False
         if not self.first.producer_verified or not self.last.producer_verified:
             return False
@@ -487,9 +491,11 @@ class CertifiedFermatRootTemporalMorphism:
             source_edges,
             target_edges,
             convolution,
-            self._payload(),
+            self.structural_payload(),
         )
-        issue_harmonic(response, response._payload(), issuer=_SQUARE_RESPONSE_ISSUER)
+        issue_harmonic(
+            response, response.structural_payload(), issuer=_SQUARE_RESPONSE_ISSUER
+        )
         if not response.producer_verified:
             raise ArithmeticError("normalized square response publication failed")
         return response
@@ -510,7 +516,7 @@ def _admitted_cylinder_point(
     interval = cylinder.exact_interval
     if interval is not None and not interval.contains(value):
         return None
-    return cylinder._admitted(value)
+    return cylinder.admitted_edges(value)
 
 
 _TEMPORAL_ISSUER = new_harmonic_issuer(CertifiedFermatRootTemporalMorphism)
@@ -524,7 +530,7 @@ def _issue(
     last: SourceRestrictedPhaseRelation,
 ) -> CertifiedFermatRootTemporalMorphism:
     result = CertifiedFermatRootTemporalMorphism(index, level, steps, first, last)
-    issue_harmonic(result, result._payload(), issuer=_TEMPORAL_ISSUER)
+    issue_harmonic(result, result.structural_payload(), issuer=_TEMPORAL_ISSUER)
     if not result.producer_verified:
         raise ArithmeticError("dyadic source clock or source owner was not preserved")
     return result

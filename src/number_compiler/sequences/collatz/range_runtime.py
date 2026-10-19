@@ -21,6 +21,12 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+    PayloadAuditStoreBinding,
+    register_payload_audit_contract,
+)
 from number_compiler.resources.stores import append_indexed_node
 
 
@@ -67,7 +73,7 @@ class CollatzRadix4Range:
     def atom(symbol: int) -> CollatzRadix4Range:
         if type(symbol) is not int or not 0 <= symbol < 4:
             raise ValueError("Collatz radix-4 atom is outside its alphabet")
-        rows = []
+        rows: list[CollatzCarryRow] = []
         for carry in range(3):
             value = 3 * symbol + carry
             emitted = value & 3
@@ -89,7 +95,7 @@ class CollatzRadix4Range:
     def then(self, high: CollatzRadix4Range) -> CollatzRadix4Range:
         if type(high) is not CollatzRadix4Range:
             raise TypeError("Collatz ranges compose with ranges")
-        rows = []
+        rows: list[CollatzCarryRow] = []
         for low_row in self.rows:
             high_row = high.rows[low_row.exit_carry]
             first = low_row.first_nonzero
@@ -147,7 +153,7 @@ class CollatzRadix4RangeArena:
             self._binding_owner,
             evictable=True,
         )
-        self._audit_bindings = self._bindings._data
+        self._audit_bindings = self._bindings.audit_snapshot().container
         self.ledger.register_container(
             self._node_owner,
             self._nodes,
@@ -158,11 +164,8 @@ class CollatzRadix4RangeArena:
             self._key_owner, self._keys, payloads=self._keys.items
         )
         self.ledger.register_execution_root(self)
-        from number_compiler.sequences.collatz.payload_audit import (
-            register_collatz_range_contract,
-        )
 
-        register_collatz_range_contract(self)
+        self.register_payload_audit()
 
     def resolve(self, reference: CollatzRadix4RangeID) -> CollatzRadix4Range:
         if type(reference) is not CollatzRadix4RangeID:
@@ -247,6 +250,81 @@ class CollatzRadix4RangeArena:
             self.ledger.bump(_collatz_keys.COLLATZ_RANGE_FOREST_COMPOSITIONS)
         return result
 
+    def register_payload_audit(self) -> None:
+        root = self
+
+        if type(root) is not CollatzRadix4RangeArena:
+            raise TypeError("Collatz range audit requires its exact arena")
+        stores = (
+            PayloadAuditStoreBinding(root._node_owner, "_nodes", "finite_port"),
+            PayloadAuditStoreBinding(root._key_owner, "_keys", "transfer_interner"),
+            PayloadAuditStoreBinding(
+                root._binding_owner,
+                "_audit_bindings",
+                "spatial_binding",
+            ),
+        )
+        register_payload_audit_contract(
+            root.ledger, root, "collatz", stores, audit_collatz_range
+        )
+
+    def audit_payload(self, ledger: object, root: object) -> PayloadAuditContribution:
+        """Validate exact radix-4 range nodes, interning, and source bindings."""
+        if root is not self:
+            raise TypeError("payload audit callback received another owner")
+        from number_compiler.hashlife.execution.field_images import SourceCellID
+        from number_compiler.resources.ledger import ResourceLedger
+
+        if (
+            type(ledger) is not ResourceLedger
+            or type(root) is not CollatzRadix4RangeArena
+        ):
+            raise TypeError("Collatz range audit received a foreign owner")
+        arena = root
+        approved: list[PayloadAuditEntry] = []
+        invalid: list[PayloadAuditEntry] = []
+
+        def record(owner: int, value: object, valid: bool) -> None:
+            entry = PayloadAuditEntry(owner, value)
+            (approved if valid else invalid).append(entry)
+
+        if arena.ledger is not ledger:
+            invalid.append(PayloadAuditEntry(arena._node_owner, arena))
+            return PayloadAuditContribution((), tuple(invalid))
+
+        for index, value in enumerate(arena._nodes):
+            try:
+                if type(value) is not CollatzRadix4Range:
+                    raise TypeError("invalid Collatz range node type")
+                value.__post_init__()
+                valid = arena._keys.get(value) == index
+                reference = CollatzRadix4RangeID(arena.owner, arena._KIND, index)
+                valid &= arena.resolve(reference) is value
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._node_owner, value, valid)
+
+        for value, index in arena._keys.items():
+            valid = type(value) is CollatzRadix4Range and type(index) is int
+            valid &= 0 <= index < len(arena._nodes)
+            if valid:
+                valid &= arena._nodes[index] == value
+            record(arena._key_owner, value, valid)
+            record(arena._key_owner, index, valid)
+
+        for source, result in arena._bindings.items():
+            try:
+                valid = type(source) is SourceCellID
+                arena.sources.resolve(source)
+                valid &= type(result) is CollatzRadix4RangeID
+                arena.resolve(result)
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._binding_owner, source, valid)
+            record(arena._binding_owner, result, valid)
+
+        return PayloadAuditContribution(tuple(approved), tuple(invalid))
+
 
 __all__ = [
     "CollatzCarryRow",
@@ -254,3 +332,10 @@ __all__ = [
     "CollatzRadix4RangeArena",
     "CollatzRadix4RangeID",
 ]
+
+
+def audit_collatz_range(ledger: object, root: object) -> PayloadAuditContribution:
+    """Closure-free ledger entry point for its exact family owner."""
+    if type(root) is not CollatzRadix4RangeArena:
+        raise TypeError("Collatz payload audit received another owner")
+    return root.audit_payload(ledger, root)

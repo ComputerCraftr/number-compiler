@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
-from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+)
 
 
 def scan_ports(

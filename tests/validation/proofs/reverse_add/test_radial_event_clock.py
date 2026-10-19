@@ -19,12 +19,12 @@ from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.centered_events import clock_event_tail
 from number_compiler.arithmetic.fields.event_innovation import event_difference
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+from tests.support.symbolic_innovation import evaluate, polynomial
 
 
 def _literal(packets: tuple[RadialEventPacket, ...]) -> ClockWitness | None:
@@ -125,13 +125,13 @@ def test_extractor_consumes_existing_event_normalizer_and_reflected_radials(
     )
     events = event_difference(arena, expression)
     packets = expression_packets(arena, events, limits=ClockLimits())
-    literal = min(_evaluate(arena, events).items())
+    literal = min(evaluate(arena, events).items())
     assert extract_radial_clock(packets, work=ClockWork()) == ClockWitness(*literal)
 
 
 def test_clock_tail_compensation_remains_required_after_extraction() -> None:
     arena = SymbolicInnovationArena(ResourceLedger())
-    events = event_difference(arena, _polynomial(arena, [0, 2, 1]))
+    events = event_difference(arena, polynomial(arena, [0, 2, 1]))
     witness = extract_radial_clock(
         expression_packets(arena, events, limits=ClockLimits()), work=ClockWork()
     )

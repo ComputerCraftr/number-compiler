@@ -21,6 +21,10 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.tiles.tile_results import ResultLease
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        TileApplicationAuditSnapshot,
+        TileLeaseAuditSnapshot,
+    )
 
 
 @dataclass(slots=True)
@@ -94,6 +98,9 @@ class TileApplicationRegistry:
         validate_application_issuer(application)
         registry = ref(self)
         finalizing = is_finalizing
+        state = application.audit_snapshot()
+        source_lease = state.input_lease
+        source_state = source_lease.audit_snapshot()
 
         def expire(reference: ReferenceType[TileApplication]) -> None:
             if finalizing():
@@ -104,9 +111,9 @@ class TileApplicationRegistry:
 
         cleanup = _TileApplicationCleanup(
             ref(application, expire),
-            application._input,
-            application._input._id,
-            application._root,
+            source_lease,
+            source_state.identity,
+            state.root_lease,
             # Copy scoped handles as well as wiring: a forged in-place edit of
             # an application handle must not also rewrite its admission record.
             PoweredResultKey(
@@ -134,33 +141,36 @@ class TileApplicationRegistry:
         if type(cleanup) is not _TileApplicationCleanup:
             raise ValueError("tile application identity is stale or unpublished")
         cleanup.__post_init__()
-        application = cleanup.application()
+        application, state, input_state = _application_cleanup_snapshot(cleanup)
         if (
             type(application) is not TileApplication
             or type(application.identity) is not int
             or application.identity != identity
-            or not 0 <= identity < application.scheduler._next_application
-            or application.scheduler._applications is not self
-            or application.scheduler.ledger is not self.ledger
-            or type(application._closed) is not bool
-            or application._closed
-            or cleanup.source is not application._input
-            or type(application._input._id) is not int
-            or application._input._id != cleanup.source_id
+            or not _application_has_registry_authority(application, identity, self)
+            or state is None
+            or type(state.closed) is not bool
+            or state.closed
+            or cleanup.source is not state.input_lease
+            or input_state is None
+            or type(input_state.identity) is not int
+            or input_state.identity != cleanup.source_id
         ):
             raise ValueError("tile application identity is stale or unpublished")
-        if cleanup.root is not application._root:
+        if cleanup.root is not state.root_lease:
             raise ValueError(
                 "tile application completed root belongs to another request"
             )
         if (
-            type(application._input) is not TileLease
-            or application._input._arena is not application.scheduler.tiles
+            type(state.input_lease) is not TileLease
+            or input_state.arena is not application.scheduler.tiles
         ):
             raise ValueError("tile application has a foreign source lease")
-        source = application._input.tile
+        source = state.input_lease.tile
         if cleanup.root is not None:
-            if cleanup.root._issuer is not application.scheduler.results:
+            if (
+                cleanup.root.audit_snapshot().issuer
+                is not application.scheduler.results
+            ):
                 raise ValueError("tile application has a foreign completed root")
             _ = cleanup.root.result
         validate_admitted_binding(application, cleanup.admitted, source)
@@ -178,7 +188,7 @@ class TileApplicationRegistry:
             raise ValueError("tile application registry contains another occurrence")
         if (
             type(root) is not ResultLease
-            or root._issuer is not application.scheduler.results
+            or root.audit_snapshot().issuer is not application.scheduler.results
         ):
             raise ValueError("tile application has a foreign completed root")
         _ = root.result
@@ -194,7 +204,7 @@ class TileApplicationRegistry:
             raise ValueError("tile application cleanup binding changed")
         scheduler = self._scheduler()
         if scheduler is not None:
-            scheduler._release_pins(identity)
+            scheduler.release_application_pins(identity)
         try:
             self.records.pop(identity)
         except BaseException:
@@ -232,6 +242,32 @@ class TileApplicationRegistry:
             raise ValueError("tile application registry contains another occurrence")
         self._dispose(application.identity, self.records[application.identity])
 
+    def audit(
+        self, containers: Mapping[int, object]
+    ) -> tuple[set[int], set[tuple[int, int]]]:
+        """Run the independent owner audit without exposing registry stores."""
+        return audit_tile_application_registry(self, containers)
+
+    def matches_live_applications(
+        self, applications: Mapping[int, TileApplication]
+    ) -> bool:
+        """Check exact live identities against this registry's current bindings."""
+        try:
+            if set(self.records) != set(applications):
+                return False
+            return all(
+                type(cleanup) is _TileApplicationCleanup
+                and cleanup.application() is applications[identity]
+                for identity, cleanup in self.records.items()
+            )
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return False
+
+    @property
+    def scheduler_owner(self) -> TileScheduler | None:
+        """Return the live scheduler when it still owns this registry."""
+        return self._scheduler()
+
 
 def audit_tile_application_registry(
     registry: TileApplicationRegistry,
@@ -252,7 +288,7 @@ def audit_tile_application_registry(
         and account.nodes == 8 * len(registry.records)
         and account.observed_nodes == 8 * len(registry.records)
     )
-    scheduler = registry._scheduler()
+    scheduler = registry.scheduler_owner
     for identity, cleanup in registry.records.items():
         valid = (
             type(identity) is int
@@ -261,29 +297,39 @@ def audit_tile_application_registry(
         )
         try:
             cleanup.__post_init__()
-            application = cleanup.application()
+            application, state, input_state = _application_cleanup_snapshot(cleanup)
+            root_state = (
+                None
+                if state is None or state.root_lease is None
+                else state.root_lease.audit_snapshot()
+            )
             valid &= (
                 type(application) is TileApplication
                 and type(application.identity) is int
                 and application.identity == identity
-                and 0 <= identity < application.scheduler._next_application
-                and application.scheduler._applications is registry
-                and application.scheduler.ledger is registry.ledger
-                and type(application._closed) is bool
-                and not application._closed
-                and type(application._input) is TileLease
-                and application._input._arena is application.scheduler.tiles
-                and cleanup.source is application._input
-                and type(application._input._id) is int
-                and application._input._id == cleanup.source_id
-                and cleanup.root is application._root
+                and _application_has_registry_authority(application, identity, registry)
+                and state is not None
+                and type(state.closed) is bool
+                and not state.closed
+                and type(state.input_lease) is TileLease
+                and input_state is not None
+                and input_state.arena is application.scheduler.tiles
+                and cleanup.source is state.input_lease
+                and type(input_state.identity) is int
+                and input_state.identity == cleanup.source_id
+                and cleanup.root is state.root_lease
                 and scheduler is application.scheduler
             )
             if application is None:
                 raise ValueError("tile application reference expired")
-            source = application._input.tile
+            if state is None:
+                raise ValueError("tile application audit snapshot is missing")
+            source = state.input_lease.tile
             if cleanup.root is not None:
-                valid &= cleanup.root._issuer is application.scheduler.results
+                valid &= (
+                    root_state is not None
+                    and root_state.issuer is application.scheduler.results
+                )
                 _ = cleanup.root.result
             validate_application_issuer(application)
             validate_admitted_binding(application, cleanup.admitted, source)
@@ -329,33 +375,52 @@ def validate_admitted_binding(
         raise ValueError("tile application differs from its admitted binding")
 
 
+def _application_has_registry_authority(
+    application: TileApplication,
+    identity: int,
+    registry: TileApplicationRegistry,
+) -> bool:
+    return (
+        application.scheduler.application_identity_is_live(identity)
+        and application.scheduler.application_registry_is(registry)
+        and application.scheduler.ledger is registry.ledger
+    )
+
+
+def _application_cleanup_snapshot(
+    cleanup: _TileApplicationCleanup,
+) -> tuple[
+    TileApplication | None,
+    TileApplicationAuditSnapshot | None,
+    TileLeaseAuditSnapshot | None,
+]:
+    application = cleanup.application()
+    state = None if application is None else application.audit_snapshot()
+    input_state = None if state is None else state.input_lease.audit_snapshot()
+    return application, state, input_state
+
+
 def validate_application_issuer(application: TileApplication) -> None:
-    reference = application.scheduler.ledger._execution_roots.get(id(application))
-    if reference is None or reference() is not application:
+    if not application.scheduler.ledger.owns_execution_root(application):
         raise ValueError("tile application was not issued by its execution ledger")
 
 
 def application_by_id(scheduler: TileScheduler, identity: int) -> TileApplication:
     """Resolve a scheduler-scoped application without walking execution roots."""
-    return scheduler._applications.application(identity)
+    return scheduler.application_by_id(identity)
 
 
 def application_source(application: TileApplication) -> TileID:
     """Return an issued application's live source without scanning the registry."""
     validate_application_issuer(application)
-    if type(application._closed) is not bool or application._closed:
+    state = application.audit_snapshot()
+    if type(state.closed) is not bool or state.closed:
         raise ValueError("closed tile application")
-    if (
-        type(application.identity) is not int
-        or not 0 <= application.identity < application.scheduler._next_application
-    ):
+    if not application.scheduler.application_identity_is_live(application.identity):
         raise ValueError("tile application has an invalid scoped identity")
-    if (
-        application.scheduler._applications.application(application.identity)
-        is not application
-    ):
+    if not application.scheduler.application_is_registered(application):
         raise ValueError("tile application registry contains another occurrence")
-    return application._input.tile
+    return state.input_lease.tile
 
 
 def validate_application_dependencies(

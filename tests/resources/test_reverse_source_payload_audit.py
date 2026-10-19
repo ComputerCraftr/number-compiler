@@ -82,7 +82,7 @@ def test_repeated_d64_metrics_keep_the_complete_payload_audit() -> None:
     term.digit(0)
     term.width()
 
-    first = collect_ledger_metrics(term._ledger)
+    first = collect_ledger_metrics(term.resource_ledger)
     assert first.resource_audit_complete == 1
     assert first.forbidden_future_payloads == 0
     assert term.metrics().forbidden_future_payloads == 0

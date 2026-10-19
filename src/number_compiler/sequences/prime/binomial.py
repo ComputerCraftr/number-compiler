@@ -35,7 +35,7 @@ def translate_pascal_row_prefix(row: Sequence[int], shift: int) -> tuple[int, ..
     if shift < 0:
         raise ValueError(shift)
     src = tuple(map(int, row))
-    out = []
+    out: list[int] = []
     for k in range(len(src)):
         out.append(sum(comb(shift, i) * src[k - i] for i in range(k + 1)))
     return tuple(out)

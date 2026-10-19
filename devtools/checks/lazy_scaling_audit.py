@@ -69,8 +69,13 @@ class ScalingAssessment(TypedDict):
 
 def work_counters(snapshot: Mapping[str, int | dict[str, int]]) -> dict[str, int]:
     counters = snapshot["resource_work_counters"]
-    if not isinstance(counters, dict):
+    if type(counters) is not dict:
         raise TypeError("resource_work_counters must be a counter mapping")
+    for key, value in counters.items():
+        if type(key) is not str or type(value) is not int:
+            raise TypeError("resource_work_counters must map names to exact integers")
+    # Callers use this boundary helper to update intentionally mutable sampled
+    # snapshots, so retain the exact backing mapping after validation.
     return counters
 
 
@@ -78,9 +83,22 @@ def metric_value(
     snapshot: Mapping[str, int | dict[str, int]], name: str, default: int = 0
 ) -> int:
     value = snapshot.get(name, default)
-    if not isinstance(value, int):
+    if type(value) is not int:
         raise TypeError(f"{name} must be an integer measurement")
     return value
+
+
+def _phase_work(row: ScalingSample, phase: str) -> dict[str, int]:
+    query_phases = row.get("query_phases")
+    if query_phases is None:
+        return {}
+    phase_record = query_phases.get(phase)
+    if phase_record is None:
+        return {}
+    delta = phase_record.get("delta")
+    if delta is None:
+        return {}
+    return delta.get("work", {})
 
 
 SPACE_METRICS = (
@@ -233,7 +251,9 @@ def scaling_report(
                 "reason": "at least three horizons required",
             }
             continue
-        counter_names = set().union(*(work_counters(row["warm"]) for row in samples))
+        counter_names: set[str] = set()
+        for row in samples:
+            counter_names.update(work_counters(row["warm"]))
         metrics: dict[str, SeriesAssessment] = {}
         for name in (*SPACE_METRICS, *WORK_METRICS):
             metrics[name] = assess_series(
@@ -250,28 +270,17 @@ def scaling_report(
                 ]
                 warm_metrics[name] = assess_series(steps, delta, slack=slack)
         other_query_metrics: dict[str, SeriesAssessment] = {}
-        phases = set().union(*(row.get("query_phases", {}) for row in samples))
+        phases: set[str] = set()
+        for row in samples:
+            query_phases = row.get("query_phases")
+            if query_phases is not None:
+                phases.update(query_phases)
         for phase in sorted(phases):
-            names = set().union(
-                *(
-                    row.get("query_phases", {})
-                    .get(phase, {})
-                    .get("delta", {})
-                    .get("work", {})
-                    for row in samples
-                )
-            )
+            names: set[str] = set()
+            for row in samples:
+                names.update(_phase_work(row, phase))
             for name in sorted(names):
-                values = [
-                    int(
-                        row.get("query_phases", {})
-                        .get(phase, {})
-                        .get("delta", {})
-                        .get("work", {})
-                        .get(name, 0)
-                    )
-                    for row in samples
-                ]
+                values = [_phase_work(row, phase).get(name, 0) for row in samples]
                 other_query_metrics[phase + "." + name] = assess_series(
                     steps, values, slack=slack
                 )

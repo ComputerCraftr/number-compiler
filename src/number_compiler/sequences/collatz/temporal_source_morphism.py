@@ -18,14 +18,14 @@ from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrow
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointRunAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    SourceClosedPortAction,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import CollatzF5AffineAction
 
@@ -56,7 +56,7 @@ class _MorphismCertificate:
     record: ReferenceType[object]
     snapshot: tuple[object, ...]
     owner: ReferenceType[PointedCollatzSource]
-    port_action: CrossFamilyPortAction | None
+    port_action: SourceClosedPortAction | None
 
 
 @dataclass(frozen=True, slots=True, init=False, weakref_slot=True)
@@ -75,7 +75,7 @@ class PointedCollatzSource:
         ledger: ResourceLedger,
         *,
         _issuer: object | None = None,
-    ):
+    ) -> None:
         if _issuer is not _ISSUER:
             raise TypeError("pointed source must come from the checked issuer")
         if type(seed) is not int or seed < 1 or type(horizon) is not int or horizon < 0:
@@ -182,7 +182,7 @@ def _resolve_true_root(
     return known_previous.last.value
 
 
-def _physical_f5(action: CrossFamilyPortAction) -> CollatzF5AffineAction:
+def _physical_f5(action: SourceClosedPortAction) -> CollatzF5AffineAction:
     """Reduce an issued normalized affine map at its *physical* endpoint."""
     action._verify_issued()
     return _physical_f5_fields(action.action)
@@ -206,7 +206,7 @@ def _root_from_admitted_joint_action(
     known_previous: CertifiedCollatzRootMorphism | None = None,
 ) -> CertifiedCollatzRootMorphism:
     """Rehydrate a demanded carrier from the admitted joint-action port."""
-    from number_compiler.sequences.collatz.cross_family_port_power import (
+    from number_compiler.sequences.collatz.source_closed_port_action import (
         SourceCongruence,
     )
 
@@ -224,7 +224,7 @@ def _root_from_admitted_joint_action(
     if joint.phase == 0:
         if joint.fields.source_residue is None or joint.fields.source_modulus is None:
             raise ValueError("joint field action lost its source parity cylinder")
-        port_action = CrossFamilyPortAction(
+        port_action = SourceClosedPortAction(
             joint.fields,
             SourceCongruence(
                 joint.fields.source_residue,
@@ -271,7 +271,7 @@ class CertifiedCollatzRootMorphism:
     odd_ticks: int
     division_ticks: int
     physical_f5: CollatzF5AffineAction
-    port_action: CrossFamilyPortAction | None
+    port_action: SourceClosedPortAction | None
     run_actions: int
     second_half_selected_from_true_root: bool
     _issuer: _MorphismCertificate = field(repr=False, compare=False)
@@ -286,7 +286,7 @@ class CertifiedCollatzRootMorphism:
         odd_ticks: int,
         division_ticks: int,
         physical_f5: CollatzF5AffineAction,
-        port_action: CrossFamilyPortAction | None,
+        port_action: SourceClosedPortAction | None,
         run_actions: int,
         second_half_selected_from_true_root: bool = False,
         *,
@@ -732,7 +732,7 @@ class CertifiedCollatzRootMorphism:
         from number_compiler.sequences.collatz.collatz_two_sided_ring import (
             CollatzTwoSidedCylinder,
         )
-        from number_compiler.sequences.collatz.cross_family_port_power import (
+        from number_compiler.sequences.collatz.source_closed_port_action import (
             SourceCongruence,
         )
 
@@ -795,7 +795,7 @@ class CertifiedCollatzRootMorphism:
         )
         if guard is None or not guard.admits(current):
             raise ArithmeticError("source-selected border word lost its exact guard")
-        port = CrossFamilyPortAction(action, guard, 2 * len(tails), None)
+        port = SourceClosedPortAction(action, guard, 2 * len(tails), None)
         if not port.admits(current) or not target.contains(port.endpoint(current)):
             raise ArithmeticError("source-selected border word lost its endpoint")
         return certified_collatz_root_from_port(self.owner, port, known_previous=self)
@@ -854,13 +854,13 @@ class CertifiedCollatzRootMorphism:
 
 def certified_collatz_root_from_port(
     owner: PointedCollatzSource,
-    action: CrossFamilyPortAction,
+    action: SourceClosedPortAction,
     *,
     known_previous: CertifiedCollatzRootMorphism | None = None,
 ) -> CertifiedCollatzRootMorphism:
     """Lift a previously producer-issued complete parity word, with its guard."""
-    if type(action) is not CrossFamilyPortAction:
-        raise TypeError("root action requires an issued cross-family parity word")
+    if type(action) is not SourceClosedPortAction:
+        raise TypeError("root action requires an issued source-closed parity word")
     action._verify_issued()
     start_tick = (
         0
@@ -904,7 +904,7 @@ def certified_collatz_root_from_border(
         BorderReturnMacro,
         validate_border_return_macro,
     )
-    from number_compiler.sequences.collatz.cross_family_port_power import (
+    from number_compiler.sequences.collatz.source_closed_port_action import (
         SourceCongruence,
     )
 
@@ -930,7 +930,7 @@ def certified_collatz_root_from_border(
     joined = initial_guard.meet(SourceCongruence(macro.source % 5, 5))
     if joined is None:
         raise ArithmeticError("source border's parity and F5 classes conflict")
-    port = CrossFamilyPortAction(
+    port = SourceClosedPortAction(
         macro.fields,
         joined,
         macro.odd_symbols,

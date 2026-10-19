@@ -113,8 +113,8 @@ def test_first_reset_positions_remain_correlated_with_the_transfer() -> None:
 def test_finite_future_class_keeps_projected_f5_without_raw_domain_overrefinement() -> (
     None
 ):
-    from number_compiler.sequences.reverse_add.temporal_ring_construction import (
-        _carry_phase_observation,
+    from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
+        carry_phase_observation,
     )
 
     port = bilateral_cycle_letter(BorderTile(1, 1, 6), BorderTile(1, 7, 7), 0)
@@ -127,9 +127,9 @@ def test_finite_future_class_keeps_projected_f5_without_raw_domain_overrefinemen
             middle_wire=replace(base_wire, pair_domains=domains),
         )
 
-    left = _carry_phase_observation((phase(((8,), (9,))),))
-    different_f5 = _carry_phase_observation((phase(((7,), (9,))),))
-    same_f5 = _carry_phase_observation((phase(((3,), (9,))),))
+    left = carry_phase_observation((phase(((8,), (9,))),))
+    different_f5 = carry_phase_observation((phase(((7,), (9,))),))
+    same_f5 = carry_phase_observation((phase(((3,), (9,))),))
     assert left != different_f5
     assert left == same_f5
 

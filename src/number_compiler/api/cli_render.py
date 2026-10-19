@@ -17,7 +17,7 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
     ProjectedNumberTerm,
 )
-from number_compiler.api.observation_types import FamilyId
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import (
     require_integer as _integer,
 )
@@ -47,13 +47,13 @@ def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
             DoubleReverseTermPayload,
         ),
     ):
-        return owner.term._ledger
+        return owner.term.resource_ledger
     if isinstance(owner, (AntihydraTermPayload, CommaTermPayload)):
         return owner.term.ledger
     return None
 
 
-def _metrics_json(
+def metrics_json(
     term: ProjectedNumberTerm,
     *,
     coordinate: CoordinatePresentation | None = None,
@@ -97,7 +97,7 @@ def _metrics_json(
     return payload
 
 
-def _radix_string_from_lsd(digits: Iterable[int], base: int) -> str:
+def radix_string_from_lsd(digits: Iterable[int], base: int) -> str:
     base = _integer(base, "text output base", 2, len(_DIGITS))
     with closing_output_stream(digits) as stream:
         encoded = bytearray(
@@ -107,7 +107,7 @@ def _radix_string_from_lsd(digits: Iterable[int], base: int) -> str:
     return encoded.decode("ascii") or "0"
 
 
-def _power_of_two_radix_string(
+def power_of_two_radix_string(
     digits: Iterable[int],
     source_base: int,
     output_base: int,
@@ -141,7 +141,7 @@ def _power_of_two_radix_string(
     return encoded.decode("ascii") or "0"
 
 
-def _radix_string(value: int, base: int) -> str:
+def radix_string(value: int, base: int) -> str:
     value = _integer(value, "output value", 0)
     base = _integer(base, "text output base", 2, len(_DIGITS))
     if value == 0:
@@ -157,7 +157,7 @@ def _radix_string(value: int, base: int) -> str:
     return encoded.decode("ascii")
 
 
-def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:
+def render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:
     output_base = _integer(output_base, "--output-base", 2, len(_DIGITS))
     max_bits = _integer(max_bits, "--max-output-bits", 1)
     ledger = _term_ledger(term)
@@ -223,7 +223,7 @@ def _render_value_body(
         if isinstance(
             term.payload, (PoweredReverseAddTermPayload, DoubleReverseTermPayload)
         ):
-            return _radix_string_from_lsd(term.payload.iter_digits(), output_base)
+            return radix_string_from_lsd(term.payload.iter_digits(), output_base)
         return (
             "".join(_DIGITS[d] for d in term.payload.iter_digits(reverse=True)) or "0"
         )
@@ -245,7 +245,7 @@ def _render_value_body(
         if isinstance(term.payload, PoweredCollatzTermPayload):
             # The physical term's native image is binary, independently of
             # the user's requested Collatz digit-view radix.
-            return _power_of_two_radix_string(
+            return power_of_two_radix_string(
                 term.payload.term.iter_digits(), 2, output_base
             )
         source_base = term.source_radix
@@ -261,7 +261,7 @@ def _render_value_body(
             and source_base is not None
             and not source_base & (source_base - 1)
         ):
-            return _power_of_two_radix_string(
+            return power_of_two_radix_string(
                 term.payload.iter_digits(), source_base, output_base
             )
 
@@ -271,4 +271,4 @@ def _render_value_body(
         ledger.bump(
             _api_metrics.CLI_RENDER_INTEGER_CONVERSION_OPERAND_BITS, value.bit_length()
         )
-    return _radix_string(value, output_base)
+    return radix_string(value, output_base)

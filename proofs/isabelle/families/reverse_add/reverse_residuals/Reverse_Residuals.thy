@@ -5,16 +5,36 @@ begin
 text \<open>Exact definitions and proof obligations. No active 196 quotient is
 assumed or admitted by this theory.\<close>
 
-lemma carry_from_domain:
-  "carry_apply (domain s) c = (10 \<le> s + (if c then 1 else 0))"
-  by (cases c) (auto simp: domain_def)
-
 definition carry_out :: "bool \<Rightarrow> nat list \<Rightarrow> bool" where
   "carry_out c ss = fold (\<lambda>s c. carry_apply (domain s) c) ss c"
+
+text \<open>The first non-neutral coefficient is the shared reverse/add carry
+scan.  It is an option so callers can distinguish an all-nine word from a
+word whose first decisive coefficient happens to preserve a chosen carry.\<close>
+
+fun first_reset :: "nat list \<Rightarrow> bool option" where
+  "first_reset [] = None"
+| "first_reset (s # ss) =
+    (if s = 9 then first_reset ss else Some (10 \<le> s))"
+
+lemma first_reset_append:
+  "first_reset (xs@ys) =
+    (case first_reset xs of None \<Rightarrow> first_reset ys | Some c \<Rightarrow> Some c)"
+  by (induct xs; auto split: option.splits)
+
+lemma first_reset_none_iff:
+  "first_reset ss = None \<longleftrightarrow> (\<forall>x\<in>set ss. x = 9)"
+  by (induct ss; auto)
 
 lemma carry_out_append:
   "carry_out c (xs@ys) = carry_out (carry_out c xs) ys"
   by (simp add: carry_out_def fold_append)
+
+lemma carry_out_reverse_first_reset:
+  "carry_out c (rev ss) =
+    (case first_reset ss of None \<Rightarrow> c | Some b \<Rightarrow> b)"
+  by (induct ss; auto simp: carry_out_append carry_out_def domain_def
+      split: option.splits)
 
 lemma carry_depends_only_on_domains:
   assumes "map domain xs = map domain ys"
@@ -155,8 +175,9 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms carry_from_domain carry_depends_only_on_domains
-    carry_out_append
+  val checked = @{thms carry_depends_only_on_domains
+    carry_out_append first_reset_append first_reset_none_iff
+    carry_out_reverse_first_reset
     two_event_key_has_no_total_successor five_examples_separated_by_three_events
     factor_through_iff contextual_successor_iff iterate_commutes invariant_quotient_exists};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

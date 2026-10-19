@@ -27,9 +27,9 @@ from number_compiler.hashlife.tiles.tile_results import (
 from number_compiler.hashlife.tiles.tiles import TileID
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_results import (
-    _published_setup,
     _setup,
     assert_retention_and_peaks_unchanged,
+    published_setup,
 )
 
 
@@ -88,7 +88,7 @@ def test_warm_result_port_admission_is_read_only_semantic_validation() -> None:
         _unused_result_binding,
         held,
         before,
-    ) = _published_setup()
+    ) = published_setup()
     warm = results.lookup(key)
     assert warm is not None
     after = ledger.snapshot()
@@ -119,7 +119,7 @@ def test_result_lease_inspection_is_counter_neutral_but_still_validates() -> Non
         result,
         held,
         before,
-    ) = _published_setup()
+    ) = published_setup()
     assert held.output == result.output
     assert held.result == result
     assert ledger.snapshot() == before
@@ -213,7 +213,7 @@ def test_foreign_action_and_signature_reject_before_lookup() -> None:
         _unused_result_binding,
         lease,
         before,
-    ) = _published_setup()
+    ) = published_setup()
     foreign = replace(
         key,
         action=FieldCellActionID(ArenaToken("foreign"), key.action.kind, 0),
@@ -416,7 +416,7 @@ def test_independent_result_inventory_detects_reverse_link_corruption() -> None:
     member = next(
         reverse_key
         for reverse_key in results._reverse
-        if type(reverse_key).__name__ == "_ReverseMember"
+        if type(reverse_key).__name__ == "ResultDependencyMember"
     )
     original = results._reverse[member]
     results._reverse[member] = cast(_ReverseValue, None)

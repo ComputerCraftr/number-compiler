@@ -19,7 +19,7 @@ Q19 scheduler remains the authority for a completed endpoint.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -29,6 +29,7 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.skew_moments import SkewMoment
+from number_compiler.arithmetic.fields.walsh import LOW_WALSH_WIDTH, walsh64_signed
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
@@ -62,6 +63,10 @@ def _decimal_borrow_tape(minuend: int, subtrahend: int, width: int) -> tuple[int
     return mask, debt
 
 
+def _is_payload_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    return isinstance(value, tuple)
+
+
 def _integer_payload_bits(value: object) -> int:
     """Count exact integer payload bits in a finite record, without recursion."""
     pending = [value]
@@ -70,7 +75,7 @@ def _integer_payload_bits(value: object) -> int:
         current = pending.pop()
         if type(current) is int:
             total += current.bit_length()
-        elif isinstance(current, tuple):
+        elif _is_payload_tuple(current):
             pending.extend(current)
         elif is_dataclass(current):
             pending.extend(getattr(current, item.name) for item in fields(current))
@@ -189,19 +194,6 @@ class ModulusCarryBorrow:
             self.carry ^ self.innovation_borrow
         ):
             raise ValueError("borrow/XOR observer is inconsistent")
-
-
-def _walsh64(mask: int) -> tuple[int, ...]:
-    """Walsh-Hadamard transform of 64 Boolean low-coordinate mask bits."""
-    values = [1 if not (mask >> index) & 1 else -1 for index in range(64)]
-    stride = 1
-    while stride < 64:
-        for start in range(0, 64, 2 * stride):
-            for index in range(start, start + stride):
-                a, b = values[index], values[index + stride]
-                values[index], values[index + stride] = a + b, a - b
-        stride *= 2
-    return tuple(values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,7 +357,9 @@ class ReverseInnovationBank:
         future_raw_borrow = 0
         debt = 0
         is_zero_difference = True
-        for index, (a_digit, b_digit) in enumerate(zip(rev_next, rev_current)):
+        for index, (a_digit, b_digit) in enumerate(
+            zip(rev_next, rev_current, strict=True)
+        ):
             digit_work += 1
             new_debt = int(a_digit < b_digit + debt)
             difference_digit = a_digit - b_digit - debt + 10 * new_debt
@@ -379,7 +373,9 @@ class ReverseInnovationBank:
         )
         future_borrow = 0
         debt = 0
-        for index, (a_digit, b_digit) in enumerate(zip(high_digits, low_digits)):
+        for index, (a_digit, b_digit) in enumerate(
+            zip(high_digits, low_digits, strict=True)
+        ):
             digit_work += 1
             debt = int(a_digit < b_digit + debt)
             future_borrow |= debt << index
@@ -428,7 +424,7 @@ class ReverseInnovationBank:
             xor_mask = carry_mask ^ borrow_mask
             raw_xor_mask = carry_mask ^ raw_borrow_mask
 
-        modular = []
+        modular: list[ModulusCarryBorrow] = []
         for modulus in moduli:
             digit_work += 1
             kappa = int(source % modulus + reverse_current % modulus >= modulus)
@@ -456,7 +452,9 @@ class ReverseInnovationBank:
             borrow_mask,
             xor_mask,
             tuple(modular),
-            None if xor_mask is None else _walsh64(xor_mask),
+            None
+            if xor_mask is None
+            else walsh64_signed(xor_mask & ((1 << LOW_WALSH_WIDTH) - 1)),
             None
             if xor_mask is None
             else sum(
@@ -482,7 +480,7 @@ class ReverseInnovationBank:
             future_sign,
             future_xor,
             future_raw_xor,
-            _walsh64(future_xor),
+            walsh64_signed(future_xor & ((1 << LOW_WALSH_WIDTH) - 1)),
             sum(((future_xor >> i) & 1) * pow(2, i, 5) for i in range(w + growth)) % 5,
         )
         if ledger is not None:
@@ -583,13 +581,11 @@ def source_bound_modular_moments(
         project_q19_numeric,
     )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-    from number_compiler.sequences.reverse_add.source_images import ReverseImagePayload
 
     if type(term) is not ReverseAddPoweredTerm or term.base != 10:
         raise TypeError("modular moments require a decimal powered term")
     _require_int(modulus, "moment modulus", 2)
-    if (term.seed, term.generation, term.base) != term._binding:
-        raise ValueError("reverse/add temporal moment source was rebound")
+    term.validate_source_binding()
     source = term.seed % modulus
     source_reverse = _reverse_decimal(term.seed) % modulus
     if not term.generation:
@@ -598,23 +594,10 @@ def source_bound_modular_moments(
         # Zero is a proved fixed point: 0 + reverse10(0) = 0.
         # The scheduler's positive-decimal Q19 image need not exist here.
         return SkewMoment(term.generation, 0, 0, modulus)
-    workspace = term._source_workspace()
-    workspace.width()
-    if workspace._image is None:
-        raise AssertionError("completed Q19 source image was not published")
-    core = workspace.scheduler._source_image_core()
-    view = core.view(workspace._image)
-    payload = view.payload
-    if type(payload) is not ReverseImagePayload or payload.pair_output is None:
-        raise ValueError("source image has no completed Q19 occurrence")
-    if payload.pair_output.temporal_steps != term.generation:
+    owner, occurrence, _, _ = term.completed_q19_occurrence()
+    if occurrence.temporal_steps != term.generation:
         raise ValueError("Q19 temporal duration disagrees with source request")
-    owner = workspace.adapter._q19_owner
-    if owner is None or workspace.adapter._q19_source is not workspace.actions.source(
-        workspace.source
-    ):
-        raise ValueError("Q19 occurrence is missing its authenticated source owner")
-    endpoint = project_q19_numeric(owner, payload.pair_output, modulus=modulus)
+    endpoint = project_q19_numeric(owner, occurrence, modulus=modulus)
     u = (endpoint.reverse_target_mod - source_reverse) % modulus
     v = (endpoint.target_mod - source - term.generation * source_reverse) % modulus
     return SkewMoment(term.generation, u, v, modulus)

@@ -7,20 +7,21 @@ from dataclasses import dataclass, replace
 import pytest
 
 from number_compiler.arithmetic.automata.slp import SLPArena
+from number_compiler.arithmetic.fields.skew_moments import SkewMoment
 from number_compiler.resources.metric_keys.double_reverse import (
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS,
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
     DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES,
 )
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
+    SourceAuthorizedRecord,
     _snapshot_value,
-    _SourceAuthorizedRecord,
     issue_source_record,
     validate_source_record,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
-    PERIODIC_CHANNELS,
+    BANK_CHANNELS,
 )
 from number_compiler.sequences.double_reverse.source_bound_bank import (
     PointedBankSource,
@@ -32,21 +33,48 @@ from number_compiler.sequences.double_reverse.temporal_bank_output_morphism impo
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
 from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+    PHYSICAL_GROWTH_CYCLES,
     CertifiedResidueTemporalAction,
-    WidthMoments,
+    certified_width_moments,
 )
 
 
 @dataclass(frozen=True, slots=True)
-class _WidthMomentsLookalike:
-    steps: int
-    growth: int
-    skew: int
+class _SkewMomentLookalike:
+    duration: int
+    U: int
+    V: int
+    modulus: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class _NestedSnapshotRecord(_SourceAuthorizedRecord):
+class _NestedSnapshotRecord(SourceAuthorizedRecord):
     moments: object
+
+
+@pytest.mark.parametrize("phase", range(4))
+@pytest.mark.parametrize("steps", (0, 1, 3, 4, 9, 513))
+def test_certified_width_moments_use_shared_skew_monoid(phase: int, steps: int) -> None:
+    cycle = PHYSICAL_GROWTH_CYCLES[phase]
+    growth = tuple(cycle[index % len(cycle)] for index in range(steps))
+    expected = (
+        steps,
+        sum(growth),
+        sum((steps - index - 1) * bit for index, bit in enumerate(growth)),
+    )
+
+    action = certified_width_moments(phase, steps)
+
+    assert type(action) is SkewMoment
+    assert (action.duration, action.U, action.V) == expected
+
+
+@pytest.mark.parametrize(("phase", "steps"), ((True, 1), (0, True)))
+def test_certified_width_moments_reject_boolean_coordinates(
+    phase: int, steps: int
+) -> None:
+    with pytest.raises(ValueError):
+        certified_width_moments(phase, steps)
 
 
 def _literal(seed: int, steps: int) -> int:
@@ -132,10 +160,10 @@ def test_nonperiodic_finite_window_and_periodic_spatial_morphism_match_digits(
         if expected_closed:
             assert term.metrics()[
                 DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS
-            ] == 1 + len(PERIODIC_CHANNELS)
+            ] == 1 + len(BANK_CHANNELS)
             assert term.metrics()[
                 DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS
-            ] == temporal_states * bank.input_period * len(PERIODIC_CHANNELS)
+            ] == temporal_states * bank.input_period * len(BANK_CHANNELS)
         else:
             assert term.metrics()[DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS] == 0
             assert (
@@ -144,7 +172,7 @@ def test_nonperiodic_finite_window_and_periodic_spatial_morphism_match_digits(
             )
         scratch = next(
             account
-            for account in term._ledger.inventory()
+            for account in term.resource_ledger.inventory()
             if account.owner == term._scratch_owner
         )
         assert scratch.entries == scratch.nodes == 0
@@ -189,12 +217,12 @@ def test_source_snapshot_preserves_concrete_nested_types() -> None:
     arena = SLPArena()
     root = arena.word([4, 8])
     packet = issue_source_record(
-        _NestedSnapshotRecord(WidthMoments(3, 2, 1)), arena, root
+        _NestedSnapshotRecord(SkewMoment(3, 2, 1)), arena, root
     )
     object.__setattr__(
         packet,
         "moments",
-        _WidthMomentsLookalike(steps=3, growth=2, skew=1),
+        _SkewMomentLookalike(duration=3, U=2, V=1),
     )
     with pytest.raises(ValueError, match="authority"):
         validate_source_record(packet)
@@ -208,7 +236,7 @@ def test_zero_step_pair_reads_source_and_excludes_mirrored_center() -> None:
         source = PointedBankSource(
             term._arena,
             term._adapter.temporal_hashlife,
-            term._ledger,
+            term.resource_ledger,
             term._scratch_owner,
             0,
             root,

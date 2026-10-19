@@ -475,7 +475,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             elif isinstance(state, _FunctionalBoundaryState):
                 value = state.image[coordinate]
             else:
-                assert False, type(state)
+                raise AssertionError(type(state))
             value = self._canonical_child_state(self.second, side, value)
             merge_state_mask(grouped, value, 1 << i)
         cache[coordinate] = grouped

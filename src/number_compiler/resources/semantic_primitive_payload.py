@@ -19,7 +19,6 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.diamond_actions import CellID, CellNode
-from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientID
 from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
     CONTRACT,
     PrimitiveMacroArena,
@@ -29,6 +28,7 @@ from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroKey,
     PrimitiveMacroObservation,
 )
+from number_compiler.hashlife.interfaces.semantic_structures import DiamondQuotientID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import LedgerDict

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from typing import Any, cast
 
 from number_compiler.api.cli_types import (
     IndexPresentation,
@@ -17,14 +16,13 @@ from number_compiler.api.family_registry import (
 )
 from number_compiler.api.family_registry import (
     FamilySpec,
-    presentation_options,
 )
 from number_compiler.api.observation_types import (
-    FamilyId,
     IndexEncoding,
     ObservationId,
+    OptionValueKind,
     SelectorId,
-    family_id,
+    observation_id,
 )
 from number_compiler.api.observation_types import (
     OutputFormat as OutputFormatId,
@@ -32,6 +30,11 @@ from number_compiler.api.observation_types import (
 from number_compiler.api.query_types import (
     ExecutionQuery,
     QueryOptionError,
+)
+from number_compiler.api.registry_cli import presentation_options
+from number_compiler.arithmetic.contracts.family_identity import (
+    FamilyId,
+    family_id,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 
@@ -99,7 +102,7 @@ class UniqueValue(argparse.Action):
         self,
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
-        values: Any,
+        values: object,
         option_string: str | None = None,
     ) -> None:
         if self.nargs == 0:
@@ -114,24 +117,20 @@ class UniqueValue(argparse.Action):
 
 def parser(
     *,
-    demanded_family: str | FamilyId | None = None,
-    registry: Mapping[FamilyId | str, FamilySpec] | None = None,
+    demanded_family: FamilyId | None = None,
+    registry: Mapping[FamilyId, FamilySpec] | None = None,
 ) -> argparse.ArgumentParser:
     """Register all names while constructing only the demanded family's actions."""
-    capabilities = cast(
-        Mapping[FamilyId | str, FamilySpec],
-        _CAPABILITIES if registry is None else registry,
-    )
-    selected_family = (
-        demanded_family.value
-        if isinstance(demanded_family, FamilyId)
-        else demanded_family
-    )
-    known_families = {
-        key.value if isinstance(key, FamilyId) else key for key in capabilities
-    }
-    if selected_family is not None and selected_family not in known_families:
-        raise ValueError(f"unknown demanded CLI family: {selected_family}")
+    capabilities = _CAPABILITIES if registry is None else registry
+    if any(
+        type(family) is not FamilyId or type(spec) is not FamilySpec
+        for family, spec in capabilities.items()
+    ):
+        raise TypeError("family registry keys and values must use typed declarations")
+    if demanded_family is not None and demanded_family not in capabilities:
+        unknown_family = demanded_family.value
+        raise ValueError(f"unknown demanded CLI family: {unknown_family}")
+    selected_family = None if demanded_family is None else demanded_family.value
     command = argparse.ArgumentParser(
         prog="number-compiler",
         description="Exact family terms: number-compiler FAMILY --nth N [--info NAME].",
@@ -139,7 +138,7 @@ def parser(
     command.add_argument("--list-families", action="store_true")
     families = command.add_subparsers(dest="family")
     for family, spec in capabilities.items():
-        family_name = family.value if isinstance(family, FamilyId) else family
+        family_name = family.value
         family_parser = families.add_parser(
             family_name,
             help=f"index unit: {spec.unit}",
@@ -187,8 +186,8 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
     for name, option in spec.parser_options().items():
         if not option.name:
             raise ValueError(f"registry option {name!r} has no canonical name")
-        if option.value_kind != "integer":
-            if option.value_kind == "boolean":
+        if option.value_kind is not OptionValueKind.INTEGER:
+            if option.value_kind is OptionValueKind.BOOLEAN:
                 command.add_argument(
                     option.flag,
                     dest=option.name,
@@ -199,7 +198,7 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
                     help=option.help,
                 )
                 continue
-            if option.value_kind == "choice":
+            if option.value_kind is OptionValueKind.CHOICE:
                 command.add_argument(
                     option.flag,
                     dest=option.name,
@@ -235,7 +234,7 @@ def _add_information_option(command: argparse.ArgumentParser, spec: FamilySpec) 
 
 def _add_presentation_options(command: argparse.ArgumentParser) -> None:
     for option in presentation_options().values():
-        if option.value_kind == "boolean":
+        if option.value_kind is OptionValueKind.BOOLEAN:
             command.add_argument(
                 option.flag,
                 dest=option.name,
@@ -245,7 +244,7 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
                 default=option.default,
                 help=option.help,
             )
-        elif option.value_kind == "choice":
+        elif option.value_kind is OptionValueKind.CHOICE:
             command.add_argument(
                 option.flag,
                 dest=option.name,
@@ -254,7 +253,7 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
                 action=UniqueValue,
                 help=option.help,
             )
-        elif option.value_kind == "integer":
+        elif option.value_kind is OptionValueKind.INTEGER:
             command.add_argument(
                 option.flag,
                 dest=option.name,
@@ -270,13 +269,17 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
 def parse_request(
     argv: list[str],
     *,
-    registry: Mapping[FamilyId | str, FamilySpec] | None = None,
+    registry: Mapping[FamilyId, FamilySpec] | None = None,
 ) -> QueryRequest | None:
-    capabilities = cast(
-        Mapping[FamilyId | str, FamilySpec],
-        _CAPABILITIES if registry is None else registry,
-    )
-    demanded_family = argv[0] if argv and argv[0] in capabilities else None
+    capabilities = _CAPABILITIES if registry is None else registry
+    demanded_family: FamilyId | None = None
+    if argv:
+        try:
+            candidate = family_id(argv[0])
+        except ValueError:
+            candidate = None
+        if candidate in capabilities:
+            demanded_family = candidate
     command = parser(demanded_family=demanded_family, registry=capabilities)
     args = command.parse_args(argv)
     if args.list_families:
@@ -292,12 +295,12 @@ def parse_request(
 
 def _request_from_args(
     args: argparse.Namespace,
-    capabilities: Mapping[FamilyId | str, FamilySpec],
+    capabilities: Mapping[FamilyId, FamilySpec],
 ) -> QueryRequest:
     selected_family = family_id(args.family)
     spec = capabilities.get(selected_family)
     if spec is None:
-        spec = capabilities[args.family]
+        raise ValueError(f"unknown family: {args.family}")
     certificate = (
         None
         if spec.verify_flag is None
@@ -344,8 +347,14 @@ def _request_from_args(
     )
     try:
         matrix = (
-            spec.matrix.build(vars(args))
-            if ObservationId.TEMPORAL_MATRIX in observations.info
+            spec.matrix.build(
+                vars(args),
+                trace=ObservationId.TEMPORAL_MATRIX_TRACE in observations.info,
+            )
+            if {
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.TEMPORAL_MATRIX_TRACE,
+            }.intersection(observations.info)
             and spec.matrix is not None
             else None
         )
@@ -395,7 +404,9 @@ def _observation_query(
     spec: FamilySpec,
 ) -> ObservationOptions:
     return spec.build_observations(
-        selector, tuple(dict.fromkeys(args.info)), vars(args)
+        selector,
+        tuple(dict.fromkeys(observation_id(name) for name in args.info)),
+        vars(args),
     )
 
 

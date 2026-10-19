@@ -1,7 +1,8 @@
 # Documentation
 
-Current claims live in the maintained documents below. Historical reports apply
-to their recorded checkout, not later source.
+The release table owns current gate status; sprint topics own dated evidence;
+research papers own mathematical definitions and proof scope. Historical reports
+apply to their recorded checkout, not later source.
 
 ## Usage
 
@@ -43,7 +44,10 @@ records below; see the [placement guide](development.md#documentation-placement)
 Weeks run **Sunday–Saturday**, named by their Sunday start date. Each weekly
 index links to categorized implementation and validation records.
 
-- [September 27–October 3 — current week](sprints/week-of-2026-09-27/README.md)
+- [October 18–24 — current week](sprints/week-of-2026-10-18/README.md)
+- [October 11–17](sprints/week-of-2026-10-11/README.md)
+- [October 4–10](sprints/week-of-2026-10-04/README.md)
+- [September 27–October 3](sprints/week-of-2026-09-27/README.md)
 - [September 20–26](sprints/week-of-2026-09-20/README.md)
 - [September 13–19](sprints/week-of-2026-09-13/README.md)
 - [September 6–12](sprints/week-of-2026-09-06/README.md)

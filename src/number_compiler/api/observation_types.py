@@ -5,21 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 if TYPE_CHECKING:
     from number_compiler.api.output_schema import ObservationPacket
-
-
-class FamilyId(StrEnum):
-    REVERSE_ADD = "reverse-add"
-    DOUBLE_REVERSE = "2rev10"
-    COLLATZ = "collatz"
-    ANTIHYDRA = "antihydra"
-    A367620 = "a367620"
-    PRIME = "prime"
-    FERMAT = "fermat"
-    MERSENNE = "mersenne"
 
 
 class SelectorId(StrEnum):
@@ -72,12 +61,39 @@ class ObservationCategory(StrEnum):
     NUMBER_THEORY = "number-theory"
 
 
+class OptionValueKind(StrEnum):
+    """Parser kind for one option declared by the family registry."""
+
+    INTEGER = "integer"
+    BOOLEAN = "boolean"
+    CHOICE = "choice"
+
+
+OptionDefault: TypeAlias = int | bool | str | StrEnum | None
+
+
+def option_default(value: object) -> OptionDefault:
+    """Admit defaults discovered from dataclass metadata at the registry boundary."""
+    if value is None:
+        return value
+    if type(value) is int:
+        return value
+    if type(value) is bool:
+        return value
+    if type(value) is str:
+        return value
+    if isinstance(value, StrEnum):
+        return value
+    raise TypeError("registered parser option has an unsupported default")
+
+
 class ObservationId(StrEnum):
     METRICS = "metrics"
     TEMPORAL = "temporal"
     TEMPORAL_CLOCK = "temporal.clock"
     TEMPORAL_MACRO = "temporal.macro"
     TEMPORAL_MATRIX = "temporal.matrix"
+    TEMPORAL_MATRIX_TRACE = "temporal.matrix.trace"
     TEMPORAL_STENCIL = "temporal.stencil"
     TEMPORAL_BANK = "temporal.bank"
     TEMPORAL_BIRTH_LAYERS = "temporal.birth-layers"
@@ -114,40 +130,47 @@ class ObservationId(StrEnum):
     NUMBER_THEORY_ROOT = "number-theory.root"
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class OptionSpec:
     """One typed CLI option and the information packets which consume it."""
 
-    default: object | None
+    default: OptionDefault
     information: tuple[ObservationId, ...]
     required: bool = False
     name: str = ""
-    value_kind: str = "integer"
+    value_kind: OptionValueKind = OptionValueKind.INTEGER
     help: str = ""
     choices: tuple[str, ...] = ()
     flag_name: str | None = None
 
-    def __init__(
-        self,
-        default: object | None,
-        information: tuple[str | ObservationId, ...],
-        required: bool = False,
-        name: str = "",
-        value_kind: str = "integer",
-        help: str = "",
-        choices: tuple[str, ...] = (),
-        flag_name: str | None = None,
-    ) -> None:
-        object.__setattr__(self, "default", default)
-        object.__setattr__(
-            self, "information", tuple(observation_id(value) for value in information)
-        )
-        object.__setattr__(self, "required", required)
-        object.__setattr__(self, "name", name)
-        object.__setattr__(self, "value_kind", value_kind)
-        object.__setattr__(self, "help", help)
-        object.__setattr__(self, "choices", choices)
-        object.__setattr__(self, "flag_name", flag_name)
+    def __post_init__(self) -> None:
+        if type(self.name) is not str or type(self.help) is not str:
+            raise TypeError("option name and help must be strings")
+        if type(self.information) is not tuple or any(
+            type(identifier) is not ObservationId for identifier in self.information
+        ):
+            raise TypeError("option information must be declared ObservationIds")
+        if type(self.choices) is not tuple or any(
+            type(choice) is not str for choice in self.choices
+        ):
+            raise TypeError("option choices must be a tuple of strings")
+        if self.flag_name is not None and type(self.flag_name) is not str:
+            raise TypeError("option flag name must be a string")
+        if type(self.value_kind) is not OptionValueKind:
+            raise TypeError("option value kind must be declared by OptionValueKind")
+        if type(self.required) is not bool:
+            raise TypeError("option required flag must be Boolean")
+        if self.value_kind is OptionValueKind.INTEGER and self.default is not None:
+            if type(self.default) is not int:
+                raise TypeError("integer option default must be an integer")
+        elif self.value_kind is OptionValueKind.BOOLEAN and self.default is not None:
+            if type(self.default) is not bool:
+                raise TypeError("Boolean option default must be Boolean")
+        elif self.value_kind is OptionValueKind.CHOICE:
+            if self.default is not None and not isinstance(self.default, str):
+                raise TypeError("choice option default must be a string value")
+            if self.default is not None and self.default not in self.choices:
+                raise ValueError("choice option default must be one of its choices")
 
     @property
     def flag(self) -> str:
@@ -163,6 +186,13 @@ class ObservationAdapterBinding:
     prepare: str
     admit: str
     observe: str
+
+    def __post_init__(self) -> None:
+        if any(
+            type(name) is not str or not name
+            for name in (self.module, self.prepare, self.admit, self.observe)
+        ):
+            raise TypeError("observation adapter bindings must be nonempty names")
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +227,7 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_CLOCK,
         ObservationId.TEMPORAL_MACRO,
         ObservationId.TEMPORAL_MATRIX,
+        ObservationId.TEMPORAL_MATRIX_TRACE,
         ObservationId.TEMPORAL_STENCIL,
         ObservationId.TEMPORAL_BANK,
         ObservationId.TEMPORAL_OPEN_RING,
@@ -263,16 +294,6 @@ def observation_id(value: str | ObservationId) -> ObservationId:
         raise ValueError(f"unknown observation: {value}") from error
 
 
-def family_id(value: str | FamilyId) -> FamilyId:
-    """Validate a family spelling once at a CLI or integration boundary."""
-    if isinstance(value, FamilyId):
-        return value
-    try:
-        return FamilyId(value)
-    except ValueError as error:
-        raise ValueError(f"unknown family: {value}") from error
-
-
 def selector_id(value: str | SelectorId) -> SelectorId:
     """Validate one request selector at the parser boundary."""
     if isinstance(value, SelectorId):
@@ -305,7 +326,6 @@ def output_status(value: str | OutputStatus) -> OutputStatus:
 
 __all__ = [
     "OBSERVATION_REGISTRY",
-    "FamilyId",
     "IndexEncoding",
     "IndexUnit",
     "ObservationAdapterBinding",
@@ -313,33 +333,14 @@ __all__ = [
     "ObservationId",
     "ObservationSpec",
     "OptionSpec",
+    "OptionDefault",
+    "OptionValueKind",
     "OutputFormat",
     "OutputStatus",
     "SelectorId",
-    "family_id",
     "index_unit",
     "observation_id",
+    "option_default",
     "output_status",
     "selector_id",
 ]
-
-
-def family_observation_kind(name: ObservationId) -> str:
-    """Translate the wire identifier to a family-owned observer selector."""
-    return {
-        ObservationId.TEMPORAL_CLOCK: "clock",
-        ObservationId.ARITHMETIC_MODULAR: "modular",
-        ObservationId.ARITHMETIC_TWISTED: "twisted",
-        ObservationId.ARITHMETIC_HASSE: "hasse",
-        ObservationId.ARITHMETIC_HENSEL: "hensel",
-        ObservationId.ARITHMETIC_TROPICAL: "tropical",
-        ObservationId.ARITHMETIC_FACTOR: "factor",
-        ObservationId.SAFETY_EXECUTION: "safety",
-        ObservationId.SAFETY_LEDGER: "ledger",
-        ObservationId.SPATIAL_TAPE: "tape",
-        ObservationId.TEMPORAL_SPACETIME: "spacetime",
-        ObservationId.ARITHMETIC_MAHLER: "mahler",
-        ObservationId.NUMBER_THEORY_PRIMALITY: "primality",
-        ObservationId.NUMBER_THEORY_FACTOR: "factor",
-        ObservationId.NUMBER_THEORY_ROOT: "root",
-    }.get(name, name.value)

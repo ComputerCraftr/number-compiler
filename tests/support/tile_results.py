@@ -18,8 +18,10 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
     MacroComponents,
     MacroInterface,
 )
@@ -159,7 +161,7 @@ def _setup(
     return ledger, actions, tiles, results, input_lease, output_lease, key, result
 
 
-class _ChangingAlphabetAuthority(_ActionAuthority):
+class ChangingAlphabetAuthority(_ActionAuthority):
     """A -> B -> C admission; the result store must not collapse these domains."""
 
     def __init__(self, ledger: ResourceLedger) -> None:
@@ -192,7 +194,7 @@ class _ChangingAlphabetAuthority(_ActionAuthority):
             raise ValueError("wrong child output domain")
 
 
-def _fused_setup(
+def fused_setup(
     *, publish: bool = False
 ) -> tuple[
     ResourceLedger,
@@ -239,7 +241,7 @@ def assert_result_stores_unchanged(
     assert dict(results._reverse) == before[3]
 
 
-def _incoming_setup() -> tuple[
+def incoming_setup() -> tuple[
     ResourceLedger,
     _ActionAuthority,
     TileArena,
@@ -266,7 +268,7 @@ def _incoming_setup() -> tuple[
     )
 
 
-def _published_setup() -> tuple[
+def published_setup() -> tuple[
     ResourceLedger,
     _ActionAuthority,
     TileArena,

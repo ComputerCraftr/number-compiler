@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import MISSING, dataclass, fields
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from collections.abc import Callable, Mapping
+from dataclasses import MISSING, dataclass, fields, is_dataclass, replace
+from enum import StrEnum
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from number_compiler.api.cli_types import (
+    AntihydraObservationOptions,
+    CollatzEventObservationOptions,
+    CollatzTermObservationOptions,
+    CommaObservationOptions,
+    DoubleReverseObservationOptions,
     NoObservations,
     ObservationOptions,
+    PrimeObservationOptions,
     QueryRequest,
+    ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
 from number_compiler.api.matrix_contracts import MatrixCapability
@@ -23,11 +31,11 @@ from number_compiler.api.observation_types import (
     OptionSpec,
     OutputFormat,
     SelectorId,
-    index_unit,
-    observation_id,
-    selector_id,
+    option_default,
 )
 from number_compiler.api.query_types import (
+    AntihydraVerifyQuery,
+    CollatzEventQuery,
     ExecutionQuery,
     QueryOptionError,
     TermQuery,
@@ -39,6 +47,20 @@ if TYPE_CHECKING:
     from number_compiler.api.output_schema import JsonValue, VerificationResult
 
 
+_OBSERVATION_OPTION_TYPES = (
+    NoObservations,
+    ReverseAddObservationOptions,
+    DoubleReverseObservationOptions,
+    CollatzTermObservationOptions,
+    CollatzEventObservationOptions,
+    AntihydraObservationOptions,
+    CommaObservationOptions,
+    PrimeObservationOptions,
+    SpecialObservationOptions,
+)
+
+
+@runtime_checkable
 class ProjectionAdapter(Protocol):
     def __call__(
         self, compiler: NumberCompiler, query: TermQuery
@@ -53,17 +75,29 @@ class FamilyCapability:
     event_info: tuple[ObservationId, ...] = ()
     event_unit: IndexUnit | None = None
 
-    def __init__(
-        self,
-        unit: str | IndexUnit,
-        parameters: tuple[str, ...],
-        nth_info: tuple[str | ObservationId, ...],
-        event_info: tuple[str | ObservationId, ...] = (),
-        event_unit: str | IndexUnit | None = None,
-    ) -> None:
-        object.__setattr__(self, "unit", index_unit(unit))
-        object.__setattr__(self, "parameters", parameters)
-        term_ids = tuple(observation_id(value) for value in nth_info)
+    def __post_init__(self) -> None:
+        if type(self.unit) is not IndexUnit:
+            raise TypeError("family index unit must be declared by IndexUnit")
+        if type(self.parameters) is not tuple or any(
+            type(parameter) is not str for parameter in self.parameters
+        ):
+            raise TypeError("family parameters must be a tuple of names")
+        if type(self.nth_info) is not tuple or any(
+            type(identifier) is not ObservationId for identifier in self.nth_info
+        ):
+            raise TypeError("term observations must be declared ObservationIds")
+        if type(self.event_info) is not tuple or any(
+            type(identifier) is not ObservationId for identifier in self.event_info
+        ):
+            raise TypeError("event observations must be declared ObservationIds")
+        if self.event_unit is not None and type(self.event_unit) is not IndexUnit:
+            raise TypeError("event index unit must be declared by IndexUnit")
+        term_ids = self.nth_info
+        if (
+            ObservationId.TEMPORAL_MATRIX in term_ids
+            and ObservationId.TEMPORAL_MATRIX_TRACE not in term_ids
+        ):
+            term_ids += (ObservationId.TEMPORAL_MATRIX_TRACE,)
         if (
             any(
                 OBSERVATION_REGISTRY[item].category is ObservationCategory.TEMPORAL
@@ -72,8 +106,7 @@ class FamilyCapability:
             and ObservationId.TEMPORAL not in term_ids
         ):
             term_ids = (ObservationId.TEMPORAL, *term_ids)
-        object.__setattr__(self, "nth_info", term_ids)
-        event_ids = tuple(observation_id(value) for value in event_info)
+        event_ids = self.event_info
         if (
             any(
                 OBSERVATION_REGISTRY[item].category is ObservationCategory.TEMPORAL
@@ -82,14 +115,10 @@ class FamilyCapability:
             and ObservationId.TEMPORAL not in event_ids
         ):
             event_ids = (ObservationId.TEMPORAL, *event_ids)
-        object.__setattr__(self, "event_info", event_ids)
-        if event_unit is not None and not event_ids:
+        if self.event_unit is not None and not event_ids:
             raise ValueError("an event coordinate unit requires event observations")
-        object.__setattr__(
-            self,
-            "event_unit",
-            None if event_unit is None else index_unit(event_unit),
-        )
+        object.__setattr__(self, "nth_info", term_ids)
+        object.__setattr__(self, "event_info", event_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,13 +126,28 @@ class AdapterBinding:
     module: str
     attribute: str
 
+    def __post_init__(self) -> None:
+        if type(self.module) is not str or not self.module:
+            raise TypeError("adapter module must be a nonempty module path")
+        if type(self.attribute) is not str or not self.attribute:
+            raise TypeError("adapter attribute must be a nonempty name")
+
 
 @dataclass(frozen=True, slots=True)
 class ObservationValueBinding:
-    options_type: type[Any]
+    options_type: Callable[..., ObservationOptions]
     fields: tuple[str, ...] = ()
 
 
+class SizeBound(StrEnum):
+    DYADIC = "dyadic"
+    INDEX = "index"
+    SEED = "seed"
+    COLLATZ_SEED_AT_ZERO = "collatz_seed_at_zero"
+    PRIME_UPPER = "prime_upper"
+
+
+@runtime_checkable
 class VerificationAdapter(Protocol):
     def __call__(self, query: ExecutionQuery) -> VerificationResult: ...
 
@@ -114,9 +158,9 @@ class FamilySpec:
     query_type: type[TermQuery]
     projection: AdapterBinding
     observation: ObservationAdapterBinding
-    event_query_type: type[Any] | None = None
+    event_query_type: type[CollatzEventQuery] | None = None
     event_coordinate: str = "events"
-    verify_query_type: type[Any] | None = None
+    verify_query_type: type[AntihydraVerifyQuery] | None = None
     verify_coordinate: str = "certificate"
     verify_flag: str | None = None
     verification: AdapterBinding | None = None
@@ -129,57 +173,64 @@ class FamilySpec:
     observation_constraints: tuple[tuple[ObservationId, str, int, str], ...] = ()
     selector_restrictions: tuple[tuple[SelectorId, tuple[str, ...], str], ...] = ()
     clock_budget: tuple[ObservationId, str, str, str] | None = None
-    candidate_bound: str | None = None
+    candidate_bound: SizeBound | None = None
     candidate_information: tuple[ObservationId, ...] = ()
-    output_bound: str | None = None
+    output_bound: SizeBound | None = None
     matrix: MatrixCapability | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "bounded_observations",
-            tuple(observation_id(value) for value in self.bounded_observations),
-        )
-        object.__setattr__(
-            self,
-            "information_minima",
-            tuple(
-                (
-                    minimum,
-                    tuple(observation_id(value) for value in identifiers),
-                    message,
+        if type(self.capability) is not FamilyCapability:
+            raise TypeError("family specification requires a FamilyCapability")
+        if type(self.query_type) is not type or not is_dataclass(self.query_type):
+            raise TypeError("family specification requires a typed term query")
+        if (
+            type(self.projection) is not AdapterBinding
+            or type(self.observation) is not ObservationAdapterBinding
+        ):
+            raise TypeError("family specification requires typed adapter bindings")
+        if (
+            self.event_query_type is not None
+            and self.event_query_type is not CollatzEventQuery
+        ):
+            raise TypeError("event queries must use the registered event query type")
+        if (
+            self.verify_query_type is not None
+            and self.verify_query_type is not AntihydraVerifyQuery
+        ):
+            raise TypeError("certificate queries must use the registered verifier type")
+        if (
+            self.candidate_bound is not None
+            and type(self.candidate_bound) is not SizeBound
+        ):
+            raise TypeError("candidate size bound must be a SizeBound")
+        if self.output_bound is not None and type(self.output_bound) is not SizeBound:
+            raise TypeError("output size bound must be a SizeBound")
+        for identifiers in (self.bounded_observations, self.candidate_information):
+            if type(identifiers) is not tuple or any(
+                type(identifier) is not ObservationId for identifier in identifiers
+            ):
+                raise TypeError("family observations must be declared ObservationIds")
+        constraints: list[tuple[ObservationId, str, int, str]] = []
+        for identifier, field_name, value, message in self.observation_constraints:
+            if type(identifier) is not ObservationId:
+                raise TypeError("observation constraint requires an ObservationId")
+            constraints.append((identifier, field_name, value, message))
+            if identifier is ObservationId.TEMPORAL_MATRIX:
+                constraints.append(
+                    (ObservationId.TEMPORAL_MATRIX_TRACE, field_name, value, message)
                 )
-                for minimum, identifiers, message in self.information_minima
-            ),
-        )
         object.__setattr__(
-            self,
-            "observation_constraints",
-            tuple(
-                (observation_id(identifier), field_name, value, message)
-                for identifier, field_name, value, message in self.observation_constraints
-            ),
+            self, "observation_constraints", tuple(dict.fromkeys(constraints))
         )
-        object.__setattr__(
-            self,
-            "candidate_information",
-            tuple(observation_id(value) for value in self.candidate_information),
-        )
-        object.__setattr__(
-            self,
-            "selector_restrictions",
-            tuple(
-                (selector_id(selector), options, message)
-                for selector, options, message in self.selector_restrictions
-            ),
-        )
+        if any(
+            type(selector) is not SelectorId
+            for selector, _, _ in self.selector_restrictions
+        ):
+            raise TypeError("selector restrictions require SelectorIds")
         if self.clock_budget is not None:
-            identifier, limit, source, digits = self.clock_budget
-            object.__setattr__(
-                self,
-                "clock_budget",
-                (observation_id(identifier), limit, source, digits),
-            )
+            identifier = self.clock_budget[0]
+            if type(identifier) is not ObservationId:
+                raise TypeError("clock budget requires an ObservationId")
 
     @property
     def observation_specs(self) -> tuple[ObservationSpec, ...]:
@@ -249,16 +300,7 @@ class FamilySpec:
             () if self.matrix is None else self.matrix.options()
         )
         return {
-            name: OptionSpec(
-                option.default,
-                supported,
-                option.required,
-                name,
-                option.value_kind,
-                option.help,
-                option.choices,
-                option.flag_name,
-            )
+            name: replace(option, information=supported, name=name)
             for name, option in options
             if (
                 supported := tuple(
@@ -280,7 +322,9 @@ class FamilySpec:
                     self.verify_coordinate,
                 }:
                     continue
-                default = None if field.default is MISSING else field.default
+                default = (
+                    None if field.default is MISSING else option_default(field.default)
+                )
                 result[field.name] = OptionSpec(
                     default,
                     (),
@@ -332,34 +376,44 @@ class FamilySpec:
         return result
 
     def build_term_query(self, index: int, values: Mapping[str, object]) -> TermQuery:
-        return cast(
-            TermQuery, self._build_query(self.query_type, index, values, "index")
+        query = self._build_query(
+            self.query_type, self.query_type, index, values, "index"
         )
+        if not isinstance(query, TermQuery) or type(query) is not self.query_type:
+            raise TypeError("family query factory returned a different query type")
+        return query
 
     def build_event_query(
         self, coordinate: int, values: Mapping[str, object]
     ) -> ExecutionQuery:
         if self.event_query_type is None:
             raise ValueError("family does not support event queries")
-        return cast(
-            ExecutionQuery,
-            self._build_query(
-                self.event_query_type, coordinate, values, self.event_coordinate
-            ),
+        query = self._build_query(
+            self.event_query_type,
+            self.event_query_type,
+            coordinate,
+            values,
+            self.event_coordinate,
         )
+        if (
+            not isinstance(query, CollatzEventQuery)
+            or type(query) is not self.event_query_type
+        ):
+            raise TypeError("event query factory returned a different query type")
+        return query
 
     def build_verify_query(self, certificate: str) -> ExecutionQuery:
         if self.verify_query_type is None:
             raise ValueError("family does not support certificate verification")
-        return cast(
-            ExecutionQuery,
-            self.verify_query_type(**{self.verify_coordinate: certificate}),
-        )
+        query = self.verify_query_type(**{self.verify_coordinate: certificate})
+        if type(query) is not self.verify_query_type:
+            raise TypeError("verification query factory returned a different type")
+        return query
 
     def build_observations(
         self,
         selector: SelectorId,
-        information: tuple[str | ObservationId, ...],
+        information: tuple[ObservationId, ...],
         values: Mapping[str, object],
     ) -> ObservationOptions:
         if not information:
@@ -371,13 +425,15 @@ class FamilySpec:
         )
         if binding is None:
             raise ValueError("family selector has no observation option record")
-        return cast(
-            ObservationOptions,
-            binding.options_type(
-                info=tuple(observation_id(name) for name in information),
-                **{name: values[name] for name in binding.fields},
-            ),
+        if any(type(name) is not ObservationId for name in information):
+            raise TypeError("observation selections must be declared ObservationIds")
+        options = binding.options_type(
+            info=information,
+            **{name: values[name] for name in binding.fields},
         )
+        if type(options) not in _OBSERVATION_OPTION_TYPES:
+            raise TypeError("observation factory returned an unsupported options type")
+        return options
 
     def validate_observation_request(
         self, execution: ExecutionQuery, observations: ObservationOptions
@@ -511,22 +567,22 @@ class FamilySpec:
             )
 
     @staticmethod
-    def _size_exceeds(query: ExecutionQuery, rule: str, limit: int) -> bool:
-        if rule == "dyadic":
+    def _size_exceeds(query: ExecutionQuery, rule: SizeBound, limit: int) -> bool:
+        if rule is SizeBound.DYADIC:
             from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
 
             return DyadicExtent(query.index, 1) > limit
-        if rule == "index":
+        if rule is SizeBound.INDEX:
             return query.index > limit
-        if rule == "seed":
+        if rule is SizeBound.SEED:
             return FamilySpec._integer_field(query, "seed").bit_length() > limit
-        if rule == "collatz_seed_at_zero":
+        if rule is SizeBound.COLLATZ_SEED_AT_ZERO:
             return (
                 FamilySpec._integer_field(query, "seed").bit_length()
                 if query.index == 0
                 else 0
             ) > limit
-        if rule == "prime_upper":
+        if rule is SizeBound.PRIME_UPPER:
             start = max(2, FamilySpec._integer_field(query, "start"))
             return (start + query.index).bit_length() > limit
         raise ValueError(f"unknown size-bound rule {rule!r}")
@@ -540,8 +596,12 @@ class FamilySpec:
 
     @staticmethod
     def _build_query(
-        query_type: type[Any], coordinate: int, values: Mapping[str, object], key: str
-    ) -> Any:
+        query_type: type[ExecutionQuery],
+        factory: Callable[..., ExecutionQuery],
+        coordinate: int,
+        values: Mapping[str, object],
+        key: str,
+    ) -> ExecutionQuery:
         query_fields = {field.name: field for field in fields(query_type)}
         names = set(query_fields) - {key}
         for name in names:
@@ -552,7 +612,7 @@ class FamilySpec:
                     name, f"{family} requires --{name.replace('_', '-')}"
                 )
         arguments = {name: values[name] for name in names if name in values}
-        return query_type(**{key: coordinate}, **arguments)
+        return factory(**{key: coordinate}, **arguments)
 
     def requires_bounded_observer(
         self, selector: SelectorId, info: tuple[ObservationId, ...]
@@ -572,14 +632,17 @@ class ObservationAdapter(Protocol):
     ) -> dict[str, JsonValue]: ...
 
 
+@runtime_checkable
 class PrepareObserver(Protocol):
     def __call__(self, context: QueryContext, term: ProjectedNumberTerm) -> None: ...
 
 
+@runtime_checkable
 class AdmitObserver(Protocol):
     def __call__(self, context: QueryContext) -> None: ...
 
 
+@runtime_checkable
 class ObserveObserver(Protocol):
     def __call__(
         self, context: QueryContext, name: ObservationId
@@ -597,5 +660,6 @@ __all__ = [
     "OptionSpec",
     "PrepareObserver",
     "ProjectionAdapter",
+    "SizeBound",
     "VerificationAdapter",
 ]

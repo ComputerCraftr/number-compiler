@@ -126,7 +126,7 @@ def _round_close_candidate(residue: int, start: BoundaryChart) -> RoundClosure:
         chart = next_chart
 
 
-def _decade_round_candidate(phase: int, offset: int) -> DecadeRoundCandidate:
+def decade_round_candidate(phase: int, offset: int) -> DecadeRoundCandidate:
     if not 0 <= phase < PERIOD or not 0 <= offset < DECADE_OFFSETS:
         raise ValueError("invalid decimal-round state")
     closure = _round_close_candidate(phase, BoundaryChart("entry", 1, 0, offset))
@@ -150,7 +150,7 @@ def _decade_from_closure(
     )
 
 
-def _boundary_partial_round_candidate(
+def boundary_partial_round_candidate(
     kind: Literal["N", "Z"], a: int, residue: int
 ) -> tuple[RoundClosure, tuple[int, int] | None]:
     """Map an admitted boundary source to its first derived decade state."""
@@ -163,13 +163,13 @@ def _boundary_partial_round_candidate(
 
 def _decade_round_graph() -> list[DecadeRoundCandidate]:
     return [
-        _decade_round_candidate(phase, offset)
+        decade_round_candidate(phase, offset)
         for phase in range(PERIOD)
         for offset in range(DECADE_OFFSETS)
     ]
 
 
-def _phase_factorization_profile() -> tuple[dict[int, int], int]:
+def phase_factorization_profile() -> tuple[dict[int, int], int]:
     """Measure reusable canonical Entry germs, without adding a transition rule.
 
     For each of the 17 admitted displacements, infer its least period from
@@ -426,7 +426,7 @@ def _chart_moves_from(
     raise ValueError("comma chart exceeded its finite seam bound")
 
 
-def _control_witness_from_chart(start: BoundaryChart, residue: int) -> ControlWitness:
+def control_witness_from_chart(start: BoundaryChart, residue: int) -> ControlWitness:
     """Propose a control witness for a caller-supplied intermediate chart."""
     return _assemble_control_witness(
         {"chart": _chart_data(start), "residue": residue},

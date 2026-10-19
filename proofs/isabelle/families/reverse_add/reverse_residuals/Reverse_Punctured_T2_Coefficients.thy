@@ -253,7 +253,7 @@ proof -
   have transfer:
     "carry_apply (domain symbol) incoming =
       (10 \<le> symbol + carry_bit incoming)"
-    by (simp add: carry_from_domain carry_bit_def)
+    by (simp add: carry_apply_decimal_threshold carry_bit_def)
   show ?thesis
   proof (cases "carry_apply (domain symbol) incoming")
     case True

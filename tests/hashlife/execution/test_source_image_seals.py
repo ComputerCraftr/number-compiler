@@ -9,10 +9,10 @@ import pytest
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeals,
-    _TypedKey,
+    TypedPayloadKey,
     publication_matches,
     publication_seal,
 )
@@ -90,8 +90,8 @@ def test_subclass_transform_is_sealed_and_part_of_typed_identity(
     owner = ArenaToken("source")
     original = handle_type(owner, "action", 0, ActionTransform.IDENTITY)
     mirrored = handle_type(owner, "action", 0, ActionTransform.MIRROR)
-    assert _TypedKey(original) != _TypedKey(mirrored)
-    assert len({_TypedKey(original): 1, _TypedKey(mirrored): 2}) == 2
+    assert TypedPayloadKey(original) != TypedPayloadKey(mirrored)
+    assert len({TypedPayloadKey(original): 1, TypedPayloadKey(mirrored): 2}) == 2
     ledger = ResourceLedger()
     seal = publication_seal((original,), ledger)
     assert publication_matches((original,), seal, ledger)
@@ -103,7 +103,7 @@ def test_innovation_seal_is_sealed_and_part_of_typed_identity() -> None:
     owner = ArenaToken("source")
     first = InnovationID(owner, "innovation", 0, "first")
     second = InnovationID(owner, "innovation", 0, "second")
-    assert _TypedKey(first) != _TypedKey(second)
+    assert TypedPayloadKey(first) != TypedPayloadKey(second)
     ledger = ResourceLedger()
     seal = publication_seal((first,), ledger)
     object.__setattr__(first, "seal", "second")
@@ -113,12 +113,12 @@ def test_innovation_seal_is_sealed_and_part_of_typed_identity() -> None:
 def test_typed_handle_key_rejects_unsupported_mutable_subclass_field() -> None:
     handle = _MutablePayloadHandle(ArenaToken("source"), "node", 0, [1])
     with pytest.raises(TypeError, match="structural immutable key"):
-        _TypedKey(handle)
+        TypedPayloadKey(handle)
     enum_handle = _MutablePayloadHandle(
         ArenaToken("source"), "node", 0, _MutableEnum.ITEM
     )
     with pytest.raises(TypeError, match="structural immutable key"):
-        _TypedKey(enum_handle)
+        TypedPayloadKey(enum_handle)
 
 
 def test_identity_anchors_pin_replaced_nested_objects() -> None:

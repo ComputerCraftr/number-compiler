@@ -56,7 +56,7 @@ def causal_point(
         adapter.action_children(child) is None for child in children
     ):
         return None
-    scheduler.results._validate_key(key)
+    scheduler.results.validate_key(key)
     if not 0 <= coordinate < scheduler.tiles.resolve(key.input).width:
         raise IndexError(coordinate)
     if key.fusion is None and (
@@ -110,7 +110,7 @@ def causal_complete(
         return None
     if adapter.action_children(key.action) is None:
         return None
-    scheduler.results._validate_key(key)
+    scheduler.results.validate_key(key)
     if key.fusion is None and key.ports != adapter.initial_ports(key.action):
         raise ValueError("complete causal powers require canonical exterior ports")
     if key.fusion is None and key.boundaries != EMPTY_BOUNDARY_TILES:
@@ -196,7 +196,7 @@ def causal_width_query(
         or not supports_reverse_sector_width(adapter, key.action)
     ):
         return None
-    scheduler.results._validate_key(key)
+    scheduler.results.validate_key(key)
     if not 0 <= limit <= scheduler.tiles.resolve(key.input).width:
         raise ValueError("causal width limit lies outside the input tile")
     if key.fusion is None and (

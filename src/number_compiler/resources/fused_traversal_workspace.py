@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
-from sys import getsizeof
+from typing import TYPE_CHECKING
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerList
+
+if TYPE_CHECKING:
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        FusedTraversalWorkspaceAuditSnapshot,
+    )
 
 
 def fused_traversal_workspace_owner_names(
@@ -58,6 +63,29 @@ class FusedTraversalWorkspace:
     def __len__(self) -> int:
         return 0
 
+    def audit_snapshot(self) -> FusedTraversalWorkspaceAuditSnapshot:
+        """Return immutable scratch values and exact backing-store identities."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            FusedTraversalWorkspaceAuditSnapshot,
+        )
+
+        return FusedTraversalWorkspaceAuditSnapshot(
+            ledger=self.ledger,
+            workspace_identity=id(self),
+            owner=self.owner,
+            frame_owner=self.frame_owner,
+            value_owner=self.value_owner,
+            frame_store_identity=id(self.frames),
+            value_store_identity=id(self.values),
+            frames=tuple(self.frames),
+            values=tuple(self.values),
+            nodes=self.nodes,
+            active=self.active,
+            disposed=self._disposed,
+            max_frames=self.max_frames,
+            max_values=self.max_values,
+        )
+
     def _check_open(self) -> None:
         if self._disposed:
             raise RuntimeError("fused traversal workspace has been disposed")
@@ -69,14 +97,14 @@ class FusedTraversalWorkspace:
             store.append(value)
         except BaseException:
             if len(store) != prior_size:
-                store._rollback_unpublished(prior_size)
+                store.rollback_unpublished(prior_size)
             self.ledger.release(owner, entries=1)
             raise
         count = len(self.frames) + len(self.values)
         peak = self.ledger.counters.get(_shared_keys.TILE_FUSED_WORKSPACE_PEAK, 0)
         if count > peak:
             self.ledger.bump(_shared_keys.TILE_FUSED_WORKSPACE_PEAK, count - peak)
-        backing = getsizeof(self.frames._data) + getsizeof(self.values._data)
+        backing = self.frames.backing_size_bytes + self.values.backing_size_bytes
         old_backing = self.ledger.counters.get(
             _resources_keys.TILE_FUSED_WORKSPACE_BACKING_PEAK_BYTES, 0
         )
@@ -122,7 +150,7 @@ class FusedTraversalWorkspace:
         return self._pop(self.value_owner, self.values)
 
     @contextmanager
-    def scope(self, level: int, port_count: int) -> Iterator[None]:
+    def scope(self, level: int, port_count: int) -> Generator[None, None, None]:
         self._check_open()
         if any(type(value) is not int for value in (level, port_count)):
             raise TypeError("fused traversal bounds require exact integers")

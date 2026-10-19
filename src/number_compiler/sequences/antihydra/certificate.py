@@ -52,7 +52,7 @@ def check_implication(premises: list[Row], target: Row, weights: object) -> None
     if any(w < 0 for w in factors):
         raise ValueError("negative implication multiplier")
     actual = tuple(
-        sum((w * p[i] for w, p in zip(factors, premises)), Fraction(0))
+        sum((w * p[i] for w, p in zip(factors, premises, strict=True)), Fraction(0))
         for i in range(3)
     )
     if actual != target:
@@ -128,7 +128,7 @@ def verify(data: object) -> dict[str, object]:
             witnesses = branch.get("witnesses")
             if not isinstance(witnesses, list) or len(witnesses) != len(targets):
                 raise ValueError("missing successor inequality witnesses")
-            for target, witness in zip(targets, witnesses):
+            for target, witness in zip(targets, witnesses, strict=True):
                 check_implication(premises, target, witness)
                 checks += 1
     return {

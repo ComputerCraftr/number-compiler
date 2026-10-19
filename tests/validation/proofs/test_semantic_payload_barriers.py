@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast, get_type_hints
 
 import pytest
 
+import devtools.verification.collatz_carry_ranges as carry_ranges
 import devtools.verification.lazy_collatz as collatz
 import devtools.verification.lazy_collatz_range as collatz_range
 import devtools.verification.lazy_reverse as reverse
@@ -46,7 +47,9 @@ from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferRecord,
     FieldTransferRequestKey,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from number_compiler.projection.microblock_cache import (
     ExactMicroblock,
     MicroblockKey,
@@ -58,9 +61,11 @@ from number_compiler.resources.stores import LedgerList
 from tests.support.dataclass_records import replace_record
 
 if TYPE_CHECKING:
-    from devtools.verification.lazy_collatz import (
+    from devtools.verification.collatz_carry_ranges import (
         CarryRangeSummary,
         CarryRangeTransfer,
+    )
+    from devtools.verification.lazy_collatz import (
         CollatzLazyView,
         LazyCollatzResult,
         _Mul3Port,
@@ -190,9 +195,11 @@ def templates() -> tuple[
         collatz._ShiftPort(program, 1),
         view,
         collatz.LazyCollatzResult(view, (1,)),
-        collatz.CarryRangeSummary(1, 0, 0, 0),
-        collatz.CarryRangeTransfer.bit(0),
-        collatz_range.CollatzRangeEffect(collatz.CarryRangeTransfer.bit(0), None, None),
+        carry_ranges.CarryRangeSummary(1, 0, 0, 0),
+        carry_ranges.CarryRangeTransfer.bit(0),
+        collatz_range.CollatzRangeEffect(
+            carry_ranges.CarryRangeTransfer.bit(0), None, None
+        ),
         collatz_range._RangeKey(program, 0, 8),
         collatz_range._CompositionKey(range_action, range_action),
         collatz_range._Request("range", program, 0, 8),
@@ -296,9 +303,11 @@ def test_metric_snapshot_resolves_each_record_type_annotation_once(
     )
     from number_compiler.resources import payload_schema
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from tests.support.diamond_runtime import build
+    from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1
+    )
     runtime.execute(SpatialSummary(action, runtime.cells.source(0, 2), 0))
     calls: list[type[object]] = []
     original = get_type_hints

@@ -24,7 +24,7 @@ _F5 = 5
 _ROOT_CERTIFICATE_DEPTH = 8
 
 
-def _project_dyadic_fields_f5(
+def project_dyadic_fields_f5(
     action: DyadicTerminalFieldAction,
 ) -> CollatzF5AffineAction:
     """Project one exact normalized affine action into the shared F5 owner."""
@@ -349,7 +349,7 @@ def root_fiber_certificate(
     )
 
 
-def _append_dyadic_f5(
+def append_dyadic_f5(
     normalized: CollatzF5AffineAction,
     physical: CollatzF5AffineAction,
     multiplier: int,
@@ -363,18 +363,18 @@ def _append_dyadic_f5(
     return normalized.then(action), physical.then(action)
 
 
-def _run_zero_f5(length: int) -> CollatzF5AffineAction:
+def run_zero_f5(length: int) -> CollatzF5AffineAction:
     if type(length) is not int or length <= 0:
         raise ValueError("zero run length must be positive")
     # x -> 3*x on F5 has order four.
     return HENSEL_ZERO_F5.power(length & 3)
 
 
-def _run_one_f5(length: int) -> CollatzF5AffineAction:
+def run_one_f5(length: int) -> CollatzF5AffineAction:
     if type(length) is not int or length <= 0:
         raise ValueError("one run length must be positive")
     # x -> 4*x+3 on F5 is an involution.
     return HENSEL_ONE_F5 if length & 1 else CollatzF5AffineAction.identity()
 
 
-_CYCLE_F5 = HENSEL_ONE_F5.then(HENSEL_ZERO_F5)
+CYCLE_F5 = HENSEL_ONE_F5.then(HENSEL_ZERO_F5)

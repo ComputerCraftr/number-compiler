@@ -20,7 +20,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.result_cache_kinds import result_cache_kind
-from tests.support.tile_kernel import _tile, powered_runtime
+from tests.support.tile_kernel import make_tile_from_symbols, powered_runtime
 
 
 def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
@@ -28,7 +28,7 @@ def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
         BaseBlockEffect(3), 4
     )
     engine = CausalTileEngine(scheduler)
-    with _tile(tiles, adapter, primitive, (blank,) * 4) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
         left, right = engine._initial(action, 0), engine._initial(action, 1)
         ports = adapter.initial_ports(action)
         with scheduler.complete(
@@ -117,7 +117,7 @@ def test_retirement_removals_keep_behavior_and_region_distinct() -> None:
         BaseBlockEffect(3), 4
     )
     engine = CausalTileEngine(scheduler)
-    source = _tile(tiles, adapter, primitive, (blank,) * 4)
+    source = make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4)
     left, right = engine._initial(action, 0), engine._initial(action, 1)
     assert (
         quiescent_boundary(
@@ -133,7 +133,9 @@ def test_retirement_removals_keep_behavior_and_region_distinct() -> None:
     source.close()
     assert ledger.counters["result_cache_behavior_retirement_removals"] == 1
 
-    with _tile(tiles, adapter, primitive, (blank, 0, 1, blank)) as backing:
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (blank, 0, 1, blank)
+    ) as backing:
         _view, lease = normalize_cached_region(
             scheduler.results,
             BoundaryTileView(backing.tile, 0, 2, 0, 1),

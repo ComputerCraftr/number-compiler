@@ -13,6 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_band,
+)
 from number_compiler.arithmetic.functions.finite_observer import (
     partition_by_signature,
     refine_observer_partition,
@@ -22,7 +27,7 @@ from number_compiler.arithmetic.functions.partial_count_action import (
     PartialCountAction,
 )
 
-from .inward_bank_harmonics import BANDS, pair_band, pair_carry
+from .inward_bank_harmonics import pair_carry
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +90,7 @@ class ConditionalRingPairAction:
         if (
             type(self._action) is not PartialCountAction
             or self._action.owner.states != 19
-            or self._action.owner.channels != len(BANDS) + 1
+            or self._action.owner.channels != len(DECIMAL_PAIR_BANDS) + 1
         ):
             raise ValueError("bad conditional ring action")
 
@@ -100,7 +105,8 @@ class ConditionalRingPairAction:
     @property
     def band_counts(self) -> tuple[tuple[int, ...] | None, ...]:
         return tuple(
-            None if row is None else row[: len(BANDS)] for row in self._action.counts
+            None if row is None else row[: len(DECIMAL_PAIR_BANDS)]
+            for row in self._action.counts
         )
 
     @property
@@ -119,8 +125,10 @@ class ConditionalRingPairAction:
 
     @classmethod
     def identity(cls, owner: ActionUniverse | None = None) -> ConditionalRingPairAction:
-        universe = ActionUniverse(19, len(BANDS) + 1) if owner is None else owner
-        if universe.states != 19 or universe.channels != len(BANDS) + 1:
+        universe = (
+            ActionUniverse(19, len(DECIMAL_PAIR_BANDS) + 1) if owner is None else owner
+        )
+        if universe.states != 19 or universe.channels != len(DECIMAL_PAIR_BANDS) + 1:
             raise ValueError("wrong Q19 action universe")
         return cls(PartialCountAction.identity(universe))
 
@@ -128,8 +136,10 @@ class ConditionalRingPairAction:
     def letter(
         cls, port: RingPairLetter, owner: ActionUniverse | None = None
     ) -> ConditionalRingPairAction:
-        universe = ActionUniverse(19, len(BANDS) + 1) if owner is None else owner
-        if universe.states != 19 or universe.channels != len(BANDS) + 1:
+        universe = (
+            ActionUniverse(19, len(DECIMAL_PAIR_BANDS) + 1) if owner is None else owner
+        )
+        if universe.states != 19 or universe.channels != len(DECIMAL_PAIR_BANDS) + 1:
             raise ValueError("wrong Q19 action universe")
         targets = tuple(port.successor(q) for q in range(19))
         counts: list[tuple[int, ...] | None] = []
@@ -137,8 +147,8 @@ class ConditionalRingPairAction:
             if target is None:
                 counts.append(None)
             else:
-                values = [0] * len(BANDS)
-                values[BANDS.index(pair_band(target))] = 1
+                values = [0] * len(DECIMAL_PAIR_BANDS)
+                values[DECIMAL_PAIR_BANDS.index(decimal_pair_band(target))] = 1
                 counts.append((*values, port.growth))
         return cls(PartialCountAction(1, targets, tuple(counts), universe))
 
@@ -173,10 +183,10 @@ def input_driven_moore_classes(
     if observation not in ("five_band", "gt_high", "eq", "f5", "coefficient"):
         raise ValueError("unknown Q19 observation contract")
     labels = tuple(
-        pair_band(q)
+        decimal_pair_band(q)
         if observation == "five_band"
-        else int(pair_band(q) == observation)
-        if observation in ("gt_high", "eq")
+        else int(decimal_pair_band(q).value == observation)
+        if observation in (DecimalPairBand.GT_HIGH.value, DecimalPairBand.EQ.value)
         else q % 5
         if observation == "f5"
         else q

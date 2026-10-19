@@ -356,9 +356,11 @@ def test_large_seed_collatz_radix_uses_admitted_image_projection(
     assert collatz_radix_digit(term, 3, 0) == expected % 3
     assert calls == 1
     assert term._workspace is not None
-    assert term._workspace.ledger is term._ledger
-    assert term._ledger.counters.get("source_image_projection_publications", 0) > 0
-    assert term._ledger.counters.get("collatz_image_radix_demands", 0) > 0
+    assert term._workspace.ledger is term.resource_ledger
+    assert (
+        term.resource_ledger.counters.get("source_image_projection_publications", 0) > 0
+    )
+    assert term.resource_ledger.counters.get("collatz_image_radix_demands", 0) > 0
 
 
 def test_adjacent_digits_consume_completed_quotient_tiles() -> None:

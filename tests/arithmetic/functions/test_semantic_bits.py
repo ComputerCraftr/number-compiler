@@ -249,11 +249,11 @@ def test_local_and_joint_substitution_share_complete_behavior_without_memo(
 def test_total_boolean_identities_avoid_shannon_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+    from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 
     arena = BitFunctionArena(ResourceLedger())
     port = FinitePort(PortVariable(0, 0, "carry", 0), 2)
-    circuit = _Circuit(arena.functions, (port,))
+    circuit = BooleanCircuit(arena.functions, (port,))
     condition = circuit.tx.bit((port,), port.variable)
 
     def forbidden(*_args: object, **_kwargs: object) -> int:

@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass
+from enum import Enum
 from typing import TypeAlias, cast
 
 from number_compiler.arithmetic.automata.slp import SLPArena
@@ -25,6 +26,11 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_interval,
 )
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_partition,
+)
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.functions.finite_observer import minimize_finite_orbit
 from number_compiler.resources.ledger import ResourceLedger
@@ -37,30 +43,60 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 
 from ._temporal_bank_authority import (
     FrozenMap,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
     issue_source_record,
     validate_source_record,
 )
 from .stencil_moore import stencil_cell
 from .temporal_hashlife import edge_phase, growth_ports
 
-PERIODIC_CHANNELS = (
-    "lt_low",
-    "lt_high",
-    "eq",
-    "gt_low",
-    "gt_high",
-    "f5",
-    "carry_left",
-    "carry_right",
-    "carry_xor",
-    "borrow_left_0",
-    "borrow_left_1",
-    "borrow_right_0",
-    "borrow_right_1",
-    "growth_left",
-    "growth_right",
+
+class TemporalBankChannel(Enum):
+    """Typed identities for non-band outputs of the double-reverse bank."""
+
+    F5 = "f5"
+    CARRY_LEFT = "carry_left"
+    CARRY_RIGHT = "carry_right"
+    CARRY_XOR = "carry_xor"
+    BORROW_LEFT_0 = "borrow_left_0"
+    BORROW_LEFT_1 = "borrow_left_1"
+    BORROW_RIGHT_0 = "borrow_right_0"
+    BORROW_RIGHT_1 = "borrow_right_1"
+    GROWTH_LEFT = "growth_left"
+    GROWTH_RIGHT = "growth_right"
+
+
+BankChannel: TypeAlias = DecimalPairBand | TemporalBankChannel
+BANK_CHANNELS: tuple[BankChannel, ...] = (
+    *DECIMAL_PAIR_BANDS,
+    *tuple(TemporalBankChannel),
 )
+
+
+def bank_channel_name(channel: BankChannel) -> str:
+    """Return the established serialized spelling for a typed bank channel."""
+    value: object = channel.value
+    if type(value) is not str:
+        raise TypeError("bank channel identity has no string wire spelling")
+    return value
+
+
+def parse_bank_channel(value: object) -> BankChannel:
+    """Parse a wire spelling once at a public observation boundary."""
+    if isinstance(value, (DecimalPairBand, TemporalBankChannel)):
+        return value
+    if type(value) is not str:
+        raise ValueError("unknown temporal bank output channel")
+    try:
+        return DecimalPairBand(value)
+    except ValueError:
+        try:
+            return TemporalBankChannel(value)
+        except ValueError as exc:
+            raise ValueError("unknown temporal bank output channel") from exc
+
+
 MAX_PROTECTED_PERIOD = 8
 MAX_PROTECTED_TEMPORAL_STATES = 4096
 
@@ -255,18 +291,18 @@ class PeriodicBankFrame:
     growth_right: int
 
     def __post_init__(self) -> None:
-        if self.pair != sum(self.digits) or not 0 <= self.pair <= 18:
+        projection = decimal_pair_partition(self.pair)
+        if self.pair != sum(self.digits):
             raise ValueError("temporal bank pair sum is invalid")
-        masks = (
-            int(self.pair < 5),
-            int(5 <= self.pair <= 8),
-            int(self.pair == 9),
-            int(10 <= self.pair <= 14),
-            int(15 <= self.pair <= 18),
-        )
-        if masks != (self.lt_low, self.lt_high, self.eq, self.gt_low, self.gt_high):
+        if projection.masks != (
+            self.lt_low,
+            self.lt_high,
+            self.eq,
+            self.gt_low,
+            self.gt_high,
+        ):
             raise ValueError("LT/EQ/GT bank mask is inconsistent")
-        if self.f5 != self.pair % 5:
+        if self.f5 != projection.f5:
             raise ValueError("pair F5 residue is inconsistent")
         if self.carry_xor != (self.carry_left ^ self.carry_right):
             raise ValueError("reflected carry XOR is inconsistent")
@@ -281,16 +317,38 @@ class PeriodicBankFrame:
             if response != (int(after < before), int(after < before + 1)):
                 raise ValueError("conditional borrow response is inconsistent")
 
-    def scalar(self, name: str) -> int:
-        if name == "growth":
-            return self.growth
-        if name not in PERIODIC_CHANNELS:
-            raise ValueError("unknown temporal port name")
-        if name.startswith("borrow_left"):
-            return self.borrow_left[int(name[-1])]
-        if name.startswith("borrow_right"):
-            return self.borrow_right[int(name[-1])]
-        return int(getattr(self, name))
+    def scalar(self, channel: BankChannel) -> int:
+        """Read one typed semantic output channel."""
+        if isinstance(channel, DecimalPairBand):
+            return (
+                self.lt_low,
+                self.lt_high,
+                self.eq,
+                self.gt_low,
+                self.gt_high,
+            )[DECIMAL_PAIR_BANDS.index(channel)]
+        match channel:
+            case TemporalBankChannel.F5:
+                return self.f5
+            case TemporalBankChannel.CARRY_LEFT:
+                return self.carry_left
+            case TemporalBankChannel.CARRY_RIGHT:
+                return self.carry_right
+            case TemporalBankChannel.CARRY_XOR:
+                return self.carry_xor
+            case TemporalBankChannel.BORROW_LEFT_0:
+                return self.borrow_left[0]
+            case TemporalBankChannel.BORROW_LEFT_1:
+                return self.borrow_left[1]
+            case TemporalBankChannel.BORROW_RIGHT_0:
+                return self.borrow_right[0]
+            case TemporalBankChannel.BORROW_RIGHT_1:
+                return self.borrow_right[1]
+            case TemporalBankChannel.GROWTH_LEFT:
+                return self.growth_left
+            case TemporalBankChannel.GROWTH_RIGHT:
+                return self.growth_right
+        raise TypeError("bank scalar lookup requires a typed channel identity")
 
     @property
     def growth(self) -> int:
@@ -298,10 +356,33 @@ class PeriodicBankFrame:
         return self.growth_left + self.growth_right
 
 
+class SourceAuthorizedFrameWindow(SourceAuthorizedRecord):
+    """Source-authorized finite frame sequence with one checked index API.
+
+    The concrete records own their source metadata and frame tuple. Keeping
+    lookup on that same object prevents a caller from pairing one authority
+    record with a foreign frame sequence.
+    """
+
+    __slots__ = ()
+
+    frames: tuple[PeriodicBankFrame, ...]
+
+    @property
+    def pair_count(self) -> int:
+        return len(self.frames)
+
+    def at(self, pair_offset: int) -> PeriodicBankFrame:
+        validate_source_record(self)
+        if type(pair_offset) is not int or not 0 <= pair_offset < self.pair_count:
+            raise IndexError(pair_offset)
+        return self.frames[pair_offset]
+
+
 _PeriodicState: TypeAlias = tuple[tuple[int, ...], tuple[int, ...], int, int, int]
 
 
-def _advance(
+def advance_periodic_state(
     state: _PeriodicState, *, ledger: ResourceLedger | None = None
 ) -> tuple[_PeriodicState, PeriodicBankFrame]:
     left, right, offset_left, offset_right, phase = state
@@ -328,15 +409,12 @@ def _advance(
     before = (left[offset_left], right[offset_right])
     after = (left_new[next_left_index], right_new[next_right_index])
     pair = sum(before)
+    projection = decimal_pair_partition(pair)
     carries = tuple(int(d >= 5) for d in before)
     frame = PeriodicBankFrame(
         pair,
-        pair % 5,
-        int(pair < 5),
-        int(5 <= pair <= 8),
-        int(pair == 9),
-        int(10 <= pair <= 14),
-        int(15 <= pair <= 18),
+        projection.f5,
+        *projection.masks,
         before,
         after,
         carries[0],
@@ -380,21 +458,21 @@ def _moore_counts(
                 size,
             )
 
-    for channel in (*PERIODIC_CHANNELS, "joint"):
+    for channel in (*BANK_CHANNELS, None):
         labels = tuple(
             (
                 frame.digits,
                 frame.next_digits,
-                tuple(frame.scalar(name) for name in PERIODIC_CHANNELS),
+                tuple(frame.scalar(name) for name in BANK_CHANNELS),
             )
-            if channel == "joint"
+            if channel is None
             else frame.scalar(channel)
             for frame in frames
         )
         if ledger is not None:
             ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
-                len(frames) * (len(PERIODIC_CHANNELS) if channel == "joint" else 1),
+                len(frames) * (len(BANK_CHANNELS) if channel is None else 1),
             )
         if ledger is not None:
             ledger.bump(
@@ -406,7 +484,9 @@ def _moore_counts(
             max_states=MAX_PROTECTED_TEMPORAL_STATES,
             on_refinement=refinement_work if ledger is not None else None,
         )
-        answer[channel] = quotient.class_count
+        answer["joint" if channel is None else bank_channel_name(channel)] = (
+            quotient.class_count
+        )
     return answer
 
 
@@ -442,6 +522,7 @@ class ExactTemporalPairPort:
         if any(type(d) is not int or not 0 <= d <= 9 for d in (left, right)):
             raise ValueError("invalid exact pair digit")
         pair = left + right
+        projection = decimal_pair_partition(pair)
         c = (int(left >= 5), int(right >= 5))
         return cls(
             pair_position,
@@ -450,19 +531,15 @@ class ExactTemporalPairPort:
             f_steps,
             (left, right),
             pair,
-            pair % 5,
-            int(pair < 5),
-            int(5 <= pair <= 8),
-            int(pair == 9),
-            int(10 <= pair <= 14),
-            int(15 <= pair <= 18),
+            projection.f5,
+            *projection.masks,
             c,
             c[0] ^ c[1],
         )
 
 
 @dataclass(frozen=True, slots=True)
-class ProtectedPeriodicBank(_SourceAuthorizedRecord):
+class ProtectedPeriodicBank(SourceAuthorizedRecord):
     """Finite-halo, source-root-specific lasso of exact temporal output frames."""
 
     pair_position: int
@@ -488,10 +565,10 @@ class ProtectedPeriodicBank(_SourceAuthorizedRecord):
     @property
     def represented_steps(self) -> int:
         validate_source_record(self)
-        return self._represented_steps_trusted()
+        return self.structural_steps()
 
-    def _represented_steps_trusted(self) -> int:
-        """Compute the lasso extent after the caller has checked authority."""
+    def structural_steps(self) -> int:
+        """Compute structural lasso length; this alone grants no source authority."""
         return (
             len(self.prefix_frames)
             + len(self.motif) * self.repeat_count
@@ -516,15 +593,33 @@ class ProtectedPeriodicBank(_SourceAuthorizedRecord):
             tick -= count
         return self.suffix[tick]
 
+    def authorized_frames(
+        self, start_tick: int, count: int
+    ) -> tuple[tuple[PeriodicBankFrame, ...], SourceRecordAuthority]:
+        """Validate authority once and read a bounded, source-owned frame window."""
+        authority = validate_source_record(self)
+        if (
+            type(start_tick) is not int
+            or type(count) is not int
+            or start_tick < 0
+            or count < 0
+            or start_tick + count > self.f_steps
+        ):
+            raise IndexError((start_tick, count))
+        frames = tuple(
+            self._at_trusted(tick) for tick in range(start_tick, start_tick + count)
+        )
+        return frames, authority
+
     def counts(self) -> dict[str, int]:
         validate_source_record(self)
         return {
-            channel: (
+            bank_channel_name(channel): (
                 sum(frame.scalar(channel) for frame in self.prefix_frames)
                 + self.repeat_count * sum(frame.scalar(channel) for frame in self.motif)
                 + sum(frame.scalar(channel) for frame in self.suffix)
             )
-            for channel in PERIODIC_CHANNELS
+            for channel in BANK_CHANNELS
         }
 
 
@@ -639,7 +734,7 @@ def protected_periodic_bank(
                     )
                 )
             seen[state] = len(frames)
-            state, frame = _advance(state, ledger=ledger)
+            state, frame = advance_periodic_state(state, ledger=ledger)
             frames.append(frame)
             if ledger is not None:
                 ledger.bump(
@@ -694,7 +789,7 @@ def protected_periodic_bank(
                 tuple(frames[start : start + tail]),
                 _moore_counts(frames_tuple, next_indices, ledger=ledger),
             )
-    if result._represented_steps_trusted() != f_steps:
+    if result.structural_steps() != f_steps:
         raise AssertionError("pumped bank temporal duration is inconsistent")
     issue_source_record(result, arena, source_root, source_generation=physical_prefix)
     if ledger is not None:
@@ -703,14 +798,18 @@ def protected_periodic_bank(
 
 
 __all__ = [
+    "BANK_CHANNELS",
+    "BankChannel",
     "MAX_PROTECTED_PERIOD",
     "MAX_PROTECTED_TEMPORAL_STATES",
-    "PERIODIC_CHANNELS",
     "ExactTemporalPairPort",
     "PeriodicBankFrame",
     "ProtectedPeriodicBank",
     "ProtectedPeriodicBankRefused",
+    "TemporalBankChannel",
+    "bank_channel_name",
     "certified_periodic_region",
     "certified_periodic_regions",
+    "parse_bank_channel",
     "protected_periodic_bank",
 ]

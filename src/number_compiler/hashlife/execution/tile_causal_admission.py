@@ -7,7 +7,10 @@ from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAd
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
-from number_compiler.resources.causal_workspace import CausalTaskWorkspace
+from number_compiler.resources.causal_workspace import (
+    CausalActionAdmission,
+    CausalTaskWorkspace,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -19,11 +22,11 @@ def admit_run_actions(
     tasks: CausalTaskWorkspace,
     ledger: ResourceLedger,
     action: FieldCellActionID,
-) -> object:
+) -> CausalActionAdmission:
     """Deeply validate every reachable action under one workspace lease."""
     if type(adapter._next_action) is not int or adapter._next_action < 1:
         raise ValueError("causal action authority has no admitted actions")
-    token = tasks.begin_action_admission(action)
+    token = tasks.begin_action_admission(action, adapter)
     visits = 0
     try:
         while tasks.action_pending:
@@ -37,8 +40,7 @@ def admit_run_actions(
                 continue
             visits += 1
             ledger.bump(_execution_keys.TILE_CAUSAL_ACTION_ADMISSION_VISITS)
-            adapter.validate_action(current)
-            record = adapter._action_record(current)
+            record = adapter.action_record(current)
             tasks.admit_action(token, current, record)
             if record.children is not None:
                 tasks.push_action(token, record.children[0])
@@ -52,7 +54,7 @@ def admit_run_actions(
 def admitted_wiring(
     adapter: PrimitiveTileKernelAdapter,
     tasks: CausalTaskWorkspace,
-    token: object | None,
+    token: CausalActionAdmission | None,
     action: FieldCellActionID,
 ) -> ResultWiring:
     """Obtain wiring through the live admission or the deep public boundary."""
@@ -65,7 +67,7 @@ def admitted_wiring(
 def admitted_children(
     adapter: PrimitiveTileKernelAdapter,
     tasks: CausalTaskWorkspace,
-    token: object | None,
+    token: CausalActionAdmission | None,
     action: FieldCellActionID,
 ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
     if token is None:
@@ -77,7 +79,7 @@ def admitted_children(
 def admitted_kernel(
     adapter: PrimitiveTileKernelAdapter,
     tasks: CausalTaskWorkspace,
-    token: object | None,
+    token: CausalActionAdmission | None,
     action: FieldCellActionID,
 ) -> PrimitiveKernel:
     if token is None:
@@ -89,7 +91,7 @@ def admitted_kernel(
 def admitted_cocycle(
     adapter: PrimitiveTileKernelAdapter,
     tasks: CausalTaskWorkspace,
-    token: object | None,
+    token: CausalActionAdmission | None,
     action: FieldCellActionID,
 ) -> TemporalCocycle:
     if token is None:

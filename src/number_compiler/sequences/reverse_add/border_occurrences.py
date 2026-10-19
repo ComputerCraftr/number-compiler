@@ -11,15 +11,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import pairwise
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.hashlife.interfaces.border_macros import (
-    BorderFamilyId,
     BorderMacroIdentity,
     BorderMacroKind,
     BorderMacroPhase,
     BorderSourceCursor,
+    BorderWireValue,
+    canonical_cycle_rotation,
     require_exact_border_join,
 )
 
@@ -28,6 +30,9 @@ from .border_carry_safety import (
     BorderTile,
     enumerate_one_digit_cycles,
 )
+
+REVERSE_ADD_PORT_TAG: Final[str] = "reverse-add-port-v1"
+REVERSE_ADD_WORD_TAG: Final[str] = "reverse-add-word-v1"
 
 if TYPE_CHECKING:
     from .q19_border_control import CertifiedBorderGrowth
@@ -64,17 +69,41 @@ def _target_clock(
 
 
 @dataclass(frozen=True, slots=True)
-class ClockedBorderPhase:
+class ReverseAddBorderPhaseOccurrence:
     """One exact child edge with a typed structural identity and explicit phase."""
 
     phase: BorderMacroPhase
-    tick: int
-    width: int
     port: BilateralCyclePort
-    residue99: int
-    residue198: int
-    target99: int
-    target198: int
+
+    @property
+    def tick(self) -> int:
+        return self.phase.phase
+
+    @property
+    def width(self) -> int:
+        return self.phase.width_in
+
+    @property
+    def residue99(self) -> int:
+        return self._clock(self.phase.clock_in, 0)
+
+    @property
+    def residue198(self) -> int:
+        return self._clock(self.phase.clock_in, 1)
+
+    @property
+    def target99(self) -> int:
+        return self._clock(self.phase.clock_out, 0)
+
+    @property
+    def target198(self) -> int:
+        return self._clock(self.phase.clock_out, 1)
+
+    @staticmethod
+    def _clock(values: tuple[int, ...], index: int) -> int:
+        if len(values) != 2:
+            raise ValueError("reverse/add border phase requires mod-99/198 clocks")
+        return values[index]
 
     @property
     def leading(self) -> str:
@@ -85,13 +114,87 @@ class ClockedBorderPhase:
         return f"{self.port.source.low:0{self.port.source.k}d}"
 
     @property
-    def edge_signature(self) -> tuple[object, ...]:
-        return self.phase.identity.signature
+    def edge_signature(self) -> ReverseAddPortSignature:
+        signature = self.phase.identity.checked_signature()
+        if type(signature) is not ReverseAddWordSignature or len(signature.ports) != 1:
+            raise ValueError("reverse/add edge identity has a non-edge signature")
+        return signature.ports[0]
 
 
 @dataclass(frozen=True, slots=True)
-class RegisteredBorderMacro:
-    """An observed contiguous return, identified by its structural word."""
+class ReverseAddPortSignature:
+    """One complete Q19 edge, including both tiles and carry guards."""
+
+    source: BorderTile
+    target: BorderTile
+    growth: int
+    low_carry: int
+    admitted_middle: tuple[CarryFn, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.source) is not BorderTile
+            or type(self.target) is not BorderTile
+            or self.source.k != self.target.k
+            or type(self.growth) is not int
+            or self.growth not in (0, 1)
+            or type(self.low_carry) is not int
+            or self.low_carry not in (0, 1)
+            or type(self.admitted_middle) is not tuple
+            or not self.admitted_middle
+            or any(type(fn) is not CarryFn for fn in self.admitted_middle)
+        ):
+            raise ValueError("reverse/add guarded port signature is malformed")
+
+    @property
+    def family(self) -> FamilyId:
+        return FamilyId.REVERSE_ADD
+
+    def wire_value(self) -> BorderWireValue:
+        return (
+            REVERSE_ADD_PORT_TAG,
+            self.source.k,
+            (self.source.k, self.source.high, self.source.low),
+            (self.target.k, self.target.high, self.target.low),
+            self.growth,
+            self.low_carry,
+            tuple(fn.value for fn in self.admitted_middle),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseAddWordSignature:
+    """Typed full guarded word used by a cycle, finite path, or burst ID."""
+
+    window: int
+    ports: tuple[ReverseAddPortSignature, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.window) is not int or self.window < 1:
+            raise ValueError("reverse/add word needs a positive border window")
+        if (
+            type(self.ports) is not tuple
+            or not self.ports
+            or any(type(port) is not ReverseAddPortSignature for port in self.ports)
+            or any(port.source.k != self.window for port in self.ports)
+        ):
+            raise ValueError("reverse/add word needs matching guarded ports")
+
+    @property
+    def family(self) -> FamilyId:
+        return FamilyId.REVERSE_ADD
+
+    def wire_value(self) -> BorderWireValue:
+        return (
+            REVERSE_ADD_WORD_TAG,
+            self.window,
+            tuple(port.wire_value() for port in self.ports),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseAddBorderOccurrence:
+    """One observed contiguous return under a structural macro identity."""
 
     identity: BorderMacroIdentity
     entry_phase: int
@@ -126,7 +229,7 @@ class RegisteredBorderMacro:
 
 
 @dataclass(frozen=True, slots=True)
-class RegisteredBorderEpisode:
+class ReverseAddBorderEpisodeOccurrence:
     """A finite skew, growth, quiet, or exit word in exact source phases."""
 
     identity: BorderMacroIdentity
@@ -137,7 +240,7 @@ class RegisteredBorderEpisode:
     width_births: int
     growth_word: tuple[int, ...]
     low_carry_word: tuple[int, ...]
-    middle_maps: tuple[tuple[str, ...], ...]
+    middle_maps: tuple[tuple[CarryFn, ...], ...]
     mod99_start: int
     mod99_end: int
     mod198_start: int
@@ -151,22 +254,21 @@ class RegisteredBorderEpisode:
         )
 
 
-def _edge_signature(port: BilateralCyclePort) -> EdgeSignature:
-    return (
-        port.source.k,
-        _tile_state(port.source),
-        _tile_state(port.target),
-        port.growth,
-        port.low_carry,
-        tuple(fn.value for fn in port.admitted_middle),
+def _edge_signature(port: BilateralCyclePort) -> ReverseAddPortSignature:
+    return ReverseAddPortSignature(
+        source=port.source,
+        target=port.target,
+        growth=port.growth,
+        low_carry=port.low_carry,
+        admitted_middle=port.admitted_middle,
     )
 
 
 def _phase_identity(port: BilateralCyclePort) -> BorderMacroIdentity:
     return BorderMacroIdentity(
-        BorderFamilyId.REVERSE_ADD,
+        FamilyId.REVERSE_ADD,
         BorderMacroKind.EDGE,
-        _edge_signature(port),
+        ReverseAddWordSignature(port.source.k, (_edge_signature(port),)),
     )
 
 
@@ -176,7 +278,7 @@ def _clocked_phases(
     ports: tuple[BilateralCyclePort | None, ...],
     growth_word: tuple[int, ...],
     pair_depth: int,
-) -> tuple[ClockedBorderPhase | None, ...]:
+) -> tuple[ReverseAddBorderPhaseOccurrence | None, ...]:
     from .q19_border_control import CertifiedBorderGrowth
     from .q19_occurrence import ReversePairOutputOccurrence
     from .q19_output import ReversePairQ19OutputOwner
@@ -198,7 +300,7 @@ def _clocked_phases(
     if len(children) != len(ports) + 1 or len(ports) != len(growth_word):
         raise ValueError("source child chain does not cover the physical phases")
     owner = certificate.owner
-    result: list[ClockedBorderPhase | None] = []
+    result: list[ReverseAddBorderPhaseOccurrence | None] = []
     for tick, port in enumerate(ports):
         source, target = children[tick], children[tick + 1]
         owner.validate_issued_occurrence(source)
@@ -220,7 +322,7 @@ def _clocked_phases(
         ):
             raise ValueError("border phase does not match its exact child and clock")
         source_cursor = BorderSourceCursor(
-            BorderFamilyId.REVERSE_ADD,
+            FamilyId.REVERSE_ADD,
             owner,
             source.root,
             source.temporal_steps,
@@ -228,7 +330,7 @@ def _clocked_phases(
             width % 2,
         )
         target_cursor = BorderSourceCursor(
-            BorderFamilyId.REVERSE_ADD,
+            FamilyId.REVERSE_ADD,
             owner,
             target.root,
             target.temporal_steps,
@@ -249,13 +351,12 @@ def _clocked_phases(
             (residue99, residue198),
             (actual99, actual198),
         )
-        if phase.identity.signature != signature:
+        phase_signature = phase.identity.checked_signature()
+        if type(
+            phase_signature
+        ) is not ReverseAddWordSignature or phase_signature.ports != (signature,):
             raise AssertionError("typed edge identity changed while registering")
-        result.append(
-            ClockedBorderPhase(
-                phase, tick, width, port, residue99, residue198, actual99, actual198
-            )
-        )
+        result.append(ReverseAddBorderPhaseOccurrence(phase, port))
     for earlier, later in pairwise(result):
         if earlier is not None and later is not None:
             require_exact_border_join(earlier.phase, later.phase)
@@ -265,40 +366,27 @@ def _clocked_phases(
 def _canonical_cycle(
     states: tuple[tuple[int, int], ...], growth: tuple[int, ...]
 ) -> tuple[tuple[tuple[int, int], ...], tuple[int, ...]]:
-    variants = tuple(
-        (
-            states[offset:] + states[:offset],
-            growth[offset:] + growth[:offset],
-        )
-        for offset in range(len(states))
+    if len(states) != len(growth) or not states:
+        raise ValueError("candidate border cycle needs one growth value per state")
+    ports = tuple(zip(states, growth, strict=True))
+    canonical, _offset = canonical_cycle_rotation(ports, guard_key=lambda port: port)
+    return (
+        tuple(state for state, _amount in canonical),
+        tuple(amount for _state, amount in canonical),
     )
-    return min(variants)
-
-
-EdgeSignature = tuple[
-    int,
-    tuple[int, int, int],
-    tuple[int, int, int],
-    int,
-    int,
-    tuple[str, ...],
-]
 
 
 def _canonical_edge_cycle(
-    edges: tuple[EdgeSignature, ...],
-) -> tuple[tuple[EdgeSignature, ...], int]:
-    """Return the full guarded edge word and its canonical rotation offset."""
-    if not edges:
-        raise ValueError("a canonical edge cycle cannot be empty")
-    variants = tuple(
-        (edges[offset:] + edges[:offset], offset) for offset in range(len(edges))
-    )
-    return min(variants)
+    edges: tuple[ReverseAddPortSignature, ...],
+) -> tuple[tuple[ReverseAddPortSignature, ...], int]:
+    """Canonicalize complete guarded ports through the shared rotation owner."""
+    return canonical_cycle_rotation(edges, guard_key=lambda edge: edge.wire_value())
 
 
 @lru_cache(maxsize=1)
-def _candidate_cycle_identities() -> frozenset[tuple[object, ...]]:
+def _candidate_cycle_identities() -> frozenset[
+    tuple[tuple[tuple[int, int], ...], tuple[int, ...]]
+]:
     return frozenset(
         _canonical_cycle(tuple(cycle.states), tuple(cycle.growth))
         for cycle in enumerate_one_digit_cycles()
@@ -306,41 +394,34 @@ def _candidate_cycle_identities() -> frozenset[tuple[object, ...]]:
 
 
 def _macro_identity(
-    phases: tuple[ClockedBorderPhase, ...], kind: BorderMacroKind
+    phases: tuple[ReverseAddBorderPhaseOccurrence, ...], kind: BorderMacroKind
 ) -> tuple[BorderMacroIdentity, int]:
     first = phases[0]
     source_states = tuple(
         (phase.port.source.high, phase.port.source.low) for phase in phases
     )
     growth = tuple(phase.port.growth for phase in phases)
+    edge_word = tuple(_edge_signature(phase.port) for phase in phases)
     if kind is BorderMacroKind.CYCLE:
         if _canonical_cycle(source_states, growth) not in _candidate_cycle_identities():
             raise ValueError(
                 "border word is absent from the canonical candidate catalogue"
             )
-        edge_word = tuple(_edge_signature(phase.port) for phase in phases)
         canonical_edges, rotation = _canonical_edge_cycle(edge_word)
         # The first observed edge's phase is its position in the canonical
         # word, not the number of rotations needed to normalize the word.
         entry_phase = (-rotation) % len(phases)
-        signature: tuple[object, ...] = (first.port.source.k, canonical_edges)
+        signature = ReverseAddWordSignature(first.port.source.k, canonical_edges)
     else:
-        signature = (
-            first.port.source.k,
-            source_states,
-            tuple((p.port.target.high, p.port.target.low) for p in phases),
-            growth,
-            tuple(p.port.low_carry for p in phases),
-            tuple(tuple(fn.value for fn in p.port.admitted_middle) for p in phases),
-        )
+        signature = ReverseAddWordSignature(first.port.source.k, edge_word)
         entry_phase = 0
-    return BorderMacroIdentity(BorderFamilyId.REVERSE_ADD, kind, signature), entry_phase
+    return BorderMacroIdentity(FamilyId.REVERSE_ADD, kind, signature), entry_phase
 
 
 def _find_returns(
-    phases: tuple[ClockedBorderPhase | None, ...],
-) -> tuple[RegisteredBorderMacro, ...]:
-    result: list[RegisteredBorderMacro] = []
+    phases: tuple[ReverseAddBorderPhaseOccurrence | None, ...],
+) -> tuple[ReverseAddBorderOccurrence, ...]:
+    result: list[ReverseAddBorderOccurrence] = []
     for start, first in enumerate(phases):
         if first is None:
             continue
@@ -364,7 +445,7 @@ def _find_returns(
                 else BorderMacroKind.PATH
             )
             result.append(
-                RegisteredBorderMacro(
+                ReverseAddBorderOccurrence(
                     *_macro_identity(concrete, kind),
                     start,
                     end,
@@ -381,26 +462,20 @@ def _find_returns(
 
 
 def _episode(
-    phases: tuple[ClockedBorderPhase, ...],
+    phases: tuple[ReverseAddBorderPhaseOccurrence, ...],
     start: int,
     end: int,
     kind: BorderMacroKind,
     unit: int,
-    descriptor: str,
-) -> RegisteredBorderEpisode:
+) -> ReverseAddBorderEpisodeOccurrence:
     word = phases[start:end]
     first, last = word[0], word[-1]
-    signature = (
-        descriptor,
+    signature = ReverseAddWordSignature(
         first.port.source.k,
-        tuple((p.port.source.high, p.port.source.low) for p in word),
-        tuple((p.port.target.high, p.port.target.low) for p in word),
-        tuple(p.port.growth for p in word),
-        tuple(p.port.low_carry for p in word),
-        tuple(tuple(fn.value for fn in p.port.admitted_middle) for p in word),
+        tuple(_edge_signature(phase.port) for phase in word),
     )
-    return RegisteredBorderEpisode(
-        BorderMacroIdentity(BorderFamilyId.REVERSE_ADD, kind, signature),
+    return ReverseAddBorderEpisodeOccurrence(
+        BorderMacroIdentity(FamilyId.REVERSE_ADD, kind, signature),
         kind,
         start,
         end,
@@ -408,7 +483,7 @@ def _episode(
         sum(p.port.growth for p in word),
         tuple(p.port.growth for p in word),
         tuple(p.port.low_carry for p in word),
-        tuple(tuple(fn.value for fn in p.port.admitted_middle) for p in word),
+        tuple(p.port.admitted_middle for p in word),
         first.residue99,
         last.target99,
         first.residue198,
@@ -417,15 +492,15 @@ def _episode(
 
 
 def _find_episodes(
-    phases: tuple[ClockedBorderPhase | None, ...],
-) -> tuple[RegisteredBorderEpisode, ...]:
-    concrete: list[ClockedBorderPhase] = []
+    phases: tuple[ReverseAddBorderPhaseOccurrence | None, ...],
+) -> tuple[ReverseAddBorderEpisodeOccurrence, ...]:
+    concrete: list[ReverseAddBorderPhaseOccurrence] = []
     for phase in phases:
         if phase is None:
             break
         concrete.append(phase)
     word = tuple(concrete)
-    found: list[RegisteredBorderEpisode] = []
+    found: list[ReverseAddBorderEpisodeOccurrence] = []
     start = 0
     while start + 3 < len(word):
         first = word[start].port
@@ -454,7 +529,6 @@ def _find_episodes(
                         end,
                         BorderMacroKind.BURST,
                         2,
-                        "alternating-98-17",
                     )
                 )
                 start = end
@@ -474,7 +548,6 @@ def _find_episodes(
                     end,
                     BorderMacroKind.PATH,
                     1,
-                    "growth" if growth else "quiet",
                 )
             )
         index = end
@@ -493,7 +566,6 @@ def _find_episodes(
                         index + 1,
                         BorderMacroKind.PATH,
                         1,
-                        "17-exit-88",
                     )
                 )
     return tuple(
@@ -502,18 +574,18 @@ def _find_episodes(
 
 
 @dataclass(frozen=True, slots=True)
-class SourceBorderMacroCatalogue:
-    """Recomputable metadata over one existing owner-issued finite source trace."""
+class ReverseAddBorderTrace:
+    """Recomputable observations over one existing owner-issued source trace."""
 
     certificate: CertifiedBorderGrowth = field(repr=False, compare=False)
     children: tuple[ReversePairOutputOccurrence, ...] = field(repr=False, compare=False)
     pair_depth: int
-    outer_phases: tuple[ClockedBorderPhase | None, ...]
-    window_phases: tuple[ClockedBorderPhase | None, ...]
-    outer_macros: tuple[RegisteredBorderMacro, ...]
-    window_macros: tuple[RegisteredBorderMacro, ...]
-    outer_episodes: tuple[RegisteredBorderEpisode, ...]
-    window_episodes: tuple[RegisteredBorderEpisode, ...]
+    outer_phases: tuple[ReverseAddBorderPhaseOccurrence | None, ...]
+    window_phases: tuple[ReverseAddBorderPhaseOccurrence | None, ...]
+    outer_macros: tuple[ReverseAddBorderOccurrence, ...]
+    window_macros: tuple[ReverseAddBorderOccurrence, ...]
+    outer_episodes: tuple[ReverseAddBorderEpisodeOccurrence, ...]
+    window_episodes: tuple[ReverseAddBorderEpisodeOccurrence, ...]
 
     def validate(self) -> None:
         from .q19_border_control import CertifiedBorderGrowth
@@ -540,7 +612,7 @@ class SourceBorderMacroCatalogue:
         ):
             raise ValueError("border metadata lost its source cursor")
         owner = cert.owner
-        for earlier, later in zip(self.children, self.children[1:]):
+        for earlier, later in zip(self.children, self.children[1:], strict=False):
             owner.validate_issued_occurrence(earlier)
             owner.validate_issued_occurrence(later)
             if later.temporal_steps != earlier.temporal_steps + 1:
@@ -570,12 +642,12 @@ class SourceBorderMacroCatalogue:
             raise ValueError("border metadata differs from the exact source trace")
 
 
-def source_border_macro_catalogue(
+def trace_reverse_add_border_occurrences(
     certificate: CertifiedBorderGrowth,
     children: tuple[ReversePairOutputOccurrence, ...],
     *,
     pair_depth: int,
-) -> SourceBorderMacroCatalogue:
+) -> ReverseAddBorderTrace:
     """Describe a finite exact child chain using its original certificate."""
     from .q19_border_control import CertifiedBorderGrowth
     from .q19_occurrence import ReversePairOutputOccurrence
@@ -604,7 +676,7 @@ def source_border_macro_catalogue(
     window = _clocked_phases(
         certificate, children, window_ports, future_growth, pair_depth
     )
-    result = SourceBorderMacroCatalogue(
+    result = ReverseAddBorderTrace(
         certificate,
         children,
         pair_depth,
@@ -620,9 +692,9 @@ def source_border_macro_catalogue(
 
 
 __all__ = [
-    "ClockedBorderPhase",
-    "RegisteredBorderEpisode",
-    "RegisteredBorderMacro",
-    "SourceBorderMacroCatalogue",
-    "source_border_macro_catalogue",
+    "ReverseAddBorderPhaseOccurrence",
+    "ReverseAddBorderEpisodeOccurrence",
+    "ReverseAddBorderOccurrence",
+    "ReverseAddBorderTrace",
+    "trace_reverse_add_border_occurrences",
 ]

@@ -61,7 +61,7 @@ def test_public_primitive_square_fuses_points_and_width_without_midpoint(
     )
     index = HashLifeBlockIndex(square, source, logical_length=16, family_hooks=hooks)
     assert type(index._lazy_application) is LazyProjection
-    source_tiles = index._ledger.counters.get("tile_publications", 0)
+    source_tiles = index.resource_ledger.counters.get("tile_publications", 0)
     with monkeypatch.context() as poison:
         poison.setattr(temporal, "complete_temporal", _forbidden)
         poison.setattr(TileArena, "join", _forbidden)
@@ -73,12 +73,12 @@ def test_public_primitive_square_fuses_points_and_width_without_midpoint(
             assert index.direct_powered_point(coordinate) == expected[coordinate]
         assert index.direct_active_width() == extent
     metrics = index.metrics()
-    audit = collect_ledger_metrics(index._ledger)
+    audit = collect_ledger_metrics(index.resource_ledger)
     assert metrics.fused_interface_entries > 0
     assert metrics.tile_fused_observation_descents > 0
     assert metrics.resource_accounting_mismatch == 0
     assert audit.forbidden_future_payloads == 0
-    assert index._ledger.counters.get("tile_publications", 0) == source_tiles
+    assert index.resource_ledger.counters.get("tile_publications", 0) == source_tiles
     # Explicit lowering may now request complete canonical outputs. Its root
     # is retained across subsequent observations, including unseen positions.
     assert tuple(index.iter_direct_active()) == expected[:extent]
@@ -107,7 +107,7 @@ def test_public_reverse_terminal_pair_fuses_without_midpoint(
     )
     index = HashLifeBlockIndex(composed, source, logical_length=8)
     assert type(index._lazy_application) is LazyProjection
-    source_tiles = index._ledger.counters.get("tile_publications", 0)
+    source_tiles = index.resource_ledger.counters.get("tile_publications", 0)
 
     with monkeypatch.context() as poison:
         poison.setattr(temporal, "complete_temporal", _forbidden)
@@ -116,8 +116,11 @@ def test_public_reverse_terminal_pair_fuses_without_midpoint(
             assert index.direct_powered_point(coordinate) == value
         assert index.direct_active_width() == extent
 
-    assert index._ledger.counters.get("tile_publications", 0) == source_tiles
-    assert index._ledger.counters["powered_absorption_successes"] == len(expected) + 1
+    assert index.resource_ledger.counters.get("tile_publications", 0) == source_tiles
+    assert (
+        index.resource_ledger.counters["powered_absorption_successes"]
+        == len(expected) + 1
+    )
     assert index.metrics().resource_accounting_mismatch == 0
 
 
@@ -146,8 +149,8 @@ def test_public_primitive_point_width_and_endpoint_use_tile_executor(
     monkeypatch.setattr(HashLifeBlockIndex, "direct_powered_point", _forbidden)
     monkeypatch.setattr(TileArena, "point", _forbidden)
     assert tuple(index.iter_direct_active()) == expected[:extent]
-    assert index._ledger.counters["tile_endpoint_emissions"] == extent
-    assert index._ledger.counters["explicitly_lowered_digits"] == extent
+    assert index.resource_ledger.counters["tile_endpoint_emissions"] == extent
+    assert index.resource_ledger.counters["explicitly_lowered_digits"] == extent
 
 
 def test_public_completed_root_bypasses_constructors_and_execution(
@@ -182,7 +185,7 @@ def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
     index.direct_active_width()
     tuple(index.iter_direct_active())
     metrics = index.metrics()
-    audit = collect_ledger_metrics(index._ledger)
+    audit = collect_ledger_metrics(index.resource_ledger)
     assert metrics.bounded_application_enabled == 1
     assert metrics.canonical_tile_nodes > 0
     assert metrics.canonical_tile_arena_nodes == metrics.canonical_tile_nodes
@@ -272,11 +275,17 @@ def test_application_rejects_other_request_root_before_warm_hit() -> None:
     application._root = other._root
     before = scheduler.ledger.snapshot()
     try:
-        with pytest.raises(ValueError, match="another request"):
+        with pytest.raises(
+            ValueError, match="tile application registry contains another occurrence"
+        ):
             application.point(0)
-        with pytest.raises(ValueError, match="another request"):
+        with pytest.raises(
+            ValueError, match="tile application registry contains another occurrence"
+        ):
             application.width()
-        with pytest.raises(ValueError, match="another request"):
+        with pytest.raises(
+            ValueError, match="tile application registry contains another occurrence"
+        ):
             application.close()
         assert scheduler.ledger.snapshot() == before
     finally:

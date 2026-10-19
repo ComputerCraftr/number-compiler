@@ -16,7 +16,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     LocalInterfaceID,
     MacroComponents,
@@ -45,19 +45,19 @@ from number_compiler.hashlife.tiles.tile_result_types import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_results import (
-    _fused_setup,
-    _incoming_setup,
     _setup,
     assert_result_stores_unchanged,
     assert_retention_and_peaks_unchanged,
     assert_valid_tile_payloads,
+    fused_setup,
+    incoming_setup,
 )
 
 
 def test_fused_result_contract_keeps_producer_and_consumer_contexts_distinct() -> None:
 
     ledger, _, tiles, results, input_lease, output_lease, key, result, incoming = (
-        _incoming_setup()
+        incoming_setup()
     )
     outgoing = tiles.leaf(tiles.resolve(key.input).alphabet, 1)
     key_consumer = BoundPorts(key.ports, key.wiring, key.boundaries)
@@ -214,7 +214,7 @@ def test_fused_interface_shares_memo_and_retires_with_input() -> None:
         _unused_key_binding,
         result,
         fused,
-    ) = _fused_setup(publish=False)
+    ) = fused_setup(publish=False)
     assert results.lookup_fused_interface(fused) is None
     assert results.publish_fused_interface(fused, result.outgoing) == result.outgoing
     assert results.lookup_fused_interface(fused) == result.outgoing
@@ -297,7 +297,7 @@ def test_warm_fused_lookup_rejects_tampered_normalization_without_repair() -> No
         _unused_key_binding,
         _unused_result_binding,
         fused,
-    ) = _fused_setup(publish=True)
+    ) = fused_setup(publish=True)
     forged = replace(fused)
     object.__setattr__(forged, "producer_wiring", None)
     before = ledger.snapshot()
@@ -310,7 +310,7 @@ def test_warm_fused_lookup_rejects_tampered_normalization_without_repair() -> No
 
 
 def test_fused_equal_wiring_spelling_has_one_canonical_key() -> None:
-    _, _, _, _, input_lease, output_lease, key, _, legacy = _fused_setup(publish=False)
+    _, _, _, _, input_lease, output_lease, key, _, legacy = fused_setup(publish=False)
     explicit = FusedInterfaceKey(
         key.action,
         key.input,
@@ -326,7 +326,7 @@ def test_fused_equal_wiring_spelling_has_one_canonical_key() -> None:
 
 def test_fused_interface_rejects_numeric_and_foreign_aliases_before_warm_hit() -> None:
     ledger, actions, _, results, input_lease, output_lease, key, result, fused = (
-        _fused_setup(publish=True)
+        fused_setup(publish=True)
     )
     before = ledger.snapshot()
     with pytest.raises(TypeError):
@@ -369,7 +369,7 @@ def test_fused_interface_reverse_publication_failure_rolls_back(
         _unused_key_binding,
         result,
         fused,
-    ) = _fused_setup(publish=False)
+    ) = fused_setup(publish=False)
     before = ledger.entries, ledger.nodes, dict(results._memo), dict(results._reverse)
     calls = 0
     original = type(results)._write_reverse
@@ -403,7 +403,7 @@ def test_fused_interface_budget_rejects_before_retained_mutation() -> None:
         _unused_key_binding,
         result,
         fused,
-    ) = _fused_setup(publish=False)
+    ) = fused_setup(publish=False)
     ledger.tighten_limits(None, ledger.entries)
     before = ledger.snapshot()
     with pytest.raises(Exception, match="cache budget exceeded"):
@@ -487,7 +487,7 @@ def test_fused_interface_inventory_rejects_boolean_variant_count() -> None:
         _unused_key_binding,
         _unused_result_binding,
         _unused_fused_binding,
-    ) = _fused_setup(publish=True)
+    ) = fused_setup(publish=True)
     variant = next(iter(results._variants))
     results._variants[variant] = True
     _, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
@@ -510,7 +510,7 @@ def test_fused_interface_inventory_rejects_swapped_admission_authority() -> None
         _unused_key_binding,
         _unused_result_binding,
         _unused_fused_binding,
-    ) = _fused_setup(publish=True)
+    ) = fused_setup(publish=True)
     original = results._validate_fused_action
     try:
         results._validate_fused_action = lambda _action: None

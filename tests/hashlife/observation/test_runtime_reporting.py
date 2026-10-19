@@ -50,11 +50,11 @@ def test_generic_tile_point_retains_response_and_preserves_replay() -> None:
     assert cold_counters["point_response_evaluations"] == 1
     assert cold_counters.get("point_response_cache_hits", 0) == 0
     assert cold.retained_point_response_scalars == 1
-    assert collect_ledger_metrics(index._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(index.resource_ledger).resource_audit_complete == 1
     assert cold.resource_accounting_mismatch == 0
-    before = dict(index._ledger.counters)
+    before = dict(index.resource_ledger.counters)
     assert index.direct_powered_point(0) == 1
-    after = index._ledger.counters
+    after = index.resource_ledger.counters
     assert after["point_response_requests"] == before["point_response_requests"] + 1
     assert (
         after["point_response_cache_hits"]

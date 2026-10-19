@@ -9,6 +9,7 @@ import tomllib
 from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
+from typing import TypeGuard
 from urllib.parse import unquote, urlsplit
 
 from devtools.checks.sprint_scaffold import HEADINGS, refresh_index
@@ -18,6 +19,40 @@ _LINK = re.compile(r"!?\[[^\]\n]*\]\((<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 _REFERENCE = re.compile(r"^\s*\[[^]]+\]:\s*(<[^>]+>|\S+)")
 _RAW = {".log", ".json", ".xml", ".prof", ".pstats", ".jsonl"}
 _STATUSES = {"current", "superseded", "historical", "rejected"}
+
+
+def _string_keyed_record(value: object) -> dict[str, object] | None:
+    if not _object_dictionary(value):
+        return None
+    result: dict[str, object] = {}
+    for key, item in value.items():
+        if type(key) is not str:
+            return None
+        result[key] = item
+    return result
+
+
+def _object_dictionary(value: object) -> TypeGuard[dict[object, object]]:
+    return type(value) is dict
+
+
+def _object_list(value: object) -> TypeGuard[list[object]]:
+    return type(value) is list
+
+
+def _exact_string(value: object) -> TypeGuard[str]:
+    return type(value) is str
+
+
+def _string_list(value: object) -> tuple[str, ...] | None:
+    if not _object_list(value):
+        return None
+    result: list[str] = []
+    for item in value:
+        if not _exact_string(item):
+            return None
+        result.append(item)
+    return tuple(result)
 
 
 def _lines(text: str) -> list[tuple[int, str]]:
@@ -82,7 +117,7 @@ def _sprint_errors(name: str, kind: str, week_start: object, text: str) -> list[
     if start.weekday() != 6 or start.isoformat() != week_start:
         return [f"{prefix} sprint week_start must be a Sunday (YYYY-MM-DD)"]
     expected = f"docs/sprints/week-of-{week_start}"
-    errors = []
+    errors: list[str] = []
     if Path(name).parent.as_posix() != expected:
         errors.append(f"{prefix} sprint folder must match week_start: {expected}")
     if kind == "sprint":
@@ -147,41 +182,49 @@ def check_docs(root: Path) -> tuple[str, ...]:
     if not catalog.is_file():
         return ("docs/catalog.toml:1: missing document catalog",)
     try:
-        data = tomllib.loads(catalog.read_text())
+        raw_data: object = tomllib.loads(catalog.read_text())
     except tomllib.TOMLDecodeError as error:
         return (f"docs/catalog.toml:1: {error}",)
+    data = _string_keyed_record(raw_data)
+    if data is None:
+        return ("docs/catalog.toml:1: catalog root must be a table",)
     records = data.get("document", [])
-    if not isinstance(records, list):
+    if not _object_list(records):
         return ("docs/catalog.toml:1: document must be an array of tables",)
     errors: list[str] = []
     ids: dict[str, tuple[str, tuple[str, ...]]] = {}
     paths: set[str] = set()
     current: dict[str, str] = {}
-    for record in records:
-        if not isinstance(record, dict) or any(
-            not isinstance(record.get(key), str) or not record[key]
-            for key in ("id", "path", "kind", "topic", "status")
-        ):
+    for raw_record in records:
+        record = _string_keyed_record(raw_record)
+        required: dict[str, str] = {}
+        if record is not None:
+            for key in ("id", "path", "kind", "topic", "status"):
+                value = record.get(key)
+                if _exact_string(value) and value:
+                    required[key] = value
+        if record is None or len(required) != 5:
             errors.append("docs/catalog.toml:1: incomplete document record")
             continue
-        identifier, name = str(record["id"]), str(record["path"])
-        kind, status, topic = map(
-            str, (record["kind"], record["status"], record["topic"])
-        )
+        identifier, name = required["id"], required["path"]
+        kind, status, topic = required["kind"], required["status"], required["topic"]
         if identifier in ids or name in paths:
             errors.append(
                 f"docs/catalog.toml:1: duplicate document identity/path: {identifier}"
             )
         paths.add(name)
-        supersedes = record.get("supersedes", [])
-        if isinstance(supersedes, str):
-            supersedes = [supersedes]
-        if not isinstance(supersedes, list) or any(
-            not isinstance(item, str) for item in supersedes
-        ):
-            errors.append(f"docs/catalog.toml:1: invalid supersedes: {identifier}")
-            supersedes = []
-        ids[identifier] = (name, tuple(supersedes))
+        supersedes: tuple[str, ...]
+        raw_supersedes = record.get("supersedes", [])
+        if _exact_string(raw_supersedes):
+            supersedes = (raw_supersedes,)
+        else:
+            parsed_supersedes = _string_list(raw_supersedes)
+            if parsed_supersedes is None:
+                errors.append(f"docs/catalog.toml:1: invalid supersedes: {identifier}")
+                supersedes = ()
+            else:
+                supersedes = parsed_supersedes
+        ids[identifier] = (name, supersedes)
         if status not in _STATUSES:
             errors.append(f"docs/catalog.toml:1: invalid status: {identifier}")
         if kind == "research" and status == "current":
@@ -204,8 +247,9 @@ def check_docs(root: Path) -> tuple[str, ...]:
                 name, kind, record.get("week_start"), path.read_text()
             )
             errors.extend(sprint_errors)
-            if kind == "sprint" and not sprint_errors:
-                start = date.fromisoformat(str(record["week_start"]))
+            week_start = record.get("week_start")
+            if kind == "sprint" and not sprint_errors and _exact_string(week_start):
+                start = date.fromisoformat(week_start)
                 if refresh_index(path.parent, start, check=True):
                     errors.append(
                         f"{name}:1: generated sprint topic links/counts are stale"
@@ -239,13 +283,13 @@ def check_docs(root: Path) -> tuple[str, ...]:
                 active.add(item)
                 pending.append((item, True))
                 pending.extend((child, False) for child in ids[item][1])
-    required = {
+    required_paths = {
         path.relative_to(root).as_posix()
         for path in (root / "docs").rglob("*.md")
         if "archive" not in path.relative_to(root / "docs").parts
     }
     tracked = _tracked(root)
-    required.update(
+    required_paths.update(
         name
         for name in tracked
         if name.startswith("results/")
@@ -254,12 +298,14 @@ def check_docs(root: Path) -> tuple[str, ...]:
     )
     errors.extend(
         f"{name}:1: maintained document is not catalogued"
-        for name in sorted(required - paths)
+        for name in sorted(required_paths - paths)
     )
-    allowed = data.get("retained_fixture", [])
-    if not isinstance(allowed, list) or any(not isinstance(p, str) for p in allowed):
+    parsed_allowed = _string_list(data.get("retained_fixture", []))
+    if parsed_allowed is None:
         errors.append("docs/catalog.toml:1: retained_fixture must be a list of paths")
-        allowed = []
+        allowed: tuple[str, ...] = ()
+    else:
+        allowed = parsed_allowed
     errors.extend(
         f"{name}:1: tracked raw result payload must be an explicit retained fixture"
         for name in sorted(tracked)

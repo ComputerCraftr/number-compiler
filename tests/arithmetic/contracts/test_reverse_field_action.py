@@ -51,15 +51,15 @@ from number_compiler.sequences.reverse_add.powered_local_codec import (
 )
 from tests.support.assertions import assert_associative
 from tests.support.reverse_field_action import (
-    _arena,
-    _atom,
     _concatenate,
-    _source_cells,
+    reverse_action_arena,
+    reverse_action_atom,
+    source_cells,
 )
 
 
 def test_reverse_actions_use_shared_runtime_handle_sorts() -> None:
-    arena = _arena()
+    arena = reverse_action_arena()
     record = arena.resolve(arena.identity)
     assert type(arena.identity) is RuntimeFieldCellActionID
     assert type(record.output) is RuntimeCoordinateOutputMorphismID
@@ -113,10 +113,16 @@ def test_reverse_coordinate_atoms_reject_untyped_or_unbounded_nested_payloads(
 
 @pytest.mark.algebra
 def test_reverse_field_composition_is_associative_and_chronological() -> None:
-    arena = _arena()
-    a = _atom(arena, "a", growth=0, forward=CarryFn.ID, backward=CarryFn.CONST0)
-    b = _atom(arena, "b", growth=1, forward=CarryFn.CONST1, backward=CarryFn.ID)
-    c = _atom(arena, "c", growth=0, forward=CarryFn.CONST0, backward=CarryFn.CONST1)
+    arena = reverse_action_arena()
+    a = reverse_action_atom(
+        arena, "a", growth=0, forward=CarryFn.ID, backward=CarryFn.CONST0
+    )
+    b = reverse_action_atom(
+        arena, "b", growth=1, forward=CarryFn.CONST1, backward=CarryFn.ID
+    )
+    c = reverse_action_atom(
+        arena, "c", growth=0, forward=CarryFn.CONST0, backward=CarryFn.CONST1
+    )
 
     left = assert_associative(arena.compose, a, b, c)
 
@@ -144,8 +150,8 @@ def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
 ) -> None:
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 
-    arena = _arena()
-    action = _atom(
+    arena = reverse_action_arena()
+    action = reverse_action_atom(
         arena,
         "m",
         growth=1,
@@ -195,7 +201,7 @@ def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
 def test_reverse_identity_audit_never_publishes_or_counts_execution_hits(
     warm: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    arena = _arena()
+    arena = reverse_action_arena()
     reference = arena.identity
     if warm:
         arena.semantic_identity(reference)
@@ -226,8 +232,8 @@ def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> Non
         audit_field_action_payloads,
     )
 
-    arena = _arena()
-    reference = _atom(
+    arena = reverse_action_arena()
+    reference = reverse_action_atom(
         arena,
         "r",
         growth=1,
@@ -262,7 +268,7 @@ def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> Non
 
 
 def test_reverse_semantic_identity_rejects_aliased_radial_coordinates() -> None:
-    arena = _arena()
+    arena = reverse_action_arena()
     action = arena.resolve(arena.identity)
     object.__setattr__(action.radial, "growth", True)
     with pytest.raises(ValueError, match="radial coordinates changed"):
@@ -270,7 +276,7 @@ def test_reverse_semantic_identity_rejects_aliased_radial_coordinates() -> None:
 
 
 def test_reverse_semantic_identity_rejects_inconsistent_radial_valuation() -> None:
-    arena = _arena()
+    arena = reverse_action_arena()
     action = arena.resolve(arena.identity)
     object.__setattr__(action.radial, "scalar_v2", action.radial.scalar_v2 + 1)
     with pytest.raises(ValueError, match="radial coordinates changed"):
@@ -282,15 +288,15 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
 ):
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 
-    arena = _arena()
-    first = _atom(
+    arena = reverse_action_arena()
+    first = reverse_action_atom(
         arena,
         "a",
         growth=0,
         forward=CarryFn.ID,
         backward=CarryFn.ID,
     )
-    second = _atom(
+    second = reverse_action_atom(
         arena,
         "b",
         growth=1,
@@ -299,7 +305,7 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
     )
     arena.semantic_identity(first)
     second_identity = arena.semantic_identity(second)
-    foreign = _arena()
+    foreign = reverse_action_arena()
     with pytest.raises(ValueError):
         arena.semantic_identity(foreign.identity)
     stale = FieldCellActionID(arena.owner, arena._ACTION_KIND, len(arena._actions))
@@ -341,8 +347,8 @@ def test_reverse_semantic_identity_publication_rolls_back_both_stores(
 ) -> None:
     from tests.support.ledger_failures import inject_write_once_failure
 
-    arena = _arena()
-    reference = _atom(
+    arena = reverse_action_arena()
+    reference = reverse_action_atom(
         arena,
         "r",
         growth=1,
@@ -367,7 +373,7 @@ def test_reverse_semantic_identity_memo_bypasses_when_optional_storage_is_full()
     None
 ):
     ledger = ResourceLedger()
-    arena = _arena(ledger=ledger)
+    arena = reverse_action_arena(ledger=ledger)
     before = ledger.snapshot()
     ledger.tighten_limits(max_nodes=before.nodes, max_cache_entries=before.entries)
 
@@ -381,8 +387,8 @@ def test_reverse_semantic_identity_memo_bypasses_when_optional_storage_is_full()
 
 
 def test_reverse_semantic_identity_keeps_geometry_in_occurrence_authority() -> None:
-    arena = _arena()
-    first = _atom(
+    arena = reverse_action_arena()
+    first = reverse_action_atom(
         arena,
         "x",
         growth=1,
@@ -390,7 +396,7 @@ def test_reverse_semantic_identity_keeps_geometry_in_occurrence_authority() -> N
         backward=CarryFn.ID,
         geometry=ReverseGeometry(0, orientation=0),
     )
-    second = _atom(
+    second = reverse_action_atom(
         arena,
         "x",
         growth=1,
@@ -406,10 +412,16 @@ def test_reverse_semantic_identity_keeps_geometry_in_occurrence_authority() -> N
 
 @pytest.mark.algebra
 def test_equal_alternate_derivations_keep_first_construction_witness() -> None:
-    arena = _arena()
-    a = _atom(arena, "a", growth=0, forward=CarryFn.ID, backward=CarryFn.ID)
-    b = _atom(arena, "b", growth=0, forward=CarryFn.ID, backward=CarryFn.ID)
-    c = _atom(arena, "c", growth=0, forward=CarryFn.ID, backward=CarryFn.ID)
+    arena = reverse_action_arena()
+    a = reverse_action_atom(
+        arena, "a", growth=0, forward=CarryFn.ID, backward=CarryFn.ID
+    )
+    b = reverse_action_atom(
+        arena, "b", growth=0, forward=CarryFn.ID, backward=CarryFn.ID
+    )
+    c = reverse_action_atom(
+        arena, "c", growth=0, forward=CarryFn.ID, backward=CarryFn.ID
+    )
     ab = arena.compose(a, b)
     first = arena.compose(ab, c)
     first_witness = arena.action_children(first)
@@ -421,8 +433,8 @@ def test_equal_alternate_derivations_keep_first_construction_witness() -> None:
 
 @pytest.mark.algebra
 def test_reverse_field_power_is_binary_and_validates_exact_exponents() -> None:
-    arena = _arena()
-    action = _atom(
+    arena = reverse_action_arena()
+    action = reverse_action_atom(
         arena,
         "a",
         growth=0,
@@ -474,8 +486,8 @@ def test_typed_coordinate_program_is_canonical_across_power_derivations() -> Non
 
 @pytest.mark.algebra
 def test_geometry_composition_and_automorphisms_are_involutive() -> None:
-    arena = _arena()
-    action = _atom(
+    arena = reverse_action_arena()
+    action = reverse_action_atom(
         arena,
         "x",
         growth=0,
@@ -494,7 +506,7 @@ def test_geometry_composition_and_automorphisms_are_involutive() -> None:
 
 @pytest.mark.representation
 def test_source_death_is_canonical_and_retains_no_source_or_digit_payload() -> None:
-    arena = _arena()
+    arena = reverse_action_arena()
     residual = arena.intern_residual("q")
     output = arena.intern_output("o")
 
@@ -538,8 +550,8 @@ def test_source_death_is_canonical_and_retains_no_source_or_digit_payload() -> N
 def test_proof_states_foreign_handles_and_scalar_aliases_reject_before_cache_hit() -> (
     None
 ):
-    arena = _arena()
-    action = _atom(
+    arena = reverse_action_arena()
+    action = reverse_action_atom(
         arena,
         "a",
         growth=0,
@@ -581,11 +593,11 @@ def test_proof_states_foreign_handles_and_scalar_aliases_reject_before_cache_hit
 @pytest.mark.accounting
 def test_reverse_action_publication_is_ledger_owned_and_zero_budget_is_atomic() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
-        _arena(ledger=ResourceLedger(max_nodes=0, max_cache_entries=0))
+        reverse_action_arena(ledger=ResourceLedger(max_nodes=0, max_cache_entries=0))
 
     ledger = ResourceLedger(max_nodes=100, max_cache_entries=100)
-    arena = _arena(ledger=ledger)
-    action = _atom(
+    arena = reverse_action_arena(ledger=ledger)
+    action = reverse_action_atom(
         arena,
         "a",
         growth=0,
@@ -641,14 +653,14 @@ def test_reverse_diamond_compiles_primitive_law_without_t2_proof_states() -> Non
 def test_reverse_family_stores_are_independently_inventoried() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, cells, root = _source_cells((1, 2, 3, 4))
+    ledger, cells, root = source_cells((1, 2, 3, 4))
     codec = ReversePoweredLocalCodec(10, cells)
     codec.source_action(root)
     ports = ReverseLocalInterfaceArena(10, ledger)
     ports.advance(BoundarySide.LEFT, ports.identity[0], 1)
     ports.emit(ports.identity[0], 1, ports.identity[1])
-    arena = _arena(ledger=ledger)
-    action = _atom(
+    arena = reverse_action_arena(ledger=ledger)
+    action = reverse_action_atom(
         arena,
         "a",
         growth=0,

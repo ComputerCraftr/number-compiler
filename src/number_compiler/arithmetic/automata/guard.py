@@ -9,10 +9,14 @@ helpers.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+
+
+def _string_counter() -> Counter[str]:
+    return Counter()
 
 
 class JumpGuardViolation(RuntimeError):
@@ -22,10 +26,10 @@ class JumpGuardViolation(RuntimeError):
 @dataclass(slots=True)
 class JumpAudit:
     jump_calls: int = 0
-    forbidden_attempts: Counter[str] = field(default_factory=Counter)
+    forbidden_attempts: Counter[str] = field(default_factory=_string_counter)
     summary_queries: int = 0
     summary_hits: int = 0
-    symbolic_ops: Counter[str] = field(default_factory=Counter)
+    symbolic_ops: Counter[str] = field(default_factory=_string_counter)
     cascade_sections: int = 0
     cascade_dependency_groups: int = 0
     cascade_selector_bits: int = 0
@@ -105,7 +109,7 @@ def in_powered_jump() -> bool:
 
 
 @contextmanager
-def powered_jump_scope(audit: JumpAudit) -> Iterator[None]:
+def powered_jump_scope(audit: JumpAudit) -> Generator[None, None, None]:
     if _ACTIVE_AUDIT.get() is not None:
         # Nested powered calls share one audit and should not reset it.
         yield

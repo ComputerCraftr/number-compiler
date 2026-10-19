@@ -18,8 +18,8 @@ from functools import lru_cache
 from typing import TypeAlias
 
 from ._temporal_bank_authority import (
-    _SourceAuthority,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
     issue_source_record,
     require_source_arena,
     validate_source_record,
@@ -49,7 +49,7 @@ BankWitness: TypeAlias = CertifiedSpatialBankMorphism | ExactPointedBankWindow
 
 
 @lru_cache(maxsize=1)
-def _band_moore() -> CenterInputMoore:
+def band_moore() -> CenterInputMoore:
     """Reuse the exact all-40-input band quotient across demanded blocks."""
     return center_input_moore("band")
 
@@ -83,7 +83,7 @@ def cyclotomic_four_block_order(residue99: int, residue198: int) -> int | None:
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedCyclotomicCenter(_SourceAuthorizedRecord):
+class CertifiedCyclotomicCenter(SourceAuthorizedRecord):
     """Pointed output center inferred from a *complete* certified exterior.
 
     This is the fiber product of the full scalar residue action and an SLP-
@@ -122,12 +122,12 @@ class CertifiedCyclotomicCenter(_SourceAuthorizedRecord):
         self.validate_source_authority()
         return self.candidates[0] if len(self.candidates) == 1 else None
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         return validate_source_record(self)
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedCyclotomicCenterReturn(_SourceAuthorizedRecord):
+class CertifiedCyclotomicCenterReturn(SourceAuthorizedRecord):
     """Four physical steps filtered by two source-certified center fibers."""
 
     first: CertifiedCyclotomicCenter
@@ -142,7 +142,7 @@ class CertifiedCyclotomicCenterReturn(_SourceAuthorizedRecord):
         self.validate_source_authority()
         return tuple(dict.fromkeys(result.driver for result in self.admissible))
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         authority = validate_source_record(self)
         self.first.validate_source_authority()
         self.last.validate_source_authority()
@@ -150,7 +150,7 @@ class CertifiedCyclotomicCenterReturn(_SourceAuthorizedRecord):
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedCyclotomicCenterDriver(_SourceAuthorizedRecord):
+class CertifiedCyclotomicCenterDriver(SourceAuthorizedRecord):
     """One physically witnessed four-tick driver, not a periodic-driver proof.
 
     All digits are extracted from small *pointed* source cones.  No full
@@ -177,7 +177,7 @@ class CertifiedCyclotomicCenterDriver(_SourceAuthorizedRecord):
         self.validate_source_authority()
         return cyclotomic_four_block_order(self.source_mod99, self.source_mod198)
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         return validate_source_record(self)
 
 
@@ -299,7 +299,7 @@ def certified_cyclotomic_center_driver(
         or monodromy.target_mod198 != after.target_mod198
     ):
         raise AssertionError("cyclotomic residue action failed temporal composition")
-    moore = _band_moore()
+    moore = band_moore()
     record = CertifiedCyclotomicCenterDriver(
         source.physical_prefix,
         start,
@@ -321,7 +321,7 @@ def certified_cyclotomic_center_driver(
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedCyclotomicCenterProgram(_SourceAuthorizedRecord):
+class CertifiedCyclotomicCenterProgram(SourceAuthorizedRecord):
     """Finite source-verified composition of joint four-generation relations.
 
     ``relation`` is 100 bitsets, each encoding all possible terminal ordered
@@ -347,7 +347,7 @@ class CertifiedCyclotomicCenterProgram(_SourceAuthorizedRecord):
             self.global_start_mod99, self.global_start_mod198
         )
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         authority = validate_source_record(self)
         self.first.validate_source_authority()
         self.last.validate_source_authority()
@@ -524,9 +524,7 @@ def _bank_fields(
     raise TypeError("center join needs certified spatial bank or exact windows")
 
 
-def _source_identity(
-    source: PointedBankSource, record: _SourceAuthorizedRecord
-) -> None:
+def _source_identity(source: PointedBankSource, record: SourceAuthorizedRecord) -> None:
     authority = validate_source_record(record)
     if (
         authority.arena is not source.arena
@@ -613,7 +611,7 @@ def certified_cyclotomic_center(
     if not options:
         raise AssertionError("source's cyclotomic center has no compatible digits")
     if center_width == 2:
-        moore = _band_moore()
+        moore = band_moore()
         classes = tuple(moore.class_for((x[0], x[1])) for x in options)
     else:
         classes = ()

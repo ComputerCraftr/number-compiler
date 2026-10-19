@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from math import gcd, isqrt
 
 from devtools.experiments.algebra.dyadic_difference_germ_norm import (
-    _gaussian_norm,
-    _gaussian_primary,
-    _quartic_jacobi_gaussian,
-    _zeta8_mul,
-    _zeta8_sub,
     fermat_first_lift_norm_audit,
+    gaussian_norm,
+    gaussian_primary,
+    quartic_jacobi_gaussian,
+    zeta8_multiply,
+    zeta8_subtract,
 )
 from number_compiler.sequences.power_numbers.numbers import fermat_number
 
@@ -219,11 +219,11 @@ def fermat_normalized_norm_class(parameter: int) -> FermatNormalizedNormClassAud
     # epsilon = Norm(U0 + sqrt(sqrt(2))*V0), with U0=V0 fixed forever.
     preimage = (-1, -1, -1, 0)
     sqrt2 = (0, 1, 0, -1)
-    epsilon_norm = _zeta8_sub(
-        _zeta8_mul(preimage, preimage),
-        _zeta8_mul(sqrt2, _zeta8_mul(preimage, preimage)),
+    epsilon_norm = zeta8_subtract(
+        zeta8_multiply(preimage, preimage),
+        zeta8_multiply(sqrt2, zeta8_multiply(preimage, preimage)),
     )
-    rebuilt = _zeta8_mul(epsilon, beta)
+    rebuilt = zeta8_multiply(epsilon, beta)
     return FermatNormalizedNormClassAudit(
         n,
         first.modulus,
@@ -336,9 +336,9 @@ def fermat_fixed_trace_norm_shortcut(
     modular_square = None
     first = fermat_first_lift_norm_audit(parameter)
     if v is not None:
-        value = _zeta8_sub(
-            _zeta8_mul(fixed_u, fixed_u),
-            _zeta8_mul(sqrt2, _zeta8_mul(v, v)),
+        value = zeta8_subtract(
+            zeta8_multiply(fixed_u, fixed_u),
+            zeta8_multiply(sqrt2, zeta8_multiply(v, v)),
         )
         if value != normalized.beta:
             raise AssertionError((parameter, value, normalized.beta))
@@ -384,11 +384,11 @@ def _quartic_auxiliary_signature_for_t(
         raise ValueError(t)
     modulus = tt**4 + 1
     denominator = (1, -(tt * tt))
-    if not _gaussian_primary(denominator) or _gaussian_norm(denominator) != modulus:
+    if not gaussian_primary(denominator) or gaussian_norm(denominator) != modulus:
         raise AssertionError((tt, denominator, modulus))
     out: list[int | None] = []
     for auxiliary in auxiliaries:
-        phase, _steps, _gcds = _quartic_jacobi_gaussian(
+        phase, _steps, _gcds = quartic_jacobi_gaussian(
             (int(auxiliary), 0),
             denominator,
             rational_modulus=modulus,

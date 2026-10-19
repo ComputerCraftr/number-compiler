@@ -18,7 +18,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_runtime import build
+from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import CellID
@@ -38,8 +38,12 @@ def identity_provider(
 
 
 def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (0, 1), 2, 2)
-    other, other_action = build(CollatzPhysicalBlockEffect(), (0, 1), 2, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1), 2, 2
+    )
+    other, other_action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1), 2, 2
+    )
     provider = identity_provider(runtime, runtime.cells.source(0, 1))
     incoming = runtime.execute(Initial(action, 1))
     foreign = other.execute(Initial(other_action, 1))
@@ -74,7 +78,7 @@ def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
 
 
 def test_distinct_source_suffixes_share_only_the_certified_reset_prefix() -> None:
-    runtime, action = build(
+    runtime, action = build_collatz_diamond_runtime(
         CollatzPhysicalBlockEffect(), (0, 1, 0, 0, 0, 1, 1, 1), 8, 2
     )
     first, second = runtime.cells.source(0, 2), runtime.cells.source(4, 2)
@@ -94,7 +98,9 @@ def test_distinct_source_suffixes_share_only_the_certified_reset_prefix() -> Non
 
 
 def test_short_cell_and_wrong_scan_side_cannot_claim_reset_transfer() -> None:
-    runtime, action = build(CollatzPhysicalBlockEffect(), (0, 1), 2, 2)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (0, 1), 2, 2
+    )
     short = identity_provider(runtime, runtime.cells.source(0, 0))
     enough = identity_provider(runtime, runtime.cells.source(0, 1))
     right = runtime.execute(Initial(action, 1))

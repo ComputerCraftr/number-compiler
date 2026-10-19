@@ -12,11 +12,11 @@ from number_compiler.hashlife.execution.continuations.higher_summaries import (
 from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherFunctionID,
 )
-from tests.support.reverse_higher_interface import _direct_step
+from tests.support.reverse_higher_interface import direct_step
 from tests.support.reverse_higher_runtime import (
     _fixture,
     _single_cell_fixture,
-    _single_cell_summary_fixture,
+    single_cell_summary_fixture,
 )
 
 
@@ -96,7 +96,7 @@ def test_higher_context_summary_composes_emitted_word_transfer() -> None:
     )
     source = tuple(sources.binding_read(binding, index) for index in range(8))
     expected = semantics.schema.initial(primitive, 0)
-    for symbol in _direct_step(source, 10):
+    for symbol in direct_step(source, 10):
         expected = semantics.schema.step(primitive, 0, expected, symbol)
     assert observed == expected
 
@@ -198,7 +198,7 @@ def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> No
         _unused_binding_binding,
         _unused_cell_binding,
         summary,
-    ) = _single_cell_summary_fixture()
+    ) = single_cell_summary_fixture()
     record = runtime.summaries.unary_record(summary)
     foreign = HigherFunctionID(
         ArenaToken("foreign"),
@@ -231,7 +231,7 @@ def test_higher_summary_payload_audit_rejects_incompatible_binding_result() -> N
         _unused_binding_binding,
         cell,
         left,
-    ) = _single_cell_summary_fixture()
+    ) = single_cell_summary_fixture()
     right = runtime.summaries.unary(primitive, cell, 1)
     key = next(
         key for key, result in runtime.summaries._bindings.items() if result == left

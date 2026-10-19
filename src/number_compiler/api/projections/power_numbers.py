@@ -9,8 +9,8 @@ from number_compiler.api.elementary_payloads import (
     MersenneTermPayload,
 )
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
     MersenneNumberSpec,

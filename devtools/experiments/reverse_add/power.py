@@ -120,7 +120,7 @@ def _fragment(
 def _same_partition(old: Sequence[int], new: Sequence[int]) -> bool:
     forward: dict[int, int] = {}
     reverse: dict[int, int] = {}
-    for a, b in zip(old, new):
+    for a, b in zip(old, new, strict=True):
         x = forward.get(a)
         if x is not None and x != b:
             return False
@@ -484,7 +484,7 @@ def _deterministic_observations(
             groups[wid] = groups.get(wid, 0) | mask
         # Functional transduction requires different output labels to be disjoint.
         used = 0
-        for wid, mask in groups.items():
+        for mask in groups.values():
             if used & mask:
                 raise AssertionError(
                     "semantic class output selectors overlap with different words"
@@ -720,7 +720,7 @@ class ResidualPowerTable:
         *,
         state_cap: int | None = None,
         time_cap: float | None = None,
-    ):
+    ) -> None:
         q = minimize_bimachine(base, cache_outputs=False)
         self.levels = [q.machine]
         self.metrics = [

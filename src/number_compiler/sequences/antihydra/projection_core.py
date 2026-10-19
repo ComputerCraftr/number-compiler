@@ -10,6 +10,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
@@ -18,7 +20,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
 from number_compiler.sequences.antihydra.projection_fragments import (
@@ -440,11 +442,11 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             classes[(section, head, time)] = copies
             self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_COMPOSED_CLASS_READS)
             if len(classes) == 32:
-                samples += projection._flush_section_classes(
+                samples += projection.flush_section_classes(
                     ports, classes, workspace, self._section_capacity
                 )
         if classes:
-            samples += projection._flush_section_classes(
+            samples += projection.flush_section_classes(
                 ports, classes, workspace, self._section_capacity
             )
         return ProjectionFragment(key, tuple(tuple(row) for row in ports), samples)
@@ -473,6 +475,13 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         self._section_capacity = 0
         self._source_token = None
         self._token = ArenaToken("antihydra-projection-fragments-cleared")
+
+    def transient_inventory(self) -> tuple[ResourceInventory, ...]:
+        """Snapshot this adapter's fragment payload and source-seal stores."""
+        return tuple(
+            self.ledger.inventory_owner(owner)
+            for owner in (self._owner, self._seal_owner, self._source_seal_owner)
+        )
 
 
 class AntihydraProjectionDriver:

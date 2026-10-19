@@ -19,7 +19,7 @@ def test_pointed_cli_matches_literal_without_endpoint_rendering(
     value = 196
     for _ in range(64):
         value = 2 * int(str(value)[::-1])
-    monkeypatch.setattr(cli_render, "_render_value", _forbid_endpoint)
+    monkeypatch.setattr(cli_render, "render_value", _forbid_endpoint)
     monkeypatch.setattr(DoubleReverseTerm, "materialize", _forbid_endpoint)
     assert (
         cli.main(
@@ -52,7 +52,7 @@ def test_pointed_cli_matches_literal_without_endpoint_rendering(
 def test_temporal_bank_keeps_conditional_bounds_separate(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", _forbid_endpoint)
+    monkeypatch.setattr(cli_render, "render_value", _forbid_endpoint)
     monkeypatch.setattr(DoubleReverseTerm, "materialize", _forbid_endpoint)
     assert (
         cli.main(

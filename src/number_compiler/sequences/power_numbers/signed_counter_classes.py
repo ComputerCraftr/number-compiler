@@ -95,7 +95,7 @@ class SignedCounterClassAction:
         ):
             raise TypeError("signed class action requires two exact carry contexts")
         for state, classes, harmonic in zip(
-            self.next_carries, self.signed_classes, self.harmonics
+            self.next_carries, self.signed_classes, self.harmonics, strict=True
         ):
             require_integer(state, "outgoing binary carry", 0, 1)
             if type(classes) is not tuple or any(
@@ -154,9 +154,9 @@ class SignedCounterClassAction:
             raise TypeError("signed class composition requires the same action type")
         if self.fermat_width != higher.fermat_width:
             raise ValueError("cannot compose different Fermat widths")
-        next_carries = []
-        classes = []
-        harmonics = []
+        next_carries: list[int] = []
+        classes: list[SignedClasses] = []
+        harmonics: list[WalshH5] = []
         for carry in (0, 1):
             middle = self.next_carries[carry]
             next_carries.append(higher.next_carries[middle])

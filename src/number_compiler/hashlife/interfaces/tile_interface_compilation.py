@@ -33,16 +33,16 @@ from number_compiler.hashlife.execution.tile_fused_kernel import (
 from number_compiler.hashlife.interfaces.diamond_kernel import (
     PrimitiveKernel,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    LocalInterfaceID,
-    MacroInterface,
-)
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     differs_from_constant,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+    MacroInterface,
 )
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
     )
 
 
-def _tabulated(
+def tabulated(
     self: PrimitiveTileKernelAdapter,
     ports: tuple[FinitePort, ...],
     output: AtomSort,
@@ -75,7 +75,7 @@ def _tabulated(
         expected *= port.cardinality
     if len(table) != expected:
         raise ValueError("finite source-bound table has another domain")
-    circuit = _Circuit(self.quotients.functions, ports)
+    circuit = BooleanCircuit(self.quotients.functions, ports)
     variables = tuple(
         PortVariable(port.variable.time, port.variable.side, port.variable.role, bit)
         for port in active
@@ -141,10 +141,10 @@ def _tabulated(
         values[0],
         circuit.admitted(),
     )
-    return self.bits._publish(circuit, (result,))[0]
+    return self.bits.publish_circuit(circuit, (result,))[0]
 
 
-def _leaf_components(
+def leaf_components(
     self: PrimitiveTileKernelAdapter,
     kernel: PrimitiveKernel,
     symbol: int,
@@ -159,13 +159,13 @@ def _leaf_components(
     if certified_binary_division_radix(kernel.effect) is not None:
         raise TypeError("radix leaves require the bounded arithmetic interface")
 
-    ports = self._ports(kernel)
+    ports = input_ports_for_kernel(kernel)
     left_port = next(port for port in ports if port.variable == _LEFT)
     right_port = next(port for port in ports if port.variable == _RIGHT)
-    left_sort, right_sort, symbol_sort = self._output_sorts(kernel)[:3]
+    left_sort, right_sort, symbol_sort = output_sorts_for_kernel(kernel)[:3]
     assert type(left_sort) is AtomSort and type(right_sort) is AtomSort
     assert type(symbol_sort) is AtomSort
-    advance_left = self._tabulated(
+    advance_left = self.tabulated(
         ports,
         left_sort,
         (left_port,),
@@ -174,7 +174,7 @@ def _leaf_components(
             for state in range(kernel.left_count)
         ),
     )
-    advance_right = self._tabulated(
+    advance_right = self.tabulated(
         ports,
         right_sort,
         (right_port,),
@@ -210,7 +210,7 @@ def _leaf_components(
         )
         self.ledger.bump(_interfaces_keys.DECIMAL_TILE_FACTORED_OUTPUT_COMPILATIONS)
     else:
-        output = self._tabulated(
+        output = self.tabulated(
             ports,
             symbol_sort,
             (left_port, right_port),
@@ -220,16 +220,16 @@ def _leaf_components(
                 for right in range(kernel.right_count)
             ),
         )
-    return self._finish(
+    return self.finish(
         kernel,
         advance_left,
         advance_right,
         output,
-        self._nonblank(output, kernel.blank),
+        self.nonblank(output, kernel.blank),
     )
 
 
-def _parent_components(
+def parent_components(
     self: PrimitiveTileKernelAdapter,
     kernel: PrimitiveKernel,
     left_interface: LocalInterfaceID,
@@ -242,12 +242,15 @@ def _parent_components(
         TILE_RIGHT as _RIGHT,
     )
 
-    ports = self._ports(kernel)
-    left_sort, right_sort = self._output_sorts(kernel)[:2]
+    ports = input_ports_for_kernel(kernel)
+    left_sort, right_sort = output_sorts_for_kernel(kernel)[:2]
     assert type(left_sort) is AtomSort and type(right_sort) is AtomSort
-    incoming_left = self._variable(ports, _LEFT, left_sort)
-    incoming_right = self._variable(ports, _RIGHT, right_sort)
-    aa0, bb0 = self._components(left_interface), self._components(right_interface)
+    incoming_left = self.variable_function(ports, _LEFT, left_sort)
+    incoming_right = self.variable_function(ports, _RIGHT, right_sort)
+    aa0, bb0 = (
+        self.interface_components(left_interface),
+        self.interface_components(right_interface),
+    )
 
     def lift(
         function: FactoredFunctionID,
@@ -292,11 +295,11 @@ def _parent_components(
     b_left = lift(bb0[0], left_mid, incoming_right)
     b_active = lift(bb0[3], left_mid, incoming_right)
     b_halo_right = lift(bb0[8], left_mid, incoming_right)
-    one = self._constant(ports, BOOL, 1)
+    one = self.constant_function(ports, BOOL, 1)
     active = self.bits.select(a_active, one, b_active)
     # The scalar output channel denotes the left edge for an interval;
     # exact interval output is exclusively the CompletedResult TileID.
-    return self._finish(
+    return self.finish(
         kernel,
         b_left,
         a_right,
@@ -309,13 +312,13 @@ def _parent_components(
     )
 
 
-def _compile_interface(
+def compile_interface(
     self: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
     source: TileID,
     wiring: ResultWiring,
 ) -> LocalInterfaceID:
-    record = self._action(action)
+    record = self.action_record(action)
     if record.children is not None:
         raise ValueError("composed tile actions require the complete temporal executor")
     if (
@@ -324,7 +327,7 @@ def _compile_interface(
         or wiring.phase != 0
     ):
         raise ValueError("primitive tile adapter supports its forward wiring")
-    results = self._require_results()
+    results = self.require_results()
     root_key = PoweredInterfaceKey(action, source, wiring)
     found = results.lookup_interface(root_key)
     if found is not None:
@@ -379,7 +382,7 @@ def _compile_interface(
     return built[source]
 
 
-def _signature(
+def signature(
     self: PrimitiveTileKernelAdapter,
     kernel: PrimitiveKernel,
     effect: BlockEffect,
@@ -388,8 +391,8 @@ def _signature(
         TILE_KERNEL_CONTRACT,
     )
 
-    ports = self._ports(kernel)
-    outputs = self._output_sorts(kernel)
+    ports = input_ports_for_kernel(kernel)
+    outputs = output_sorts_for_kernel(kernel)
     division_radix = certified_binary_division_radix(effect)
     behavior = (
         TILE_KERNEL_CONTRACT,
@@ -413,7 +416,8 @@ def _signature(
     )
 
 
-def _output_sorts(kernel: PrimitiveKernel) -> tuple[AtomSort, ...]:
+def output_sorts_for_kernel(kernel: PrimitiveKernel) -> tuple[AtomSort, ...]:
+    """Return the canonical output alphabet of one primitive tile kernel."""
     left = AtomSort("primitive-left-state", kernel.left_count)
     right = AtomSort("primitive-right-state", kernel.right_count)
     symbol = AtomSort("primitive-symbol", kernel.blank + 1)
@@ -434,7 +438,7 @@ def _output_sorts(kernel: PrimitiveKernel) -> tuple[AtomSort, ...]:
     )
 
 
-def _nonblank(
+def nonblank(
     self: PrimitiveTileKernelAdapter,
     function: FactoredFunctionID,
     blank: int,
@@ -442,7 +446,7 @@ def _nonblank(
     return differs_from_constant(self.bits, function, blank)
 
 
-def _finish(
+def finish(
     self: PrimitiveTileKernelAdapter,
     kernel: PrimitiveKernel,
     left: FactoredFunctionID,
@@ -454,9 +458,9 @@ def _finish(
     first_active: FactoredFunctionID | None = None,
     last_active: FactoredFunctionID | None = None,
 ) -> tuple[FactoredFunctionID, ...]:
-    ports = self._ports(kernel)
-    zero_bool = self._constant(ports, BOOL, 0)
-    one_bool = self._constant(ports, BOOL, 1)
+    ports = input_ports_for_kernel(kernel)
+    zero_bool = self.constant_function(ports, BOOL, 0)
+    one_bool = self.constant_function(ports, BOOL, 1)
     left_halo = output if halo_left is None else halo_left
     right_halo = output if halo_right is None else halo_right
     first = active if first_active is None else first_active
@@ -479,7 +483,8 @@ def _finish(
     )
 
 
-def _ports(kernel: PrimitiveKernel) -> tuple[FinitePort, ...]:
+def input_ports_for_kernel(kernel: PrimitiveKernel) -> tuple[FinitePort, ...]:
+    """Return the canonical two-sided boundary alphabet of a tile kernel."""
     from number_compiler.hashlife.execution.tile_kernel_contract import (
         TILE_LEFT as _LEFT,
     )
@@ -506,17 +511,17 @@ def leaf_interface_symbol(
     wiring: ResultWiring,
 ) -> tuple[int, LocalInterfaceID, TemporalCocycle]:
     """Execute one bounded local law without constructing an output tile."""
-    self._require_results().validate_shape(action, ports, wiring)
+    self.require_results().validate_shape(action, ports, wiring)
     interface = _leaf_product(self, action, symbol, wiring)
-    output = self._observe(interface, "output", ports)
+    output = self.observe(interface, "output", ports)
     return (
         output,
         interface,
-        self._symbol_observation(action, symbol, interface, ports),
+        self.symbol_observation(action, symbol, interface, ports),
     )
 
 
-def _symbol_observation(
+def symbol_observation(
     self: PrimitiveTileKernelAdapter,
     action: FieldCellActionID,
     symbol: int,
@@ -545,7 +550,7 @@ def validate_symbol_observation_context(
     """Validate one primitive leaf observation and return its admitted kernel."""
     if type(interface) is not LocalInterfaceID:
         raise TypeError("leaf observation requires an exact interface ID")
-    record = self._action(action)
+    record = self.action_record(action)
     if record.children is not None:
         raise ValueError("leaf observations require one primitive action")
     if self.quotients.resolve(interface).signature != record.signature:

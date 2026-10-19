@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Final, cast
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
@@ -76,7 +78,7 @@ class CommaImagePayload:
     boundary_cursor: BoundaryPrefixCursor | None = None
 
 
-class _CommaImageAdapter(SourceBoundImageAdapter):
+class CommaImageAdapter(SourceBoundImageAdapter):
     family = "a367620"
     semantic_version = SEMANTIC_VERSION
 
@@ -146,7 +148,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         cursor = payload.boundary_cursor
         if cursor is not None:
             from number_compiler.sequences.comma.boundary_quotient import (
-                _boundary_state_signature,
+                boundary_state_signature,
             )
 
             if (
@@ -159,7 +161,7 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 or payload.absolute_index - cursor.transitions < 1
             ):
                 raise ValueError("comma image has an invalid boundary cursor")
-            _boundary_state_signature(cursor.state)
+            boundary_state_signature(cursor.state)
             if cursor.exponent % PERIOD != cursor.state.exponent_residue:
                 raise ValueError("comma image has an invalid boundary cursor phase")
             self.arena.charge_bits(

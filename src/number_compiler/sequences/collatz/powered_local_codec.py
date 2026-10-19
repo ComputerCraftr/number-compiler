@@ -32,6 +32,12 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+    PayloadAuditStoreBinding,
+    register_payload_audit_contract,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,11 +184,8 @@ class CollatzPoweredLocalCodec:
         self.spatial_hits = 0
         self.semantic_alias_hits = 0
         self.mirror_alias_hits = 0
-        from number_compiler.sequences.collatz.payload_audit import (
-            register_collatz_local_codec_contract,
-        )
 
-        register_collatz_local_codec_contract(self)
+        self.register_payload_audit()
 
     def _handle(
         self,
@@ -455,6 +458,150 @@ class CollatzPoweredLocalCodec:
             self.mirror_alias_hits,
         )
 
+    def register_payload_audit(self) -> None:
+        root = self
+
+        if type(root) is not CollatzPoweredLocalCodec:
+            raise TypeError("Collatz local-codec audit requires its exact arena")
+        stores = (
+            PayloadAuditStoreBinding(
+                root._node_owner, "_nodes", "collatz_local_action"
+            ),
+            PayloadAuditStoreBinding(
+                root._key_owner, "_keys", "collatz_local_action_interner"
+            ),
+            PayloadAuditStoreBinding(
+                root._compose_owner, "_compose", "collatz_local_action_composition"
+            ),
+            PayloadAuditStoreBinding(
+                root._leaf_owner, "_leaf_actions", "collatz_local_leaf_binding"
+            ),
+            PayloadAuditStoreBinding(
+                root._source_owner, "_source_actions", "collatz_local_source_binding"
+            ),
+            PayloadAuditStoreBinding(
+                root._binary_source_owner,
+                "_binary_source_actions",
+                "collatz_local_source_binding",
+            ),
+        )
+        register_payload_audit_contract(
+            root.ledger, root, "collatz", stores, audit_collatz_local_codec
+        )
+
+    def audit_payload(self, ledger: object, root: object) -> PayloadAuditContribution:
+        """Audit the local action codec and its source-bound projections."""
+        if root is not self:
+            raise TypeError("payload audit callback received another owner")
+        from number_compiler.arithmetic.automata.symmetry_powering import FiniteKernel
+        from number_compiler.hashlife.execution.field_images import (
+            SourceCellID,
+            SourceForestID,
+        )
+        from number_compiler.resources.ledger import ResourceLedger
+
+        if (
+            type(ledger) is not ResourceLedger
+            or type(root) is not CollatzPoweredLocalCodec
+        ):
+            raise TypeError("Collatz local-codec audit received a foreign owner")
+        arena = root
+        approved: list[PayloadAuditEntry] = []
+        invalid: list[PayloadAuditEntry] = []
+
+        def record(owner: int, value: object, valid: bool) -> None:
+            entry = PayloadAuditEntry(owner, value)
+            (approved if valid else invalid).append(entry)
+
+        kernel = arena.kernel
+        root_valid = (
+            arena.ledger is ledger
+            and arena.sources.ledger is ledger
+            and type(kernel) is FiniteKernel
+            and kernel.state_count == 3
+            and kernel.alphabet_size == 4
+        )
+        if not root_valid:
+            invalid.append(PayloadAuditEntry(arena._node_owner, arena))
+
+        for index, action in enumerate(arena._nodes):
+            try:
+                if type(action) is not CollatzLocalAction:
+                    raise TypeError("invalid Collatz local action type")
+                action.__post_init__()
+                reference = CollatzLocalActionID(arena.owner, arena._KIND, index)
+                valid = arena.resolve(reference) is action
+                valid &= arena._keys.get(action) == index
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._node_owner, action, valid)
+
+        for action, index in arena._keys.items():
+            valid = type(action) is CollatzLocalAction and type(index) is int
+            valid &= 0 <= index < len(arena._nodes)
+            if valid:
+                valid &= arena._nodes[index] is action
+            record(arena._key_owner, action, valid)
+            record(arena._key_owner, index, valid)
+
+        for operands, result in arena._compose.items():
+            valid = (
+                type(operands) is tuple
+                and len(operands) == 2
+                and all(type(item) is CollatzLocalActionID for item in operands)
+            )
+            try:
+                left_id, right_id = operands
+                left, right = arena.resolve(left_id), arena.resolve(right_id)
+                expected = CollatzLocalAction(
+                    arena._then(left.forward, right.forward),
+                    arena._then(right.reverse, left.reverse),
+                )
+                valid &= arena.resolve(result) == expected
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._compose_owner, operands, valid)
+            record(arena._compose_owner, result, valid)
+
+        for symbol, result in arena._leaf_actions.items():
+            try:
+                valid = type(symbol) is int and 0 <= symbol < 4
+                mapping: tuple[int, int, int] = (
+                    kernel.transition(0, symbol),
+                    kernel.transition(1, symbol),
+                    kernel.transition(2, symbol),
+                )
+                expected = CollatzLocalAction(
+                    (mapping[0], mapping[1], mapping[2]),
+                    (mapping[0], mapping[1], mapping[2]),
+                )
+                valid &= arena.resolve(result) == expected
+            except (TypeError, ValueError, IndexError, AttributeError):
+                valid = False
+            record(arena._leaf_owner, symbol, valid)
+            record(arena._leaf_owner, result, valid)
+
+        for store, owner in (
+            (arena._source_actions, arena._source_owner),
+            (arena._binary_source_actions, arena._binary_source_owner),
+        ):
+            for source, result in store.items():
+                try:
+                    if type(source) is SourceCellID:
+                        arena.sources.resolve(source)
+                    elif type(source) is SourceForestID:
+                        arena.sources.resolve_forest(source)
+                    else:
+                        raise TypeError("invalid Collatz local source reference")
+                    arena.resolve(result)
+                    valid = root_valid
+                except (TypeError, ValueError, IndexError, AttributeError):
+                    valid = False
+                record(owner, source, valid)
+                record(owner, result, valid)
+
+        return PayloadAuditContribution(tuple(approved), tuple(invalid))
+
 
 __all__ = [
     "CollatzLocalAction",
@@ -462,3 +609,10 @@ __all__ = [
     "CollatzPoweredLocalCodec",
     "CollatzPoweredLocalCodecMetrics",
 ]
+
+
+def audit_collatz_local_codec(ledger: object, root: object) -> PayloadAuditContribution:
+    """Closure-free ledger entry point for its exact family owner."""
+    if type(root) is not CollatzPoweredLocalCodec:
+        raise TypeError("Collatz payload audit received another owner")
+    return root.audit_payload(ledger, root)

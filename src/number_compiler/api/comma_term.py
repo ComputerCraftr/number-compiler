@@ -27,54 +27,12 @@ class CommaTermPayload:
             raise TypeError("comma payload requires its exact source owner")
 
     def require_certified(self) -> None:
-        from number_compiler.sequences.comma.certificates import (
-            CERTIFICATE_ID,
-            UnresolvedCommaTerm,
-            require_certified_index,
-        )
-
-        global_provider = self.term._global_future_provider_for_prefix_admission()
-        if self.term.certificate_version != CERTIFICATE_ID and global_provider is None:
-            raise UnresolvedCommaTerm(
-                self.term.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
-            )
-        require_certified_index(
-            self.term.index,
-            self.term.ledger,
-            self.term.max_work,
-            shared_cache=self.term.shared_cache,
-            memo=self.term.certificate_memo,
-            global_provider=global_provider,
-        )
+        self.term.require_certified_public_prefix()
 
     @property
     def certificate_provider(self) -> SemanticFutureProviderLease | None:
         """Observe an already retained global lease without charging a hit."""
-        with self.term._future_provider_lock:
-            lease = self.term._future_provider_lease
-            if lease is None:
-                return None
-            try:
-                from number_compiler.sequences.comma.future_provider import (
-                    SemanticFutureProviderStore,
-                    registered_global_release_artifact_sha256,
-                )
-
-                provider = lease._status_provider()
-                if provider is None:
-                    return None
-                provider.require_global_release_admission()
-                store = getattr(lease, "_store", None)
-                if type(store) is not SemanticFutureProviderStore:
-                    return None
-                if store.ledger is not self.term.ledger:
-                    return None
-                expected = registered_global_release_artifact_sha256()
-                if expected is None or provider.artifact_sha256 != expected:
-                    return None
-                return lease
-            except (PermissionError, RuntimeError, TypeError):
-                return None
+        return self.term.retained_global_future_provider
 
     @property
     def estimated_bit_length(self) -> int:

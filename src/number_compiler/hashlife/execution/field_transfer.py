@@ -23,7 +23,7 @@ from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferRecord,
     FieldTransferRequestKey,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )

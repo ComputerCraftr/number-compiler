@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.hashlife.interfaces.border_macros import BorderWireValue
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_carry_cylinder import (
@@ -121,12 +122,12 @@ class BorderReturnMacro:
 
     def f5_action(self) -> CollatzF5AffineAction:
         from number_compiler.sequences.collatz.temporal_f5_observer import (
-            _project_dyadic_fields_f5,
+            project_dyadic_fields_f5,
         )
 
-        return _project_dyadic_fields_f5(self.fields)
+        return project_dyadic_fields_f5(self.fields)
 
-    def structural_payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[BorderWireValue, ...]:
         """Structural immutable values only; never publish action objects."""
         fields = self.fields
         return (
@@ -245,7 +246,7 @@ def select_border_return_macro(
     ledger: ResourceLedger | None = None,
     radix_state: JointRadix6Source | None = None,
 ) -> BorderReturnMacro | None:
-    """Produce one complete cross-family action without scalar Collatz replay.
+    """Produce one complete source-closed port action without scalar Collatz replay.
 
     A finite number of *border* tests may be necessary; each test is a
     valuation and residue on the exact upper coordinate, not a scan of the

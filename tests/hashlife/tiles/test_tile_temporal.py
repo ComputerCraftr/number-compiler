@@ -30,8 +30,8 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
-from tests.support.tile_kernel import _oracle as _step
-from tests.support.tile_kernel import _tile as _canonical_tile
+from tests.support.tile_kernel import literal_tile_output as _step
+from tests.support.tile_kernel import make_tile_from_symbols as _canonical_tile
 
 
 def _runtime(

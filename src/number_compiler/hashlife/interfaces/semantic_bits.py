@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         CompleteFiniteTransform,
     )
 
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -120,6 +121,19 @@ class BitFunctionArena:
     def _handle(self, identity: int) -> FactoredFunctionID:
         return FactoredFunctionID(self.token, "semantic-bit-function", identity)
 
+    def candidate_handle(
+        self, identity: int, *, base: int, candidate_count: int
+    ) -> FactoredFunctionID:
+        """Create a prospective ID bounded by the active publication window."""
+        require_integer(identity, "factored candidate ID", 0)
+        require_integer(base, "factored publication base", 0)
+        require_integer(candidate_count, "factored candidate count", 0)
+        if base != len(self.nodes):
+            raise RuntimeError("factored publication base is stale")
+        if identity >= base + candidate_count:
+            raise ValueError("factored candidate ID is outside its publication window")
+        return self._handle(identity)
+
     def resolve(self, function: FactoredFunctionID) -> FactoredFunction:
         if type(function) is not FactoredFunctionID:
             raise ValueError("factored function requires a scoped identity")
@@ -191,7 +205,7 @@ class BitFunctionArena:
         roots = done[function.local_id]
         result = circuit.normalized(node.signature, roots[:-1], roots[-1])
         self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_EVALUATIONS)
-        return self._publish(circuit, (result,), scalar_source=function)[0]
+        return self.publish_circuit(circuit, (result,), scalar_source=function)[0]
 
     def variable(
         self,
@@ -220,7 +234,7 @@ class BitFunctionArena:
             for bit in range(port.bits)
         )
         value = circuit.normalized(signature, bits, circuit.admitted())
-        return self._publish(circuit, (value,))[0]
+        return self.publish_circuit(circuit, (value,))[0]
 
     def constant(self, signature: FunctionSignature, value: int) -> FactoredFunctionID:
         _signature(signature)
@@ -237,7 +251,7 @@ class BitFunctionArena:
             for bit in range((target.cardinality - 1).bit_length())
         )
         result = circuit.normalized(signature, bits, circuit.admitted())
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def add(
         self,
@@ -279,7 +293,7 @@ class BitFunctionArena:
             _, borrow = circuit.subtract_constant(tuple(bits), output.cardinality)
             valid = circuit.conjunction(valid, borrow)
         result = circuit.normalized(signature, tuple(bits), valid)
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def select(
         self,
@@ -305,10 +319,13 @@ class BitFunctionArena:
         bb, bv = circuit.imported(b)
         valid = circuit.conjunction(cv, circuit.choose(cc[0], av, bv))
         valid = circuit.conjunction(circuit.admitted(), valid)
-        bits = tuple(circuit.choose(cc[0], left, right) for left, right in zip(aa, bb))
+        bits = tuple(
+            circuit.choose(cc[0], left, right)
+            for left, right in zip(aa, bb, strict=True)
+        )
         signature = FunctionSignature(inputs, a.signature.output)
         result = circuit.normalized(signature, bits, valid)
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def imported_circuit(
         self, source: FactoredFunction
@@ -362,7 +379,7 @@ class BitFunctionArena:
                 for i in range(0, len(values), 2)
             ]
         result = circuit.normalized(signature, values[0], valid)
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def restrict(
         self, function: FactoredFunctionID, predicate: FactoredFunctionID
@@ -379,7 +396,7 @@ class BitFunctionArena:
         result = circuit.normalized(
             FunctionSignature(inputs, value.signature.output), bits, valid
         )
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def bundle(
         self, functions: tuple[FactoredFunctionID, ...], *, name: str
@@ -403,7 +420,9 @@ class BitFunctionArena:
             component, admitted = circuit.imported(node)
             bits += component
             valid = circuit.conjunction(valid, admitted)
-        return self._publish(circuit, (circuit.normalized(signature, bits, valid),))[0]
+        return self.publish_circuit(
+            circuit, (circuit.normalized(signature, bits, valid),)
+        )[0]
 
     def domain_predicate(self, function: FactoredFunctionID) -> FactoredFunctionID:
         """Return definedness as a Boolean function on the declared port domain."""
@@ -415,7 +434,7 @@ class BitFunctionArena:
         valid = circuit.tx.resign(node.valid.local_id, circuit.signature)
         signature = FunctionSignature(node.signature.inputs, BOOL)
         result = circuit.normalized(signature, (valid,), circuit.admitted())
-        return self._publish(circuit, (result,))[0]
+        return self.publish_circuit(circuit, (result,))[0]
 
     def substitute(
         self,
@@ -477,7 +496,7 @@ class BitFunctionArena:
             circuit.conjunction(validity, valid),
         )
         self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_EVALUATIONS)
-        return self._publish(circuit, (result,), substitution=key)[0]
+        return self.publish_circuit(circuit, (result,), substitution=key)[0]
 
     def substitute_many(
         self,
@@ -596,7 +615,7 @@ class BitFunctionArena:
             valid,
         )
         quot = circuit.normalized(FunctionSignature(bundle, BOOL), (quotient,), valid)
-        result = self._publish(circuit, (remain, quot))
+        result = self.publish_circuit(circuit, (remain, quot))
         self.ledger.bump(_interfaces_keys.SEMANTIC_BINARY_DIVISION_COMPILATIONS)
         return BinaryDivision(result[0], result[1])
 
@@ -619,7 +638,7 @@ class BitFunctionArena:
             value = self.ledger.observe_arithmetic(value | shifted)
         return value
 
-    def _publish(
+    def publish_circuit(
         self,
         circuit: _Circuit,
         results: tuple[_PendingFunction, ...],
@@ -950,4 +969,6 @@ class _Circuit:
         )
 
 
-__all__ = ["substitute_boolean"]
+BooleanCircuit = _Circuit
+
+__all__ = ["BooleanCircuit", "substitute_boolean"]

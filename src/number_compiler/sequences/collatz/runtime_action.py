@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.fields.adic_morphism import PadicAffineMorphism
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.defect_arena import CollatzDefectArena
 from number_compiler.sequences.collatz.field_action import (
     CollatzActionGeometry,
     CollatzCharacterAction,
     CollatzCocyclePrograms,
-    CollatzDefectArena,
     CollatzFieldAction,
     CollatzFieldActionArena,
     CollatzFieldActionID,

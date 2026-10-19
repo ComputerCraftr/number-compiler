@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TypeVar, cast
 
 from devtools.verification.block_partition import (
@@ -33,11 +35,38 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
+from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
 _T = TypeVar("_T")
+
+
+@dataclass(frozen=True, slots=True)
+class ComposedRuntimeSnapshot:
+    """Immutable instrumentation facts from one composed execution owner."""
+
+    node_id: int
+    semantic_key: object
+    first: BlockEffect
+    second: BlockEffect
+    exponent: int
+    states: tuple[int, int]
+    partition_states: tuple[int, int]
+    partition_layers: tuple[int, int]
+    functional_states: tuple[int, int]
+    functional_layers: tuple[int, int]
+    recursive_states: tuple[int, int]
+    recursive_layers: tuple[int, int]
+    recursive_action_nodes: tuple[int, int]
+    recursive_action_max_spatial_extent: tuple[int, int]
+    recursive_action_max_depth: tuple[int, int]
+    sparse_layers: tuple[int, int]
+    max_partition_domain: tuple[int, int]
+    mixed_finite_carrier_layers: int
+    tile_output_levels: tuple[int, ...]
+    counters: Mapping[str, int]
 
 
 class ComposedBlockEffect(
@@ -52,6 +81,11 @@ class ComposedBlockEffect(
     Composition substitutes the two-sided transducer equations directly; it
     never applies either child to an intermediate word.
     """
+
+    @property
+    def resource_ledger(self) -> ResourceLedger | None:
+        """Read the resource owner without executing the effect."""
+        return self._ledger
 
     __slots__ = (
         "_blank_saturation_cap",
@@ -609,6 +643,157 @@ class ComposedBlockEffect(
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return self.definition.canonical_key
+
+    def runtime_snapshot(self) -> ComposedRuntimeSnapshot:
+        """Return detached read-only metadata for the demanded statistics pass."""
+        states = (self._states[0], self._states[1])
+        partition_states = [0, 0]
+        partition_layers = [0, 0]
+        functional_states = [0, 0]
+        functional_layers = [0, 0]
+        recursive_states = [0, 0]
+        recursive_layers = [0, 0]
+        recursive_action_nodes = [0, 0]
+        recursive_action_max_spatial_extent = [0, 0]
+        recursive_action_max_depth = [0, 0]
+        sparse_layers = [0, 0]
+        max_partition_domain = [0, 0]
+        for side_index in (0, 1):
+            if self._partition_enabled[side_index]:
+                partition_states[side_index] = states[side_index]
+                partition_layers[side_index] = 1
+                domain = self._partition_domains[side_index]
+                if domain is not None:
+                    max_partition_domain[side_index] = len(domain)
+            elif self._functional_enabled[side_index]:
+                functional_states[side_index] = states[side_index]
+                functional_layers[side_index] = 1
+            elif self._recursive_enabled[side_index]:
+                recursive_states[side_index] = states[side_index]
+                recursive_layers[side_index] = 1
+                pool = self._recursive_residual_intern[side_index]
+                recursive_action_nodes[side_index] = (
+                    0 if pool is None else len(pool)
+                ) + int(self._recursive_constant[side_index] is not None)
+                if pool is not None:
+                    for residual in pool.values():
+                        extent = depth = 0
+                        cursor = residual
+                        while cursor.previous is not None:
+                            if cursor.tile is None:
+                                raise AssertionError(cursor)
+                            extent += int(cursor.tile.width)
+                            depth += 1
+                            cursor = cursor.previous
+                        recursive_action_max_spatial_extent[side_index] = max(
+                            recursive_action_max_spatial_extent[side_index], extent
+                        )
+                        recursive_action_max_depth[side_index] = max(
+                            recursive_action_max_depth[side_index], depth
+                        )
+            else:
+                sparse_layers[side_index] = 1
+
+        tile_output_levels = tuple(
+            int(key[2].level)
+            for key in self._macro_tile_output_cache
+            if len(key) > 2 and key[0] == "fused" and isinstance(key[2], DyadicTile)
+        )
+        counters = MappingProxyType(
+            {
+                "map_eval_hits": self._map_eval_hits,
+                "map_eval_misses": self._map_eval_misses,
+                "output_cache_hits": self._output_cache_hits,
+                "output_cache_misses": self._output_cache_misses,
+                "output_uncached_probes": self._output_uncached_probes,
+                "sparse_emit_delegations": self._sparse_emit_delegations,
+                "sparse_emit_first_seen": self._sparse_emit_first_seen,
+                "sparse_emit_admissions": self._sparse_emit_admissions,
+                "sparse_emit_admission_filter_nodes": int(
+                    self._sparse_emit_admission_bits != 0
+                ),
+                "output_cache_entries": (
+                    0 if self._output_slots is None else len(self._output_slots)
+                ),
+                "left_transition_entries": self._transition_entries[0],
+                "right_transition_entries": self._transition_entries[1],
+                "blank_left_saturation_hits": self._blank_saturation_hits[0],
+                "blank_right_saturation_hits": self._blank_saturation_hits[1],
+                "functional_intern_hits": self._functional_intern_hits,
+                "functional_intern_misses": self._functional_intern_misses,
+                "partition_intern_hits": self._partition_intern_hits,
+                "partition_intern_misses": self._partition_intern_misses,
+                "partition_preimage_hits": self._partition_preimage_hits,
+                "partition_preimage_misses": self._partition_preimage_misses,
+                "partition_preimage_entries": sum(
+                    len(cache) for cache in self._partition_preimage_cache
+                ),
+                "partition_preimage_map_entries": sum(
+                    len(cache) for cache in self._partition_preimage_maps
+                ),
+                "partition_emit_mask_entries": sum(
+                    len(cache) for cache in self._partition_emit_masks
+                ),
+                "boundary_anchor_mask_entries": sum(
+                    0 if cache is None else len(cache)
+                    for cache in self._boundary_anchor_masks
+                ),
+                "boundary_value_mask_entries": sum(
+                    len(cache) for cache in self._boundary_value_masks
+                ),
+                "recursive_action_intern_hits": self._recursive_residual_intern_hits,
+                "recursive_action_intern_misses": self._recursive_residual_intern_misses,
+                "recursive_value_cache_hits": self._recursive_value_cache_hits,
+                "recursive_value_cache_misses": self._recursive_value_cache_misses,
+                "recursive_value_cache_entries": len(self._recursive_value_cache),
+                "symbolic_output_row_hits": self._symbolic_output_row_hits,
+                "symbolic_output_row_misses": self._symbolic_output_row_misses,
+                "symbolic_output_group_evals": self._symbolic_output_group_evals,
+                "boundary_value_index_builds": self._boundary_value_index_builds,
+                "symbolic_output_row_entries": sum(
+                    len(cache) for cache in self._symbolic_output_rows
+                ),
+                "spacetime_tile_advance_hits": self._macro_tile_advance_hits,
+                "spacetime_tile_advance_misses": self._macro_tile_advance_misses,
+                "spacetime_tile_output_hits": self._macro_tile_output_hits,
+                "spacetime_tile_output_misses": self._macro_tile_output_misses,
+                "spacetime_tile_advance_entries": len(self._macro_tile_advance_cache),
+                "spacetime_tile_output_entries": len(self._macro_tile_output_cache),
+                "spacetime_temporal_absorption": (
+                    self.first.exponent if self._macro_tile_output_cache else 0
+                ),
+            }
+        )
+        return ComposedRuntimeSnapshot(
+            self.node_id,
+            self.canonical_key,
+            self.first,
+            self.second,
+            self.exponent,
+            states,
+            (partition_states[0], partition_states[1]),
+            (partition_layers[0], partition_layers[1]),
+            (functional_states[0], functional_states[1]),
+            (functional_layers[0], functional_layers[1]),
+            (recursive_states[0], recursive_states[1]),
+            (recursive_layers[0], recursive_layers[1]),
+            (recursive_action_nodes[0], recursive_action_nodes[1]),
+            (
+                recursive_action_max_spatial_extent[0],
+                recursive_action_max_spatial_extent[1],
+            ),
+            (recursive_action_max_depth[0], recursive_action_max_depth[1]),
+            (sparse_layers[0], sparse_layers[1]),
+            (max_partition_domain[0], max_partition_domain[1]),
+            int(
+                any(
+                    self._partition_enabled[index] and self._functional_enabled[index]
+                    for index in (0, 1)
+                )
+            ),
+            tile_output_levels,
+            counters,
+        )
 
     @classmethod
     def from_definition(

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.unified_skew_chain import UnifiedSkewChain
 
-_CROSS_FAMILY_PORT_ISSUER = object()
+_SOURCE_CLOSED_PORT_ISSUER = object()
 
 
 def _bounded_three_power_matches(exponent: int, target: int) -> bool:
@@ -210,7 +210,7 @@ def _join(
     return None if pulled is None else before.meet(pulled)
 
 
-def _action_operand_bits(action: CrossFamilyPortAction) -> int:
+def _action_operand_bits(action: SourceClosedPortAction) -> int:
     """Bound arithmetic inputs touched by one exact source-closed join."""
     values = (
         *action.action.coefficient_snapshot(),
@@ -242,15 +242,15 @@ def _action_operand_bits(action: CrossFamilyPortAction) -> int:
 
 def _charge_composition(
     ledger: ResourceLedger | None,
-    before: CrossFamilyPortAction,
-    after: CrossFamilyPortAction,
+    before: SourceClosedPortAction,
+    after: SourceClosedPortAction,
 ) -> None:
     if ledger is None:
         return
     from number_compiler.resources.ledger import ResourceLedger
 
     if type(ledger) is not ResourceLedger:
-        raise TypeError("cross-family composition accounting needs a query ledger")
+        raise TypeError("source-closed composition accounting needs a query ledger")
     ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_ATTEMPTS)
     ledger.bump(
         _collatz_keys.COLLATZ_CROSS_FAMILY_ACTION_COMPOSITION_OPERAND_BITS,
@@ -259,7 +259,7 @@ def _charge_composition(
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class CrossFamilyPortAction:
+class SourceClosedPortAction:
     """One exact source guard and already issued normalized parity action."""
 
     action: DyadicTerminalFieldAction
@@ -280,9 +280,9 @@ class CrossFamilyPortAction:
         *,
         _issuer: object | None = None,
     ) -> None:
-        if _issuer is not None and _issuer is not _CROSS_FAMILY_PORT_ISSUER:
-            raise TypeError("invalid cross-family action issuer")
-        if _clock is not None and _issuer is not _CROSS_FAMILY_PORT_ISSUER:
+        if _issuer is not None and _issuer is not _SOURCE_CLOSED_PORT_ISSUER:
+            raise TypeError("invalid source-closed action issuer")
+        if _clock is not None and _issuer is not _SOURCE_CLOSED_PORT_ISSUER:
             raise TypeError("quadratic clocks require a checked internal producer")
         object.__setattr__(self, "action", action)
         object.__setattr__(self, "guard", guard)
@@ -290,7 +290,7 @@ class CrossFamilyPortAction:
         object.__setattr__(self, "_clock", _clock)
         object.__setattr__(self, "trace", trace)
         self._validate_components(check_growth=_issuer is None)
-        object.__setattr__(self, "_issuer", _CROSS_FAMILY_PORT_ISSUER)
+        object.__setattr__(self, "_issuer", _SOURCE_CLOSED_PORT_ISSUER)
         object.__setattr__(self, "_issued_snapshot", self._snapshot())
 
     @classmethod
@@ -301,7 +301,7 @@ class CrossFamilyPortAction:
         odd_events: int,
         clock: SkewQuadraticClock | None,
         trace: MacroTraceGrammar | tuple[int, ...] = (),
-    ) -> CrossFamilyPortAction:
+    ) -> SourceClosedPortAction:
         """Issue only records derived from a verified chain or composition."""
         return cls(
             action,
@@ -309,7 +309,7 @@ class CrossFamilyPortAction:
             odd_events,
             clock,
             trace,
-            _issuer=_CROSS_FAMILY_PORT_ISSUER,
+            _issuer=_SOURCE_CLOSED_PORT_ISSUER,
         )
 
     def _validate_components(self, *, check_growth: bool) -> None:
@@ -383,7 +383,7 @@ class CrossFamilyPortAction:
     def producer_issued(self) -> bool:
         try:
             return (
-                self._issuer is _CROSS_FAMILY_PORT_ISSUER
+                self._issuer is _SOURCE_CLOSED_PORT_ISSUER
                 and self._issued_snapshot == self._snapshot()
                 and self.action.producer_issued
             )
@@ -392,7 +392,7 @@ class CrossFamilyPortAction:
 
     def _verify_issued(self) -> None:
         if not self.producer_issued:
-            raise ValueError("cross-family action issuance seal is invalid")
+            raise ValueError("source-closed action issuance seal is invalid")
 
     @property
     def clock(self) -> SkewQuadraticClock | None:
@@ -406,7 +406,7 @@ class CrossFamilyPortAction:
         return self.trace.materialize()
 
     @classmethod
-    def identity(cls, *, precision: int | None = None) -> CrossFamilyPortAction:
+    def identity(cls, *, precision: int | None = None) -> SourceClosedPortAction:
         return cls._create_checked(
             DyadicTerminalFieldAction.identity(),
             SourceCongruence(),
@@ -417,22 +417,20 @@ class CrossFamilyPortAction:
     @classmethod
     def from_chain(
         cls, chain: UnifiedSkewChain, *, ledger: ResourceLedger | None = None
-    ) -> CrossFamilyPortAction:
+    ) -> SourceClosedPortAction:
         from number_compiler.sequences.collatz.unified_skew_chain import (
             UnifiedSkewChain,
         )
 
         if type(chain) is not UnifiedSkewChain:
-            raise TypeError("cross-family port construction requires an issued chain")
+            raise TypeError("source-closed port construction requires an issued chain")
         chain.verify()
         guard = SourceCongruence()
         prefix = DyadicTerminalFieldAction.identity()
         trace: list[int] = []
         for seam in chain.seams:
             if seam.action.steps < 1:
-                raise ValueError("zero-step cross-family seam is not useful")
-            if seam.action.source_residue is None or seam.action.source_modulus is None:
-                raise AssertionError("issued seam lost its exact parity cylinder")
+                raise ValueError("zero-step source-closed seam is not useful")
             trace.append(seam.source % 160)
             if type(seam.identity) in (CycleEntryPhase, GuardedBorderPath):
                 try:
@@ -459,7 +457,7 @@ class CrossFamilyPortAction:
                 raise AssertionError("issued seam parity and CRT guards conflict")
             joined_guard = _join(guard, local, prefix)
             if joined_guard is None:
-                raise AssertionError("issued cross-family seam preimages conflict")
+                raise AssertionError("issued source-closed seam preimages conflict")
             guard = joined_guard
             prefix = prefix.then(seam.action)
         if prefix != chain.fields or not guard.admits(chain.source):
@@ -471,17 +469,17 @@ class CrossFamilyPortAction:
             from number_compiler.resources.ledger import ResourceLedger
 
             if type(ledger) is not ResourceLedger:
-                raise TypeError("cross-family guard metrics require a query ledger")
+                raise TypeError("source-closed guard metrics require a query ledger")
             ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_GUARD_COMPILATIONS)
         return action
 
     def then(
         self,
-        after: CrossFamilyPortAction,
+        after: SourceClosedPortAction,
         *,
         ledger: ResourceLedger | None = None,
-    ) -> CrossFamilyPortAction | None:
-        if type(after) is not CrossFamilyPortAction:
+    ) -> SourceClosedPortAction | None:
+        if type(after) is not SourceClosedPortAction:
             raise TypeError("joint temporal composition requires another port action")
         self._verify_issued()
         after._verify_issued()
@@ -507,7 +505,7 @@ class CrossFamilyPortAction:
             if self.clock is not None and after.clock is not None
             else None
         )
-        return CrossFamilyPortAction._create_checked(
+        return SourceClosedPortAction._create_checked(
             joint_action,
             joint_guard,
             self.odd_events + after.odd_events,
@@ -521,7 +519,7 @@ class CrossFamilyPortAction:
         *,
         max_coefficient_bits: int = 8192,
         ledger: ResourceLedger | None = None,
-    ) -> CrossFamilyPortAction | None:
+    ) -> SourceClosedPortAction | None:
         self._verify_issued()
         if type(repetitions) is not int or repetitions < 0:
             raise ValueError("power repetitions must be a natural integer")
@@ -531,7 +529,7 @@ class CrossFamilyPortAction:
             from number_compiler.resources.ledger import ResourceLedger
 
             if type(ledger) is not ResourceLedger:
-                raise TypeError("cross-family power accounting needs a query ledger")
+                raise TypeError("source-closed power accounting needs a query ledger")
 
         def refused() -> None:
             if ledger is not None:
@@ -574,7 +572,7 @@ class CrossFamilyPortAction:
 
     def endpoint(self, source: int) -> int:
         if not self.admits(source):
-            raise ValueError("source is outside the cross-family parity cylinder")
+            raise ValueError("source is outside the source-closed parity cylinder")
         return self.action.endpoint(source)
 
     def demanded_outer_inner_future(
@@ -594,7 +592,7 @@ class CrossFamilyPortAction:
         """Bind the outer interval, inner CRT cone and next 6305 driver.
 
         The *entire* finite cylinder is intersected with the already-issued
-        cross-family source guard before transporting the full affine stride.
+        source-closed source guard before transporting the full affine stride.
         Only a next return that is common to every surviving source is
         published. The symbolic radial/helix fields share this very action;
         a leading multiplier prefix is never substituted for endpoint bits.
@@ -621,7 +619,7 @@ class CrossFamilyPortAction:
         # parity word. Track that refinement rather than claiming that all
         # original upper/lower alternatives admit a published border family.
         if self.guard.minimum_source > initial.upper:
-            raise ValueError("cross-family lower source bound excludes the interval")
+            raise ValueError("source-closed lower source bound excludes the interval")
         restricted = CollatzTwoSidedCylinder(
             max(initial.lower, self.guard.minimum_source),
             initial.upper,
@@ -632,7 +630,7 @@ class CrossFamilyPortAction:
             self.guard.residue, self.guard.modulus
         )
         if guarded is None or not guarded.contains(source):
-            raise ArithmeticError("cross-family guard excludes its original witness")
+            raise ArithmeticError("source-closed guard excludes its original witness")
         restricted = guarded
         parity_admitted = restricted.admitted_by(self.action)
         if parity_admitted is None or parity_admitted.count != restricted.count:
@@ -684,7 +682,7 @@ class CrossFamilyPortAction:
                     radix_width(ring.last, 6),
                 )
             coverage_packet = width_coverage
-        packet = {
+        packet: dict[str, object] = {
             "conditional_next_tail_branches": tuple(
                 (j, child.residue, child.modulus, child.count)
                 for j, child in conditional_inlets
@@ -777,7 +775,7 @@ class CrossFamilyPortAction:
             from number_compiler.resources.ledger import ResourceLedger
 
             if type(ledger) is not ResourceLedger:
-                raise TypeError("cross-family port metrics require a query ledger")
+                raise TypeError("source-closed port metrics require a query ledger")
             ledger.bump(_collatz_keys.COLLATZ_CROSS_FAMILY_PORT_DEMANDS)
         packet: dict[str, object] = {
             "source": source,
@@ -835,4 +833,4 @@ class CrossFamilyPortAction:
         return packet
 
 
-__all__ = ["CrossFamilyPortAction", "MacroTraceGrammar", "SourceCongruence"]
+__all__ = ["SourceClosedPortAction", "MacroTraceGrammar", "SourceCongruence"]

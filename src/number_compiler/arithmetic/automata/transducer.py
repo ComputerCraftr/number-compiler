@@ -258,7 +258,7 @@ class BimachineTransformResult(Generic[_MetricsT]):
 
 
 class _BimachineBuilder:
-    def __init__(self, base: int):
+    def __init__(self, base: int) -> None:
         self.base = int(base)
         if self.base < 2:
             raise ValueError(base)
@@ -282,7 +282,7 @@ class _BimachineBuilder:
         start_l = L(("S", 0, 0, 0, 0))
         done_l = L(("D", 0, 0, 0, 0))
         todo = deque([start_l])
-        seen = set()
+        seen: set[int] = set()
         while todo:
             q = todo.popleft()
             if q in seen:
@@ -312,7 +312,7 @@ class _BimachineBuilder:
         done_r = R(("D", 0, 0, 0))
         rt[start_r, end] = after
         todo = deque([after])
-        seen = set()
+        seen.clear()
         while todo:
             q = todo.popleft()
             if q in seen:

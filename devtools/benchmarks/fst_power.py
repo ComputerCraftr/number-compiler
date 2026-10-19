@@ -65,7 +65,7 @@ class RTTransducer:
             cur = nxt
             if not cur:
                 raise ValueError("input rejected")
-        results = set()
+        results: set[tuple[int, ...]] = set()
         for q, out in cur:
             if q in self.finals:
                 results.add(out + self.finals[q])
@@ -113,7 +113,7 @@ def build_step(base: int = 10) -> RTTransducer:
     states = state_interner.values
     sid = state_interner.intern
 
-    initials = []
+    initials: list[int] = []
     for g in (0, 1):
         for R0 in (0, 1):
             initials.append(sid(("G" if g else "N", 0, R0, -1, -1)))
@@ -121,7 +121,7 @@ def build_step(base: int = 10) -> RTTransducer:
     arcs: defaultdict[int, list[Arc]] = defaultdict(list)
     finals: dict[int, tuple[int, ...]] = {}
     q = deque(initials)
-    seen = set()
+    seen: set[int] = set()
     while q:
         qi = q.popleft()
         if qi in seen:

@@ -28,8 +28,8 @@ from number_compiler.arithmetic.fields.mechanical_readout import (
     homogeneous_growth_packet,
 )
 from number_compiler.arithmetic.fields.radial_sturmian import RadialSturmianClock
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
-from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -94,7 +94,7 @@ def _action_packet(
             )
         ),
     )
-    workspace = result._term.arithmetic_workspace
+    workspace = result.source_term.arithmetic_workspace
     if type(workspace) is not AntihydraArithmeticImageWorkspace:
         raise ValueError("Mahler residual lost its admitted arithmetic image")
     # The scheduler projection has already authenticated the complete source
@@ -318,7 +318,7 @@ def _action_packet(
             work_units = max(
                 1, transfer.upper.bit_length() * workspace.seed.bit_length()
             )
-            with radial_evaluator._charge_work(
+            with radial_evaluator.charge_work(
                 work_units,
                 0,
                 source_operand_bits,
@@ -417,7 +417,7 @@ class MahlerWorkspace:
     """Demand one finite consumer from the source scheduler's published image."""
 
     def __init__(self, result: ArithmeticResult) -> None:
-        workspace = result._term.arithmetic_workspace
+        workspace = result.source_term.arithmetic_workspace
         if type(workspace) is not AntihydraArithmeticImageWorkspace:
             raise ValueError("Mahler source lost its admitted arithmetic image")
         self.result = result
@@ -428,11 +428,17 @@ class MahlerWorkspace:
         ) = None
         self._window_contract_registered = False
 
+    @property
+    def window_memo_container(self) -> object | None:
+        """Exact registered container for a fresh audit, including closed state."""
+        memo = self._window_memo
+        return None if memo is None else memo.audit_snapshot().container
+
     def _validate_binding(self, result: ArithmeticResult) -> None:
         if (
             result is not self.result
             or type(self.source_workspace) is not AntihydraArithmeticImageWorkspace
-            or self.source_workspace is not result._term.arithmetic_workspace
+            or self.source_workspace is not result.source_term.arithmetic_workspace
             or self.source_workspace.ledger is not result.ledger
         ):
             raise ValueError("Mahler consumer belongs to another source occurrence")
@@ -523,7 +529,7 @@ class MahlerWorkspace:
             window.verify_issued()
             if (
                 type(key[0]) is not tuple
-                or not _typed_equal(key[0], semantic_id)
+                or not typed_payload_equal(key[0], semantic_id)
                 or key[1] != 7
                 or key[2] != window.bits
                 or key[3] != window.decimal_places
@@ -542,7 +548,7 @@ class MahlerWorkspace:
     ) -> OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow]:
         if (
             result is not self.result
-            or self.source_workspace is not result._term.arithmetic_workspace
+            or self.source_workspace is not result.source_term.arithmetic_workspace
             or self.source_workspace.ledger is not result.ledger
         ):
             raise ValueError("Mahler window memo belongs to another source")
@@ -663,7 +669,7 @@ def associated_action(
         raise ValueError("source cylinders require the detailed Mahler port demand")
     arithmetic = authenticated_arithmetic_result(result)
     source_binding = result.source_binding
-    workspace = arithmetic._term.mahler_workspace
+    workspace = arithmetic.source_term.mahler_workspace
     created_workspace = workspace is None
     if workspace is None:
         workspace = MahlerWorkspace(arithmetic)
@@ -675,7 +681,7 @@ def associated_action(
             include_source_cylinder=include_source_cylinder,
         )
         if created_workspace:
-            arithmetic._term.mahler_workspace = workspace
+            arithmetic.source_term.mahler_workspace = workspace
         if (
             workspace._window_memo is not None
             and not workspace._window_contract_registered
@@ -684,7 +690,7 @@ def associated_action(
                 refresh_antihydra_payload_contract,
             )
 
-            refresh_antihydra_payload_contract(arithmetic._term)
+            refresh_antihydra_payload_contract(arithmetic.source_term)
             workspace._window_contract_registered = True
     except BaseException:
         # A failed first memo publication must not leave an existing source
@@ -693,7 +699,7 @@ def associated_action(
         if memo_before is None and workspace._window_memo is not None:
             workspace.dispose()
         if created_workspace:
-            arithmetic._term.mahler_workspace = None
+            arithmetic.source_term.mahler_workspace = None
         raise
     packet["source_binding"] = source_binding
     return packet

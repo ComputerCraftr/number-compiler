@@ -80,7 +80,7 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
     image_seal = core._publication_seals.images[image.local_id]
     projection_seal = next(iter(core._publication_seals.projections.values()))
     seal_visits = 3 * (1 + len(image_seal.guards)) + 1 + len(projection_seal.guards)
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("warm point replayed the source-image projection")
@@ -89,7 +89,7 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
     assert term.digit(0) == expected
     changes = {
         key: value - before.get(key, 0)
-        for key, value in term._ledger.counters.items()
+        for key, value in term.resource_ledger.counters.items()
         if value != before.get(key, 0)
     }
     # Three image validations and one projection validation inspect only the
@@ -110,7 +110,7 @@ def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
     expected = term.digit(0)
     workspace = term._source_image()
     assert len(term._microblocks.blocks) == 1
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("warm point replayed the source-image projection")
@@ -119,7 +119,7 @@ def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
     assert term.digit(0) == expected
     changes = {
         key: value - before.get(key, 0)
-        for key, value in term._ledger.counters.items()
+        for key, value in term.resource_ledger.counters.items()
         if value != before.get(key, 0)
     }
     assert changes == {
@@ -211,7 +211,9 @@ def test_explicit_projection_uses_its_registered_source_geometry(
     monkeypatch.setattr(index._source_geometry, "tile_at", counted)
     index.direct_powered_point(0)
     assert not reads
-    assert index._ledger.counters.get("source_tile_lookup_requests", 0) >= len(reads)
+    assert index.resource_ledger.counters.get("source_tile_lookup_requests", 0) >= len(
+        reads
+    )
 
 
 def test_source_image_families_use_their_registered_source_authority() -> None:
@@ -269,10 +271,10 @@ def test_generic_equal_source_parent_uses_tile_identity_before_cell_walk(
             "equal source subtree was evaluated before its canonical lookup"
         )
 
-    monkeypatch.setattr(engine.adapter, "_leaf_components", guarded)
-    monkeypatch.setattr(engine.adapter, "_parent_components", guarded)
+    monkeypatch.setattr(engine.adapter, "leaf_components", guarded)
+    monkeypatch.setattr(engine.adapter, "parent_components", guarded)
     assert index.direct_powered_point(31) == 2
-    assert index._ledger.counters["powered_interface_early_hits"] > 0
+    assert index.resource_ledger.counters["powered_interface_early_hits"] > 0
 
 
 def test_certificate_issuer_checks_actual_kernel_language() -> None:
@@ -296,7 +298,7 @@ def test_certificate_issuer_checks_actual_kernel_language() -> None:
 def test_source_geometry_rejects_another_input_before_application_retention() -> None:
     index = HashLifeBlockIndex(DigitNormalizeBlockEffect(10), (2, 2), logical_length=8)
     assert_rejected_atomically(
-        index._ledger,
+        index.resource_ledger,
         lambda: index._source_geometry.require_source((4, 4), index.effect.blank),
         ValueError,
         match="original input",

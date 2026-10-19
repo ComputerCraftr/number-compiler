@@ -19,7 +19,7 @@ from number_compiler.hashlife.execution.field_images import (
     ParametricFieldImageSummary,
     SourceBindingID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_executor import FieldImageApplication

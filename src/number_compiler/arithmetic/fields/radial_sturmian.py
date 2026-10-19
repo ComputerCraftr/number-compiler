@@ -153,7 +153,7 @@ class RadialSturmianClock:
         if width == order + 1 and self.scale.growths <= 512:
             bound = self.scale.growths * 2
             if bound <= 1024:
-                with evaluator._charge_work(
+                with evaluator.charge_work(
                     max(1, bound * radix.bit_length()),
                     0,
                     bound,
@@ -174,7 +174,7 @@ class RadialSturmianClock:
                 packet.precision_bits,
             )
         precision = min(32, evaluator.max_precision_bits)
-        with evaluator._charge_work(
+        with evaluator.charge_work(
             width * radix.bit_length(),
             0,
             width * radix.bit_length(),
@@ -236,14 +236,14 @@ class RadialSturmianClock:
         if width > evaluator.max_precision_bits:
             evaluator.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
             raise BlockContextBudgetExceeded("radial prefix exceeds precision budget")
-        evaluator._ensure_open()
+        evaluator.ensure_open()
         if self.scale.is_identity and width <= 64:
             # The identity is a fixed machine-word readout, like radix_order's
             # identity shortcut. It needs no logarithm cache or scratch arena;
             # zero-event publishers can already occupy their entire node budget.
             evaluator.ledger.bump(_fields_keys.GROWTH_RADIAL_IDENTITY_SHORTCUTS)
             return RadialSturmianPacket(0, 0, 0, width, 1 << (width - 1), 0)
-        with evaluator._charge_work(max(1, width), 0, width, storage_bits=8 * width):
+        with evaluator.charge_work(max(1, width), 0, width, storage_bits=8 * width):
             return self._leading_binary_admitted(evaluator, width)
 
     def _leading_binary_admitted(
@@ -260,7 +260,7 @@ class RadialSturmianClock:
         # fits the requested readout width; it cannot hide exponential work.
         full_width = order + scale.halvings + 1
         if full_width <= width:
-            with evaluator._charge_work(
+            with evaluator.charge_work(
                 max(1, width * scale.growths.bit_length()),
                 0,
                 width,

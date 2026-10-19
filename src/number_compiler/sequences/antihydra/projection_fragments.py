@@ -170,7 +170,9 @@ class ProjectionFragmentCache:
         self, image: object, capacity: int, *, issuer: object = None
     ) -> ProjectionFragment:
         """Compute from a live source image; never accept caller-supplied coefficients."""
-        from number_compiler.hashlife.execution.source_bound_images import SourceImageID
+        from number_compiler.hashlife.execution.source_image_inventory import (
+            SourceImageID,
+        )
         from number_compiler.sequences.antihydra.projection_core import (
             AntihydraProjectionDriver,
         )

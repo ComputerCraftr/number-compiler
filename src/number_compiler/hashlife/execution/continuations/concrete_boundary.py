@@ -27,7 +27,7 @@ def project_boundary(
     if type(scheduler) is not ConcretePortScheduler:
         raise TypeError("boundary projection requires the shared port scheduler")
     scheduler.adapter.validate_action(action)
-    side = scheduler._validate_side(side)
+    side = scheduler.validate_side(side)
     scheduler._validate_action_state(action, side, state)
     children = scheduler.adapter.children(action)
     if children is None:
@@ -39,7 +39,7 @@ def project_boundary(
     if residual.action != action or residual.side != side:
         raise ValueError("boundary residual has inconsistent temporal wiring")
     scheduler._validate_action_state(children[0], 1 - side, opposite)
-    scheduler._validate_atom(opposite)
+    scheduler.validate_atom(opposite)
     return scheduler._run(("RES", action, side, port.residual, opposite))
 
 

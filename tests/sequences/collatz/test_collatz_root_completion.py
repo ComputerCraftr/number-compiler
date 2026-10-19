@@ -3,19 +3,33 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import Any
+from typing import TypeAlias
 
 import pytest
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_entry import causal_complete
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+)
+from number_compiler.hashlife.tiles.tile_result_leases import ResultLease
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_root_completion import complete_collatz_root
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
+
+_RootCompletionCase: TypeAlias = tuple[
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    FieldCellActionID,
+    TileScheduler,
+    tuple[int, ...],
+]
 
 
 def _request(
@@ -26,8 +40,8 @@ def _request(
     )
 
 
-def _case(valuation: int, ticks: int) -> tuple[Any, ...]:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(
+def _case(valuation: int, ticks: int) -> _RootCompletionCase:
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         CollatzPhysicalBlockEffect()
     )
     seed = ((1 << valuation) - 1) // 3
@@ -40,10 +54,10 @@ def _case(valuation: int, ticks: int) -> tuple[Any, ...]:
 
 
 def _snapshot(
-    tiles: Any,
-    adapter: Any,
-    primitive: Any,
-    result: Any,
+    tiles: TileArena,
+    adapter: PrimitiveTileKernelAdapter,
+    primitive: FieldCellActionID,
+    result: ResultLease,
 ) -> tuple[object, ...]:
     value = result.result
     node = tiles.resolve(value.output)
@@ -70,7 +84,7 @@ def _snapshot(
         (
             ports,
             tuple(
-                adapter._observe(value.outgoing, channel, ports)
+                adapter.observe(value.outgoing, channel, ports)
                 for channel in COMPONENT_ROLES
             ),
         )
@@ -97,7 +111,9 @@ def test_initial_root_completion_matches_full_causal_result(ticks: int) -> None:
     _, oracle_tiles, oracle_adapter, oracle_primitive, oracle_scheduler, digits = (
         oracle_runtime
     )
-    with _tile(oracle_tiles, oracle_adapter, oracle_primitive, digits) as source:
+    with make_tile_from_symbols(
+        oracle_tiles, oracle_adapter, oracle_primitive, digits
+    ) as source:
         action = oracle_adapter.power(oracle_primitive, ticks)
         key = PoweredResultKey(
             action,
@@ -114,7 +130,7 @@ def test_initial_root_completion_matches_full_causal_result(ticks: int) -> None:
 
     runtime = _case(4, ticks)
     ledger, tiles, adapter, primitive, scheduler, digits = runtime
-    with _tile(tiles, adapter, primitive, digits) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, ticks)
         key = _request(adapter, action, source.tile)
         actual = complete_collatz_root(scheduler, key)
@@ -134,16 +150,18 @@ def test_initial_root_completion_executes_two_primitive_fields(
     import number_compiler.hashlife.execution.tile_causal_entry as entry
 
     _, tiles, adapter, primitive, scheduler, digits = _case(8, 8)
-    calls: list[object] = []
+    calls: list[FieldCellActionID] = []
     original = entry.causal_complete
 
-    def primitive_only(local_scheduler: Any, key: PoweredResultKey) -> Any:
+    def primitive_only(
+        local_scheduler: TileScheduler, key: PoweredResultKey
+    ) -> ResultLease | None:
         calls.append(key.action)
         assert key.action == primitive, "root completion replayed a temporal power"
         return original(local_scheduler, key)
 
     monkeypatch.setattr(entry, "causal_complete", primitive_only)
-    with _tile(tiles, adapter, primitive, digits) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, 8)
         key = _request(adapter, action, source.tile)
         result = complete_collatz_root(scheduler, key)
@@ -173,19 +191,21 @@ def test_scheduler_completes_varied_root_cylinders_with_two_primitive_scans(
         (seed >> coordinate) & 1 if coordinate < seed.bit_length() else 2
         for coordinate in range(width)
     )
-    ledger, tiles, adapter, primitive, scheduler = _runtime(
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         CollatzPhysicalBlockEffect()
     )
-    calls: list[object] = []
+    calls: list[FieldCellActionID] = []
     original = entry.causal_complete
 
-    def primitive_only(local_scheduler: Any, request: PoweredResultKey) -> Any:
+    def primitive_only(
+        local_scheduler: TileScheduler, request: PoweredResultKey
+    ) -> ResultLease | None:
         calls.append(request.action)
         assert request.action == primitive, "scheduler replayed the temporal root run"
         return original(local_scheduler, request)
 
     monkeypatch.setattr(entry, "causal_complete", primitive_only)
-    with _tile(tiles, adapter, primitive, digits) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, ticks)
         result = scheduler.complete(
             action,
@@ -219,7 +239,7 @@ def test_scheduler_completes_varied_root_cylinders_with_two_primitive_scans(
 
 def test_scheduler_root_result_hits_cache_and_has_balanced_inventory() -> None:
     ledger, tiles, adapter, primitive, scheduler, digits = _case(6, 5)
-    with _tile(tiles, adapter, primitive, digits) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, 5)
         ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
         first = scheduler.complete(action, source.tile, ports, wiring)
@@ -244,8 +264,12 @@ def test_scheduler_root_result_hits_cache_and_has_balanced_inventory() -> None:
 
 
 def test_initial_root_completion_declines_after_first_event() -> None:
-    _, tiles, adapter, primitive, scheduler = _runtime(CollatzPhysicalBlockEffect())
-    with _tile(tiles, adapter, primitive, (1, 1, 2, 2, 2, 2, 2, 2)) as source:
+    _, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        CollatzPhysicalBlockEffect()
+    )
+    with make_tile_from_symbols(
+        tiles, adapter, primitive, (1, 1, 2, 2, 2, 2, 2, 2)
+    ) as source:
         action = adapter.power(primitive, 8)
         key = _request(adapter, action, source.tile)
         assert complete_collatz_root(scheduler, key) is None

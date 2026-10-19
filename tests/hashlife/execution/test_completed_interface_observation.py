@@ -9,17 +9,17 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
     interface_payload_from_causal,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import result_payload
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 @pytest.mark.parametrize("source", ((0, 0, 0, 1), (5, 5, 5, 5)))
 def test_completed_activity_never_reexecutes_semantic_function(
     monkeypatch: pytest.MonkeyPatch, source: tuple[int, int, int, int]
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
     with (
-        _tile(tiles, adapter, primitive, source) as original,
+        make_tile_from_symbols(tiles, adapter, primitive, source) as original,
         scheduler.complete(
             action, original.tile, adapter.initial_ports(action), adapter.wiring(action)
         ) as completed,
@@ -35,7 +35,7 @@ def test_completed_activity_never_reexecutes_semantic_function(
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("completed activity reran a semantic observer")
 
-        monkeypatch.setattr(adapter, "_observe", forbidden)
+        monkeypatch.setattr(adapter, "observe", forbidden)
         before = ledger.snapshot()
         assert (
             interface_payload_from_causal(

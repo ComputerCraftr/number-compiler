@@ -471,6 +471,7 @@ def test_forged_contract_snapshot_cannot_approve_objects_or_roots() -> None:
     forged = PayloadAuditContractAudit(
         _approved=frozenset(((owner, id(forged_value)),)),
         _invalid=frozenset(),
+        _result_ids=frozenset((id(forged_value),)),
         _by_family=(
             (
                 "antihydra",

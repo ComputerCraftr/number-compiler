@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     admit_boundary_macro_plan,
@@ -85,7 +86,7 @@ def test_pumped_innovation_counts_extend_beyond_the_reported_sample() -> None:
 def test_guarded_mixed_macro_is_the_production_action_and_signed_word() -> None:
     ledger = ResourceLedger()
     with BoundaryActionTemplateMemo(ledger) as templates:
-        template = templates.get((0, 1), 64)[0]
+        template = templates.get(MixedParityMotif((0, 1)), 64)[0]
         ticks = 64 * 3
         source = next(
             candidate

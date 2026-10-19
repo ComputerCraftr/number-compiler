@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.tile_causal_interfaces import (
-    CausalInterfacePayload,
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    AnchorFrame,
+    CausalTaskFrame,
+    InterfaceFrame,
+    ResidualFrame,
+    ReverseInterfaceFrame,
+)
+from number_compiler.hashlife.execution.tile_causal_midpoint import (
+    consume_midpoint_parent,
 )
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
-    PrimitiveCausalPorts,
-    lookup_causal_result,
-    probe_causal_result,
-)
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    retain_completed,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
@@ -25,22 +26,31 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import CausalInterfaceKey
 from number_compiler.hashlife.tiles.tiles import TileID
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalState,
+    CausalTaskValue,
+    pop_causal_state,
+    pop_interface_payload,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+
 
 def cached_midpoint_interface_step(
-    engine: Any,
-    frame: CausalFrame,
-    frames: Any,
-    values: CausalResults,
+    engine: CausalTileEngine,
+    frame: InterfaceFrame | ReverseInterfaceFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
     action: FieldCellActionID,
     tile: TileID,
-    left: object,
-    right: object,
+    left: CausalState,
+    right: CausalState,
     children: tuple[FieldCellActionID, FieldCellActionID],
     observation_key: CausalInterfaceKey | None,
 ) -> bool:
@@ -51,46 +61,24 @@ def cached_midpoint_interface_step(
         frames.extend(
             (
                 frame,
-                CausalFrame("anchor", (before, 1, right)),
-                CausalFrame("anchor", (before, 0, left)),
+                AnchorFrame((before, 1, right)),
+                AnchorFrame((before, 0, left)),
             )
         )
         return True
     if frame.stage == 30:
-        right_anchor, left_anchor = values.pop(), values.pop()
-        if type(left_anchor) is int and type(right_anchor) is int:
-            before_key, completed = probe_causal_result(
-                engine.scheduler.results,
-                before,
-                tile,
-                PrimitiveCausalPorts(left_anchor, right_anchor),
-                engine._wiring(before),
-                action_admission=engine._action_admission_token,
-            )
-        else:
-            before_key = engine._composite_key(
-                before,
-                tile,
-                left_anchor,
-                right_anchor,
-            )
-            completed = (
-                None
-                if before_key is None
-                else lookup_causal_result(
-                    engine.scheduler.results,
-                    before_key,
-                    action_admission=engine._action_admission_token,
-                )
-            )
-        if completed is None:
+        right_anchor = pop_causal_state(values)
+        left_anchor = pop_causal_state(values)
+        parent_hit = consume_midpoint_parent(
+            engine, before, tile, left_anchor, right_anchor
+        )
+        if parent_hit is None:
             frame.stage = 0
             return False
-        assert before_key is not None
-        first = retain_completed(engine, before_key, completed)
+        first = parent_hit.completed
         node = engine.tiles.resolve(tile)
         frame.stage, frame.saved = 31, (first, observation_key)
-        if type(left_anchor) is int and type(right_anchor) is int:
+        if parent_hit.primitive:
             exits = first.semantics.outgoing_ports
             if len(exits) != 2:
                 raise ValueError("completed primitive midpoint omitted directed exits")
@@ -103,8 +91,7 @@ def cached_midpoint_interface_step(
         frames.extend(
             (
                 frame,
-                CausalFrame(
-                    "advance",
+                AdvanceFrame(
                     (
                         before,
                         1,
@@ -112,8 +99,7 @@ def cached_midpoint_interface_step(
                         BoundaryTileView(tile, 0, node.width, 1),
                     ),
                 ),
-                CausalFrame(
-                    "advance",
+                AdvanceFrame(
                     (
                         before,
                         0,
@@ -126,38 +112,40 @@ def cached_midpoint_interface_step(
         engine.ledger.bump(_execution_keys.TILE_CAUSAL_INTERFACE_MIDPOINT_REUSE)
         return True
     if frame.stage == 31:
-        right_argument, left_argument = values.pop(), values.pop()
+        right_argument = pop_causal_state(values)
+        left_argument = pop_causal_state(values)
         frame.stage = 32
         frames.extend(
             (
                 frame,
-                CausalFrame("residual", (action, 1, right, left_argument)),
-                CausalFrame("residual", (action, 0, left, right_argument)),
+                ResidualFrame((action, 1, right, left_argument)),
+                ResidualFrame((action, 0, left, right_argument)),
             )
         )
         return True
     if frame.stage == 32:
-        right_state, left_state = values.pop(), values.pop()
+        right_state = pop_causal_state(values)
+        left_state = pop_causal_state(values)
         frame.stage = 33
-        frames.extend(
-            (
-                frame,
-                CausalFrame(
-                    "interface",
-                    (after, frame.saved[0].output, left_state, right_state),
-                ),
-            )
-        )
+        match frame.saved:
+            case (CausalCompletedOutput() as first, _observation_key):
+                frames.extend(
+                    (
+                        frame,
+                        InterfaceFrame((after, first.output, left_state, right_state)),
+                    )
+                )
+            case _:
+                raise AssertionError("cached interface midpoint lost its parent")
         return True
     if frame.stage != 33:
         return False
-    second = values.pop()
-    first, saved_key = frame.saved
-    match (first, second):
-        case (CausalCompletedOutput(), CausalInterfacePayload()):
+    second = pop_interface_payload(values)
+    match frame.saved:
+        case (CausalCompletedOutput() as first, saved_key):
             pass
         case _:
-            raise AssertionError("cached interface edge returned another result sort")
+            raise AssertionError("cached interface midpoint lost its result key")
     from number_compiler.hashlife.execution.tile_physical_support import (
         temporal_physical_support,
     )

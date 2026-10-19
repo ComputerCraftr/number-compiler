@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Final
 
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.sequence_types import SpecialDepthCertificateSummary
+from number_compiler.arithmetic.contracts.family_identity import FamilyId, family_id
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     PureTwoPrimaryClockShape,
@@ -47,7 +47,7 @@ def _summary_from_terminal_pass(
     """Promote a proved all-local terminal PASS into the closed pure theorem."""
     shape = _proved_pure_clock_shape(probe.family, probe.parameter)
     return SpecialDepthCertificateSummary(
-        FamilyId(probe.family),
+        family_id(probe.family),
         probe.parameter,
         shape.modulus_bits,
         "prime",
@@ -75,7 +75,7 @@ def _summary_from_terminal_composite(
     if not probe.proves_composite:
         raise ValueError(probe.status)
     return SpecialDepthCertificateSummary(
-        FamilyId(probe.family),
+        family_id(probe.family),
         probe.parameter,
         probe.modulus_bits,
         "composite",
@@ -96,7 +96,7 @@ def _summary_from_terminal_unknown(
     if probe.decided:
         raise ValueError(probe.status)
     return SpecialDepthCertificateSummary(
-        FamilyId(probe.family),
+        family_id(probe.family),
         probe.parameter,
         probe.modulus_bits,
         "unknown",

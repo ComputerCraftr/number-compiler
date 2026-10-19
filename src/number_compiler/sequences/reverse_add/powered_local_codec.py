@@ -13,8 +13,10 @@ spatial word-action composition as temporal composition would be incorrect.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -35,6 +37,9 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+
+if TYPE_CHECKING:
+    from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +82,39 @@ class ReversePoweredLocalCodecMetrics:
     spatial_hits: int
     semantic_alias_hits: int
     mirror_alias_hits: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReversePoweredLocalAuditSnapshot:
+    """Fresh immutable owner view used only by explicit resource audits."""
+
+    ledger: ResourceLedger
+    sources: SourceCellArena
+    base: int
+    blank: int
+    owner: ArenaToken
+    states: tuple[tuple[BoundaryState, ...], tuple[BoundaryState, ...]]
+    state_ids: tuple[Mapping[BoundaryState, int], Mapping[BoundaryState, int]]
+    state_owners: tuple[int, int]
+    state_backings: tuple[object, object]
+    state_index_layout_valid: bool
+    node_owner: int
+    key_owner: int
+    compose_owner: int
+    leaf_owner: int
+    source_owner: int
+    node_backing: object
+    key_backing: object
+    compose_backing: object
+    leaf_backing: object
+    source_backing: object
+    nodes: tuple[ReverseLocalAction, ...]
+    keys: Mapping[ReverseLocalAction, int]
+    compositions: Mapping[
+        tuple[ReverseLocalActionID, ReverseLocalActionID], ReverseLocalActionID
+    ]
+    leaf_actions: Mapping[int, ReverseLocalActionID]
+    source_actions: Mapping[SourceCellID | SourceForestID, ReverseLocalActionID]
 
 
 class ReversePoweredLocalCodec:
@@ -168,9 +206,6 @@ class ReversePoweredLocalCodec:
         self.spatial_hits = 0
         self.semantic_alias_hits = 0
         self.mirror_alias_hits = 0
-        from number_compiler.resources.payload_contracts import (
-            PayloadAuditStoreBinding,
-        )
         from number_compiler.sequences.reverse_add.field_action_payload_audit import (
             audit_reverse_powered_codec_owner,
         )
@@ -178,39 +213,165 @@ class ReversePoweredLocalCodec:
         self.ledger.register_payload_audit_contract(
             self,
             "reverse_add",
-            (
-                PayloadAuditStoreBinding(
-                    self._node_owner, "_nodes", "reverse_local_action"
-                ),
-                PayloadAuditStoreBinding(
-                    self._key_owner, "_keys", "reverse_local_action_interner"
-                ),
-                PayloadAuditStoreBinding(
-                    self._compose_owner,
-                    "_compose",
-                    "reverse_local_action_composition",
-                ),
-                PayloadAuditStoreBinding(
-                    self._leaf_owner, "_leaf_actions", "reverse_local_leaf_binding"
-                ),
-                PayloadAuditStoreBinding(
-                    self._source_owner,
-                    "_source_actions",
-                    "reverse_local_source_binding",
-                ),
-                PayloadAuditStoreBinding(
-                    state_owners[0],
-                    "_left_state_ids",
-                    "reverse_local_state_index",
-                ),
-                PayloadAuditStoreBinding(
-                    state_owners[1],
-                    "_right_state_ids",
-                    "reverse_local_state_index",
-                ),
-            ),
+            self.payload_audit_store_bindings(),
             audit_reverse_powered_codec_owner,
         )
+
+    def payload_audit_store_bindings(
+        self,
+    ) -> tuple[PayloadAuditStoreBinding, ...]:
+        """Return exact ledger bindings for this codec's retained state."""
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+
+        return (
+            PayloadAuditStoreBinding(
+                self._node_owner, "_nodes", "reverse_local_action"
+            ),
+            PayloadAuditStoreBinding(
+                self._key_owner, "_keys", "reverse_local_action_interner"
+            ),
+            PayloadAuditStoreBinding(
+                self._compose_owner, "_compose", "reverse_local_action_composition"
+            ),
+            PayloadAuditStoreBinding(
+                self._leaf_owner, "_leaf_actions", "reverse_local_leaf_binding"
+            ),
+            PayloadAuditStoreBinding(
+                self._source_owner, "_source_actions", "reverse_local_source_binding"
+            ),
+            PayloadAuditStoreBinding(
+                self._state_owners[0], "_left_state_ids", "reverse_local_state_index"
+            ),
+            PayloadAuditStoreBinding(
+                self._state_owners[1], "_right_state_ids", "reverse_local_state_index"
+            ),
+        )
+
+    def payload_audit_snapshot(self) -> ReversePoweredLocalAuditSnapshot:
+        """Copy all rows once, retaining only backing identities by reference."""
+        return ReversePoweredLocalAuditSnapshot(
+            ledger=self.ledger,
+            sources=self.sources,
+            base=self.base,
+            blank=self.blank,
+            owner=self.owner,
+            states=self._states,
+            state_ids=(
+                MappingProxyType(dict(self._state_ids[0].items())),
+                MappingProxyType(dict(self._state_ids[1].items())),
+            ),
+            state_owners=self._state_owners,
+            state_backings=(self._left_state_ids, self._right_state_ids),
+            state_index_layout_valid=(
+                self._state_ids[0] is self._left_state_ids
+                and self._state_ids[1] is self._right_state_ids
+            ),
+            node_owner=self._node_owner,
+            key_owner=self._key_owner,
+            compose_owner=self._compose_owner,
+            leaf_owner=self._leaf_owner,
+            source_owner=self._source_owner,
+            node_backing=self._nodes,
+            key_backing=self._keys,
+            compose_backing=self._compose,
+            leaf_backing=self._leaf_actions,
+            source_backing=self._source_actions,
+            nodes=tuple(self._nodes),
+            keys=MappingProxyType(dict(self._keys.items())),
+            compositions=MappingProxyType(dict(self._compose.items())),
+            leaf_actions=MappingProxyType(dict(self._leaf_actions.items())),
+            source_actions=MappingProxyType(dict(self._source_actions.items())),
+        )
+
+    def audit_action_record_is_exact(self, index: int, action: object) -> bool:
+        """Check one node against both oriented-domain widths and its interner."""
+        if (
+            type(index) is not int
+            or not 0 <= index < len(self._nodes)
+            or type(action) is not ReverseLocalAction
+        ):
+            return False
+        try:
+            left_width = len(self._states[0])
+            right_width = len(self._states[1])
+            mappings = (
+                action.left_forward,
+                action.left_reverse,
+                action.right_forward,
+                action.right_reverse,
+            )
+            widths = (left_width, left_width, right_width, right_width)
+            reference = self._handle(index)
+            return (
+                all(
+                    type(mapping) is tuple
+                    and len(mapping) == width
+                    and all(type(item) is int and 0 <= item < width for item in mapping)
+                    for mapping, width in zip(mappings, widths, strict=True)
+                )
+                and self.resolve(reference) is action
+                and self._keys.get(action) == index
+            )
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+            return False
+
+    def audit_composition_is_exact(
+        self,
+        left: ReverseLocalActionID,
+        right: ReverseLocalActionID,
+        result: ReverseLocalActionID,
+    ) -> bool:
+        """Recompute the exact oriented spatial join without publishing it."""
+        try:
+            before, after, actual = (
+                self.resolve(left),
+                self.resolve(right),
+                self.resolve(result),
+            )
+            expected = ReverseLocalAction(
+                self._then(before.left_forward, after.left_forward),
+                self._then(after.left_reverse, before.left_reverse),
+                self._then(before.right_forward, after.right_forward),
+                self._then(after.right_reverse, before.right_reverse),
+            )
+            return actual == expected and self._compose.get((left, right)) == result
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+            return False
+
+    def audit_leaf_binding_is_exact(self, symbol: object, action_id: object) -> bool:
+        """Check a leaf binding against fresh primitive boundary maps."""
+        if type(symbol) is not int or not 0 <= symbol <= self.blank:
+            return False
+        if type(action_id) is not ReverseLocalActionID:
+            return False
+        try:
+            expected = ReverseLocalAction(
+                self._mapping(BoundarySide.LEFT, symbol),
+                self._mapping(BoundarySide.LEFT, symbol),
+                self._mapping(BoundarySide.RIGHT, symbol),
+                self._mapping(BoundarySide.RIGHT, symbol),
+            )
+            return self.resolve(action_id) == expected
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+            return False
+
+    def audit_source_binding_is_valid(self, source: object, action_id: object) -> bool:
+        """Validate source authority and its issued local-action handle."""
+        if type(action_id) is not ReverseLocalActionID:
+            return False
+        try:
+            if type(source) is SourceCellID:
+                self.sources.resolve(source)
+            elif type(source) is SourceForestID:
+                self.sources.resolve_forest(source)
+            else:
+                return False
+            self.resolve(action_id)
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+            return False
+        return True
 
     def _handle(
         self,

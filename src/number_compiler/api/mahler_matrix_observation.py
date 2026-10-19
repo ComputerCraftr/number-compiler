@@ -7,7 +7,9 @@ from number_compiler.resources.metric_keys import antihydra as keys
 from number_compiler.sequences.antihydra.runtime import ArithmeticResult
 
 
-def center_matrix_packet(result: ArithmeticResult, steps: int) -> dict[str, object]:
+def center_matrix_packet(
+    result: ArithmeticResult, steps: int, *, trace: bool = False
+) -> dict[str, object]:
     """Authenticate the pointed source before constructing a finite future window."""
     from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
         MahlerCertifiedCenterDepthTransfer,
@@ -34,10 +36,10 @@ def center_matrix_packet(result: ArithmeticResult, steps: int) -> dict[str, obje
     scratch = 2048 + 2 * (steps + 1) * (16 + (source.bit_length() + steps + 63) // 64)
     with ledger.reservation(owner, nodes=scratch):
         ledger.bump(keys.MAHLER_CENTER_MATRIX_DEMANDS)
-        certificate = MahlerCertifiedCenterDepthTransfer.powered_from_source(
+        certificate = MahlerCertifiedCenterDepthTransfer.from_source(
             source, steps, initial_ledger=result.balance
         )
-        packet = certificate.packet()
+        packet = certificate.packet(trace=trace)
         ledger.bump(keys.MAHLER_CENTER_MATRIX_PHYSICAL_STEPS, steps)
         del certificate
     packet["source_prefix_ledger_safe"] = result.first_failure_index is None

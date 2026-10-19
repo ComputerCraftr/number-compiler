@@ -9,11 +9,17 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnActionID,
     DyadicReturnImageID,
     DyadicReturnSourceID,
-    _ImageNode,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageCandidate
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnImageRecord,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageCandidate,
+)
+from number_compiler.hashlife.interfaces.border_macros import BorderWireValue
 from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.payload_cost import retained_payload_node_count
 from number_compiler.sequences.collatz.border_identity import (
     BoundaryOccurrence,
     BoundaryOccurrenceProducerStamp,
@@ -33,9 +39,6 @@ from number_compiler.sequences.collatz.innovation_port_moore import (
 from number_compiler.sequences.collatz.innovation_tape_contract import (
     SIGNED_INNOVATION_TAPE_TAG,
 )
-from number_compiler.sequences.collatz.innovation_temporal_tape import (
-    _retained_node_count,
-)
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointRunAction,
 )
@@ -46,10 +49,10 @@ if TYPE_CHECKING:
         PointedCollatzSource,
     )
 
-_TAPE_WIDTH_PORT: Final[str] = "collatz-tape-width-summary-v1"
-_JOINT_COCYCLE_PORT: Final[str] = "collatz-joint-temporal-action-v1"
-_BOUNDARY_MACRO_PORT: Final[str] = "collatz-first-boundary-macro-v1"
-_INNOVATION_TAPE_PORT = SIGNED_INNOVATION_TAPE_TAG
+TAPE_WIDTH_PORT: Final[str] = "collatz-tape-width-summary-v1"
+JOINT_COCYCLE_PORT: Final[str] = "collatz-joint-temporal-action-v1"
+BOUNDARY_MACRO_PORT: Final[str] = "collatz-first-boundary-macro-v1"
+INNOVATION_TAPE_PORT = SIGNED_INNOVATION_TAPE_TAG
 
 
 def _boundary_macro_node_cost(
@@ -58,7 +61,7 @@ def _boundary_macro_node_cost(
     """Charge nested boundary structure and all retained integer limbs."""
     if type(macro) not in (CollatzBoundaryMacro, BorderReturnMacro):
         raise TypeError("Collatz boundary memo contains another value sort")
-    return _retained_node_count(macro.structural_payload())
+    return retained_payload_node_count(macro.structural_payload())
 
 
 def _innovation_observation_node_cost(
@@ -70,7 +73,7 @@ def _innovation_observation_node_cost(
         or not observation.producer_issued
     ):
         raise TypeError("Collatz innovation memo contains another value sort")
-    return _retained_node_count((_key, observation))
+    return retained_payload_node_count((_key, observation))
 
 
 class CollatzPhysicalImagePublication:
@@ -85,7 +88,7 @@ class CollatzPhysicalImagePublication:
     _joint_action_snapshot: tuple[int, ...] | None
     _include_innovation_tape: bool
     _innovation_modulus: int | None
-    _first_boundary_macro_snapshot: tuple[int, tuple[object, ...]] | None
+    _first_boundary_macro_snapshot: tuple[int, tuple[BorderWireValue, ...]] | None
     _boundary_macro_memo: (
         OwnedMemo[str, CollatzBoundaryMacro | BorderReturnMacro] | None
     )
@@ -93,7 +96,7 @@ class CollatzPhysicalImagePublication:
     _innovation_observation_memo: OwnedMemo[str, InnovationTapeObservation] | None
     _root_source_owner: PointedCollatzSource | None
 
-    def image_node(self, image: DyadicReturnImageID) -> _ImageNode:
+    def image_node(self, image: DyadicReturnImageID) -> DyadicReturnImageRecord:
         raise NotImplementedError
 
     @staticmethod
@@ -107,7 +110,7 @@ class CollatzPhysicalImagePublication:
             raise TypeError("Collatz width summary has another output sort")
         return replace(
             candidate,
-            boundary_ports=(*candidate.boundary_ports, (_TAPE_WIDTH_PORT, summary)),
+            boundary_ports=(*candidate.boundary_ports, (TAPE_WIDTH_PORT, summary)),
         )
 
     def _attach_joint_action(
@@ -134,10 +137,10 @@ class CollatzPhysicalImagePublication:
         self._joint_action_snapshot = payload
         return replace(
             candidate,
-            boundary_ports=(*candidate.boundary_ports, (_JOINT_COCYCLE_PORT, payload)),
+            boundary_ports=(*candidate.boundary_ports, (JOINT_COCYCLE_PORT, payload)),
         )
 
-    def _attach_boundary_macro(
+    def attach_boundary_macro(
         self,
         candidate: SourceImageCandidate,
         occurrence: BoundaryOccurrence,
@@ -206,7 +209,7 @@ class CollatzPhysicalImagePublication:
         self._first_boundary_macro_snapshot = payload
         return replace(
             candidate,
-            boundary_ports=(*candidate.boundary_ports, (_BOUNDARY_MACRO_PORT, payload)),
+            boundary_ports=(*candidate.boundary_ports, (BOUNDARY_MACRO_PORT, payload)),
         )
 
     def _attach_innovation_observation(
@@ -259,6 +262,6 @@ class CollatzPhysicalImagePublication:
             candidate,
             boundary_ports=(
                 *candidate.boundary_ports,
-                (_INNOVATION_TAPE_PORT, candidate.payload, observation.modulus),
+                (INNOVATION_TAPE_PORT, candidate.payload, observation.modulus),
             ),
         )

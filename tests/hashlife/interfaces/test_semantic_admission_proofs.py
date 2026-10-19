@@ -16,7 +16,7 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     CompileStructuredExpression,
 )
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 def request() -> tuple[DiamondRuntime, ActionProgramID, CompileStructuredExpression]:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, 0), "argument")
     body = variable
@@ -88,12 +88,12 @@ def test_forged_root_is_rejected_before_admission_proof_lookup(
 def test_foreign_parameter_and_undeclared_parameter_reject_before_warm_hit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
     local = arena.variable(arena.state_sort(action, 0), "free")
     task = CompileStructuredExpression(local, (local,))
     compiler.validate_task(task)
-    other, other_action = machine()
+    other, other_action = collatz_continuation_runtime()
     foreign = other.higher.expressions.variable(
         other.higher.expressions.state_sort(other_action, 0), "free"
     )
@@ -110,7 +110,7 @@ def test_foreign_parameter_and_undeclared_parameter_reject_before_warm_hit(
 
 
 def test_structured_proof_does_not_admit_a_scalar_only_compilation() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
     paired = runtime.actions.compose(action, action)
     variable = arena.variable(arena.state_sort(paired, 0), "paired-domain")

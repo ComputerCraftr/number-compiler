@@ -4,8 +4,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.dyadic_return_records import (
-    DyadicReturnImageID,
-    _SourceNode,
+    DyadicReturnSourceRecord,
 )
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.dyadic_return_payload_audit import (
@@ -15,6 +14,7 @@ from number_compiler.sequences.antihydra import mahler_cache
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 from tests.support.mahler_harmonic_reference import literal_antihydra_summary
+from tests.support.source_image_assertions import dyadic_image_summary
 
 
 @pytest.mark.parametrize("q", (2, 3, 6, 32, 64))
@@ -28,14 +28,15 @@ def test_punctured_leaf_and_partial_zero_prefix_match_literal(
     term = AntihydraArithmeticTerm(0)
     workspace = term._arithmetic_image()
     source = workspace._append_source(
-        _SourceNode(h % (1 << width), width, h >> width, None, None, None, 0, True)
+        DyadicReturnSourceRecord(
+            h % (1 << width), width, h >> width, None, None, None, 0, True
+        )
     )
     image = workspace.scheduler.source_image(
-        workspace, source, workspace._action(width)
+        workspace, source, workspace.action_for_extent(width)
     )
     view = workspace.scheduler._source_image_core().view(image)
-    assert type(view.payload) is DyadicReturnImageID
-    summary = workspace.image_node(view.payload).summary
+    summary = dyadic_image_summary(workspace, view)
     expected_h, delta, minimum, _odd_steps, failure = literal_antihydra_summary(
         h, width
     )
@@ -69,14 +70,21 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
 ) -> None:
     term = AntihydraArithmeticTerm(64)
     workspace = term._arithmetic_image()
+    event_actions = term.ledger.counters[
+        "antihydra_arithmetic_temporal_punctured_event_actions"
+    ]
 
-    def forbidden(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("closed event went through separate homogeneous runs")
+    def forbidden_event_replay(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("published source image replayed punctured events")
 
-    monkeypatch.setattr(workspace, "_runs", forbidden)
+    # The scheduler has already published the complete source image. Results
+    # and the later Mahler projection must consume that publication instead of
+    # reopening the arithmetic event constructor.
+    monkeypatch.setattr(workspace, "_punctured_steps", forbidden_event_replay)
+    assert event_actions > 0
     with monkeypatch.context() as optional:
-        optional.setattr(mahler_cache, "ExactRational", forbidden)
-        optional.setattr(mahler_cache, "SaturatingAffineAction", forbidden)
+        optional.setattr(mahler_cache, "ExactRational", forbidden_event_replay)
+        optional.setattr(mahler_cache, "SaturatingAffineAction", forbidden_event_replay)
         result = term.result()
     expected = literal_antihydra_summary(8, 64)
     assert (result.h, result.balance, result.minimum, result.first_failure_index) == (
@@ -88,9 +96,13 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
     assert not term.mahler_workspace and not term._segments_ready
     assert (
         term.ledger.counters["antihydra_arithmetic_temporal_punctured_event_actions"]
-        > 0
+        == event_actions
     )
     assert associated_action(result)["first_failure"] == 2
+    assert (
+        term.ledger.counters["antihydra_arithmetic_temporal_punctured_event_actions"]
+        == event_actions
+    )
     assert term.mahler_workspace is not None
     assert term.mahler_workspace.source_workspace is workspace
     assert term.ledger.counters["mahler_source_composed_image_reads"] == 1
@@ -105,10 +117,10 @@ def test_punctured_leaf_preserves_late_first_failure_without_event_replay(
     width = 64
     workspace = AntihydraArithmeticTerm(0)._arithmetic_image()
     source = workspace._append_source(
-        _SourceNode(h, width, 0, None, None, None, 0, True)
+        DyadicReturnSourceRecord(h, width, 0, None, None, None, 0, True)
     )
     image = workspace.scheduler.source_image(
-        workspace, source, workspace._action(width)
+        workspace, source, workspace.action_for_extent(width)
     )
     view = workspace.scheduler._source_image_core().view(image)
     expected = literal_antihydra_summary(h, width)[4]

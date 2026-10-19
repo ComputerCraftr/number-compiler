@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from number_compiler.arithmetic.formula.bit_semantics import (
     coefficient_bit,
@@ -293,7 +293,7 @@ class FormulaEvalMixin(FormulaStorage):
     def derived_get(self, key: tuple[object, ...]) -> Expr | None:
         return self._derived.get(tuple(key))
 
-    def metadata_get(self, key: tuple[object, ...]) -> Any:
+    def metadata_get(self, key: tuple[object, ...]) -> object:
         return self._metadata.get(tuple(key))
 
     def metadata_set(self, key: tuple[object, ...], value: _MetaT) -> _MetaT:
@@ -302,12 +302,15 @@ class FormulaEvalMixin(FormulaStorage):
 
     def metadata_increment(self, key: str, amount: int = 1) -> int:
         mkey = ("counter", str(key))
-        value = int(self._metadata.get(mkey, 0)) + int(amount)
+        value = self.metadata_counter(key) + int(amount)
         self._metadata[mkey] = value
         return value
 
     def metadata_counter(self, key: str) -> int:
-        return int(self._metadata.get(("counter", str(key)), 0))
+        value = self._metadata.get(("counter", str(key)), 0)
+        if not isinstance(value, int):
+            raise TypeError("formula counter metadata must be an integer")
+        return value
 
     def derived_set(self, key: tuple[object, ...], value: Expr) -> Expr:
         self._derived[tuple(key)] = value

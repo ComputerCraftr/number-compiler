@@ -13,27 +13,28 @@ and all real-source emissions are checked against independent causal cones.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.automata.word_period import (
     finite_suffix_period,
     primitive_period,
 )
+from number_compiler.arithmetic.fields.decimal_pair_partition import DecimalPairBand
 from number_compiler.resources.metric_keys import double_reverse as metric_keys
 
 from ._temporal_bank_authority import (
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
     issue_source_record,
     validate_source_record,
 )
-from .protected_temporal_bank import PeriodicBankFrame
+from .protected_temporal_bank import PeriodicBankFrame, TemporalBankChannel
 from .stencil_moore import stencil_cell
 from .temporal_bank_output_morphism import frame_from_digits
 from .temporal_birth_induction import (
     CertifiedBirthClock,
-    _validate_birth_duration,
     birth_clock_for_source,
+    validate_birth_duration,
 )
 from .temporal_diagonal_induction import (
     ClosedBorderPairReturn,
@@ -52,6 +53,18 @@ MAX_BIRTH_LAYER_PAIRS = 16
 MAX_BIRTH_LAYER_HORIZON = 160
 MAX_BIRTH_CONDITIONAL_STATES = 1024
 MAX_BIRTH_TEMPORARY_UNITS = 400_000
+
+
+def _is_birth_ring_state(value: object) -> TypeGuard[BirthRingState]:
+    return isinstance(value, BirthRingState)
+
+
+def _is_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    return type(value) is tuple
+
+
+def _is_birth_ring_word(value: object) -> TypeGuard[tuple[BirthRingPorts, ...]]:
+    return _is_tuple(value) and all(isinstance(port, BirthRingPorts) for port in value)
 
 
 class BirthReturnBudgetExceeded(ValueError):
@@ -269,20 +282,19 @@ class _ConditionalBirthModel:
 
 
 def _enumerate_conditional_birth_model(
-    state: BirthRingState,
-    inlet_motif: tuple[BirthRingPorts, ...],
+    state: object,
+    inlet_motif: object,
     *,
     max_states: int,
     ledger: ResourceLedger | None = None,
 ) -> _ConditionalBirthModel:
     """Close the entire (state, inlet phase) orbit before publishing a power."""
     if (
-        not isinstance(state, BirthRingState)
+        not _is_birth_ring_state(state)
         or state.pairs > MAX_BIRTH_LAYER_PAIRS
-        or type(inlet_motif) is not tuple
+        or not _is_birth_ring_word(inlet_motif)
         or not inlet_motif
         or len(inlet_motif) > MAX_BIRTH_LAYER_HORIZON
-        or any(not isinstance(p, BirthRingPorts) for p in inlet_motif)
         or type(max_states) is not int
         or not 1 <= max_states <= MAX_BIRTH_CONDITIONAL_STATES
     ):
@@ -319,8 +331,8 @@ def _enumerate_conditional_birth_model(
                 for i in range(current.pairs)
             )
         )
-        mask_words.append(tuple(f.scalar("gt_high") for f in frame))
-        xor_words.append(tuple(f.scalar("carry_xor") for f in frame))
+        mask_words.append(tuple(f.scalar(DecimalPairBand.GT_HIGH) for f in frame))
+        xor_words.append(tuple(f.scalar(TemporalBankChannel.CARRY_XOR) for f in frame))
         odd_words.append(odd_boundary_pairs(current, inlet))
         current = next_state
         steps += 1
@@ -399,7 +411,7 @@ def power_birth_model(
     The inlet motif is an *assumption* unless the caller holds a separate
     authenticated source/horizon certificate for its repetition.
     """
-    steps = _validate_birth_duration(steps)
+    steps = validate_birth_duration(steps)
     model = _enumerate_conditional_birth_model(
         state, inlet_motif, max_states=max_states
     )
@@ -420,7 +432,7 @@ class BirthLayerPeriod:
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedBirthRing(_SourceAuthorizedRecord):
+class CertifiedBirthRing(SourceAuthorizedRecord):
     """A completely source-sealed finite ring of *moving* boundary pairs."""
 
     source_generation: int

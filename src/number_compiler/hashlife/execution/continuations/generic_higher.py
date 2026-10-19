@@ -328,7 +328,7 @@ class GenericHigherRuntime:
         left = evaluate_operation(self.semantics, "initial", projected, 0, ())
         right = evaluate_operation(self.semantics, "initial", projected, 1, ())
         incoming = evaluate_operation(self.semantics, "initial", observed, 1, ())
-        prefix = self.machine._range_cells(self.source, 0, maxwidth)
+        prefix = self.machine.range_cells(self.source, 0, maxwidth)
         contexts: list[_WidthCell] = []
         start = 0
         for index, cell in enumerate(prefix):
@@ -342,7 +342,7 @@ class GenericHigherRuntime:
             counter,
             max(0, len(contexts) - self.ledger.counters.get(counter, 0)),
         )
-        for cell in reversed(self.machine._range_cells(self.source, maxwidth, extent)):
+        for cell in reversed(self.machine.range_cells(self.source, maxwidth, extent)):
             right = self._transfer(projected, cell, right, 1)
         for context in reversed(contexts):
             start, cell, left = context.start, context.cell, context.left

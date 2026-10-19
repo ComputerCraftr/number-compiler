@@ -49,6 +49,23 @@ def _timeout_overrides(arguments: tuple[str, ...]) -> tuple[str, ...]:
     )
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Give timeout ini values the same defaults as the guarded command."""
+    parser.addini(
+        "timeout", "Repository per-test deadline.", default=str(PYTHON_TEST_SECONDS)
+    )
+    parser.addini("timeout_method", "Repository watchdog method.", default="thread")
+    parser.addini(
+        "timeout_func_only", "Exclude fixture time.", type="bool", default=False
+    )
+    parser.addini(
+        "timeout_disable_debugger_detection",
+        "Keep the watchdog active while debugging.",
+        type="bool",
+        default=True,
+    )
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Fail before collection unless the canonical runner configured pytest."""
     token = os.environ.get(PYTEST_RUNNER_ENV, "")
@@ -97,7 +114,6 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError("test timeout must cover fixtures and teardown")
     if config.getoption("session_timeout", default=None) is not None:
         raise pytest.UsageError("pytest session timeouts are not an execution budget")
-    ini_values = config.inicfg
     ini_policy = {
         "timeout": str(PYTHON_TEST_SECONDS),
         "timeout_method": "thread",
@@ -105,8 +121,8 @@ def pytest_configure(config: pytest.Config) -> None:
         "timeout_disable_debugger_detection": "true",
     }
     for key, expected in ini_policy.items():
-        configured = ini_values.get(key)
-        if configured is not None and str(configured).lower() != expected:
+        configured = config.getini(key)
+        if str(configured).lower() != expected:
             raise pytest.UsageError(f"pytest ini setting {key} conflicts with policy")
     mode = os.environ.get(PROVENANCE_MODE_ENV, "development")
     acceptance_root = os.environ.get("NUMBER_COMPILER_ACCEPTANCE_ROOT")

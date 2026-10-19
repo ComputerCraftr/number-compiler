@@ -260,7 +260,7 @@ def certificate_status(
             raise TypeError("malformed comma status provider store")
         if getattr(store, "ledger", None) is not ledger:
             raise ValueError("foreign comma status provider owner")
-        provider = global_provider._status_provider()
+        provider = global_provider.status_provider()
         if provider is None:
             raise PermissionError("comma status provider lease is stale")
         provider.require_global_release_admission()

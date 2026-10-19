@@ -17,7 +17,7 @@ from number_compiler.resources.fused_traversal_workspace import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def test_fused_workspace_name_collision_preflights_without_inventory(
@@ -82,9 +82,11 @@ def test_fused_workspace_rejects_unscoped_and_over_bound_mutation() -> None:
 
 
 def test_fused_workspace_inventory_reconciles_active_exhausted_and_cleanup() -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 2)
-    with _tile(tiles, adapter, primitive, (0, 1)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         ports = adapter.initial_ports(primitive)
         interface = adapter.fused_interface(
             action,

@@ -6,12 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
 from types import MappingProxyType, SimpleNamespace
-from typing import Self
+from typing import Literal, Self
 
 import pytest
 
 from number_compiler.api.comma_term import CommaTermPayload
-from number_compiler.resources.ledger import LedgerReservation
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.sequences.comma import certificates, future_provider, power
 from number_compiler.sequences.comma.future_authority import (
     registered_global_release_artifact_sha256,
@@ -47,19 +47,19 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
         CommaTerm(1) as foreign_term,
     ):
         store = future_provider.SemanticFutureProviderStore(term.ledger)
-        term._future_provider_store = store
+        object.__setattr__(term, "_future_provider_store", store)
         lease = store.load_record(record, charge_work=no_work_limit)
         assert lease.global_release_admitted is False
-        term._future_provider_lease = lease
-        foreign_term._future_provider_store = store
-        foreign_term._future_provider_lease = lease
+        object.__setattr__(term, "_future_provider_lease", lease)
+        object.__setattr__(foreign_term, "_future_provider_store", store)
+        object.__setattr__(foreign_term, "_future_provider_lease", lease)
         try:
             assert not foreign_term.has_global_future_provider
             with pytest.raises(PermissionError, match="not owned by this term"):
-                foreign_term._global_future_provider_for_prefix_admission()
+                foreign_term.global_future_provider_for_prefix_admission()
         finally:
-            foreign_term._future_provider_store = None
-            foreign_term._future_provider_lease = None
+            object.__setattr__(foreign_term, "_future_provider_store", None)
+            object.__setattr__(foreign_term, "_future_provider_lease", None)
         with pytest.raises(ValueError, match="foreign comma global provider"):
             certificates.require_certified_index(
                 1,
@@ -93,7 +93,8 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
         incomplete_store_lease = object.__new__(lease_type)
         object.__setattr__(incomplete_store_lease, "_store", incomplete_store)
         object.__setattr__(incomplete_store_lease, "_digest", lease.artifact_sha256)
-        object.__setattr__(incomplete_store_lease, "_token", lease._token)
+        forged_token = ArenaToken("comma-semantic-future-provider")
+        object.__setattr__(incomplete_store_lease, "_token", forged_token)
         assert not incomplete_store_lease.global_release_admitted
         with pytest.raises(RuntimeError, match="malformed future provider store"):
             certificates.require_certified_index(
@@ -117,7 +118,9 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
         object.__setattr__(forged_store, "ledger", term.ledger)
         object.__setattr__(forged_store, "_lock", ForgedLock())
         with pytest.raises(RuntimeError, match="malformed future provider store"):
-            forged_store._resolve(lease.artifact_sha256, lease._token)
+            future_provider.SemanticFutureProviderStore.resolve_checked(
+                forged_store, lease.artifact_sha256, forged_token
+            )
         assert lock_entries == []
 
         partial_lease = object.__new__(lease_type)
@@ -183,14 +186,14 @@ def test_empty_kernel_registry_does_not_resolve_future_package_resource(
     monkeypatch.setattr(certificates, "_verify", verify)
 
     with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
-        assert term._global_future_provider_for_prefix_admission() is None
+        assert term.global_future_provider_for_prefix_admission() is None
         CommaTermPayload(term).require_certified()
 
         assert requests == [
             (term.ledger, term.max_work, term.shared_cache, term.certificate_memo)
         ]
-        assert term._future_provider_store is None
-        assert term._future_provider_lease is None
+        assert term.retained_global_future_provider is None
+        assert not term.has_global_future_provider
 
 
 def test_fixture_registry_does_not_resolve_global_package_resource(
@@ -202,13 +205,14 @@ def test_fixture_registry_does_not_resolve_global_package_resource(
         pass
 
     digest, fixture = fixture_admission(record, no_work_limit)
+    admitted_instances = MappingProxyType({digest: fixture})
     monkeypatch.setattr(
         future_provider,
         "_ADMITTED_KERNEL_INSTANCES",
-        MappingProxyType({digest: fixture}),
+        admitted_instances,
     )
     fixture_registry_digest = registered_global_release_artifact_sha256(
-        future_provider._ADMITTED_KERNEL_INSTANCES
+        admitted_instances
     )
     assert fixture_registry_digest is None
     monkeypatch.setattr(
@@ -222,9 +226,9 @@ def test_fixture_registry_does_not_resolve_global_package_resource(
 
     monkeypatch.setattr(power, "files", forbidden_resource_lookup)
     with CommaTerm(1) as term:
-        assert term._global_future_provider_for_prefix_admission() is None
-        assert term._future_provider_store is None
-        assert term._future_provider_lease is None
+        assert term.global_future_provider_for_prefix_admission() is None
+        assert term.retained_global_future_provider is None
+        assert not term.has_global_future_provider
 
 
 @pytest.mark.parametrize(
@@ -259,16 +263,16 @@ def test_registered_missing_or_corrupt_artifact_fails_closed(
     monkeypatch.setattr(certificates, "_verify", forbidden_forest_fallback)
     with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
         with pytest.raises(expected_error):
-            term._global_future_provider_for_prefix_admission()
-        assert term._future_provider_store is None
-        assert term._future_provider_lease is None
+            term.global_future_provider_for_prefix_admission()
+        assert term.retained_global_future_provider is None
+        assert not term.has_global_future_provider
         assert term.ledger.counters.get("comma_future_provider_closes", 0) == 1
         assert term.ledger.counters.get("comma_future_provider_publications", 0) == 0
 
 
 @pytest.mark.parametrize("lifecycle", ("reset", "close"))
 def test_store_lifecycle_waits_for_an_inflight_load_and_revokes_its_lease(
-    lifecycle: str,
+    lifecycle: Literal["reset", "close"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     record = candidate_record()
@@ -285,40 +289,38 @@ def test_store_lifecycle_waits_for_an_inflight_load_and_revokes_its_lease(
 
     with CommaTerm(1) as term:
         store = future_provider.SemanticFutureProviderStore(term.ledger)
-        entered_retain = Event()
-        release_retain = Event()
+        entered_load = Event()
+        release_load = Event()
         lifecycle_started = Event()
         lifecycle_done = Event()
-        retain = store._retain
 
-        def hold_publication(
-            provider: future_provider.SemanticFutureProvider,
-            reservation: LedgerReservation,
-        ) -> future_provider.SemanticFutureProviderLease:
-            entered_retain.set()
-            if not release_retain.wait(timeout=5):
+        def hold_publication(amount: int) -> None:
+            entered_load.set()
+            if not release_load.wait(timeout=5):
                 raise TimeoutError("test did not release the provider publication")
-            return retain(provider, reservation)
+            no_work_limit(amount)
 
         def invalidate() -> None:
             lifecycle_started.set()
             try:
-                getattr(store, lifecycle)()
+                if lifecycle == "reset":
+                    store.reset()
+                else:
+                    store.close()
             finally:
                 lifecycle_done.set()
 
-        monkeypatch.setattr(store, "_retain", hold_publication)
         with ThreadPoolExecutor(max_workers=2) as workers:
             loader = workers.submit(
-                store.load_record, record, charge_work=no_work_limit
+                store.load_record, record, charge_work=hold_publication
             )
             try:
-                assert entered_retain.wait(timeout=5)
+                assert entered_load.wait(timeout=5)
                 invalidator = workers.submit(invalidate)
                 assert lifecycle_started.wait(timeout=5)
                 lifecycle_blocked_on_load = not lifecycle_done.wait(timeout=0.05)
             finally:
-                release_retain.set()
+                release_load.set()
             lease = loader.result(timeout=5)
             invalidator.result(timeout=5)
 
@@ -351,18 +353,18 @@ def test_term_lookup_rejects_lease_store_owned_by_another_ledger(
         )
         try:
             owned_lease = owned_store.load_record(record, charge_work=no_work_limit)
-            term._future_provider_store = same_ledger_store
-            term._future_provider_lease = owned_lease
+            object.__setattr__(term, "_future_provider_store", same_ledger_store)
+            object.__setattr__(term, "_future_provider_lease", owned_lease)
             assert not term.has_global_future_provider
             with pytest.raises(PermissionError, match="not owned by this term"):
-                term._global_future_provider_for_prefix_admission()
+                term.global_future_provider_for_prefix_admission()
 
             foreign_lease = foreign_store.load_record(record, charge_work=no_work_limit)
-            term._future_provider_store = foreign_store
-            term._future_provider_lease = foreign_lease
+            object.__setattr__(term, "_future_provider_store", foreign_store)
+            object.__setattr__(term, "_future_provider_lease", foreign_lease)
             assert not term.has_global_future_provider
             with pytest.raises(PermissionError, match="not owned by this term"):
-                term._global_future_provider_for_prefix_admission()
+                term.global_future_provider_for_prefix_admission()
             with pytest.raises(ValueError, match="foreign comma global provider"):
                 certificates.require_certified_index(
                     1,
@@ -371,8 +373,8 @@ def test_term_lookup_rejects_lease_store_owned_by_another_ledger(
                     global_provider=foreign_lease,
                 )
         finally:
-            term._future_provider_store = None
-            term._future_provider_lease = None
+            object.__setattr__(term, "_future_provider_store", None)
+            object.__setattr__(term, "_future_provider_lease", None)
             same_ledger_store.close()
             owned_store.close()
             foreign_store.close()

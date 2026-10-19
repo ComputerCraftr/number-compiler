@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from number_compiler.api.matrix_contracts import (
     InnovationMatrixRequest,
+    MatrixClock,
     MatrixKind,
     MatrixLaw,
     MatrixRequest,
@@ -20,24 +21,31 @@ if TYPE_CHECKING:
     from number_compiler.api.output_schema import JsonValue
 
 
+@runtime_checkable
 class MatrixObserver(Protocol):
     def __call__(
         self, context: QueryContext, request: MatrixRequest
     ) -> dict[str, object]: ...
 
 
-def observe_matrix(context: QueryContext) -> dict[str, JsonValue]:
+def observe_matrix(
+    context: QueryContext, name: ObservationId = ObservationId.TEMPORAL_MATRIX
+) -> dict[str, JsonValue]:
     from number_compiler.api.family_registry import family_spec
-    from number_compiler.api.observation_adapters import _publish
+    from number_compiler.api.observation_adapters import publish_observation
 
     capability = family_spec(context.request.family).matrix
     request = context.request.matrix
     if capability is None or request is None:
         raise ValueError("matrix observation has no admitted registry binding")
-    observer = cast(
-        MatrixObserver, getattr(import_module(capability.module), capability.attribute)
+    observer = getattr(import_module(capability.module), capability.attribute, None)
+    if not isinstance(observer, MatrixObserver):
+        raise TypeError("matrix registry binding is not a valid observer")
+    packet = dict(
+        context.memoized_matrix_observation(lambda: observer(context, request))
     )
-    packet = observer(context, request)
+    if name is ObservationId.TEMPORAL_MATRIX:
+        packet.pop("trace", None)
     packet.setdefault("status", "available")
     packet["matrix_kind"] = (
         MatrixKind.INNOVATION.value
@@ -50,12 +58,11 @@ def observe_matrix(context: QueryContext) -> dict[str, JsonValue]:
         else capability.law.value
     )
     if isinstance(request, SourceTransferRequest):
-        packet["requested_physical_ticks"] = request.steps
+        if capability.clock is MatrixClock.PHYSICAL:
+            packet["requested_physical_ticks"] = request.steps
         packet["horizon"] = {
             "ticks": request.steps,
-            "unit": "ordinary-tripling-ticks"
-            if capability.law is MatrixLaw.ORDERED_TRIPLING_CARRY
-            else "physical-recurrence-ticks",
+            "unit": capability.clock.value,
         }
         packet["coordinate"] = {
             "kind": request.coordinate_kind.value,
@@ -64,9 +71,9 @@ def observe_matrix(context: QueryContext) -> dict[str, JsonValue]:
         # A finite observation packet cannot be fed back as an issuer token.
         packet["execution_authority"] = False
         packet["source_index"] = context.request.presentation_index
-    return _publish(
+    return publish_observation(
         context,
-        ObservationId.TEMPORAL_MATRIX,
+        name,
         packet,
         coordinates=(("duration",), ("moment", "duration"))
         if isinstance(request, InnovationMatrixRequest)
@@ -102,7 +109,10 @@ def reverse_transfer(
     )
 
     return source_transfer_packet(
-        payload.term, steps=request.steps, pair_depth=coordinate_value(request)
+        payload.term,
+        steps=request.steps,
+        pair_depth=coordinate_value(request),
+        trace=request.trace,
     )
 
 
@@ -119,7 +129,10 @@ def double_reverse_transfer(
     if not isinstance(payload, DoubleReverseTermPayload):
         raise TypeError("2rev10 matrix received a foreign projected occurrence")
     return source_transfer_packet(
-        payload.term, steps=demand.steps, pair_depth=coordinate_value(demand)
+        payload.term,
+        steps=demand.steps,
+        pair_depth=coordinate_value(demand),
+        trace=demand.trace,
     )
 
 
@@ -133,7 +146,7 @@ def antihydra_transfer(
     payload = context.term.payload
     if not isinstance(payload, AntihydraTermPayload):
         raise TypeError("Antihydra matrix received a foreign projected occurrence")
-    return center_matrix_packet(payload.term.result(), demand.steps)
+    return center_matrix_packet(payload.term.result(), demand.steps, trace=demand.trace)
 
 
 def coordinate_value(request: SourceTransferRequest) -> int:
@@ -172,6 +185,11 @@ def collatz_transfer(
         "source_guard_admitted": True,
         "scope": "source-admitted normalized decimal units transfer; higher inlets remain guarded",
         "physical_repeat_certified": False,
+        **(
+            joined.trace_packet(normalized_steps=min(joined.units.steps, 64))
+            if demand.trace
+            else {}
+        ),
     }
 
 
@@ -185,10 +203,25 @@ def fermat_transfer(context: QueryContext, request: MatrixRequest) -> dict[str, 
     if context.request.index > 16:
         raise ValueError("Fermat matrix source index exceeds the admitted bound 16")
     level = (1 << context.request.index) - 1
-    result = payload.spec.demand_three_power_causal_border_matrix(
+    result = payload.spec.demand_fermat_powered_port_matrix(
         level,
         demand.steps,
         base=10,
         position=coordinate_value(demand),
     )
-    return {**result.packet(), "primality_authority": False}
+    return {**result.packet(trace=demand.trace), "primality_authority": False}
+
+
+def mersenne_transfer(
+    context: QueryContext, request: MatrixRequest
+) -> dict[str, object]:
+    from number_compiler.api.elementary_payloads import MersenneTermPayload
+
+    demand = source_request(request)
+    payload = context.term.payload
+    if not isinstance(payload, MersenneTermPayload):
+        raise TypeError("Mersenne matrix received a foreign projected occurrence")
+    result = payload.spec.demand_mersenne_trace_matrix(
+        demand.steps, base=10, position=coordinate_value(demand)
+    )
+    return {**result.packet(trace=demand.trace), "primality_authority": False}

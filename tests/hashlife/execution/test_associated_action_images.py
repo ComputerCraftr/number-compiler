@@ -13,7 +13,9 @@ from number_compiler.hashlife.execution.associated_action_images import (
     AssociatedActionSourceAdapter,
     AssociatedScalarSource,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads

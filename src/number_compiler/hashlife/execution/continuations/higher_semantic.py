@@ -13,6 +13,15 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_blank_residual import (
     is_idempotent_blank_transfer,
 )
+from number_compiler.hashlife.execution.continuations.higher_expression_validation import (
+    validate_higher_expression_record,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic_audit import (
+    HigherSemanticAuditSnapshot,
+)
+from number_compiler.hashlife.execution.continuations.higher_sort_validation import (
+    validate_higher_sort,
+)
 from number_compiler.hashlife.execution.continuations.higher_types import (
     FieldAtomSort,
     FieldFunctionSort,
@@ -23,9 +32,9 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
     HigherFunction,
     HigherFunctionID,
+    HigherRewriteKey,
     HigherSemanticMetrics,
     HigherSort,
-    _Rewrite,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -114,7 +123,7 @@ class HigherSemanticArena:
                 self._function_key_owner,
             )
         )
-        self._rewrites: MutableMapping[_Rewrite, HigherExpressionID] = (
+        self._rewrites: MutableMapping[HigherRewriteKey, HigherExpressionID] = (
             self.ledger.make_dict(
                 self._rewrite_owner,
             )
@@ -180,11 +189,28 @@ class HigherSemanticArena:
         self._rewrites.clear()
         self.ledger.release(self._rewrite_owner, entries=count)
 
-    def _expression_handle(self, local_id: int) -> HigherExpressionID:
+    def expression_id(self, local_id: int) -> HigherExpressionID:
+        if type(local_id) is not int or not 0 <= local_id < len(self._expressions):
+            raise IndexError("higher expression index is outside the arena")
         return HigherExpressionID(self.owner, self._EXPRESSION_KIND, local_id)
 
-    def _function_handle(self, local_id: int) -> HigherFunctionID:
+    def function_id(self, local_id: int) -> HigherFunctionID:
+        if type(local_id) is not int or not 0 <= local_id < len(self._functions):
+            raise IndexError("higher function index is outside the arena")
         return HigherFunctionID(self.owner, self._FUNCTION_KIND, local_id)
+
+    def audit_snapshot(self) -> HigherSemanticAuditSnapshot:
+        """Expose exact stores through immutable views without evaluation."""
+        return HigherSemanticAuditSnapshot.from_stores(
+            self.ledger,
+            self.owner,
+            (self._expression_owner, self._expressions),
+            (self._expression_key_owner, self._expression_keys),
+            (self._expression_free_owner, self._expression_free_ids),
+            (self._function_owner, self._functions),
+            (self._function_key_owner, self._function_keys),
+            (self._rewrite_owner, self._rewrites),
+        )
 
     def expression(self, reference: HigherExpressionID) -> HigherExpression:
         if type(reference) is not HigherExpressionID:
@@ -193,6 +219,11 @@ class HigherSemanticArena:
             self.owner, self._EXPRESSION_KIND, size=len(self._expressions)
         )
         return self._expressions[reference.local_id]
+
+    def free_variable_local_ids(self, reference: HigherExpressionID) -> tuple[int, ...]:
+        """Return the validated free-variable IDs for an expression."""
+        self.expression(reference)
+        return self._expression_free_ids[reference.local_id]
 
     def function_record(self, reference: HigherFunctionID) -> HigherFunction:
         if type(reference) is not HigherFunctionID:
@@ -217,51 +248,17 @@ class HigherSemanticArena:
     ) -> tuple[HigherExpressionID, ...]:
         """Return canonical declared higher ports for interface validation."""
         if type(reference) is HigherExpressionID:
-            return self._free_variables(reference)
+            return self.free_variables(reference)
         if type(reference) is HigherFunctionID:
             return self.function_record(reference).free_variables
         raise TypeError("expected a scoped higher semantic component")
 
-    def _validate_sort(self, sort: HigherSort, *, readonly: bool = False) -> None:
-        pending: list[HigherSort] = [sort]
-        while pending:
-            current = pending.pop()
-            if type(current) is FieldStateSort:
-                validator = (
-                    getattr(self.schema, "validate_action_readonly", None)
-                    if readonly
-                    else None
-                )
-                (self.schema.validate_action if validator is None else validator)(
-                    current.action
-                )
-                if type(current.side) is not int or current.side not in (0, 1):
-                    raise ValueError("field-state direction must be zero or one")
-            elif type(current) is FieldFunctionSort:
-                pending.extend((current.codomain, current.domain))
-            elif type(current) is FieldSymbolSort:
-                if (
-                    type(current.base) is not int
-                    or current.base < 2
-                    or type(current.blank) is not int
-                    or not 1 <= current.blank < 1 << 64
-                ):
-                    raise ValueError("invalid higher symbol sort")
-            elif type(current) is FieldAtomSort:
-                if (
-                    type(current.role) is not str
-                    or not current.role
-                    or len(current.role) > 128
-                    or type(current.cardinality) is not int
-                    or not 1 <= current.cardinality <= 1 << 64
-                ):
-                    raise ValueError("invalid higher bounded-atom sort")
-            else:
-                raise TypeError("unknown higher semantic sort")
+    def validate_sort(self, sort: HigherSort, *, readonly: bool = False) -> None:
+        validate_higher_sort(self.schema, sort, readonly=readonly)
 
     def state_sort(self, action: FieldCellActionID, side: int) -> FieldStateSort:
         result = FieldStateSort(action, side)
-        self._validate_sort(result)
+        self.validate_sort(result)
         return result
 
     def _primitive_state_count(self, action: FieldCellActionID, side: int) -> int:
@@ -276,7 +273,7 @@ class HigherSemanticArena:
         self.schema.validate_action(action)
         base, blank = self.schema.alphabet(action)
         result = FieldSymbolSort(base, blank)
-        self._validate_sort(result)
+        self.validate_sort(result)
         return result
 
     def function_sort(
@@ -285,15 +282,21 @@ class HigherSemanticArena:
         codomain: FieldStateSort,
     ) -> FieldFunctionSort:
         result = FieldFunctionSort(domain, codomain)
-        self._validate_sort(result)
+        self.validate_sort(result)
         return result
 
-    def _intern_expression(self, record: HigherExpression) -> HigherExpressionID:
-        self._validate_sort(record.sort)
+    def intern_expression(self, record: HigherExpression) -> HigherExpressionID:
+        validate_higher_expression_record(
+            record,
+            schema=self.schema,
+            expression_count=len(self._expressions),
+            validate_sort=self.validate_sort,
+            resolve_function=self.function_record,
+        )
         found = self._expression_keys.get(record)
         if found is not None:
             self._expression_hits += 1
-            return self._expression_handle(found)
+            return self.expression_id(found)
         self.ledger.reserve_many(
             (
                 (self._expression_owner, 1, 1),
@@ -331,7 +334,7 @@ class HigherSemanticArena:
             )
         self._expression_free_ids.append(free_ids)
         self._expression_keys[record] = local_id
-        return self._expression_handle(local_id)
+        return self.expression_id(local_id)
 
     def variable(
         self,
@@ -339,14 +342,14 @@ class HigherSemanticArena:
         role: str,
         dependencies: tuple[HigherExpressionID, ...] = (),
     ) -> HigherExpressionID:
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         if type(role) is not str or not role or len(role) > 128:
             raise ValueError("higher variables require a stable role")
         if type(dependencies) is not tuple:
             raise TypeError("higher variable dependencies must be canonical")
         for dependency in dependencies:
             self.expression(dependency)
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "variable",
                 sort,
@@ -358,7 +361,7 @@ class HigherSemanticArena:
     def _bound(self, sort: FieldStateSort, depth: int = 0) -> HigherExpressionID:
         if type(depth) is not int or depth < 0:
             raise ValueError("higher binder depth must be nonnegative")
-        return self._intern_expression(HigherExpression("bound", sort, value=depth))
+        return self.intern_expression(HigherExpression("bound", sort, value=depth))
 
     def _binder_depth(
         self,
@@ -384,7 +387,7 @@ class HigherSemanticArena:
         count = self._primitive_state_count(action, side)
         if type(value) is not int or not 0 <= value < count:
             raise ValueError("higher literal is outside its primitive state domain")
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "literal",
                 sort,
@@ -440,7 +443,7 @@ class HigherSemanticArena:
         sort = self.symbol_sort(action)
         if type(value) is not int or not 0 <= value <= sort.blank:
             raise ValueError("higher symbol is outside its alphabet")
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "symbol",
                 sort,
@@ -450,10 +453,10 @@ class HigherSemanticArena:
         )
 
     def constant(self, sort: FieldAtomSort, value: int) -> HigherExpressionID:
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         if type(value) is not int or not 0 <= value < sort.cardinality:
             raise ValueError("higher constant is outside its bounded atom sort")
-        return self._intern_expression(HigherExpression("constant", sort, value=value))
+        return self.intern_expression(HigherExpression("constant", sort, value=value))
 
     def equal_constant(
         self,
@@ -503,7 +506,7 @@ class HigherSemanticArena:
 
     def function_expression(self, function: HigherFunctionID) -> HigherExpressionID:
         record = self.function_record(function)
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "function",
                 record.signature,
@@ -543,19 +546,19 @@ class HigherSemanticArena:
         signature = self.function_sort(parameter_node.sort, body_node.sort)
         normalized_node = self.expression(normalized)
         if normalized_node.kind == "apply" and len(normalized_node.children) == 2:
-            target = self._expression_handle(normalized_node.children[0])
-            supplied = self._expression_handle(normalized_node.children[1])
+            target = self.expression_id(normalized_node.children[0])
+            supplied = self.expression_id(normalized_node.children[1])
             target_node = self.expression(target)
             if (
                 supplied == canonical
                 and target_node.kind == "function"
                 and target_node.function is not None
-                and canonical not in self._free_variables(target)
+                and canonical not in self.free_variables(target)
             ):
                 target_record = self.function_record(target_node.function)
                 if target_record.signature == signature:
                     return target_node.function
-        free = self._free_variables(normalized)
+        free = self.free_variables(normalized)
         return self._intern_function(
             HigherFunction(
                 signature,
@@ -570,7 +573,7 @@ class HigherSemanticArena:
         found = self._function_keys.get(record)
         if found is not None:
             self._function_hits += 1
-            return self._function_handle(found)
+            return self.function_id(found)
         local_id = append_indexed_node(
             self.ledger,
             self._functions,
@@ -580,9 +583,9 @@ class HigherSemanticArena:
             record,
             record,
         )
-        return self._function_handle(local_id)
+        return self.function_id(local_id)
 
-    def _free_variables(
+    def free_variables(
         self, expression: HigherExpressionID
     ) -> tuple[HigherExpressionID, ...]:
         from number_compiler.hashlife.execution.continuations.higher_binding import (
@@ -590,13 +593,6 @@ class HigherSemanticArena:
         )
 
         return free_variables(self, expression)
-
-    def _function_free_variables(
-        self,
-        body: HigherExpressionID,
-        parameter: HigherExpressionID,
-    ) -> tuple[HigherExpressionID, ...]:
-        return tuple(item for item in self._free_variables(body) if item != parameter)
 
     def pair(
         self,
@@ -622,7 +618,7 @@ class HigherSemanticArena:
         ):
             raise ValueError("higher pair components have incompatible sorts")
         function_expr = self.function_expression(continuation)
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "pair",
                 self.state_sort(action, side),
@@ -640,8 +636,8 @@ class HigherSemanticArena:
         if children is None:
             raise ValueError("primitive state has no higher anchor")
         if node.kind == "pair":
-            return self._expression_handle(node.children[0])
-        return self._intern_expression(
+            return self.expression_id(node.children[0])
+        return self.intern_expression(
             HigherExpression(
                 "anchor",
                 self.state_sort(children[0], node.sort.side),
@@ -659,13 +655,13 @@ class HigherSemanticArena:
         if children is None:
             raise ValueError("primitive state has no continuation")
         if node.kind == "pair":
-            return self._expression_handle(node.children[1])
+            return self.expression_id(node.children[1])
         before, after = children
         sort = self.function_sort(
             self.state_sort(before, 1 - node.sort.side),
             self.state_sort(after, node.sort.side),
         )
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "continuation",
                 sort,
@@ -698,7 +694,7 @@ class HigherSemanticArena:
             children = tuple(
                 argument
                 if child == record.parameter.local_id
-                else self._expression_handle(child)
+                else self.expression_id(child)
                 for child in body.children
             )
             if body.kind == "anchor" and children[0] == argument:
@@ -748,7 +744,7 @@ class HigherSemanticArena:
                         self._beta_active = False
                     self.ledger.bump(_execution_keys.HIGHER_BOUNDED_BETA_REDUCTIONS)
                     return result
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "apply",
                 fn_node.sort.codomain,
@@ -806,7 +802,7 @@ class HigherSemanticArena:
                 return state
             if outputs and all(value == outputs[0] for value in outputs[1:]):
                 return self.literal(action, side, outputs[0])
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "primitive-step",
                 self.state_sort(action, side),
@@ -860,7 +856,7 @@ class HigherSemanticArena:
                     right_node.value,
                 ),
             )
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "primitive-emit",
                 self.symbol_sort(action),
@@ -872,7 +868,7 @@ class HigherSemanticArena:
     def action_initial(
         self, action: FieldCellActionID, side: int
     ) -> HigherExpressionID:
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "action-initial",
                 self.state_sort(action, side),
@@ -891,7 +887,7 @@ class HigherSemanticArena:
         if self.expression(state).sort != self.state_sort(action, side):
             raise ValueError("higher action step state sort disagrees")
         self.expression(symbol)
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "action-step",
                 self.state_sort(action, side),
@@ -913,7 +909,7 @@ class HigherSemanticArena:
         ).sort != self.state_sort(action, 1):
             raise ValueError("higher action emit boundary sorts disagree")
         self.expression(symbol)
-        return self._intern_expression(
+        return self.intern_expression(
             HigherExpression(
                 "action-emit",
                 self.symbol_sort(action),

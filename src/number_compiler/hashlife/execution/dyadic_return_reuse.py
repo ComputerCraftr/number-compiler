@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnActionID,
     DyadicReturnImageID,
+    DyadicReturnImageRecord,
     DyadicReturnSourceID,
-    _ImageNode,
 )
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
@@ -121,10 +121,10 @@ def transport_reuse(
     # Share complete immutable support; issue a new source-bound image. No
     # endpoint, branch word, spatial coefficient, or midpoint is rediscovered.
     payload = workspace._append_image(
-        _ImageNode(source.binding.source, action, summary)
+        DyadicReturnImageRecord(source.binding.source, action, summary)
     )
-    workspace._bump("complete_effect_reuses")
-    workspace._bump("reused_temporal_extent", summary.width)
+    workspace.bump_metric("complete_effect_reuses")
+    workspace.bump_metric("reused_temporal_extent", summary.width)
     transfer = summary.transfer
     return SourceImageCandidate(
         payload,

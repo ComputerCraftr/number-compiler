@@ -57,7 +57,7 @@ def _validate_key(arena: CompletedResultArena, key: SourceRootMatchKey) -> None:
         raise ValueError("source root matching requires a canonical binary tile")
 
 
-def _validate_value(
+def validate_source_root_match_value(
     arena: CompletedResultArena,
     key: SourceRootMatchKey,
     value: RootMatchResult,
@@ -103,7 +103,7 @@ def lookup_source_root_match(
         return None
     if type(found) is not RootMatchResult:
         raise TypeError("source root memo contains another result sort")
-    _validate_value(arena, key, found, published=True)
+    validate_source_root_match_value(arena, key, found, published=True)
     arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_EARLY_HITS)
     return found
 
@@ -115,12 +115,12 @@ def _publish(
 ) -> RootMatchResult:
     _validate_key(arena, key)
     value = _sealed(arena, key, plain)
-    _validate_value(arena, key, value, published=True)
+    validate_source_root_match_value(arena, key, value, published=True)
     found = arena._memo.get(key)
     if found is not None:
         if type(found) is not RootMatchResult:
             raise TypeError("source root memo contains another result sort")
-        _validate_value(arena, key, found, published=True)
+        validate_source_root_match_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("source tile already has another root summary")
         arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_LATE_DUPLICATES)
@@ -159,11 +159,12 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
     tasks = arena._causal_tasks
     if tasks is None:
         raise ValueError("source root matching requires the scheduler workspace")
-    from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
+
+    from number_compiler.hashlife.execution.causal_frames import SourceRootMatchFrame
 
     frames = tasks.frames
     base = len(frames)
-    frames.append(CausalFrame("source_root_match", (tile,)))
+    frames.append(SourceRootMatchFrame((tile,)))
     try:
         while len(frames) > base:
             frame = frames.pop()
@@ -182,7 +183,7 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
                 frames.extend(
                     (
                         frame,
-                        CausalFrame("source_root_match", (node.left,)),
+                        SourceRootMatchFrame((node.left,)),
                     )
                 )
                 continue
@@ -208,7 +209,7 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
                     )
                     continue
                 frame.stage = 2
-                frames.extend((frame, CausalFrame("source_root_match", (node.right,))))
+                frames.extend((frame, SourceRootMatchFrame((node.right,))))
                 continue
             arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_EVALUATIONS)
             if node.level:

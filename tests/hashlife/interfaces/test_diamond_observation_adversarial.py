@@ -22,8 +22,8 @@ from number_compiler.hashlife.observation.diamond_parametric_query import (
     parametric_point,
 )
 from tests.support.diamond_observation_adversarial import (
-    _bound_projection_fixture,
     bound_observation_fixture,
+    bound_projection_fixture,
     neighbor_xor,
     structured_projection,
 )
@@ -129,7 +129,7 @@ def test_bound_projection_results_do_not_acquire_substitution_response_bindings(
     )
 
     ledger, arena, variable, incoming, expression, expected, right = (
-        _bound_projection_fixture()
+        bound_projection_fixture()
     )
     if structured:
         expression, expected = structured_projection(

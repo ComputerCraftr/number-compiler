@@ -26,14 +26,14 @@ from number_compiler.sequences.reverse_add.power import (
     ReverseAddPoweredTerm,
     pair_field_from_integer,
 )
-from tests.support.reverse_higher_interface import _direct_step
+from tests.support.reverse_higher_interface import direct_step
 
 
 def _reference_publisher(term: ReverseAddPoweredTerm) -> ReversePublisherProjection:
     """Construct the compatibility harness; scalar references are independent."""
     if term.generation < 1:
         raise AssertionError("publisher reference requires a positive generation")
-    ledger = term._ledger
+    ledger = term.resource_ledger
     compiler = LazyCompiler(ledger)
     terminal = compiler.atom(DigitNormalizeBlockEffect(term.base))
     effect = terminal
@@ -96,23 +96,28 @@ def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
 
 def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     term = ReverseAddPoweredTerm(196, 32)
-    production_audit = collect_ledger_metrics(term._ledger)
+    production_audit = collect_ledger_metrics(term.resource_ledger)
     assert production_audit.resource_audit_complete == 1
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     assert publisher._macro is None
     assert publisher._image_binding is None
-    assert term._ledger.counters.get("higher_concrete_operation_evaluations", 0) == 0
-    assert term._ledger.counters.get("higher_action_continuation_requests", 0) == 0
-    before = term._ledger.snapshot()
+    assert (
+        term.resource_ledger.counters.get("higher_concrete_operation_evaluations", 0)
+        == 0
+    )
+    assert (
+        term.resource_ledger.counters.get("higher_action_continuation_requests", 0) == 0
+    )
+    before = term.resource_ledger.snapshot()
     report = term.behavior_metrics()
-    assert term._ledger.snapshot() == before
+    assert term.resource_ledger.snapshot() == before
     assert publisher._macro is None
     # A runtime snapshot must not rewalk payloads after the independent oracle
     # is attached, and it must not trigger image construction.
     assert report.resource_audit_complete == 0
     # The reference now shares canonical production arithmetic and its auditor.
-    oracle_audit = collect_ledger_metrics(term._ledger)
+    oracle_audit = collect_ledger_metrics(term.resource_ledger)
     assert oracle_audit.resource_audit_complete == 1
     assert oracle_audit.resource_audit_unknown_payloads == 0
     assert report.resource_accounting_mismatch == 0
@@ -148,11 +153,11 @@ def test_reference_publisher_rejects_coordinated_action_substitution_without_wor
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     _substitute_action_and_rebind(publisher)
-    before = term._ledger.snapshot()
+    before = term.resource_ledger.snapshot()
     with pytest.raises(ValueError, match="canonical action was changed"):
         publisher.validate_execution()
     assert publisher._macro is None
-    assert term._ledger.snapshot() == before
+    assert term.resource_ledger.snapshot() == before
 
 
 def test_pending_publisher_rejects_changed_source_before_image_construction() -> None:
@@ -379,7 +384,7 @@ def test_pair_output_certificate_does_not_append_terminal_normalization() -> Non
     assert publisher.output_encoding == "pair"
     expected: tuple[int, ...] = source + (19, 19, 19)
     for _ in range(3):
-        expected = _direct_step(expected, 10)
+        expected = direct_step(expected, 10)
     assert tuple(index.direct_powered_point(i) for i in range(6)) == expected
 
 
@@ -428,7 +433,7 @@ def test_recursive_fold_matches_independent_literal_sheets(
 
 def test_reference_publisher_work_remains_visible_in_runtime_metrics() -> None:
     term = ReverseAddPoweredTerm(196, 8)
-    production_audit = collect_ledger_metrics(term._ledger)
+    production_audit = collect_ledger_metrics(term.resource_ledger)
     assert production_audit.resource_audit_complete == 1
     _reference_publisher(term).point(0)
     metrics = term.metrics()
@@ -438,7 +443,7 @@ def test_reference_publisher_work_remains_visible_in_runtime_metrics() -> None:
     # payload and inventory audit after the reference publisher has run.
     assert metrics.resource_audit_complete == 0
     assert metrics.resource_accounting_mismatch == 0
-    oracle_audit = collect_ledger_metrics(term._ledger)
+    oracle_audit = collect_ledger_metrics(term.resource_ledger)
     assert oracle_audit.resource_audit_complete == 1
     assert oracle_audit.resource_accounting_mismatch == 0
     assert oracle_audit.resource_audit_unknown_payloads == 0

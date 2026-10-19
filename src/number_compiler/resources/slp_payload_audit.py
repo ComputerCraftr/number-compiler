@@ -12,7 +12,7 @@ from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import (
     LedgerDict,
     LedgerList,
-    _TrackedDict,
+    TrackedDict,
     _TrackedList,
 )
 
@@ -104,21 +104,23 @@ def _interner_rows(
 ) -> tuple[tuple[object, object], ...] | None:
     if type(memo) is not OwnedMemo or type(container) is not LedgerDict:
         return None
+    memo_state = memo.audit_snapshot()
+    backing_store = container.backing_store
     if (
-        memo.ledger is not ledger
-        or type(memo.owner) is not int
-        or memo.owner != owner
-        or type(memo.nodes_per_entry) is not int
-        or memo.nodes_per_entry != 0
+        memo_state.ledger is not ledger
+        or type(memo_state.owner) is not int
+        or memo_state.owner != owner
+        or type(memo_state.nodes_per_entry) is not int
+        or memo_state.nodes_per_entry != 0
         or memo.node_cost is not None
-        or memo._data is not container
-        or type(memo._dynamic_nodes) is not int
-        or memo._dynamic_nodes != 0
-        or type(memo._pending_clear_entries) is not int
-        or memo._pending_clear_entries != 0
-        or type(memo._pending_clear_nodes) is not int
-        or memo._pending_clear_nodes != 0
-        or type(memo._disposed) is not bool
+        or memo_state.container is not container
+        or type(memo_state.dynamic_nodes) is not int
+        or memo_state.dynamic_nodes != 0
+        or type(memo_state.pending_clear_entries) is not int
+        or memo_state.pending_clear_entries != 0
+        or type(memo_state.pending_clear_nodes) is not int
+        or memo_state.pending_clear_nodes != 0
+        or type(memo_state.disposed) is not bool
         or container.ledger is not ledger
         or type(container.owner) is not int
         or container.owner != owner
@@ -126,11 +128,12 @@ def _interner_rows(
         or container.nodes_per_entry != 0
         or type(container.write_once) is not bool
         or container.write_once
-        or type(container._sealed) is not bool
-        or not container._sealed
+        or type(container.sealed) is not bool
+        or not container.sealed
         or not ledger.is_factory_container(container)
-        or type(container._data) is not _TrackedDict
-        or container._data._ledger is not ledger
+        or not isinstance(backing_store, TrackedDict)
+        or type(backing_store) is not TrackedDict
+        or not backing_store.belongs_to(ledger)
     ):
         return None
     try:
@@ -202,7 +205,7 @@ def audit_ledger_slp_payloads(
             owners = (nodes.owner, *(memo.owner for memo in memos))
             stores: tuple[object, ...] = (
                 nodes,
-                *(memo._data for memo in memos),
+                *(memo.audit_snapshot().container for memo in memos),
             )
         except AttributeError:
             invalid.add((fallback_owner, id(arena)))
@@ -249,7 +252,7 @@ def audit_ledger_slp_payloads(
             and arena.nodes._sealed
             and ledger.is_factory_container(arena.nodes)
             and type(arena.nodes._data) is _TrackedList
-            and arena.nodes._data._ledger is ledger
+            and arena.nodes._data.resource_ledger is ledger
             and node_rows is not None
             and all(rows is not None for rows in entries)
             and all(owner in inventory for owner in owners)
@@ -282,8 +285,8 @@ def audit_ledger_slp_payloads(
         )
         valid &= all(
             type(memo) is OwnedMemo
-            and type(memo._disposed) is bool
-            and memo._disposed == closed
+            and type(memo.audit_snapshot().disposed) is bool
+            and memo.audit_snapshot().disposed == closed
             for memo in memos
         )
         valid &= arena._nodes_released == closed

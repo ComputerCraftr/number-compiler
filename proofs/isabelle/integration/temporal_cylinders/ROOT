@@ -7,6 +7,7 @@ session Cylinder_Forcing_Automata in temporal_forcing = Reverse_Residuals +
 session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
   options [document = false, quick_and_dirty = false]
   sessions Shared_S_Arithmetic Cylinder_Radial_Algebra Cylinder_Forcing_Automata Collatz_Cylinder_Refinement
+    "HOL-Decision_Procs"
   theories
     Temporal_Clock_Jumps
     Decimal_Clock_Jumps
@@ -27,5 +28,8 @@ session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
     Cylinder_D4_Carry_Admission
     Cylinder_Radial_Sections
     Power_Clock_Jumps
+    Fermat_Source_Matrix_Refinement
+    Mersenne_Matrix_Source_Refinement
+    Mersenne_Modular_Matrix_Refinement
     Five_Bit_Folded_Square
     Radix64_Mirror_Correlation

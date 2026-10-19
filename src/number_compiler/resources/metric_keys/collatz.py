@@ -1,6 +1,16 @@
 """Stable counter names for collatz execution."""
 
+from enum import Enum
 from typing import Final
+
+
+class BoundaryMacroMetric(Enum):
+    """Stable schema-eight measurements for a typed boundary occurrence."""
+
+    ACTIONS = "actions"
+    REPETITIONS = "repetitions"
+    PHYSICAL_TICKS = "physical_ticks"
+
 
 COLLATZ_BOUNDARY_OBSERVATION_REQUESTS: Final = "collatz_boundary_observation_requests"
 COLLATZ_BOUNDARY_PREFIX_ACTION_OPERAND_BITS: Final = (
@@ -306,6 +316,7 @@ COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS: Final = (
 COLLATZ_PHYSICAL_TEMPORAL_RUN_QUOTIENT_COMPILATIONS: Final = (
     "collatz_physical_temporal_run_quotient_compilations"
 )
+
 COLLATZ_PHYSICAL_TEMPORAL_ZERO_RUN_PUMPS: Final = (
     "collatz_physical_temporal_zero_run_pumps"
 )
@@ -578,6 +589,9 @@ COLLATZ_CONDITIONAL_SCHEDULER_NEGATIVE_CACHE_HITS: Final = (
 )
 
 COLLATZ_LOW_BORDER_PAIR_MATRIX_CHECKS: Final = "collatz_low_border_pair_matrix_checks"
+COLLATZ_POINTED_PAIR_CERTIFICATE_REUSES: Final = (
+    "collatz_pointed_pair_certificate_reuses"
+)
 
 COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS: Final = (
     "collatz_low_border_numerator_phase_checks"

@@ -96,26 +96,26 @@ def terminal_two_power_cyclotomic_criterion(
         raise ValueError((spec.family, spec.parameter, v))
     s = 1 << v
     if spec.family == "fermat":
-        N = fermat_number(spec.parameter)
-        residue = N % s
+        candidate = fermat_number(spec.parameter)
+        residue = candidate % s
         if residue != 1:
-            raise AssertionError((N, s, residue))
+            raise AssertionError((candidate, s, residue))
         subgroup: tuple[int, ...] = (1,)
         degree = 1
         method = "lenstra-cyclotomic-extension:<N-mod-2^v>={1}"
     else:
-        N = mersenne_number(spec.parameter)
-        residue = N % s
+        candidate = mersenne_number(spec.parameter)
+        residue = candidate % s
         # The threshold never exceeds p, so M_p == -1 modulo 2^v.
         if residue != s - 1:
-            raise AssertionError((N, s, residue))
+            raise AssertionError((candidate, s, residue))
         subgroup = (1, s - 1)
         degree = 2
         method = "lenstra-cyclotomic-extension:<N-mod-2^v>={+/-1}"
     return TwoPowerCyclotomicCriterion(
         spec.family,
         spec.parameter,
-        N,
+        candidate,
         v,
         s,
         degree,

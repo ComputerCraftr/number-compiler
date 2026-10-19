@@ -23,8 +23,8 @@ from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.polynomials.primary_jet import (
     PrimaryJetAffineMorphism,
     PrimaryJetBlock,
-    _poly_add,
-    _poly_mul,
+    primary_jet_add,
+    primary_jet_multiply,
 )
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
 
@@ -76,12 +76,12 @@ def test_two_cell_mealy_composition_matches_all_three_exact_carry_ports() -> Non
             lower = (int(incoming >= 1), int(middle >= 1))
             upper = (int(incoming == 2), int(middle == 2))
             assert action.domain.apply(incoming) == outgoing
-            assert action.lower.emit(int(incoming >= 1)) == _poly_add(
+            assert action.lower.emit(int(incoming >= 1)) == primary_jet_add(
                 (lower[0], 0, 0, 0, 0),
                 tuple(lower[1] * item for item in z),
                 2,
             )
-            assert action.upper.emit(int(incoming == 2)) == _poly_add(
+            assert action.upper.emit(int(incoming == 2)) == primary_jet_add(
                 (upper[0], 0, 0, 0, 0),
                 tuple(upper[1] * item for item in z),
                 2,
@@ -125,7 +125,7 @@ def test_output_harmonic_mealy_action_is_exact_and_phase_normalized() -> None:
 def test_binary_jet_identity_and_phase_units() -> None:
     z = PrimaryJetBlock.digit(0, degree=5, modulus=32).power
     inverse = (31,) * 5
-    assert _poly_mul(z, inverse, 32) == (1, 0, 0, 0, 0)
+    assert primary_jet_multiply(z, inverse, 32) == (1, 0, 0, 0, 0)
     for n in (1, 15, 19, 27, 129, 385, 477, 797, 58723):
         e = v2_positive(3 * n + 1)
         assert PrimaryJetAffineMorphism.binary_event(e, binary_carry_birth(n)).apply(
@@ -134,7 +134,7 @@ def test_binary_jet_identity_and_phase_units() -> None:
     # Changing from bit positions to radix-64 positions is a substitution,
     # not a rename of the fifth-order nilpotent coordinate.
     cell_power = PrimaryJetBlock.digit(0, degree=5, modulus=2).power_block(6).power
-    cell_y = _poly_add(cell_power, (1, 0, 0, 0, 0), 2)
+    cell_y = primary_jet_add(cell_power, (1, 0, 0, 0, 0), 2)
     assert cell_y == (0, 0, 1, 0, 1) and cell_y != Y
 
 

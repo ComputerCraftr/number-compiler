@@ -40,7 +40,7 @@ class OpenMahlerRingInletsRequired(ValueError):
     """The source cone does not fix an interior binary bank."""
 
 
-def _xor_f5_projection(
+def xor_f5_projection(
     phase_counts: tuple[tuple[int, ...], ...], places: int
 ) -> tuple[int, ...]:
     """Project one position-by-six-phase XOR bank into its F5 channel."""
@@ -50,7 +50,7 @@ def _xor_f5_projection(
     )
 
 
-def _validate_harmonic_state_budget(max_states: int) -> None:
+def validate_harmonic_state_budget(max_states: int) -> None:
     if type(max_states) is not int or max_states < 1:
         raise ValueError("finite harmonic orbit budget must be positive")
     if max_states > MAX_FINITE_ORBIT_STATES:
@@ -59,7 +59,7 @@ def _validate_harmonic_state_budget(max_states: int) -> None:
         )
 
 
-def _affine_pow(
+def affine_power_modulo(
     gain: int, offset: int, repetitions: int, modulus: int
 ) -> tuple[int, int]:
     """Power any modular affine transfer, including nonunit prime factors."""
@@ -83,7 +83,7 @@ def _affine_pow(
     return powered.multiplier, powered.addend
 
 
-def _phase_histogram(
+def phase_histogram(
     prefix: tuple[int, ...], cycle: tuple[int, ...], count: int, alphabet: int
 ) -> tuple[tuple[int, ...], ...]:
     """Count temporal digits by index mod 6, in O(preperiod+period), not O(count)."""
@@ -112,7 +112,7 @@ def _phase_histogram(
     return tuple(tuple(row) for row in totals)
 
 
-def _orbit_at(
+def orbit_value_at(
     prefix: tuple[OrbitValue, ...], cycle: tuple[OrbitValue, ...], at: int
 ) -> OrbitValue:
     if at < len(prefix):
@@ -164,7 +164,7 @@ class MahlerQHarmonicSpectrum:
 
     @property
     def xor_f5(self) -> tuple[int, ...]:
-        return _xor_f5_projection(self.xor_phase_counts, self.places)
+        return xor_f5_projection(self.xor_phase_counts, self.places)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +332,11 @@ class MahlerFixedOddHarmonicRing:
         ) % modulus
         return residue
 
+    def _odd_affine_parameters(self, modulus: int) -> tuple[int, int]:
+        """Reduce the admitted odd-run affine action in an odd residue ring."""
+        inverse_q: int = pow(self.q, -1, modulus)
+        return self.p * inverse_q % modulus, self.j * inverse_q % modulus
+
     def odd_modulus_residue(self, modulus: int, repetitions: int) -> int:
         if (
             type(modulus) is not int
@@ -340,10 +345,8 @@ class MahlerFixedOddHarmonicRing:
             or not self.admits(repetitions)
         ):
             raise ValueError("odd-modulus orbit demands an admitted ring")
-        inverse_q = pow(self.q, -1, modulus)
-        gain, offset = _affine_pow(
-            self.p * inverse_q, self.j * inverse_q, repetitions, modulus
-        )
+        multiplier, innovation = self._odd_affine_parameters(modulus)
+        gain, offset = affine_power_modulo(multiplier, innovation, repetitions, modulus)
         residue: int = (gain * self.source + offset) % modulus
         return residue
 
@@ -358,18 +361,19 @@ class MahlerFixedOddHarmonicRing:
             raise ValueError("radix/precision outside the demanded digit grammar")
         if not self.admits(repetitions):
             raise ValueError("radix request is outside source-certified ring")
-        modulus = radix**places
-        bits = v2_positive(modulus)
+        modulus: int = radix**places
+        bits: int = v2_positive(modulus)
         if not bits:
             return self.odd_modulus_residue(modulus, repetitions)
-        binary_mod = 1 << bits
-        low = self.binary_residue(bits, repetitions)
-        odd_mod = modulus >> bits
+        binary_mod: int = 1 << bits
+        low: int = self.binary_residue(bits, repetitions)
+        odd_mod: int = modulus >> bits
         if odd_mod == 1:
             return low
-        odd = self.odd_modulus_residue(odd_mod, repetitions)
+        odd: int = self.odd_modulus_residue(odd_mod, repetitions)
+        inverse_binary: int = pow(binary_mod, -1, odd_mod)
         residue: int = (
-            low + binary_mod * (((odd - low) * pow(binary_mod, -1, odd_mod)) % odd_mod)
+            low + binary_mod * (((odd - low) * inverse_binary) % odd_mod)
         ) % modulus
         return residue
 
@@ -405,28 +409,25 @@ class MahlerFixedOddHarmonicRing:
             raise ValueError("invalid radix position for harmonic ring")
         if not self.admits(repetitions) or repetitions < 1:
             raise ValueError("source did not admit requested repeated motif")
-        _validate_harmonic_state_budget(max_states)
-        modulus = radix ** (position + 1)
-        binary_bits = v2_positive(modulus)
+        validate_harmonic_state_budget(max_states)
+        modulus: int = radix ** (position + 1)
+        binary_bits: int = v2_positive(modulus)
         if self.defect_valuation < self.exponent * repetitions + binary_bits:
             raise OpenMahlerRingInletsRequired(
                 "source cone does not fix the interior binary bank"
             )
-        binary = self.source % (1 << binary_bits) if binary_bits else 0
-        odd_mod = modulus >> binary_bits
+        binary: int = self.source % (1 << binary_bits) if binary_bits else 0
+        odd_mod: int = modulus >> binary_bits
+        place_value: int = radix**position
         prefix: tuple[int, ...]
         cycle: tuple[int, ...]
         if odd_mod == 1:
-            prefix, cycle = (), (binary // (radix**position) % radix,)
+            prefix, cycle = (), (binary // place_value % radix,)
         else:
-            inverse_q = pow(self.q, -1, odd_mod)
-            affine_a, affine_b = (
-                self.p * inverse_q % odd_mod,
-                self.j * inverse_q % odd_mod,
-            )
+            affine_a, affine_b = self._odd_affine_parameters(odd_mod)
             visited: dict[int, int] = {}
             digits: list[int] = []
-            odd_state = self.source % odd_mod
+            odd_state: int = self.source % odd_mod
             cycle_begin: int | None = None
             while len(digits) < max_states:
                 if odd_state in visited:
@@ -434,18 +435,16 @@ class MahlerFixedOddHarmonicRing:
                     break
                 visited[odd_state] = len(digits)
                 if binary_bits:
-                    binary_mod = 1 << binary_bits
-                    mixed = (
+                    binary_mod: int = 1 << binary_bits
+                    inverse_binary: int = pow(binary_mod, -1, odd_mod)
+                    mixed: int = (
                         binary
                         + binary_mod
-                        * (
-                            ((odd_state - binary) * pow(binary_mod, -1, odd_mod))
-                            % odd_mod
-                        )
+                        * (((odd_state - binary) * inverse_binary) % odd_mod)
                     ) % modulus
                 else:
                     mixed = odd_state
-                digits.append((mixed // radix**position) % radix)
+                digits.append((mixed // place_value) % radix)
                 odd_state = (affine_a * odd_state + affine_b) % odd_mod
                 if len(digits) == repetitions:
                     break
@@ -457,12 +456,12 @@ class MahlerFixedOddHarmonicRing:
                 prefix, cycle = tuple(digits), ()
             else:
                 prefix, cycle = tuple(digits[:cycle_begin]), tuple(digits[cycle_begin:])
-        counts = _phase_histogram(prefix, cycle, repetitions, radix)
+        counts = phase_histogram(prefix, cycle, repetitions, radix)
         walsh_packet = None
         if walsh64:
             if repetitions < 64:
                 raise ValueError("Walsh64 temporal ring requires 64 certified copies")
-            mask = sum((_orbit_at(prefix, cycle, t) & 1) << t for t in range(64))
+            mask = sum((orbit_value_at(prefix, cycle, t) & 1) << t for t in range(64))
             walsh_packet = walsh64_mod5(mask)
         return MahlerRingSpectrum(
             radix,
@@ -503,15 +502,19 @@ class MahlerFixedOddHarmonicRing:
             or repetitions < 1
         ):
             raise ValueError("q harmonic request has unadmitted time/source")
-        _validate_harmonic_state_budget(max_states)
+        validate_harmonic_state_budget(max_states)
         if walsh64 and repetitions < 64:
             raise ValueError("Walsh64 temporal q spectrum needs 64 admitted copies")
-        modulus = radix**places
-        invq = pow(self.q, -1, modulus)
-        affine_gain = self.p * invq % modulus
-        affine_offset = self.j * invq % modulus
-        step_shift = pow(2, self.exponent, modulus)
-        state = (self.source % modulus, pow(2, clock, modulus))
+        modulus: int = radix**places
+        affine_gain, affine_offset = self._odd_affine_parameters(modulus)
+        step_shift: int = pow(2, self.exponent, modulus)
+        state: tuple[int, int] = (
+            self.source % modulus,
+            pow(2, clock, modulus),
+        )
+        cell_moduli: tuple[int, ...] = tuple(
+            radix**place for place in range(1, places + 1)
+        )
         seen: dict[tuple[int, int], int] = {}
         sequence: list[tuple[int, int]] = []
         cycle_begin: int | None = None
@@ -521,17 +524,16 @@ class MahlerFixedOddHarmonicRing:
                 break
             seen[state] = len(sequence)
             d, powtwo = state
-            next_d = (affine_gain * d + affine_offset) % modulus
-            next_powtwo = step_shift * powtwo % modulus
-            q_now = powtwo * (3 * d + 1) % modulus
-            q_next = next_powtwo * (3 * next_d + 1) % modulus
+            next_d: int = (affine_gain * d + affine_offset) % modulus
+            next_powtwo: int = step_shift * powtwo % modulus
+            q_now: int = powtwo * (3 * d + 1) % modulus
+            q_next: int = next_powtwo * (3 * next_d + 1) % modulus
             carry, borrow = 0, 0
-            for j in range(1, places + 1):
-                cell_mod = radix**j
-                before = q_now % cell_mod
-                product = ((self.p % cell_mod) * before) % cell_mod
-                summand = next_powtwo % cell_mod
-                after = (product + summand) % cell_mod
+            for j, cell_mod in enumerate(cell_moduli, start=1):
+                before: int = q_now % cell_mod
+                product: int = ((self.p % cell_mod) * before) % cell_mod
+                summand: int = next_powtwo % cell_mod
+                after: int = (product + summand) % cell_mod
                 if after != q_next % cell_mod:
                     raise ArithmeticError(
                         "q harmonic recurrence disagrees with source-guarded affine orbit"
@@ -563,7 +565,7 @@ class MahlerFixedOddHarmonicRing:
         def series(bit: int, kind: str) -> tuple[int, ...]:
             pre = tuple((selected(pair, kind) >> bit) & 1 for pair in prefix)
             cyc = tuple((selected(pair, kind) >> bit) & 1 for pair in cycle)
-            binary_counts = _phase_histogram(pre, cyc, repetitions, 2)
+            binary_counts = phase_histogram(pre, cyc, repetitions, 2)
             return binary_counts[1]
 
         carries = tuple(series(i, "carry") for i in range(places))
@@ -576,8 +578,8 @@ class MahlerFixedOddHarmonicRing:
                     sum(
                         (
                             (
-                                _orbit_at(prefix, cycle, t)[0]
-                                ^ _orbit_at(prefix, cycle, t)[1]
+                                orbit_value_at(prefix, cycle, t)[0]
+                                ^ orbit_value_at(prefix, cycle, t)[1]
                             )
                             >> i
                             & 1
@@ -606,4 +608,9 @@ __all__ = (
     "MahlerFixedOddHarmonicRing",
     "MahlerQHarmonicSpectrum",
     "MahlerRingSpectrum",
+    "affine_power_modulo",
+    "orbit_value_at",
+    "phase_histogram",
+    "validate_harmonic_state_budget",
+    "xor_f5_projection",
 )

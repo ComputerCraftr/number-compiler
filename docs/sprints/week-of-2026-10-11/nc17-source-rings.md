@@ -711,3 +711,418 @@ failure cases and every assertion. The post-consolidation selection passed
 | P0 | Reverse/add and Collatz PASS; nine other holds | Non-halting and prime-bit assertions remain active. |
 | Scoped shared/Mahler proofs | Kernel PASS | Concrete family row-producer refinements and aggregate proof acceptance remain open. |
 | Performance | Measured component reuse benefit | Full cold/warm/bypassed CLI evidence and automatic center-fiber scheduler consumption remain open. |
+
+## October 17 — powered matrix summaries and explicit traces
+
+The implementation baseline was clean Git commit
+`068827840bf80120b5bb6e8bd55cc202323466b8`. The following runs are dirty-tree
+**development evidence**, not reusable acceptance for that commit. Downloaded
+NC17/NC18 reports guided selective changes; their reported results are not
+current validation.
+
+`temporal.matrix` selects an admitted transfer; `temporal.matrix.trace` requests
+bounded chronological detail. Both use one query-context preparation. Summaries
+do not serialize trace paths or puncture packets. Physical recurrence ticks,
+ordinary tripling ticks and Mersenne trace-squaring steps remain distinct.
+2rev10 admits powered observations through 4,096 even physical ticks and traces
+through 128. Fermat/Mersenne bounded transfer horizons are 4,096, with trace
+limits of 64. Existing reverse, Collatz and Antihydra bounds remain unchanged.
+
+Reverse reflected carry now distinguishes the incoming and outgoing lower
+carry. Seed 196, generation 257, depth 1 produces `(5,6)`, not `(5,5)`.
+Its default conditional relation is built from issued border ports; explicit
+trace demand checks exact child joins. 2rev10 powers its border relation and
+width/residue clock, then checks the exact source-rooted endpoint pair against
+the conditional envelope. Neither observer supplies execution authority or an
+unconditional repeating cylinder. Exact bounded fallback remains available.
+
+Mahler matrix requests use the faster direct cold constructor. Existing admitted
+halves still compose through their affine/prefix-safety summaries. Antihydra's
+bounded exact-run dispatch follows failed odd-macro selection at spans
+1,536–2,048; the centered-zero fixed point has explicit arithmetic and prefix
+safety instead of calling the positive valuation helper on zero.
+
+Fermat transfer rows consume the issued source before selecting modular carry
+ports. Its macro seal binds the complete source payload and typed source kind;
+a different issued source with the same index and level cannot replace it.
+Mersenne's norm-one trace starts at twice the selected Mersenne value modulo the
+requested radix power. Each proposed matrix period is checked exactly before
+exponent reduction. It provides no primality authority.
+
+Weighted row composition now has one shared arithmetic owner, with nominal
+state-space and law checks, a partial-deterministic fast path, and an exact
+branching fallback. Boolean cache-key aliases are rejected before cached
+primitive lookup. Display labels are not source authority.
+
+A proposed Collatz successor spine was rejected during review: it built a
+matrix classification and then independently selected the same next macro,
+adding work without eliminating a consumer. The new unconsumed spine and its
+spine-only tests were removed. Existing guards, retained parity-prefix tracing
+and source-restricted carry joins remain. A production selector that can consume
+those summaries without repeating selection is still an integration obligation.
+
+### Validation and measured scope
+
+- Focused endpoint/trace selection: 139 passed and one clock-spelling expectation
+  failed in 29.42 seconds (`20261018T053629Z-e13d8a07eade4484aa66061be79a2557`).
+  The expectation is repaired; the frozen rerun is recorded below when complete.
+- The reverse residual session rebuilt in 133 native seconds in
+  `20261018T052623Z-db7e949e87994d66a866fe10a1118179`, including the corrected
+  carry witness. The combined run was interrupted after identifying a divergent
+  symmetric modular rewrite in the new Fermat lemma. Collatz and Antihydra new
+  lemmas also required repair. The interrupted invocation is not a proof pass.
+- The 2rev10 matrix benchmark completed 165 samples in 40.018 guarded seconds,
+  with 110,560,312 sampled bytes and confirmed cleanup
+  (`20261018T053501Z-8d13c02c7a1f43b5817e07cd76997416`). All five trials in cold,
+  warm and process-cache-cleared modes agreed on admission, endpoint, width and
+  residues. The source was seed 196, term index 32, pair depth 1. Default
+  horizons were 16–1,024; trace horizons were 16–128. At 128 ticks the cold
+  medians were 0.175 s default versus 0.432 s trace; process-cache-cleared
+  medians were 0.044 s versus 0.271 s. Request-local memoization remains enabled
+  in the cache-cleared CLI mode. This measures observer work, not ordinary
+  digit-query construction or 4,096-step throughput.
+- Reverse seed 196, term 79 refused longer horizons at uncertified carry seams;
+  this is neither a positive performance result nor a full temporal cutover.
+  The admitted two-tick comparison was too short and startup-sensitive to
+  establish a speedup. The earlier 2rev10 index-1,024 experiment exceeded its
+  single 60-second command budget and remains incomplete; it was not split to
+  reset the deadline.
+
+Remaining producer-refinement gates include the concrete 2rev10 pointed-window
+and width/residue selector bridge, complete odd-macro selector refinement, and
+production Collatz successor consumption. Abstract relation powers and generic
+composition theorems do not close those gates. Full-unit, quality, P0 and scoped
+proof results below distinguish these from unrelated comma, prime-bit and
+non-halting release holds. No release is tagged or published.
+
+### Final integration review and follow-up validation
+
+Fermat and Mersenne joins now issue parents from authenticated adjacent child
+rows and their complete matching seam, instead of invoking the cold constructor
+for the combined duration. Replay-poisoned tests compare every conditional row,
+not only the pointed endpoint. Dyadic joins retain logarithmic checkpoint sets;
+irregular joins preserve the ordered child union within the 4,096-step cap.
+
+The shared weighted relation preserves the previous set of distinct
+`(target, carry weights)` outcomes. It does not count identical histories as
+separate multiplicities. Source-state and law identities remain nominal.
+The new 2rev10 relation uses the existing shared Boolean owner. Its redundant
+source-keyed relation caches were deleted; only the immutable, argument-free
+one-step relation remains cached. Local arena indices in diagnostic packets
+are explicitly labeled as local diagnostics and carry no execution authority.
+
+The guarded full-unit run `20261018T054415Z-5edefea65cab4808bfa894b7db499df7`
+reached its 300-second deadline and is **incomplete**. Phase instrumentation
+identified the newly added generation-1,024 / 4,096-tick 2rev10 poison case at
+20.87 seconds across source preparation and future point queries. That unchanged
+end-to-end workload is now explicitly marked validation. A generation-32 unit
+case checks the same future-replay poison contract at 128 ticks. The unchanged
+4,096-tick validation case retains the large-horizon assertions; explicit file
+selection includes both cases. The first generation-32 / 4,096-tick attempt still
+took 11.63 seconds, exposing costly future cones rather than source preparation
+alone. Its full-suite run reached 99% before the 300-second deadline
+(`20261018T055633Z-d762978fe4fe4e6fb84cf74260d5848b`) and is incomplete.
+The refreshed endpoint, registry, shared algebra, source-authority and join
+selection passed **122 tests in 36.74 seconds**, including that unchanged stress
+case (`20261018T055413Z-2e6fc8dd0a724ad8827135d5ec57965b`).
+
+Quality run `20261018T055036Z-cf694c0b70134a3fb63c6e18efdade5b` passed repository
+policy, documentation, proof inventory and all 40 installed-wheel CLI cases.
+It exposed three typing errors and two import/format issues, subsequently
+repaired. This partial quality run is not an aggregate quality pass.
+Pyright's initial serial batch invocation lacked the repository interpreter;
+its pytest import failures are tool-environment errors, not certified typing
+results. The corrected three serial batches passed with `.venv/bin/python`,
+at most 25 files each and a 2-GiB Node heap
+(`20261018T060313Z-7c6ad8260ba743ea9fe28c88acc15d76`).
+
+An additional fixed-point audit removed `3**length` construction used solely
+for operand-count reporting in Antihydra's centered-zero run. Its exact endpoint
+and prefix minimum are constant/formula results; the run now charges the summary
+operand instead of constructing a discarded gain.
+
+### Remaining endpoint cost and current measurements
+
+The 2rev10 endpoint audit found a remaining output-cone limitation. At 4,096
+physical ticks, each of two small point reads builds a padded 8,192-cell input
+tile and computes a 4,096-cell output grammar before selecting the requested
+coordinates. The grammar is compressed and no chronological future roots are
+constructed, but this does not establish efficient narrow-output construction.
+The existing closed-form publisher summarizes an already-known source/target
+pair; it cannot supply an unauthenticated future endpoint. Replacing this cone
+requires a narrower output recurrence and its source/phase refinement.
+
+The refreshed matrix benchmark passed all 165 samples in 39.738 guarded seconds,
+with 114,099,256 sampled bytes and successful cleanup
+(`20261018T060623Z-4f09189f60634ac1a5d613eca41d7a14`). At 128 ticks, cold CLI
+medians were 0.178 s for the default summary versus 0.412 s for trace; warm
+medians were 0.040 s versus 0.270 s. Warm and process-cache-bypassed summary
+times were similar, so this evidence demonstrates avoided trace construction,
+not a process-cache speedup. Default bypass medians at 256/512/1,024 ticks were
+0.103/0.298/0.849 s; remaining cold point-cone growth is visible.
+
+The existing component probe also passed
+(`20261018T060725Z-6fd039ef0b2c445da82f52b150913f94`). Joining admitted Mahler
+halves took a median 0.217 ms, versus 1.096 ms for a direct four-tick constructor;
+constructing those halves cost 5.582 ms. Retained Collatz prefix observation took
+0.104 ms versus 2.166 ms for its literal comparison. These five-trial component
+measurements do not establish faster ordinary CLI term construction.
+
+P0 run `20261018T060556Z-2f11430e0c684a9eb50d08d59e6f7279` passed 61 tests
+and retained nine failures: the Antihydra source-7 non-halting certificate and
+eight Fermat/Mersenne prime-bit assertions. Reverse/add and Collatz P0 selections
+passed. No assertion was weakened or converted into a successful refusal.
+
+### October 18 — bounded default coverage and packed-consumer follow-up
+
+The next integration batch preserves the dirty development tree at Git
+`068827840bf80120b5bb6e8bd55cc202323466b8`. Downloaded results are comparison
+inputs, not evidence for this checkout.
+
+The approved test-tier migration retains the complete eight-layer, two-seed
+birth-period experiment as explicit validation. Default units keep the bounded
+birth-layer no-rendering test, fresh source-seal mutation, failure cleanup,
+read-only instrumentation and finite-authority assertions. The inverse-three
+lift grid retains all phases at precisions 6–8 in units, and boundary phases
+at every higher tested precision; the full precision 9–14 grids remain intact
+in validation. Reverse leaf-transfer units retain the complete symbol/port
+domains for bases 2, 3, 10 and 15; the other bases remain in validation. No
+production P0, forged-handle, cancellation or lifecycle assertion was removed.
+
+Explicit selection of all three affected files passed **94 tests in 11.77 s**,
+including the retained exhaustive cases
+(`20261018T072141Z-5b5e89e15a29462a83c5500fc147757c`). This is a focused result;
+the default suite still requires a fresh complete run after integration.
+
+The subsequent default run completed within the hard limit: **11,096 passed,
+one failed, 436 deselected in 288.60 s**
+(`20261018T074139Z-e992ae464c3f4fbd802527a203e21b63`). The failure is the
+unchanged F4 concrete-resolution assertion, not a timeout. This misses the
+240-second headroom target. The timing record includes collection and every
+setup/call/teardown phase.
+
+Five additional exhaustive grids remain intact in explicit validation:
+reverse source-image, chamber and length ranges; the 90,000-source five-digit
+2rev10 boundary grid; and the full C1 suffix/duration grid. Default versions
+retain zero, radix boundaries, carry thresholds, growth/no-growth/shrink,
+admitted/rejected chambers and every tested C1 duration and sector. Their
+assertions and independent literal oracles are shared with the exhaustive
+variants. No forged fixture is shared or fresh audit cached. All five grids,
+the packed projection cases and reverse batched-read cases passed together:
+**193 tests in 4.69 s**
+(`20261018T075622Z-d92b983835ee40408dbbbf17f789dfdb`).
+
+Packed decimal projections now merge overlapping causal windows and reserve
+scratch before materialization. An adversarial disjoint-window test found a
+stale loop endpoint that extended an earlier cone across the intervening gap;
+the fix computes each group's endpoint independently. Periodic compression
+requires the entire causal window and halo, not a sampled border. Counters
+retain completed packed and lineage-check work even if later validation fails.
+The logical scalar-cell equivalent is reported separately from executed packed
+operations. Reverse endpoint pairs now share one authenticated carry fold.
+
+The identical five-trial 16–1,024 matrix workload passed all **165 samples** in
+`20261018T075844Z-8dea1256b3f34b7b99bc29a2828019fd`. Selected source is seed
+196 at term 32, depth 1. Compared with the earlier `060623Z` run:
+
+| Physical ticks | Cold summary before → after (s) | Bypassed summary before → after (s) |
+| --- | --- | --- |
+| 128 | 0.17798 → 0.14783 | 0.03932 → 0.01155 |
+| 256 | 0.28116 → 0.14635 | 0.10295 → 0.01245 |
+| 512 | 0.43534 → 0.14778 | 0.29785 → 0.01429 |
+| 1,024 | 1.02226 → 0.15322 | 0.84886 → 0.01799 |
+
+These are medians with identical endpoint packets, including widths and
+residues. Warm and bypassed times remain similar. This demonstrates reduced
+demanded matrix-projection work, not process-cache reuse or faster ordinary
+term construction. Explicit chronological traces retain their bounded route.
+The general packed-bit implementation and concrete consumer proof obligations
+must remain distinct from the checked list-stencil and finite-ring theorems.
+
+The final runtime rerun includes the checked Mersenne period repair:
+**11,102 passed, one existing F4 resolution failure, 457 deselected in 293.74 s**
+(`20261018T081728Z-05d754012817447da9de6493ba184338`). Guarded duration was
+296.37 s, sampled aggregate memory 896,337,576 bytes, and cleanup succeeded.
+Collection consumed 10.13 s, setup 7.10 s, calls 268.00 s and teardown 0.95 s.
+The hard limit passes narrowly; the 240-second headroom target remains unmet.
+The preceding runtime revision completed in 278.29 s, so neither result should
+be presented as stable 240-second performance.
+
+The Mersenne source and trace consumers now use one checked dyadic matrix-power
+helper. It proves the proposed period operationally by evaluating the selected
+matrix to that period and requiring identity before exponent reduction. A
+wrong proposed period raises before reduction; period one is accepted for an
+identity matrix. Counts include the checking work. This removes the duplicate
+trace matrix-power loop while retaining exact arithmetic and conservative
+primality status. Independent recurrence, invalid-period, work-count and CLI
+checks passed in the focused 89-test selection
+`20261018T080853Z-310e5c65b5af41e7a72ade992454a31e`; the subsequent period-one
+regression is covered by the final full run.
+
+The intact exhaustive/stress selection, including 4,096-tick projections,
+Antihydra exact runs, birth layers and higher-precision inverse-three grids,
+passed **131 tests in 13.97 s**
+(`20261018T080833Z-c33ea8beb0474b6eac0f6e7e1ceb0733`). P0 passed 61 and retained
+the nine existing non-halting/prime-bit failures in
+`20261018T080741Z-9978fed79a3b4ba38d73d397d4ac1ab9`. Three serial Pyright
+batches passed with at most 25 files and a 2-GiB Node heap in
+`20261018T080911Z-54338e8a2bee49999188dfae275e1c1a`.
+
+Ordinary Collatz seed-27 CLI measurements retained the five-trial 16–1,024
+workload (`20261018T080152Z-c2f0a6d808f54515b2214a169bdc2f0f`). At 1,024,
+cold CLI median was 0.243 s; warm and bypassed term medians were 0.00397 and
+0.00393 s. This does not demonstrate a warm term-construction improvement.
+The Antihydra/Mahler odd-macro ablation also retained all horizons and five
+trials (`20261018T080716Z-97aa6821869843fbac810bf2a822985a`). No odd macro was
+consumed for its source-8 workload. At 1,024 returns, enabled/disabled medians
+were 0.00515/0.00530 s for Antihydra and 0.00738/0.00706 s for Mahler. Those
+measurements establish neither a macro-hit speedup nor a default-path gain;
+component reuse and the longer exact-run fallback remain separate evidence.
+
+A subsequent timing audit retained real process-guard, eviction, forged-template
+and partial-publication tests in default units. The generation-79 ring test now
+resolves each immutable position/channel harmonic once within that invocation,
+then performs every original tick/channel comparison. Mutation rejection and
+post-disposal validation still use fresh calls. No forensic audit or forged
+fixture is cached across calls or tests. The suggested profile-fixture merge
+was not applied because independent empty-cache states are useful coverage.
+
+The next collection change stably defers tests consuming the session-scoped
+Python AST and Isabelle source graphs until after runtime tests. This avoids
+making each explicit lifecycle garbage collection traverse the already-retained
+source graphs. It neither removes selected nodes nor caches fresh forensic
+audits; order is preserved within each group and the collection manifest records
+the actual order. The focused selection passed 39 tests in 2.81 seconds
+(`20261018T085921Z-cc76750f6ee941f9895f365f079fdd88`). A new complete run is
+required to assess the timing benefit. That run subsequently finished in
+**264.22 s: 11,103 passed, one unchanged F4 failure, 457 deselected**
+(`20261018T090352Z-f289394acfd94503b41c76a19e1b62d9`). Guarded time was
+266.41 s, sampled peak memory 831,620,608 bytes, and cleanup succeeded.
+Collection/setup/call/teardown totals were 10.25/6.47/239.69/0.64 s; the
+slowest call was 5.61 s. This is below the hard limit with 33.59 s of guard
+headroom, but still above the 240-second target. The latest two optimizations
+remove no tests; the extra passing node checks stable collection ordering.
+
+Kernel checks have accepted the Collatz issued-carry consumer session (23 s,
+`20261018T081212Z-65278bf0e20749419d9468689f5309c3`), reverse shared carry
+publication (48 s, `20261018T082621Z-50ce898b36414bfabcb919563d5cbf03`), and
+Mahler valuation-selected endpoint and prefix-summary refinement (10 s,
+`20261018T085315Z-65a71435399c45a7840a039b3a4de18a`). The shared integer-driven
+binary-power loop subsequently passed in 10 s in the `085950Z` build. That
+invocation was interrupted during a downstream four-phase affine lemma;
+acceptance of an upstream session is not acceptance of the unfinished chain.
+The affine proof now separates bounded residues from natural-number reduction
+instead of applying broad modular simplification to every case. Its concrete
+consumer and the dependent packed-bit proof still require a successful build.
+
+`Temporal_Clock_Jumps` rebuilt successfully in
+`20261018T100612Z-3e4edd827a824a58af066b740cd073d0` (44 s native). Its new
+Fermat source-conditioned row and Mersenne matrix-consumer theories are now
+kernel checked. The Mersenne modular bridge connects the integer-driven power
+loop to the checked period identity before exponent reduction; it does not
+grant primality authority. The full `2rev10` packed-source and affine-output
+chain remains a separate pending gate.
+
+The final call-path review separates two Mahler consumers. Production
+`MahlerSourceActionStore` probes an exact parent action before cold discovery
+and reuses its arithmetic and prefix-safety summaries; public warm-parent
+poison tests cover that path. The requested center-matrix observer deliberately
+keeps its faster direct constructor and same-query packet sharing. It does not
+consume cross-request center-matrix joins, and no such speedup is claimed.
+Adding a second cache that serializes and revalidates every source frame would
+not establish avoided construction work.
+
+The independent radial-consumer review found the same distinction for
+Fermat/Mersenne. Their issued-action `then()` methods consume adjacent children
+without invoking the combined cold constructor, and tests poison that fallback.
+The actual CLI adapters still call one full-horizon demand constructor. A query
+has no previously issued adjacent matrix children; combined matrix/trace demands
+already share its packet. Splitting cold work would add construction. Therefore
+the joins are accepted API operations, but a live adjacent-summary consumer and
+its CLI performance evidence remain open. No extra process cache or speculative
+child construction was added to manufacture a hit. The kernel models cover
+source-conditioned rows and modular matrix operations, not Python extraction or
+the issuance adapter itself.
+
+The three integration inputs were the downloaded successor-consumer, packed
+affine-matrix, and demanded cold-cone patches. Their artifact SHA-256 values
+are, respectively, `facda062a32d5ef0486be2ca193767652539b6c3872ee57fb25e703cf439bbca`,
+`53f4f6962c5f16420b0b9d288aa203d1f9a03e0febf67778c511b59d9bcf976e`, and
+`6bde2779634c798379642cb281174b2898873ba4c1ba6dfeae75fd3d522c98e8`.
+These identify the input artifacts, not repository revisions or acceptance.
+Their predecessor APIs differ from this checkout: the speculative Collatz
+successor spine is not restored, and packed windows use the current ledger and
+source adapter. Archive direct-function sweeps, disabled-conftest runs and
+skipped checks are not imported as validation evidence.
+
+The periodic shortcut regression now covers state caps zero and one, scratch
+release after refusal, and a successful subsequent request on the same arena.
+The existing incomplete-halo rejection remains intact. All nine packed-output
+tests pass in `20261018T121847Z-dff60dcf415a46b7b03a375f53505155`; that file
+passes bounded Pyright in `20261018T121907Z-fce271f4077248e4aa16cea9d1831d42`.
+The corrected collection-order test and fixture hook pass the same bounded
+Pyright policy in `20261018T122634Z-e478729250d94761957f19279c92c123`.
+
+Independent review found no soundness defect in the abstract periodic
+discovery/resolver model. In Python, exhausting the state cap after popping
+the last pending key can enter resolution with a missing dependency; that
+dependency prevents root acceptance. The result is conservative refusal,
+not a periodic certificate. The new theory explicitly models successful
+completed discovery and child-first resolution. Its connection to concrete
+arena fields remains an executable boundary, not a claim of extracted Python
+verification or a proof that every request fits the state cap.
+
+The complete quality suite passes in
+`20261018T122643Z-438ef0a4e4184e8eac501e025e04a034`: strict mypy, pinned
+Ruff, formatting, source policy, documentation, proof inventory and clean
+installed-wheel checks. The preceding run exposed a type mismatch in the new
+collection-order test and a formatting discrepancy; both were corrected without
+changing its assertions or the selected test population.
+
+The final full default run completed in **261.26 seconds**, with **11,103
+passed, one unchanged F4 failure and 457 validation cases deselected**
+(`20261018T123011Z-40f09b8102b4443db2ffb3d1cd43c738`). Guarded time was
+263.40 seconds, sampled peak memory 830,571,696 bytes, and descendant cleanup
+was confirmed. Collection/setup/call/teardown took 10.31/7.89/235.30/0.62
+seconds; the slowest test was 5.58 seconds. The 300-second hard ceiling passes;
+the 240-second headroom target remains unmet. No new failures appeared and
+the existing F4 positive assertion was neither skipped nor weakened.
+
+The combined proof run passes in
+`20261018T123443Z-ce7d88b14e03451782d2b94a96c41399`, selecting
+`Shared_Carry_Dynamics`, `Antihydra`, `Collatz_Cylinder_Refinement`,
+`Reverse_Residuals`, `Mahler_Source_Transport`,
+`Double_Reverse_Temporal_Refinement` and `Temporal_Clock_Jumps`.
+Double Reverse rebuilt in 64 seconds; the remaining selected sessions reused
+their previously checked heaps. This is not an all-cold build measurement.
+The guarded invocation took 73.54 seconds, sampled 2,255,171,840 peak bytes,
+and confirmed cleanup under the standard 300-second/session, 6-GiB,
+four-thread policy. The final periodic-worklist theory checked in 1.908
+seconds. Its child-first true-set invariant now supplies the periodic
+certificate consumed by the packed-request theorem; no supplied endpoint
+equality replaces this obligation. The same session checks source slicing,
+packed decimal bitplanes, shrinking orientation, four-phase affine carry
+composition and endpoint readout. All earlier pending Double Reverse proof
+entries in this record are superseded by this scoped kernel pass.
+
+Completion remains limited by the missing live Fermat/Mersenne adjacent-summary
+consumer and its measured CLI benefit. Current CLI demands create fresh macros
+at offset zero; `then()` requires matching issuer ownership and adjacent offsets.
+No producer supplies the second child. Replaying `rebase()` merely to call the
+join would add work, and treating diagnostic packets as certificates would lose
+authority. A source-owned producer must publish reusable offset/span summaries
+before this path can honestly be enabled. Ordinary-term speedups for all families,
+unrestricted constructors, primality, comma cutover and global non-halting are
+not established by these matrix and packed-output results.
+
+The final P0 rerun retains exactly **61 passed and nine failed** in 10.01
+seconds (`20261018T123617Z-b0ee37be22b4438583ca0d7ca35ec7f2`). Reverse/add
+and Collatz P0 gates pass. The nine failures remain the source-7 Antihydra
+non-halting certificate plus four candidate prime-bit and four CLI prime-bit
+assertions; none were removed, weakened or converted to expected failures.
+
+After the final proof repairs, the complete quality suite passes again in
+`20261018T123659Z-d625e783d3984067aedd46e4d2dbaab2`, including clean-wheel
+CLI probes. All evidence here is dirty-tree development evidence at Git
+`068827840bf80120b5bb6e8bd55cc202323466b8`; no commit, tag or release was
+created, and no clean-worktree acceptance is inferred.

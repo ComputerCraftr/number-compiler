@@ -5,11 +5,24 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeGuard
 
 from devtools.paths import repository_root
 
 ROOT = repository_root()
 SRC = ROOT / "src" / "number_compiler"
+
+
+def _object_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return type(value) in {list, tuple}
+
+
+def _object_dictionary(value: object) -> TypeGuard[dict[object, object]]:
+    return type(value) is dict
+
+
+def _exact_string(value: object) -> TypeGuard[str]:
+    return type(value) is str
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,24 +78,25 @@ def source_syntax(
         if not assigned.intersection(export_tables):
             continue
         try:
-            literal = ast.literal_eval(statement.value)
+            literal: object = ast.literal_eval(statement.value)
         except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
             # Nonliteral export tables require a separate dynamic audit.
             raise ValueError(f"nonliteral package export table: {path}") from None
         if "__all__" in assigned:
-            if not isinstance(literal, (list, tuple)) or any(
-                type(item) is not str for item in literal
-            ):
+            if not _object_sequence(literal):
                 raise ValueError(f"invalid __all__ export table: {path}")
-            exports.update(literal)
+            for item in literal:
+                if not _exact_string(item):
+                    raise ValueError(f"invalid __all__ export table: {path}")
+                exports.add(item)
         if "_EXPORT_MODULES" in assigned:
-            if type(literal) is not dict or any(
-                type(key) is not str or type(value) is not str
-                for key, value in literal.items()
-            ):
+            if not _object_dictionary(literal):
                 raise ValueError(f"invalid lazy export table: {path}")
-            exports.update(literal)
-            export_modules.update(literal.values())
+            for key, value in literal.items():
+                if not _exact_string(key) or not _exact_string(value):
+                    raise ValueError(f"invalid lazy export table: {path}")
+                exports.add(key)
+                export_modules.add(value)
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.AugAssign)
@@ -258,64 +272,3 @@ def import_references(
 
 def _tree(path: Path) -> ast.Module:
     return ast.parse(path.read_text(), filename=str(path))
-
-
-def _module_path(name: str) -> Path:
-    """Resolve a qualified package-local module, including package initializers."""
-    candidate = SRC.joinpath(*name.split("."))
-    return (
-        candidate / "__init__.py"
-        if candidate.is_dir()
-        else candidate.with_suffix(".py")
-    )
-
-
-def _package_imports(path: Path) -> set[str]:
-    """Qualified runtime imports, preserving subpackages and module aliases."""
-    package = module_package(path, SRC)
-    out: set[str] = set()
-    pending = list(ast.iter_child_nodes(_tree(path)))
-    while pending:
-        node = pending.pop()
-        if isinstance(node, ast.If) and (
-            isinstance(node.test, ast.Name)
-            and node.test.id == "TYPE_CHECKING"
-            or isinstance(node.test, ast.Attribute)
-            and node.test.attr == "TYPE_CHECKING"
-        ):
-            pending.extend(node.orelse)
-            continue
-        pending.extend(ast.iter_child_nodes(node))
-        candidates: list[str] = []
-        if isinstance(node, ast.ImportFrom):
-            base = (
-                ".".join(package[: len(package) - node.level + 1])
-                + ("." + node.module if node.module else "")
-                if node.level
-                else node.module or ""
-            )
-            candidates.append(base)
-            candidates.extend(base + "." + alias.name for alias in node.names)
-        elif isinstance(node, ast.Import):
-            candidates.extend(alias.name for alias in node.names)
-        for imported in candidates:
-            if imported.startswith("number_compiler."):
-                local = imported.removeprefix("number_compiler.")
-                if _module_path(local).is_file():
-                    out.add(local)
-    return out
-
-
-def _reachable(start: str) -> set[str]:
-    """Follow runtime dependencies through regular subpackages."""
-    todo, seen = [start], set()
-    while todo:
-        name = todo.pop()
-        if name in seen:
-            continue
-        path = _module_path(name)
-        if not path.is_file():
-            continue
-        seen.add(name)
-        todo.extend(sorted(_package_imports(path) - seen))
-    return seen

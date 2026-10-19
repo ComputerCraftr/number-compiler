@@ -29,7 +29,7 @@ from number_compiler.hashlife.execution.field_images import (
     RecursiveFieldImageArena,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
-    _require_immutable_key,
+    require_immutable_key,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -355,7 +355,7 @@ class ProviderFieldImageExecutor:
                 )
             for context in result:
                 if context is not None:
-                    _require_immutable_key(context, "provider child image context")
+                    require_immutable_key(context, "provider child image context")
         except BaseException:
             self.ledger.bump(
                 _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_FAILURES

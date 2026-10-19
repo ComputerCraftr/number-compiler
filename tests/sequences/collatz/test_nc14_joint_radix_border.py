@@ -7,7 +7,14 @@ import pytest
 from number_compiler.arithmetic.fields.three_power_radix import ThreePowerRadixOrbit
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.border_identity import ENTRY_89_AT_NINE
+from number_compiler.sequences.collatz.border_identity import (
+    CYCLE_89,
+    ENTRY_89_AT_NINE,
+    ENTRY_421,
+    ENTRY_26847_PHASES,
+    CycleEntryPhase,
+    selector_guard_for,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
     admit_boundary_macro_plan,
@@ -15,6 +22,8 @@ from number_compiler.sequences.collatz.boundary_macros import (
 from number_compiler.sequences.collatz.joint_radix_border import (
     JointRadix6Source,
     border_crt_moore,
+    candidate_family_for_residue160,
+    candidate_family_guard,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (
     select_unified_skew_chain,
@@ -60,6 +69,15 @@ def test_production_selector_uses_crt_candidate_but_keeps_exact_guard() -> None:
     assert plan.source == 19 and plan.maximum_repetitions >= plan.repetitions >= 1
     with pytest.raises(ValueError, match="foreign"):
         admit_boundary_macro_plan(20, 128, radix_state=state)
+
+
+def test_candidate_projection_uses_the_identitys_guarded_phase_records() -> None:
+    assert candidate_family_guard(ENTRY_421) == (4, 40, 5)
+    assert candidate_family_for_residue160(112) == ENTRY_26847_PHASES[0]
+    assert selector_guard_for(ENTRY_26847_PHASES[3]).wire_value() == (34, 40, 1)
+    assert selector_guard_for(ENTRY_89_AT_NINE).wire_value() == (9, 10, 1)
+    with pytest.raises(ValueError, match="no finite selector guard"):
+        selector_guard_for(CycleEntryPhase(CYCLE_89, 0))
 
 
 def test_f5_is_transported_by_issued_action_before_following_selection() -> None:

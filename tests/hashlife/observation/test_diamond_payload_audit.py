@@ -166,7 +166,7 @@ def test_composition_certification_requires_the_actual_registered_bound_record()
     )
 
     index = HashLifeBlockIndex(DigitNormalizeBlockEffect(10), (2,), logical_length=4)
-    ledger = index._ledger
+    ledger = index.resource_ledger
     report = index.metrics()
     assert report.bimachine_composition_certified == 1
     assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
@@ -194,12 +194,12 @@ def test_parametric_macro_bindings_and_extensional_functions_have_distinct_units
     None
 ):
     from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
-    from tests.support.tile_kernel import _runtime, _tile
+    from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
-    ledger, tiles, adapter, first, scheduler = _runtime(BaseBlockEffect(2))
+    ledger, tiles, adapter, first, scheduler = make_tile_runtime(BaseBlockEffect(2))
     second = adapter.admit(DigitNormalizeBlockEffect(2))
     pair = adapter.compose(first, second)
-    with _tile(tiles, adapter, first, (1, 2, 1, 2)) as source:
+    with make_tile_from_symbols(tiles, adapter, first, (1, 2, 1, 2)) as source:
         ports = adapter.initial_ports(first)
         wiring = adapter.wiring(pair)
         expected = adapter.fused_interface(

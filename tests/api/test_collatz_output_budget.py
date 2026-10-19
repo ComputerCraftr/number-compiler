@@ -97,7 +97,7 @@ def test_reached_cycle_does_not_discover_a_million_branches() -> None:
 def test_symbolic_cycle_extent_is_not_charged_as_allocated_operand_bits() -> None:
     term = PoweredCollatzTerm(27, 10**26)
     assert term.materialize(max_bits=3) == 4
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert 0 < counters["collatz_physical_temporal_run_actions"] <= 256
     for name in (
         "temporal_run_operand_bits",

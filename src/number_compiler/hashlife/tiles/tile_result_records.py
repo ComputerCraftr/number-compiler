@@ -10,7 +10,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorProfileID,
 )
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
@@ -426,7 +426,7 @@ class CompletedResult:
 
 
 @dataclass(frozen=True, slots=True)
-class _FusedVariantKey:
+class FusedVariantKey:
     action: FieldCellActionID
     input: TileID
     wiring: ResultWiring
@@ -438,7 +438,7 @@ class _FusedVariantKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _ResultVariantKey:
+class ResultVariantKey:
     action: FieldCellActionID
     input: TileID
     wiring: ResultWiring
@@ -448,12 +448,12 @@ class _ResultVariantKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _ReverseHead:
+class ResultDependencyHead:
     tile: TileID
 
 
 @dataclass(frozen=True, slots=True)
-class _ReverseMember:
+class ResultDependencyMember:
     tile: TileID
     key: (
         PoweredResultKey
@@ -471,7 +471,7 @@ class _ReverseMember:
 
 
 @dataclass(frozen=True, slots=True)
-class _ReverseLinks:
+class ResultDependencyLinks:
     previous: (
         PoweredResultKey
         | PoweredInterfaceKey
@@ -649,11 +649,11 @@ __all__ = [
     "RootMatchResult",
     "SourceRootMatchKey",
     "SpatialInterfaceKey",
-    "_FusedVariantKey",
-    "_ResultVariantKey",
-    "_ReverseHead",
-    "_ReverseLinks",
-    "_ReverseMember",
+    "FusedVariantKey",
+    "ResultVariantKey",
+    "ResultDependencyHead",
+    "ResultDependencyLinks",
+    "ResultDependencyMember",
     "boundary_view_snapshot",
     "causal_interface_snapshot",
     "execution_request_snapshot",
@@ -661,12 +661,12 @@ __all__ = [
 ]
 
 
-def fused_variant_key(key: FusedInterfaceKey) -> _FusedVariantKey:
+def fused_variant_key(key: FusedInterfaceKey) -> FusedVariantKey:
     """The same producer-variant identity is used at publication and retirement."""
     wiring = key.producer_wiring
     if type(wiring) is not ResultWiring:
         raise TypeError("fused producer requires normalized wiring")
-    return _FusedVariantKey(
+    return FusedVariantKey(
         key.action,
         key.input,
         key.wiring,

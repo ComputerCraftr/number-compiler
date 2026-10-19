@@ -304,7 +304,7 @@ def test_tree_analysis_extracts_each_source_and_groups_only_once(
         )
     calls = {"extract": 0, "group": 0}
     extract = owner.extract_isabelle_declarations
-    group = owner._duplicate_groups
+    group = owner.duplicate_groups
 
     def counted_extract(
         text: str, path: Path | str = "<memory>"
@@ -320,7 +320,7 @@ def test_tree_analysis_extracts_each_source_and_groups_only_once(
         return group(declarations)
 
     monkeypatch.setattr(owner, "extract_isabelle_declarations", counted_extract)
-    monkeypatch.setattr(owner, "_duplicate_groups", counted_group)
+    monkeypatch.setattr(owner, "duplicate_groups", counted_group)
     assert analyze_isabelle_tree(tmp_path).duplicates
     assert calls == {"extract": 2, "group": 1}
 

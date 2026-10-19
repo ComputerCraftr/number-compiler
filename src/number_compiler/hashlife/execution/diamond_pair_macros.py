@@ -456,7 +456,7 @@ class PrimitivePairMacros:
             if type(value) is not BoundaryStateID:
                 raise AssertionError(
                     "finite interface did not produce a boundary state"
-                )
+                ) from completed
             return value
         finally:
             program.close()

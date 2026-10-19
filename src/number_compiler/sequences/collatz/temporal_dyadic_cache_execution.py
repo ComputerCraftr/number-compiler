@@ -14,7 +14,7 @@ from number_compiler.sequences.collatz.tape_width import (
 )
 from number_compiler.sequences.collatz.temporal_dyadic import bounded_run_length
 from number_compiler.sequences.collatz.temporal_f5_observer import (
-    _append_dyadic_f5,
+    append_dyadic_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedMacroTailNotAdmitted,
@@ -100,7 +100,7 @@ def try_consume_cached_dyadic_action(
         joint_builder.applied_cached_macro()
     normalized_f5, physical_f5 = state.normalized_f5, state.physical_f5
     if normalized_f5 is not None and physical_f5 is not None:
-        normalized_f5, physical_f5 = _append_dyadic_f5(
+        normalized_f5, physical_f5 = append_dyadic_f5(
             normalized_f5,
             physical_f5,
             cell.multiplier,

@@ -8,33 +8,44 @@ completed parent.  A missing child is a no-op; no partial image is retained.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.execution.causal_frames import (
+    AnchorFrame,
+    CausalTaskFrame,
+    ChildStatesFrame,
+    PromoteMidpointFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_results import (
     lookup_causal_result,
     publish_causal_completed,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    CausalPrefix,
     combine_spatial_outputs,
     result_payload,
 )
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalPrefix,
+    CausalTaskValue,
+    pop_causal_state,
+    pop_child_states,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+
 
 def promotion_step(
-    engine: Any,
-    frame: CausalFrame,
-    frames: Any,
-    values: CausalResults,
+    engine: CausalTileEngine,
+    frame: PromoteMidpointFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
 ) -> bool:
     """Publish a temporal midpoint parent when both exact children exist."""
-    if frame.op != "promote_midpoint":
-        return False
     action, tile, left, right = frame.args
     children = engine._children(action)
     if engine._application is None or children is None:
@@ -84,13 +95,14 @@ def promotion_step(
         frames.extend(
             (
                 frame,
-                CausalFrame("anchor", (before, 1, right)),
-                CausalFrame("anchor", (before, 0, left)),
+                AnchorFrame((before, 1, right)),
+                AnchorFrame((before, 0, left)),
             )
         )
         return True
     if frame.stage == 1:
-        right_anchor, left_anchor = values.pop(), values.pop()
+        right_anchor = pop_causal_state(values)
+        left_anchor = pop_causal_state(values)
         parent_key = engine._composite_key(
             before,
             tile,
@@ -103,7 +115,7 @@ def promotion_step(
         completed = lookup_causal_result(
             engine.scheduler.results,
             parent_key,
-            action_admission=engine._action_admission_token,
+            action_admission=engine.action_admission,
         )
         if completed is not None:
             engine.scheduler._pin_causal(
@@ -119,26 +131,20 @@ def promotion_step(
         frames.extend(
             (
                 frame,
-                CausalFrame(
-                    "child_states",
+                ChildStatesFrame(
                     (before, tile, left_anchor, right_anchor),
                 ),
             )
         )
         return True
 
-    child_contexts = values.pop()
-    parent_key, left_tile, right_tile = frame.saved
-    if type(child_contexts) is not tuple or len(child_contexts) != 2:
-        raise TypeError("midpoint promotion received malformed child contexts")
+    child_contexts = pop_child_states(values)
+    match frame.saved:
+        case (parent_key, left_tile, right_tile):
+            pass
+        case _:
+            raise AssertionError("midpoint promotion lost its parent references")
     left_context, right_context = child_contexts
-    if (
-        type(left_context) is not tuple
-        or len(left_context) != 2
-        or type(right_context) is not tuple
-        or len(right_context) != 2
-    ):
-        raise TypeError("midpoint promotion requires two exact child contexts")
     left_key = engine._composite_key(before, left_tile, *left_context)
     right_key = engine._composite_key(before, right_tile, *right_context)
     if left_key is None or right_key is None:
@@ -147,12 +153,12 @@ def promotion_step(
     left_result = lookup_causal_result(
         engine.scheduler.results,
         left_key,
-        action_admission=engine._action_admission_token,
+        action_admission=engine.action_admission,
     )
     right_result = lookup_causal_result(
         engine.scheduler.results,
         right_key,
-        action_admission=engine._action_admission_token,
+        action_admission=engine.action_admission,
     )
     if left_result is None or right_result is None:
         if left_result is not None:

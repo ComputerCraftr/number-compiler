@@ -30,9 +30,9 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
         tuple((first[2] >> i) & 1 for i in range(5))
         == {1: (1, 0, 0, 1, 0), 2: (0, 1, 0, 0, 1), 4: (0, 0, 1, 0, 0)}[seed]
     )
-    assert term._ledger.counters["collatz_physical_cycle_compressions"] == 1
-    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
-    audit = audit_registered_payloads(term._ledger)
+    assert term.resource_ledger.counters["collatz_physical_cycle_compressions"] == 1
+    assert term.resource_ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
+    audit = audit_registered_payloads(term.resource_ledger)
     assert (
         audit.forbidden_future_payloads,
         audit.unbounded_future_integers,
@@ -45,7 +45,7 @@ def test_noninitial_cycle_contract_rejects_the_certified_shortcut() -> None:
     workspace = term._source_image()
     foreign = PoweredCollatzTerm(2, 8)._source_image()
     assert_rejected_atomically(
-        term._ledger,
+        term.resource_ledger,
         lambda: workspace.validate_source(foreign.root_source),
         (ValueError, TypeError),
     )
@@ -86,8 +86,8 @@ def test_power_of_two_enters_cycle_with_bounded_residual_work(
     assert summary.odd_steps == (cycle_ticks + 2) // 3
     assert term.materialize(max_bits=4) == expected
     assert term.width() == expected.bit_length()
-    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) <= steps
-    assert term._ledger.counters.get("tile_causal_frames", 0) == 0
+    assert term.resource_ledger.counters.get("collatz_physical_leaf_steps", 0) <= steps
+    assert term.resource_ledger.counters.get("tile_causal_frames", 0) == 0
 
 
 def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> None:
@@ -96,24 +96,29 @@ def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> No
     expected = (1, 4, 2)[(steps - exponent) % 3]
     term = PoweredCollatzTerm(1 << exponent, steps)
     assert term.materialize(max_bits=4) == expected
-    assert term._ledger.counters["collatz_physical_cycle_compressions"] > 0
+    assert term.resource_ledger.counters["collatz_physical_cycle_compressions"] > 0
     assert (
-        term._ledger.counters["collatz_physical_temporal_zero_run_symbols"] == exponent
+        term.resource_ledger.counters["collatz_physical_temporal_zero_run_symbols"]
+        == exponent
     )
-    assert term._ledger.counters["collatz_physical_temporal_run_actions"] <= 4
-    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
-    assert term._ledger.counters.get("tile_causal_frames", 0) == 0
+    assert term.resource_ledger.counters["collatz_physical_temporal_run_actions"] <= 4
+    assert term.resource_ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
+    assert term.resource_ledger.counters.get("tile_causal_frames", 0) == 0
 
 
 def test_power_of_two_short_prefix_does_not_claim_cycle_entry() -> None:
     term = PoweredCollatzTerm(1 << 8, 4)
     assert term.materialize(max_bits=16) == 1 << 4
     assert term._source_image().summary().cycle is None
-    assert term._ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
+    assert (
+        term.resource_ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
+    )
 
 
 def test_multi_one_source_does_not_claim_power_of_two_cycle_entry() -> None:
     term = PoweredCollatzTerm((1 << 8) | 1, 4)
     assert term.materialize(max_bits=16) == 580
     assert term._source_image().summary().cycle is None
-    assert term._ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
+    assert (
+        term.resource_ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
+    )

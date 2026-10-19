@@ -36,13 +36,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.diamond_actions import CellID, ImageCellArena
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
-    DiamondQuotientArena,
-    DiamondQuotientID,
-    MacroComponents,
-    MacroInterface,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     MACRO_LEFT as _LEFT,
 )
@@ -55,13 +49,19 @@ from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     retag_numeric,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
 )
 from number_compiler.hashlife.interfaces.semantic_primitive_tasks import (
     PrimitiveMacroKey,
     PrimitiveMacroObservation,
     PrimitiveMacroTask,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+    DiamondQuotientID,
+    MacroComponents,
+    MacroInterface,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -183,7 +183,7 @@ class PrimitiveMacroArena:
     def _nonblank(self, function: FactoredFunctionID, blank: int) -> FactoredFunctionID:
         return differs_from_constant(self.bits, function, blank)
 
-    def _components(
+    def interface_components(
         self, quotient: DiamondQuotientID
     ) -> tuple[FactoredFunctionID, ...]:
         result = []
@@ -416,7 +416,7 @@ class PrimitiveMacroArena:
         coordinate = self._variable(
             ports, _COORDINATE, AtomSort("cell-coordinate", width)
         )
-        circuit = _Circuit(self.quotients.functions, ports)
+        circuit = BooleanCircuit(self.quotients.functions, ports)
         coords, valid = circuit.imported(self.bits.resolve(coordinate))
         local = circuit.normalized(
             FunctionSignature(ports, AtomSort("cell-coordinate", half)),
@@ -426,8 +426,11 @@ class PrimitiveMacroArena:
         branch = circuit.normalized(
             FunctionSignature(ports, BOOL), (coords[-1],), valid
         )
-        child_coordinate, is_right = self.bits._publish(circuit, (local, branch))
-        a, b = self._components(left.quotient), self._components(right.quotient)
+        child_coordinate, is_right = self.bits.publish_circuit(circuit, (local, branch))
+        a, b = (
+            self.interface_components(left.quotient),
+            self.interface_components(right.quotient),
+        )
 
         def lift(
             function: FactoredFunctionID,

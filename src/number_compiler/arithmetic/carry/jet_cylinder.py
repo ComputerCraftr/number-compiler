@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.polynomials.primary_jet import _poly_add, _poly_mul
+from number_compiler.arithmetic.polynomials.primary_jet import (
+    primary_jet_add,
+    primary_jet_multiply,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,9 +101,9 @@ class JetPortCylinder:
             rows.append(
                 JetPortRow(
                     second.outgoing,
-                    _poly_add(
+                    primary_jet_add(
                         first.jet,
-                        _poly_mul(shift, second.jet, self.modulus),
+                        primary_jet_multiply(shift, second.jet, self.modulus),
                         self.modulus,
                     ),
                 )

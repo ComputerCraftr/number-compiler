@@ -22,7 +22,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
 def _identity(name: str) -> SemanticIdentity:
@@ -139,10 +139,12 @@ def test_reverse_profile_has_real_temporal_generators_and_no_spatial_claim() -> 
 
 def test_nonblank_interval_interface_alias_is_not_temporally_closed() -> None:
     """A real P2 alias splits at P4, so LocalInterfaceID is not the class."""
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     engine = CausalTileEngine(scheduler)
     words = ((0, 0, 0, 0), (0, 1, 0, 0), (3, 0, 0, 0))
-    leases = [_tile(tiles, adapter, primitive, word) for word in words]
+    leases = [make_tile_from_symbols(tiles, adapter, primitive, word) for word in words]
     try:
         interfaces: dict[int, list[int]] = {}
         for exponent in (2, 4):

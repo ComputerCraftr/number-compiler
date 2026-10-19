@@ -6,9 +6,13 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.causal_frames import (
+    CausalTaskFrame,
+    ReverseBoundaryFrame,
+    ReverseInterfaceFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_results import lookup_causal_result
 from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
     schedule_reflected_scan,
     schedule_spatial_scan,
 )
@@ -18,7 +22,16 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     lookup_causal_interface,
 )
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalState,
+    CausalTaskValue,
+    pop_interface_payload,
+    pop_spatial_buffer,
+    require_spatial_buffer,
+    spatial_buffer_state_at,
+    spatial_buffer_tile_at,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
@@ -26,25 +39,24 @@ from number_compiler.resources.metric_keys import (
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from number_compiler.resources.causal_workspace import CausalFrameStack
 
 
 def supports_reverse_boundary(
     engine: CausalTileEngine,
     before: FieldCellActionID,
     after: FieldCellActionID,
-    state: object,
+    state: CausalState,
     side: int,
     view: BoundaryTileView,
-    anchor: object,
-    argument: object,
+    anchor: CausalState,
+    argument: CausalState,
 ) -> bool:
     """Admit bounded cold work or a completed deep producer observation."""
     adapter = engine.adapter
     if type(state) is not int or adapter.action_children(after) is not None:
         return False
     consumer = adapter.primitive_law(after)
-    producer = adapter.kernels.kernel(adapter._action(before).kernel)
+    producer = adapter.kernels.kernel(adapter.action_record(before).kernel)
     supported = (
         type(consumer.effect) in (BaseBlockEffect, DigitNormalizeBlockEffect)
         and type(producer.effect) is BaseBlockEffect
@@ -84,17 +96,15 @@ def supports_reverse_boundary(
 
 def reverse_boundary_step(
     engine: CausalTileEngine,
-    frame: CausalFrame,
-    frames: CausalFrameStack,
-    values: CausalResults,
+    frame: ReverseBoundaryFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
 ) -> bool:
     """Compose required dyadic interface observations in physical order."""
-    if frame.op != "reverse_boundary":
-        return False
     action, side, view, anchor, argument = frame.args
     workspace = engine.scheduler._causal_workspace
     if frame.stage == 4:
-        payload = values.pop()
+        payload = pop_interface_payload(values)
         summary = payload.bound_reverse_output
         if type(summary) is not ReverseBoundOutput:
             raise ValueError("reverse carry observation returned an incomplete summary")
@@ -120,41 +130,59 @@ def reverse_boundary_step(
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "reverse_interface", (action, pieces[0], anchor, argument)
-                    ),
+                    ReverseInterfaceFrame((action, pieces[0], anchor, argument)),
                 )
             )
             return True
-        chunks = workspace.allocate(len(pieces))
+        source_chunks = workspace.allocate(len(pieces))
         for tile in pieces:
-            chunks.append(tile)
+            source_chunks.append(tile)
+        frame.saved = (source_chunks, argument)
         schedule_spatial_scan(
-            workspace, frames, frame, action, 0, chunks, anchor, (chunks, argument)
+            workspace, frames, frame, action, 0, source_chunks, anchor
         )
     elif frame.stage == 1:
         schedule_reflected_scan(workspace, frames, frame, action, values)
     elif frame.stage == 2:
-        arguments = values.pop()
+        arguments = pop_spatial_buffer(values)
         arguments.reverse()
-        chunks, anchors = frame.saved
+        match frame.saved:
+            case (chunks_value, anchors_value):
+                chunks = require_spatial_buffer(chunks_value)
+                anchors = require_spatial_buffer(anchors_value)
+            case _:
+                raise AssertionError("reverse boundary reflection lost its anchors")
         frame.stage, frame.saved = 3, ((chunks, anchors, arguments), 0, None)
         frames.extend(
             (
                 frame,
-                CausalFrame(
-                    "reverse_interface", (action, chunks[0], anchors[0], arguments[1])
+                ReverseInterfaceFrame(
+                    (
+                        action,
+                        spatial_buffer_tile_at(chunks, 0),
+                        spatial_buffer_state_at(anchors, 0),
+                        spatial_buffer_state_at(arguments, 1),
+                    )
                 ),
             )
         )
     else:
-        payload = values.pop()
+        payload = pop_interface_payload(values)
         current = payload.bound_reverse_output
         if type(current) is not ReverseBoundOutput:
             raise ValueError("reverse carry observation returned an incomplete summary")
-        buffers, index, previous = frame.saved
+        match frame.saved:
+            case ((chunks_value, anchors_value, arguments_value), index, previous):
+                chunks = require_spatial_buffer(chunks_value)
+                anchors = require_spatial_buffer(anchors_value)
+                arguments = require_spatial_buffer(arguments_value)
+                if type(index) is not int:
+                    raise AssertionError("reverse boundary lost its transfer index")
+                if previous is not None and type(previous) is not ReverseBoundOutput:
+                    raise AssertionError("reverse boundary lost its prior summary")
+            case _:
+                raise AssertionError("reverse boundary lost its transfer cursor")
         summary = current if previous is None else previous.then(current, engine.ledger)
-        chunks, anchors, arguments = buffers
         index += 1
         if index == len(chunks):
             chunks.close()
@@ -163,13 +191,17 @@ def reverse_boundary_step(
             engine.ledger.bump(_execution_keys.REVERSE_BOUNDARY_TRANSFER_COMPLETIONS)
             values.append(summary)
         else:
-            frame.saved = (buffers, index, summary)
+            frame.saved = ((chunks, anchors, arguments), index, summary)
             frames.extend(
                 (
                     frame,
-                    CausalFrame(
-                        "reverse_interface",
-                        (action, chunks[index], anchors[index], arguments[index + 1]),
+                    ReverseInterfaceFrame(
+                        (
+                            action,
+                            spatial_buffer_tile_at(chunks, index),
+                            spatial_buffer_state_at(anchors, index),
+                            spatial_buffer_state_at(arguments, index + 1),
+                        )
                     ),
                 )
             )

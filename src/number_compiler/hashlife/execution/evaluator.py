@@ -345,7 +345,9 @@ def substitute_root(
         or inputs.plane_count != replacement.plane_count
     ):
         raise ValueError("input/replacement shape mismatch")
-    mapping = {src.id: dst for src, dst in zip(inputs.planes, replacement.planes)}
+    mapping = {
+        src.id: dst for src, dst in zip(inputs.planes, replacement.planes, strict=True)
+    }
     memo: dict[int, Expr] = {}
     return FormulaRoot(tuple(substitute(p, mapping, arena, memo) for p in root.planes))
 

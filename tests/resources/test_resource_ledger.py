@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from copy import copy
-from typing import cast
+from typing import TypeGuard, cast
 
 import pytest
 
@@ -14,9 +14,19 @@ from number_compiler.resources.ledger import (
     ResourceLedger,
     ResourceScope,
 )
+from number_compiler.resources.owned_memo import (
+    DynamicMemoValue,
+    OwnedMemoAuditPayloadView,
+)
 from number_compiler.resources.ownership import audit_execution_ownership
-from number_compiler.resources.stores import LedgerDict
+from number_compiler.resources.stores import LedgerDict, TrackedDict
 from tests.support.assertions import assert_rejected_atomically
+
+
+def _is_reservation_store(value: object) -> TypeGuard[TrackedDict[object, object]]:
+    return type(value) is TrackedDict and all(
+        type(key) is LedgerReservation for key in value
+    )
 
 
 def test_owner_name_batch_preflight_is_exact_distinct_and_nonmutating() -> None:
@@ -325,7 +335,7 @@ def test_dynamic_memo_adoption_rolls_back_on_base_exception(
     memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
         ledger, target, node_cost=lambda _key, value: len(value)
     )
-    original_setitem = LedgerDict.__setitem__
+    original_setitem = LedgerDict[object, object].__setitem__
 
     def insert_then_cancel(
         store: LedgerDict[object, object], key: object, value: object
@@ -629,6 +639,41 @@ def test_dispose_releases_payload_and_rejects_even_warm_access() -> None:
     ledger.evict_query_memos()
 
 
+def test_owned_memo_audit_payload_view_is_read_only_and_counter_neutral_after_close() -> (
+    None
+):
+    ledger = ResourceLedger()
+    owner = ledger.register("closed-audit", "query_memo")
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger, owner, node_cost=lambda _key, value: len(value)
+    )
+    memo["kept"] = (2, 3)
+    before = ledger.snapshot()
+
+    live_view = memo.audit_payload_view()
+    assert live_view["kept"] == (2, 3)
+    assert live_view.backing_store_identity is memo.audit_snapshot().container
+    assert ledger.snapshot() == before
+
+    memo.dispose()
+    after_close = ledger.snapshot()
+    closed_view = memo.audit_payload_view()
+    assert len(closed_view) == 0
+    assert tuple(closed_view) == ()
+    assert closed_view.backing_store_identity is memo.audit_snapshot().container
+    assert ledger.snapshot() == after_close
+
+
+def test_dynamic_memo_audit_view_rejects_malformed_cost_wrapper() -> None:
+    malformed: dict[str, DynamicMemoValue[str] | str] = {
+        "bad": "payload without cost metadata"
+    }
+    view = OwnedMemoAuditPayloadView(malformed, dynamic_cost=True)
+
+    with pytest.raises(TypeError, match="invalid cost metadata"):
+        _ = view["bad"]
+
+
 def test_owning_term_and_ledger_lifetime_does_not_pin_unowned_arenas() -> None:
     import gc
     import weakref
@@ -636,8 +681,10 @@ def test_owning_term_and_ledger_lifetime_does_not_pin_unowned_arenas() -> None:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     term = ReverseAddPoweredTerm(196, 16)
-    workspace = term._source_workspace()
-    ledger = weakref.ref(term._ledger)
+    term.completed_q19_occurrence()
+    workspace = term.published_workspace
+    assert workspace is not None
+    ledger = weakref.ref(term.resource_ledger)
     scheduler = weakref.ref(workspace.scheduler)
     actions = weakref.ref(workspace.actions)
     workspace_owner = weakref.ref(workspace)
@@ -708,7 +755,9 @@ def test_payload_audit_cache_is_reused_and_invalidated_by_store_mutations() -> N
     # Adversarial tests intentionally bypass the public store wrapper. The
     # tracked backing container still invalidates previously cached evidence.
     version = ledger.mutation_version
-    store._data[0] = b"future-payload"
+    backing = object.__getattribute__(store, "_data")
+    assert isinstance(backing, TrackedDict)
+    backing[0] = b"future-payload"
     assert ledger.mutation_version > version
     third = audit_registered_payloads(ledger, fresh=False)
     assert third is not second
@@ -732,20 +781,24 @@ def test_ownership_audit_cache_is_invalidated_by_new_execution_roots() -> None:
     assert second.unregistered_containers == 1
 
 
-def test_reservation_bookkeeping_audits_mutable_children() -> None:
+def test_reservation_bookkeeping_audits_mutable_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from number_compiler.resources.ownership import audit_execution_ownership
 
     ledger = ResourceLedger()
     owner = ledger.register("reservation-audit", "WORKSPACE")
     reservation = LedgerReservation(ledger, owner)
-    state = ledger._reservation_state(reservation)
     assert audit_execution_ownership(ledger).violations == ()
 
-    ledger._reservations[reservation] = (owner, 0, [])  # type: ignore[assignment]
-    audit = audit_execution_ownership(ledger)
-    assert any("_reservations.value" in item.path for item in audit.violations)
+    reservation_store = object.__getattribute__(ledger, "_reservations")
+    assert _is_reservation_store(reservation_store)
+    assert reservation in reservation_store
+    with monkeypatch.context() as patch:
+        patch.setitem(reservation_store, reservation, (owner, 0, []))
+        audit = audit_execution_ownership(ledger)
+        assert any("_reservations.value" in item.path for item in audit.violations)
 
-    ledger._reservations[reservation] = state
     reservation.close()
 
 
@@ -753,17 +806,24 @@ def test_reservation_close_rejects_foreign_and_spoofed_handles() -> None:
     ledger = ResourceLedger()
     owner = ledger.register("reservation-close", "WORKSPACE")
     reservation = LedgerReservation(ledger, owner)
+    reservation.reserve(entries=1, nodes=1)
     foreign = ResourceLedger()
     foreign_owner = foreign.register("foreign-reservation-close", "WORKSPACE")
     foreign_reservation = LedgerReservation(foreign, foreign_owner)
 
+    assert reservation.belongs_to(ledger)
+    assert not foreign_reservation.belongs_to(ledger)
+    assert foreign_reservation.resource_ledger is foreign
     with pytest.raises(TypeError, match="exact tracker"):
         ledger._close_reservation(object())
     with pytest.raises(ValueError, match="another ledger"):
         ledger._close_reservation(foreign_reservation)
-    assert ledger._reservation_state(reservation) == (owner, 0, 0)
+    assert ledger._reservation_state(reservation) == (owner, 1, 1)
     reservation.close()
     reservation.close()
+    assert (ledger.entries, ledger.nodes) == (0, 0)
+    with pytest.raises(RuntimeError, match="closed or is foreign"):
+        reservation.transfer_to(owner, entries=1)
     foreign_reservation.close()
 
 

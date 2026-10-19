@@ -7,7 +7,7 @@ from typing import Protocol
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
     DirectedTransferRequest,
     _DirectedTransferAdmission,
@@ -24,7 +24,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
-from number_compiler.resources.causal_workspace import (
+from number_compiler.resources.causal_stacks import (
     CausalFrameStack,
     CausalValueStack,
 )
@@ -38,15 +38,15 @@ class _Host(Protocol):
     tiles: TileArena
     ledger: ResourceLedger
 
-    def _require_results(self) -> CompletedResultArena: ...
+    def require_results(self) -> CompletedResultArena: ...
 
-    def _observe(
+    def observe(
         self, interface: LocalInterfaceID, channel: str, ports: tuple[int, ...]
     ) -> int: ...
 
 
 @dataclass(slots=True)
-class _Frame:
+class DirectedTransferFrame:
     tile: TileID
     incoming: int
     stage: int = 0
@@ -61,6 +61,10 @@ class _Frame:
     def saved(self) -> tuple[object, ...]:
         return () if self.request is None else (self.midpoint, self.request)
 
+    def payload_reference_count(self) -> int:
+        """Return the directly retained references charged by the task stack."""
+        return len(self.args) + len(self.saved)
+
 
 def directed_transfer(
     host: _Host,
@@ -71,7 +75,7 @@ def directed_transfer(
     wiring: ResultWiring,
 ) -> int:
     """Apply one primitive transfer, caching concrete canonical parents first."""
-    results = host._require_results()
+    results = host.require_results()
     frames, values = _directed_workspace(results)
     admission = _prepare_admission(results, action, wiring, side)
     try:
@@ -99,7 +103,7 @@ def canonical_directed_transfer(
     _action_admission: object | None = None,
 ) -> int:
     """Apply canonical primitive wiring after one action validation."""
-    results = host._require_results()
+    results = host.require_results()
     frames, values = _directed_workspace(results)
     admission = _prepare_canonical_admission(
         results,
@@ -109,7 +113,7 @@ def canonical_directed_transfer(
     )
     ports = list(admission.initial_ports)
     ports[side] = incoming
-    results._validate_ports(admission.wiring.signature, (ports[0], ports[1]))
+    results.validate_ports(admission.wiring.signature, (ports[0], ports[1]))
     try:
         return _run_directed(
             host,
@@ -128,7 +132,7 @@ def canonical_directed_transfer(
 def _run_directed(
     host: _Host,
     results: CompletedResultArena,
-    frames: CausalFrameStack,
+    frames: CausalFrameStack[DirectedTransferFrame],
     values: CausalValueStack,
     tile: TileID,
     incoming: int,
@@ -136,7 +140,7 @@ def _run_directed(
 ) -> int:
     action, side, wiring = admission.action, admission.side, admission.wiring
     law = admission.kernel
-    frames.append(_Frame(tile, incoming))
+    frames.append(DirectedTransferFrame(tile, incoming))
     while frames:
         old_peak = host.ledger.counters.get(
             _execution_keys.TILE_DIRECTED_TRANSFER_WORKSPACE_PEAK, 0
@@ -175,7 +179,7 @@ def _run_directed(
                     raise AssertionError("directed interface disappeared during lookup")
                 ports = list(admission.initial_ports)
                 ports[side] = frame.incoming
-                outgoing = host._observe(
+                outgoing = host.observe(
                     interface,
                     "boundary_right" if side else "boundary_left",
                     (ports[0], ports[1]),
@@ -209,7 +213,7 @@ def _run_directed(
                 raise ValueError("directed transfer reached a malformed parent")
             first = node.left if side == 0 else node.right
             frame.stage = 1
-            frames.extend((frame, _Frame(first, frame.incoming)))
+            frames.extend((frame, DirectedTransferFrame(first, frame.incoming)))
             continue
         node = host.tiles.resolve(frame.tile)
         if node.left is None or node.right is None:
@@ -218,7 +222,7 @@ def _run_directed(
             frame.midpoint = values.pop()
             frame.stage = 2
             second = node.right if side == 0 else node.left
-            frames.extend((frame, _Frame(second, frame.midpoint)))
+            frames.extend((frame, DirectedTransferFrame(second, frame.midpoint)))
             continue
         outgoing = values.pop()
         if frame.request is None:
@@ -237,7 +241,7 @@ __all__ = ["canonical_directed_transfer", "directed_transfer"]
 
 def _directed_workspace(
     results: CompletedResultArena,
-) -> tuple[CausalFrameStack, CausalValueStack]:
+) -> tuple[CausalFrameStack[DirectedTransferFrame], CausalValueStack]:
     tasks = results._causal_tasks
     if tasks is None:
         raise ValueError("directed transfer requires its scheduler task workspace")

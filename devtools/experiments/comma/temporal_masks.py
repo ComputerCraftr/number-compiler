@@ -16,7 +16,7 @@ from time import perf_counter
 from typing import Literal
 
 from devtools.experiments.comma.generate_rank_candidate import (
-    _decade_round_candidate,
+    decade_round_candidate,
 )
 from number_compiler.sequences.comma.arithmetic import (
     cycle_residue_period,
@@ -270,11 +270,11 @@ def _word(parts: dict[WordOutput, int]) -> PhaseWord:
 
 def reference_base_words() -> tuple[PhaseWord, ...]:
     """Measured reference construction, not quotient-first proof generation."""
-    words = []
+    words: list[PhaseWord] = []
     for representative in orbit_representatives():
         parts: dict[WordOutput, int] = {}
         for phase in range(PERIOD):
-            step = _decade_round_candidate(phase, representative)
+            step = decade_round_candidate(phase, representative)
             if step.successor is not None:
                 next_phase, offset = step.successor
                 if next_phase != (phase + 1) % PERIOD:
@@ -294,7 +294,7 @@ def square_words(
 ) -> tuple[tuple[PhaseWord, ...], int]:
     if type(span) is not int or span < 1 or len(words) != 46:
         raise ValueError("invalid source-fiber action or span")
-    result = []
+    result: list[PhaseWord] = []
     intersections = 0
     for word in words:
         parts: dict[WordOutput, int] = {}
@@ -344,7 +344,7 @@ class SectorMaskCompiler:
         if PERIOD % period:
             raise AssertionError("local cyclotomic period does not divide 924")
         repetition = FULL_MASK // ((1 << period) - 1)
-        branches = []
+        branches: list[SectorBranch] = []
         for phase in range(period):
             chart = BoundaryChart("entry", leading, 0, offset)
             while True:
@@ -424,7 +424,7 @@ class SectorMaskCompiler:
             out.kind == "live" for word in decades for out, _ in word.leaves
         ):
             raise ValueError("boundary construction requires 46 complete stop words")
-        result = []
+        result: list[PhaseWord] = []
         for kind in ("N", "Z"):
             for a in range(2, 10):
                 # N(a,p) has one unique crossing into Entry(a,90+a-1).
@@ -471,7 +471,7 @@ def losing_fixed_point(words: tuple[PhaseWord, ...]) -> tuple[tuple[int, ...], i
     losing: tuple[int, ...] = (0,) * 16
     rounds = 0
     while True:
-        updated = []
+        updated: list[int] = []
         for schema, word in enumerate(words):
             mask = losing[schema]
             for out, source_mask in word.leaves:
@@ -503,7 +503,7 @@ def surviving_cycle(
     current = initial
     visited: set[tuple[int, int]] = set()
     gain = 0
-    choices = []
+    choices: list[str] = []
     while current not in visited:
         visited.add(current)
         schema, phase = current
@@ -550,7 +550,7 @@ def audit(*, compare_reference: bool = False) -> dict[str, object]:
                 "symbolic sector words disagree with canonical full rounds"
             )
         reference_seconds = perf_counter() - start
-    levels = []
+    levels: list[dict[str, object]] = []
     span = 1
     for _ in range(5):
         start = perf_counter()

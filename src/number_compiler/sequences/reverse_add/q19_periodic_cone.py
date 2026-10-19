@@ -13,7 +13,7 @@ or treats matching output residues as matching decimal pair coefficients.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -127,7 +127,7 @@ def _fold_match(
     owner: ReversePairQ19OutputOwner,
     root: int,
     pattern: tuple[int, ...],
-) -> Iterator[dict[int, _Match]]:
+) -> Generator[dict[int, _Match], None, None]:
     """Memoize all Q19 SLP nodes under exact periodic *output* matching."""
     node_bound = len(owner.arena.nodes)
     with owner.ledger.reservation(

@@ -305,53 +305,76 @@ def _candidate_pairs(
         carry = _carry(outer_sum, carry)
 
     outputs: set[tuple[int, int]] = set()
-    for _reset_position, transfer in phase.first_reset_witnesses:
+    for reset_position, transfer in phase.first_reset_witnesses:
         if transfer not in phase.middle_transfers:
             raise ValueError("first-reset witness lost its correlated carry map")
-        # Reset coordinates remain part of the issued witness but are
-        # projected away here: the exact punctured source-root join needed to
-        # bind a row state to that coordinate is not available in this API.
-        # The retained middle map spans the full inward coefficient word,
-        # including this pair. Its output is already the reflected carry for
-        # the canonical Q19 pair law.
-        high = _apply_carry(transfer, low)
-        right_in = high
-        upper_source = [0] * position
-        for index in range(position - 1, -1, -1):
-            upper_source[index] = (pair_sums[index] + right_in) % 10
-            right_in = _carry(pair_sums[index], right_in)
-        if right_in != phase.port.growth:
-            continue
-
-        if phase.port.growth:
-            upper_target = [1, *upper_source[:-1]]
-            upper_digit = upper_source[-1]
+        # The retained transfer spans the candidate pair as well as the
+        # deeper seam. Its value is the carry leaving that pair, not the
+        # reflected carry entering it. Reconstruct the latter from the
+        # deeper map and the carry entering the pair.
+        if reset_position == position:
+            expected_reset = (
+                CarryFn.CONST0
+                if pair_sum < 9
+                else CarryFn.CONST1
+                if pair_sum > 9
+                else None
+            )
+            if expected_reset is None or transfer is not expected_reset:
+                continue
+        elif reset_position == -1 or reset_position > position:
+            if pair_sum != 9:
+                continue
         else:
-            upper_target = upper_source
-            upper_digit = (pair_sum + high) % 10
-        if any(
-            (lower_source[index], upper_target[index]) != target_outer[index]
-            for index in range(position)
-        ):
-            continue
-        output = ((pair_sum + low) % 10, upper_digit)
-        if output[0] + output[1] not in target_domain:
-            continue
-        if exact_target is not None and output != exact_target:
-            continue
-        # Keep this ordered-digit formula tied to the canonical Q19 pair law.
-        from .conditional_pair_ring import RingPairLetter
+            raise ValueError("first-reset witness precedes the retained pair")
 
-        letter = RingPairLetter(
-            position,
-            phase.port.growth,
-            pair_sums[-1] if phase.port.growth and position else None,
-            low,
-            high,
-        )
-        if letter.successor(pair_sum) != sum(output):
-            raise AssertionError("ordered-pair transfer disagrees with Q19 law")
-        outputs.add(output)
+        for deeper in (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1):
+            # The whole middle map is K_q o F o K_q. Check both possible
+            # inputs before using F to recover the reflected carry.
+            if any(
+                _carry(pair_sum, _apply_carry(deeper, _carry(pair_sum, bit)))
+                != _apply_carry(transfer, bit)
+                for bit in (0, 1)
+            ):
+                continue
+            right_in = _apply_carry(deeper, _carry(pair_sum, low))
+            high_out = _carry(pair_sum, right_in)
+            upper_source = [0] * position
+            upper_carry = high_out
+            for index in range(position - 1, -1, -1):
+                upper_source[index] = (pair_sums[index] + upper_carry) % 10
+                upper_carry = _carry(pair_sums[index], upper_carry)
+            if upper_carry != phase.port.growth:
+                continue
+
+            if phase.port.growth:
+                upper_target = [1, *upper_source[:-1]]
+                upper_digit = upper_source[-1]
+            else:
+                upper_target = upper_source
+                upper_digit = (pair_sum + right_in) % 10
+            if any(
+                (lower_source[index], upper_target[index]) != target_outer[index]
+                for index in range(position)
+            ):
+                continue
+            output = ((pair_sum + low) % 10, upper_digit)
+            if output[0] + output[1] not in target_domain:
+                continue
+            if exact_target is not None and output != exact_target:
+                continue
+            from .conditional_pair_ring import RingPairLetter
+
+            letter = RingPairLetter(
+                position,
+                phase.port.growth,
+                pair_sums[-1] if phase.port.growth and position else None,
+                low,
+                right_in,
+            )
+            if letter.successor(pair_sum) != sum(output):
+                raise AssertionError("ordered-pair transfer disagrees with Q19 law")
+            outputs.add(output)
     return tuple(sorted(outputs))
 
 
@@ -445,7 +468,7 @@ class ConditionalQ19DepthWindow:
         default=None, init=False, repr=False, compare=False
     )
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def publication_snapshot(self) -> tuple[object, ...]:
         return (
             id(self.source_word),
             _scalar_snapshot(self.position),
@@ -467,7 +490,7 @@ class ConditionalQ19DepthWindow:
         """Validate this packet's seal, snapshot, and live source chain once."""
         if self._issued_self is None or self._issued_self() is not self:
             raise ValueError("Q19 depth window was not issued")
-        if self._seal is not _ISSUER or self._binding != self._snapshot():
+        if self._seal is not _ISSUER or self._binding != self.publication_snapshot():
             raise ValueError("Q19 depth window contents changed")
         self.source_word.validate()
         if (

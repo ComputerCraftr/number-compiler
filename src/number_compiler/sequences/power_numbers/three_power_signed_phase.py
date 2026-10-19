@@ -27,7 +27,7 @@ from number_compiler.sequences.power_numbers.three_power_outer_inner_cyclotomic 
     demand_outer_inner_phase_constraint,
 )
 from number_compiler.sequences.power_numbers.three_power_two_sided_cylinder import (
-    _terminal_status_from_signed_folds,
+    terminal_status_from_signed_folds,
 )
 
 if TYPE_CHECKING:
@@ -162,16 +162,18 @@ class SourceRestrictedPhaseRelation:
         return (
             self.cylinder.producer_verified
             and self.outer_inner.producer_verified
-            and harmonic_verified(self, self._payload(), issuer=_JOINT_PHASE_ISSUER)
+            and harmonic_verified(
+                self, self.structural_payload(), issuer=_JOINT_PHASE_ISSUER
+            )
         )
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
             harmonic_payload(self.phase),
-            self.cylinder._payload(),
+            self.cylinder.structural_payload(),
             self.boundary_domains,
             self.complete_histograms,
-            self.outer_inner._payload(),
+            self.outer_inner.structural_payload(),
         )
 
     @property
@@ -226,7 +228,7 @@ class SourceRestrictedPhaseRelation:
         signed_folds = tuple(
             signed_phase_fold(row, self.phase.fold_width) for row in histograms
         )
-        return _terminal_status_from_signed_folds(
+        return terminal_status_from_signed_folds(
             self.cylinder.source.level, self.phase.fold_width, signed_folds
         )
 
@@ -278,5 +280,5 @@ def demand_source_restricted_phase_relation(
             if len(row) != 2 * source.fold_width:
                 raise ArithmeticError("signed phase fiber width mismatch")
     joint = SourceRestrictedPhaseRelation(phase, cylinder, domains, hist, outer_inner)
-    issue_harmonic(joint, joint._payload(), issuer=_JOINT_PHASE_ISSUER)
+    issue_harmonic(joint, joint.structural_payload(), issuer=_JOINT_PHASE_ISSUER)
     return joint

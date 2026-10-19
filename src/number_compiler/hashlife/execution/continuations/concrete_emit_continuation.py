@@ -56,9 +56,9 @@ def cached_residual(
 ) -> PortAtom | None:
     """Probe an already-complete normalized residual before scheduling it."""
     scheduler.adapter.validate_action(action)
-    scheduler._validate_side(side)
+    scheduler.validate_side(side)
     scheduler.resolve_residual(residual)
-    scheduler._validate_atom(argument)
+    scheduler.validate_atom(argument)
     children = scheduler.adapter.children(action)
     if children is None:
         raise ValueError("cached residual lookup requires a composed action")

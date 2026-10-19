@@ -133,7 +133,7 @@ def residue_constraint_audits() -> tuple[ResidueConstraintAudit, ...]:
     # y^2 = 2 +/- x is exact over prime fields for both the first image and the
     # split/nonsplit stable-core boundary.  M11 demonstrates why +1 cannot be
     # promoted through a composite ring.
-    for p, prime_case in ((7, True), (11, False), (13, True), (17, True)):
+    for p in (7, 11, 13, 17):
         proof = _mersenne_carrier_proof(p, max_exponent=max(19, p))
         filt = unary_image_filtration(proof.transition)
         first_image = {proof.transition[state] for state in range(proof.classes)}

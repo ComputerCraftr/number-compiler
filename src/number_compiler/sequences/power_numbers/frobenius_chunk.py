@@ -24,7 +24,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import gcd
 
-from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_odd_modulus,
+    require_instance,
+)
 
 _VALID_STATUS = frozenset({"ALL_PASS", "ALL_FAIL", "SPLIT", "UNKNOWN"})
 
@@ -187,8 +190,7 @@ class SpecialFrobeniusChunkResult:
         short-circuit; UNKNOWN remains UNKNOWN.  This is the exact conjunction
         quotient required by the terminal certificate.
         """
-        if not isinstance(downstream, SpecialFrobeniusChunkResult):
-            raise TypeError(type(downstream))
+        require_instance(downstream, SpecialFrobeniusChunkResult)
         combined_spec = self.spec.then(downstream.spec)
         method = f"compose({self.method},{downstream.method})"
         if self.status == "ALL_PASS":
@@ -354,8 +356,7 @@ def special_frobenius_chunk_probe(
     coefficient extractor is still the theorem frontier.  Until that extractor
     exists this surface is intentionally UNKNOWN and performs zero hidden work.
     """
-    if not isinstance(spec, SpecialFrobeniusChunkSpec):
-        raise TypeError(type(spec))
+    require_instance(spec, SpecialFrobeniusChunkSpec)
     return SpecialFrobeniusChunkResult(
         spec,
         "UNKNOWN",

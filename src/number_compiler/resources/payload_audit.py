@@ -23,8 +23,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
 from number_compiler.resources.approved_effect_keys import (
-    effect_key_fingerprint,
-    effect_key_snapshot,
+    approved_effect_key_checker,
+    record_approved_effect_key,
 )
 from number_compiler.resources.cache_gc_metrics import cache_event_owner_audit
 from number_compiler.resources.callback_payload_audit import (
@@ -33,7 +33,10 @@ from number_compiler.resources.callback_payload_audit import (
 from number_compiler.resources.ledger import LedgerSnapshot, OwnedMemo, ResourceLedger
 from number_compiler.resources.numeric_payload import numeric_aggregate_audit
 from number_compiler.resources.payload_containers import audit_mapping_items
-from number_compiler.resources.payload_contracts import _contract_semantic_component
+from number_compiler.resources.payload_contracts import (
+    SemanticComponentAuditMemo,
+    _contract_semantic_component,
+)
 from number_compiler.resources.payload_schema import valid_semantic_record
 from number_compiler.resources.proof_payload_admission import (
     audit_registered_proof_payloads,
@@ -61,6 +64,7 @@ def audit_registered_payloads(
     from number_compiler.resources.payload_policy import (
         _DIGIT_FIELDS,
         _HISTORY_FIELDS,
+        AGGREGATE_EXEMPT_PAYLOAD_ROLES,
         PayloadAudit,
         _role,
     )
@@ -92,6 +96,9 @@ def audit_registered_payloads(
     )
     from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
+    from number_compiler.hashlife.execution.continuations.concrete_port_records import (
+        VirtualInterface,
+    )
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
         ConcretePortScheduler,
     )
@@ -116,13 +123,13 @@ def audit_registered_payloads(
     )
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
-        LocalInterfaceID,
     )
+    from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
     from number_compiler.hashlife.observation.diamond_observers import (
         NonblankBlockEffect,
     )
     from number_compiler.hashlife.tiles.tile_behavior_memo import (
-        _validate_published as validate_published_behavior,
+        validate_published_behavior,
     )
     from number_compiler.hashlife.tiles.tile_result_records import (
         BehaviorBindingKey,
@@ -197,9 +204,6 @@ def audit_registered_payloads(
     seen: set[tuple[int, int]] = set()
     forbidden: set[tuple[int, int]] = set()
     forbidden.update(contract_audit.invalid)
-    contract_result_ids = {
-        identity for _, identity in contract_audit.approved | contract_audit.invalid
-    }
     cache_event_owners, cache_event_invalid = cache_event_owner_audit(
         execution_roots,
         ledger,
@@ -296,7 +300,7 @@ def audit_registered_payloads(
     for root in execution_roots:
         if type(root) is not TileScheduler or root.ledger is not ledger:
             continue
-        if root._source_only:
+        if root.is_source_only:
             continue
         approved, invalid = audit_tile_dependency_leases(
             root._causal_dependencies,
@@ -417,11 +421,11 @@ def audit_registered_payloads(
             except (TypeError, ValueError, AttributeError):
                 forbidden.add((definition_owner, id(definition)))
                 continue
-            key_snapshot = effect_key_snapshot(key)
-            if key_snapshot is not None:
-                fingerprint, identity_ids = key_snapshot
-                approved_key_identity_ids.update(identity_ids)
-                approved_key_fingerprints.add(fingerprint)
+            record_approved_effect_key(
+                key,
+                authorized_identity_ids=approved_key_identity_ids,
+                approved_fingerprints=approved_key_fingerprints,
+            )
             approved_metadata.update(candidate_metadata)
             if type(definition) is ProgramComposition:
                 definitions.extend(
@@ -439,18 +443,14 @@ def audit_registered_payloads(
         ):
             definitions.extend((definition_owner, item) for item in definition)
 
-    def approved_key(value: object) -> bool:
-        if id(value) in approved_metadata:
-            return True
-        if type(value) is tuple:
-            fingerprint = effect_key_fingerprint(
-                value, authorized_identity_ids=approved_key_identity_ids
-            )
-            return fingerprint is not None and fingerprint in approved_key_fingerprints
-        return False
-
+    approved_key = approved_effect_key_checker(
+        approved_metadata, approved_key_identity_ids, approved_key_fingerprints
+    )
     semantic = SemanticPayloadRegistry(
-        ledger, approved_key, diamond._handle, diamond.valid
+        ledger,
+        approved_key,
+        diamond._handle,
+        diamond.valid,
     )
     forbidden.update(semantic.auxiliary.invalid_bindings)
     forbidden.update(semantic.primitive_macros.invalid_bindings)
@@ -479,26 +479,17 @@ def audit_registered_payloads(
             "_native_source",
         )
     )
-    checked_components: dict[tuple[int, int | None], tuple[object, bool]] = {}
-
-    def semantic_component(value: object, *, owner: int | None = None) -> bool:
-        cache_key = (id(value), owner)
-        checked = checked_components.get(cache_key)
-        if checked is not None and checked[0] is value:
-            return checked[1]
-        valid = semantic_component_uncached(value, owner=owner)
-        checked_components[cache_key] = value, valid
-        return valid
-
-    def family_audit_approves(
-        identities: frozenset[int], value: object, owner: int | None
-    ) -> bool:
-        identity = id(value)
-        if identity not in contract_result_ids:
-            return identity in identities
-        return owner is not None and (owner, identity) in contract_audit.approved
 
     def semantic_component_uncached(value: object, *, owner: int | None = None) -> bool:
+        if type(value) is VirtualInterface:
+            return (
+                owner is not None
+                and (
+                    owner,
+                    id(value),
+                )
+                in field_images.virtual_interfaces
+            )
         if owner is not None and slp_payloads.approves(owner, value):
             return True
         if type(value) in family_effects.compatibility_types:
@@ -524,15 +515,15 @@ def audit_registered_payloads(
             )
         if type(value) is tuple and id(value) in finite_support_records:
             return True
-        if family_audit_approves(higher_payloads.approved, value, owner):
+        if contract_audit.approves_member(higher_payloads.approved, value, owner):
             return True
-        if family_audit_approves(support_payloads.approved, value, owner):
+        if contract_audit.approves_member(support_payloads.approved, value, owner):
             return True
-        if family_audit_approves(field_actions.approved, value, owner):
+        if contract_audit.approves_member(field_actions.approved, value, owner):
             return True
-        if family_audit_approves(field_images.approved, value, owner):
+        if contract_audit.approves_member(field_images.approved, value, owner):
             return True
-        if family_audit_approves(radix_providers.approved, value, owner):
+        if contract_audit.approves_member(radix_providers.approved, value, owner):
             return True
         if id(value) in semantic.auxiliary.projection_maps:
             return True  # Actual radix parameter -> owned execution context, not digit storage.
@@ -603,6 +594,8 @@ def audit_registered_payloads(
         if type(value) is RadixProjection:
             return set(vars(value)) == radix_fields
         return type(value) in record_opaque or value is ledger
+
+    semantic_component = SemanticComponentAuditMemo(semantic_component_uncached)
 
     head_scopes = {
         root.expression_heads.owner: root
@@ -683,26 +676,19 @@ def audit_registered_payloads(
                 (owner, identity) for identity in _proof_objects(container)
             )
         if (
-            not family_audit_approves(field_images.approved, container, owner)
-            and not family_audit_approves(radix_providers.approved, container, owner)
-            and not family_audit_approves(support_payloads.approved, container, owner)
+            not contract_audit.approves_member_in(
+                (
+                    field_images.approved,
+                    radix_providers.approved,
+                    support_payloads.approved,
+                ),
+                container,
+                owner,
+            )
             and not slp_payloads.approves(owner, container)
             and owner not in finite_index_owners
             and owner not in cache_event_owners
-            and roles[owner]
-            not in (
-                "exact_source",
-                "exact_endpoint",
-                "explicit_lowering",
-                "lowering",
-                "exact_microblock",
-                "radix_image_binding",
-                "image_input_reference",
-                "image_input_reference_interner",
-                "image_input_reference_binding",
-                "future_behavior_admission",
-                "future_behavior_publication_snapshot",
-            )
+            and roles[owner] not in AGGREGATE_EXEMPT_PAYLOAD_ROLES
         ):
             aggregate = numeric_aggregate_audit(
                 container,
@@ -734,12 +720,16 @@ def audit_registered_payloads(
         role = roles[owner]
         if identity in contract_audit.approved:
             continue
+        if type(value) is VirtualInterface:
+            if identity not in field_images.virtual_interfaces:
+                forbidden.add(identity)
+            continue
         if type(value) in family_effects.compatibility_types:
             if not family_effects.valid_compatibility(value):
                 forbidden.add(identity)
             continue
         if any(
-            family_audit_approves(audit.approved, value, owner)
+            contract_audit.approves_member(audit.approved, value, owner)
             for audit in (
                 field_actions,
                 field_images,

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 from number_compiler.arithmetic.functions.finite_unary import (
     ObserverAnalysis,
@@ -22,6 +23,19 @@ from number_compiler.arithmetic.functions.finite_unary import (
     unary_image_filtration,
     unary_target_distance_machine,
 )
+
+_Key = TypeVar("_Key", bound=Hashable)
+_Value = TypeVar("_Value")
+
+
+def transition_conflict_count(transitions: Iterable[tuple[_Key, _Value]]) -> int:
+    """Count successor disagreements with the first observation of each key."""
+    observed: dict[_Key, _Value] = {}
+    conflicts = 0
+    for key, successor in transitions:
+        if observed.setdefault(key, successor) != successor:
+            conflicts += 1
+    return conflicts
 
 
 @dataclass(frozen=True, slots=True)

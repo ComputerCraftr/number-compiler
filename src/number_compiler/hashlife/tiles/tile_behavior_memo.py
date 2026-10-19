@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.metric_keys import (
     hashlife_tiles as _tiles_keys,
 )
@@ -81,7 +82,7 @@ def reserve_behavior_publication(
 ) -> BehaviorPublicationReservation:
     if type(arena) is not CompletedResultArena or type(request) is not PoweredResultKey:
         raise TypeError("behavior reservation requires a powered result request")
-    arena._validate_key(request)
+    arena.validate_key(request)
     tiles = arena._unique_tiles(
         (
             request.input,
@@ -98,7 +99,7 @@ def reserve_behavior_publication(
     )
     reservations = (
         (arena._memo_owner, 1, 0),
-        (arena._reverse_owner, arena._index_entries(tiles), 0),
+        (arena._reverse_owner, arena.index_entries(tiles), 0),
     )
     arena.ledger.reserve_many(reservations)
     return BehaviorPublicationReservation(
@@ -120,7 +121,10 @@ def behavior_binding_key(
     return BehaviorBindingKey(request, profile)
 
 
-def _detached_handle(value: Any) -> Any:
+_HandleT = TypeVar("_HandleT", bound=ArenaHandle)
+
+
+def _detached_handle(value: _HandleT) -> _HandleT:
     """Copy a scoped handle while retaining its arena token authority."""
     return type(value)(value.owner, value.kind, value.local_id)
 
@@ -203,11 +207,11 @@ def _validate_key(arena: CompletedResultArena, key: BehaviorBindingKey) -> None:
         raise TypeError("behavior binding has another key sort")
     if type(key.request) is not PoweredResultKey:
         raise TypeError("behavior binding requires a powered request")
-    arena._validate_key(key.request)
+    arena.validate_key(key.request)
     arena.interfaces.resolve_future_profile(key.profile)
 
 
-def _validate_published(
+def validate_published_behavior(
     arena: CompletedResultArena,
     key: BehaviorBindingKey,
     value: CompletedBehaviorClassification,
@@ -252,7 +256,7 @@ def _validate_blank_proof(
             "quiescent behavior requires an inactive exact input"
         )
     authority = cast("PrimitiveTileKernelAdapter", arena.action_authority)
-    action_record = authority._action(key.action)
+    action_record = authority.action_record(key.action)
     if type(action_record.homogeneous) is not bool or not action_record.homogeneous:
         raise UnsupportedBehaviorBinding(
             "quiescent behavior requires a homogeneous action"
@@ -321,7 +325,7 @@ def lookup_behavior_classification(
         return None
     if type(found) is not CompletedBehaviorClassification:
         raise TypeError("behavior memo contains another value sort")
-    _validate_published(arena, key, found)
+    validate_published_behavior(arena, key, found)
     arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_EARLY_HITS)
     arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_EARLY_HITS)
     record_execution_cache_event(
@@ -358,7 +362,7 @@ def publish_behavior_classification(
         arena._interface_publication_seal,
         _snapshot(key, value),
     )
-    _validate_published(arena, key, value)
+    validate_published_behavior(arena, key, value)
     found = arena._memo.get(key)
     if found is not None:
         if reservation is not None:
@@ -381,8 +385,8 @@ def publish_behavior_classification(
         arena._interface_publication_seal,
         _snapshot(stored_key, value),
     )
-    referenced = arena._tiles_for(stored_key, value)
-    reverse_entries = arena._index_entries(referenced)
+    referenced = arena.tiles_for(stored_key, value)
+    reverse_entries = arena.index_entries(referenced)
     reservations = (
         (arena._memo_owner, 1, 0),
         (arena._reverse_owner, reverse_entries, 0),
@@ -404,14 +408,14 @@ def publish_behavior_classification(
         raise ValueError("behavior publication reservation does not match its request")
     reverse_snapshot = None
     try:
-        reverse_snapshot = arena._reverse_snapshot(referenced, stored_key)
+        reverse_snapshot = arena.reverse_snapshot(referenced, stored_key)
         arena._memo[stored_key] = value
         for tile in referenced:
-            arena._add_membership(tile, stored_key)
+            arena.add_membership(tile, stored_key)
     except BaseException:
         if reverse_snapshot is not None:
             arena._memo.pop(stored_key, None)
-            arena._restore_reverse(reverse_snapshot)
+            arena.restore_reverse(reverse_snapshot)
         for owner, entries, nodes in reservations:
             arena.ledger.release(owner, entries, nodes)
         if reservation is not None:

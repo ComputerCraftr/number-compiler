@@ -14,9 +14,11 @@ from devtools.experiments.reverse_add.radial_sections import (
     RadialSectionOperator,
     construct_radial_section,
 )
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationID,
     RadialMultiplier,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger

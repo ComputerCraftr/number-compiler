@@ -8,11 +8,19 @@ from typing import TYPE_CHECKING, cast
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
-    LocalInterfaceID,
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
+from number_compiler.hashlife.tiles.completed_result_validation import (
+    result_operand_views as _result_operand_views,
 )
-from number_compiler.hashlife.tiles import tile_result_records as _tile_result_records
+from number_compiler.hashlife.tiles.completed_result_validation import (
+    result_tile_ids,
+    validate_interface,
+    validate_leased,
+    validate_result,
+    validate_spatial_key,
+    validate_spatial_result,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -28,24 +36,21 @@ from number_compiler.hashlife.tiles.tile_result_acquisition import (
 from number_compiler.hashlife.tiles.tile_result_lease_inventory import (
     BoundaryOperandLeaseInventory,
 )
-from number_compiler.hashlife.tiles.tile_result_leases import (
-    _RESULT_LEASE_SEAL,
-    ResultLease,
-)
+from number_compiler.hashlife.tiles.tile_result_leases import ResultLease
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
     CompletedResult,
     DirectedTransferKey,
     FusedInterfaceKey,
+    FusedVariantKey,
     PoweredInterfaceKey,
     PoweredResultKey,
+    ResultDependencyHead,
+    ResultDependencyLinks,
+    ResultDependencyMember,
+    ResultVariantKey,
     SpatialInterfaceKey,
-    _FusedVariantKey,
-    _ResultVariantKey,
-    _ReverseHead,
-    _ReverseLinks,
-    _ReverseMember,
     fused_variant_key,
 )
 from number_compiler.hashlife.tiles.tile_result_types import (
@@ -91,15 +96,11 @@ from number_compiler.resources.result_cache_kinds import (
 )
 from number_compiler.resources.stores import LedgerDict
 
-BehaviorBindingKey = _tile_result_records.BehaviorBindingKey
-BoundaryConcatKey = _tile_result_records.BoundaryConcatKey
-NormalizedRegionKey = _tile_result_records.NormalizedRegionKey
-ReverseBoundOutputKey = _tile_result_records.ReverseBoundOutputKey
-ReverseThresholdSummaryKey = _tile_result_records.ReverseThresholdSummaryKey
-SourceRootMatchKey = _tile_result_records.SourceRootMatchKey
-
 if TYPE_CHECKING:
     from number_compiler.resources.causal_workspace import CausalTaskWorkspace
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        CompletedResultArenaAuditSnapshot,
+    )
 
 
 _MISSING = object()
@@ -185,9 +186,19 @@ class CompletedResultArena:
         self._validate_fused_wiring: (
             Callable[[FieldCellActionID, ResultWiring, ResultWiring], object] | None
         ) = fused_wiring_validator
+        self._admitted_validators = (
+            self._validate_action,
+            self._signature_for,
+            self._validated_signature_for,
+            self._validate_input,
+            self._validate_output,
+            self._validate_fused_action,
+            self._validate_fused_wiring,
+        )
         self._causal_tasks: CausalTaskWorkspace | None = None
         self._physical_supports: object | None = None
         self._interface_publication_seal = object()
+        self._result_lease_seal = object()
         self._boundary_lease_count = 0
         prefix = f"completed-results-{len(ledger.inventory())}"
         self._leased_boundary_operands = BoundaryOperandLeaseInventory(ledger, prefix)
@@ -207,7 +218,7 @@ class CompletedResultArena:
         self._reverse: LedgerDict[_ReverseKey, _ReverseValue] = ledger.make_dict(
             self._reverse_owner,
         )
-        self._variants: LedgerDict[_ResultVariantKey | _FusedVariantKey, int] = (
+        self._variants: LedgerDict[ResultVariantKey | FusedVariantKey, int] = (
             ledger.make_dict(self._variant_owner)
         )
         ledger.register_container(
@@ -229,6 +240,15 @@ class CompletedResultArena:
         if self._causal_tasks is not None:
             raise ValueError("completed results already have a causal task workspace")
         self._causal_tasks = tasks
+
+    def accepts_result_lease_seal(self, seal: object) -> bool:
+        """Check the unforgeable issuer token used by ResultLease construction."""
+        return seal is self._result_lease_seal
+
+    @property
+    def causal_tasks(self) -> CausalTaskWorkspace | None:
+        """Return the scheduler-owned causal workspace when one is attached."""
+        return self._causal_tasks
 
     def attach_physical_supports(self, arena: object) -> None:
         from number_compiler.hashlife.tiles.ordered_boolean_support import (
@@ -261,7 +281,39 @@ class CompletedResultArena:
             raise ValueError("completed result support belongs to another scheduler")
         arena.validate(support)
 
-    def _validate_ports(
+    def validated_action_authority(self) -> object:
+        """Keep the mutable authority field bound to its admitted validators."""
+        authority = self.action_authority
+        callbacks = (
+            self._validate_action,
+            self._signature_for,
+            self._validated_signature_for,
+            self._validate_input,
+            self._validate_output,
+            self._validate_fused_action,
+            self._validate_fused_wiring,
+        )
+        # A combined validator replaces the two separate callbacks. Their
+        # retired values are not consumer authority on that execution path.
+        active_start = 0 if self._validated_signature_for is None else 2
+        if any(
+            callback is not admitted
+            or (
+                callback is not None
+                and getattr(callback, "__self__", None) is not authority
+            )
+            for callback, admitted in zip(
+                callbacks[active_start:],
+                self._admitted_validators[active_start:],
+                strict=True,
+            )
+        ):
+            raise ValueError(
+                "completed result action authority changed after admission"
+            )
+        return authority
+
+    def validate_ports(
         self,
         signature: PortSignatureID,
         values: tuple[int, ...],
@@ -286,7 +338,7 @@ class CompletedResultArena:
             expected_alphabet=self.tiles.resolve(expected).alphabet,
         )
 
-    def _validate_fusion(
+    def validate_fusion(
         self,
         action: FieldCellActionID,
         fusion: FusedBoundaryContract,
@@ -298,10 +350,10 @@ class CompletedResultArena:
         action_admission: object | None = None,
     ) -> int:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_fusion,
+            validate_fusion,
         )
 
-        return _validate_fusion(
+        return validate_fusion(
             self,
             action,
             fusion,
@@ -312,23 +364,23 @@ class CompletedResultArena:
             action_admission=action_admission,
         )
 
-    def _validate_boundary_allocations(self, boundaries: BoundaryTileOperands) -> None:
+    def validate_boundary_allocations(self, boundaries: BoundaryTileOperands) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_boundary_allocations,
+            validate_boundary_allocations,
         )
 
-        return _validate_boundary_allocations(self, boundaries)
+        return validate_boundary_allocations(self, boundaries)
 
-    def _validate_bound_port_allocations(
+    def validate_bound_port_allocations(
         self, context: BoundPorts, *, counted: bool = True
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_bound_port_allocations,
+            validate_bound_port_allocations,
         )
 
-        return _validate_bound_port_allocations(self, context, counted=counted)
+        return validate_bound_port_allocations(self, context, counted=counted)
 
-    def _validate_action_wiring(
+    def validate_action_wiring(
         self,
         action: FieldCellActionID,
         wiring: ResultWiring,
@@ -336,12 +388,12 @@ class CompletedResultArena:
         action_admission: object | None = None,
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_action_wiring,
+            validate_action_wiring,
         )
 
         if action_admission is None:
-            return _validate_action_wiring(self, action, wiring)
-        return _validate_action_wiring(
+            return validate_action_wiring(self, action, wiring)
+        return validate_action_wiring(
             self, action, wiring, action_admission=action_admission
         )
 
@@ -352,10 +404,10 @@ class CompletedResultArena:
         wiring: ResultWiring,
     ) -> None:
         """Validate an action/port request before importing source geometry."""
-        self._validate_action_wiring(action, wiring)
-        self._validate_ports(wiring.signature, ports)
+        self.validate_action_wiring(action, wiring)
+        self.validate_ports(wiring.signature, ports)
 
-    def _validate_base(
+    def validate_base(
         self,
         action: FieldCellActionID,
         input_tile: TileID,
@@ -364,12 +416,12 @@ class CompletedResultArena:
         action_admission: object | None = None,
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_base,
+            validate_base,
         )
 
         if action_admission is None:
-            return _validate_base(self, action, input_tile, wiring)
-        return _validate_base(
+            return validate_base(self, action, input_tile, wiring)
+        return validate_base(
             self,
             action,
             input_tile,
@@ -377,73 +429,57 @@ class CompletedResultArena:
             action_admission=action_admission,
         )
 
-    def _validate_key(
+    def validate_key(
         self,
         key: PoweredResultKey,
         *,
         action_admission: object | None = None,
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_key,
+            validate_key,
         )
 
-        return _validate_key(self, key, action_admission=action_admission)
+        return validate_key(self, key, action_admission=action_admission)
 
-    def _validate_interface_key(self, key: PoweredInterfaceKey) -> None:
+    def validate_interface_key(self, key: PoweredInterfaceKey) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_interface_key,
+            validate_interface_key,
         )
 
-        return _validate_interface_key(self, key)
+        return validate_interface_key(self, key)
 
-    def _validate_fused_key(self, key: FusedInterfaceKey) -> None:
+    def validate_fused_key(self, key: FusedInterfaceKey) -> None:
         validate_fused_request(self, key)
 
-    def _validate_interface(
+    def validate_interface(
         self,
         key: PoweredInterfaceKey,
         interface: LocalInterfaceID,
     ) -> None:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_interface,
-        )
+        return validate_interface(self, key, interface)
 
-        return _validate_interface(self, key, interface)
+    def validate_spatial_key(self, key: SpatialInterfaceKey) -> None:
+        return validate_spatial_key(self, key)
 
-    def _validate_spatial_key(self, key: SpatialInterfaceKey) -> None:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_spatial_key,
-        )
-
-        return _validate_spatial_key(self, key)
-
-    def _validate_spatial_result(
+    def validate_spatial_result(
         self,
         key: SpatialInterfaceKey,
         result: LocalInterfaceID,
     ) -> None:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_spatial_result,
-        )
+        return validate_spatial_result(self, key, result)
 
-        return _validate_spatial_result(self, key, result)
-
-    def _validate_result(
+    def validate_result(
         self,
         key: PoweredResultKey,
         result: CompletedResult,
         *,
         action_admission: object | None = None,
     ) -> None:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_result,
-        )
-
         if action_admission is None:
-            return _validate_result(self, key, result)
-        return _validate_result(self, key, result, action_admission=action_admission)
+            return validate_result(self, key, result)
+        return validate_result(self, key, result, action_admission=action_admission)
 
-    def _validate_leased(
+    def validate_leased(
         self,
         key: PoweredResultKey,
         result: CompletedResult,
@@ -451,30 +487,52 @@ class CompletedResultArena:
         boundary_tiles: tuple[TileLease, ...],
         operand_views: tuple[BoundaryTileView, ...],
     ) -> None:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _validate_leased,
-        )
-
-        return _validate_leased(self, key, result, tile, boundary_tiles, operand_views)
+        return validate_leased(self, key, result, tile, boundary_tiles, operand_views)
 
     @staticmethod
     def _unique_tiles(values: tuple[TileID, ...]) -> tuple[TileID, ...]:
         return tuple(dict.fromkeys(values))
 
-    def _result_tile_ids(self, result: CompletedResult) -> tuple[TileID, ...]:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _result_tile_ids,
+    def result_tile_ids(self, result: CompletedResult) -> tuple[TileID, ...]:
+        return result_tile_ids(self, result)
+
+    def audit_snapshot(self) -> CompletedResultArenaAuditSnapshot:
+        """Expose read-only live store views and owner bindings to auditors."""
+        from number_compiler.resources.tile_runtime_audit_contracts import (
+            CompletedResultArenaAuditSnapshot,
+            CompletedResultAuthorityAudit,
         )
 
-        return _result_tile_ids(self, result)
-
-    @staticmethod
-    def _result_operand_views(result: CompletedResult) -> tuple[BoundaryTileView, ...]:
-        from number_compiler.hashlife.tiles.completed_result_validation import (
-            _result_operand_views,
+        return CompletedResultArenaAuditSnapshot.from_stores(
+            self.ledger,
+            self._memo,
+            self._reverse,
+            self._variants,
+            self.tiles.audit_snapshot(),
+            self.interfaces,
+            CompletedResultAuthorityAudit(
+                self.action_authority,
+                self._validate_action,
+                self._signature_for,
+                self._validated_signature_for,
+                self._validate_input,
+                self._validate_output,
+                self._validate_fused_action,
+                self._validate_fused_wiring,
+            ),
+            self._boundary_lease_count,
+            self._leased_boundary_operands,
+            self._lease_acquisitions,
+            self._pending_acquisitions,
         )
 
-        return _result_operand_views(result)
+    def validate_output(self, action: FieldCellActionID, output: TileID) -> None:
+        """Apply the bound output validator when this arena's authority has one."""
+        validator = self._validate_output
+        if validator is not None:
+            validator(action, output)
+
+    result_operand_views = staticmethod(_result_operand_views)
 
     def _result_leases(
         self,
@@ -482,8 +540,8 @@ class CompletedResultArena:
         *,
         reserved: bool,
     ) -> tuple[TileLease, tuple[TileLease, ...]]:
-        tiles = self._result_tile_ids(result)
-        operand_views = self._result_operand_views(result)
+        tiles = self.result_tile_ids(result)
+        operand_views = self.result_operand_views(result)
 
         def acquire_operands() -> None:
             self._leased_boundary_operands.acquire(operand_views)
@@ -509,7 +567,7 @@ class CompletedResultArena:
             )
         )
 
-    def _release_boundary_leases(
+    def release_boundary_leases(
         self,
         count: int,
         operand_views: tuple[BoundaryTileView, ...],
@@ -539,9 +597,9 @@ class CompletedResultArena:
             key,
             result,
             output,
-            _RESULT_LEASE_SEAL,
+            self._result_lease_seal,
             boundaries,
-            self._result_operand_views(result),
+            self.result_operand_views(result),
         )
 
     def _reserved_lease(
@@ -555,9 +613,9 @@ class CompletedResultArena:
             key,
             result,
             output,
-            _RESULT_LEASE_SEAL,
+            self._result_lease_seal,
             boundaries,
-            self._result_operand_views(result),
+            self.result_operand_views(result),
         )
 
     def lookup(
@@ -569,9 +627,9 @@ class CompletedResultArena:
     ) -> ResultLease | None:
         """Admit the key and optional execution context before any memo access."""
         if _action_admission is None:
-            self._validate_key(key)
+            self.validate_key(key)
         else:
-            self._validate_key(key, action_admission=_action_admission)
+            self.validate_key(key, action_admission=_action_admission)
         if validate_context is not None:
             validate_context(key)
         key = normalize_output_region(self.tiles, key)
@@ -591,9 +649,9 @@ class CompletedResultArena:
         if type(found) is not CompletedResult:
             raise TypeError("completed result memo has another value sort")
         if _action_admission is None:
-            self._validate_result(key, found)
+            self.validate_result(key, found)
         else:
-            self._validate_result(key, found, action_admission=_action_admission)
+            self.validate_result(key, found, action_admission=_action_admission)
         lease = self._lease(key, found)
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_EARLY_HITS)
         record_execution_cache_event(
@@ -607,61 +665,61 @@ class CompletedResultArena:
         )
         return lease
 
-    def _tiles_for(
+    def tiles_for(
         self,
         key: _ExecutionKey,
         result: _ExecutionValue,
     ) -> tuple[TileID, ...]:
         from number_compiler.hashlife.tiles.completed_result_validation import (
-            _tiles_for,
+            tiles_for,
         )
 
-        return _tiles_for(self, key, result)
+        return tiles_for(self, key, result)
 
-    def _index_entries(self, tiles: tuple[TileID, ...]) -> int:
-        from number_compiler.hashlife.tiles.result_reverse_indexes import _index_entries
+    def index_entries(self, tiles: tuple[TileID, ...]) -> int:
+        from number_compiler.hashlife.tiles.result_reverse_indexes import index_entries
 
-        return _index_entries(self, tiles)
+        return index_entries(self, tiles)
 
-    def _add_membership(self, tile: TileID, key: _ExecutionKey) -> None:
+    def add_membership(self, tile: TileID, key: _ExecutionKey) -> None:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
-            _add_membership,
+            add_membership,
         )
 
-        return _add_membership(self, tile, key)
+        return add_membership(self, tile, key)
 
     def _write_reverse(self, key: _ReverseKey, value: _ReverseValue) -> None:
         """Single fault-injection boundary for reverse-index publication."""
         self._reverse[key] = value
 
-    def _reverse_snapshot(
+    def reverse_snapshot(
         self,
         tiles: tuple[TileID, ...],
         key: _ExecutionKey,
     ) -> tuple[tuple[_ReverseKey, object], ...]:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
-            _reverse_snapshot,
+            reverse_snapshot,
         )
 
-        return _reverse_snapshot(self, tiles, key)
+        return reverse_snapshot(self, tiles, key)
 
-    def _restore_reverse(
+    def restore_reverse(
         self,
         snapshot: tuple[tuple[_ReverseKey, object], ...],
     ) -> None:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
-            _restore_reverse,
+            restore_reverse,
         )
 
-        return _restore_reverse(self, snapshot)
+        return restore_reverse(self, snapshot)
 
     def publish(
         self,
         key: PoweredResultKey,
         result: CompletedResult,
     ) -> ResultLease:
-        self._validate_key(key)
-        self._validate_result(key, result)
+        self.validate_key(key)
+        self.validate_result(key, result)
         key = normalize_output_region(self.tiles, key)
         found = self._memo.get(key)
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PUBLICATION_REQUESTS)
@@ -676,9 +734,9 @@ class CompletedResultArena:
                 self, "result", "late_duplicate", key.action, key.input
             )
             return lease
-        referenced = self._tiles_for(key, result)
-        reverse_entries = self._index_entries(referenced)
-        variant_key = _ResultVariantKey(
+        referenced = self.tiles_for(key, result)
+        reverse_entries = self.index_entries(referenced)
+        variant_key = ResultVariantKey(
             key.action,
             key.input,
             key.wiring,
@@ -696,9 +754,9 @@ class CompletedResultArena:
             (self._memo_owner, 1, 0),
             (self._reverse_owner, reverse_entries, 0),
             (self._variant_owner, int(old_variants == 0), 0),
-            (self.tiles._lease_owner, len(self._result_tile_ids(result)), 0),
+            (self.tiles.lease_owner, len(self.result_tile_ids(result)), 0),
         )
-        reverse_snapshot = self._reverse_snapshot(referenced, key)
+        reverse_snapshot = self.reverse_snapshot(referenced, key)
         self.ledger.reserve_many(reservations)
         try:
             lease = self._reserved_lease(key, result)
@@ -709,7 +767,7 @@ class CompletedResultArena:
         try:
             self._memo[key] = result
             for tile in referenced:
-                self._add_membership(tile, key)
+                self.add_membership(tile, key)
             self._variants[variant_key] = old_variants + 1
         except BaseException:
             from number_compiler.hashlife.tiles.result_reverse_indexes import (
@@ -814,12 +872,12 @@ class CompletedResultArena:
 
         return reverse_threshold_summary(self, tile, base)
 
-    def _remove_membership(self, tile: TileID, key: _ExecutionKey) -> None:
+    def remove_membership(self, tile: TileID, key: _ExecutionKey) -> None:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
-            _remove_membership,
+            remove_membership,
         )
 
-        return _remove_membership(self, tile, key)
+        return remove_membership(self, tile, key)
 
     def _remove_key(self, key: _MemoKey) -> None:
         result = self._memo.pop(key, None)
@@ -827,10 +885,10 @@ class CompletedResultArena:
             return
         if type(key) is not SpatialInterfaceKey:
             execution_key = cast(_ExecutionKey, key)
-            for tile in self._tiles_for(execution_key, result):
-                self._remove_membership(tile, execution_key)
+            for tile in self.tiles_for(execution_key, result):
+                self.remove_membership(tile, execution_key)
         if type(key) is PoweredResultKey:
-            variant_key = _ResultVariantKey(
+            variant_key = ResultVariantKey(
                 key.action,
                 key.input,
                 key.wiring,
@@ -859,13 +917,15 @@ class CompletedResultArena:
     def retire_tile(self, tile: TileID) -> None:
         if type(tile) is not TileID:
             raise TypeError("tile retirement requires a scoped tile ID")
-        tile.validate(self.tiles.owner, "canonical-tile", size=self.tiles._next_tile)
+        tile.validate(self.tiles.owner, "canonical-tile", size=self.tiles.tile_count)
         before = len(self._memo)
-        head = self._reverse.get(_ReverseHead(tile))
+        head = self._reverse.get(ResultDependencyHead(tile))
         while is_execution_key(head):
             self.ledger.bump(_tiles_keys.COMPLETED_RESULT_RETIREMENT_TRAVERSAL_STEPS)
-            member = self._reverse.get(_ReverseMember(tile, head))
-            following = member.following if type(member) is _ReverseLinks else None
+            member = self._reverse.get(ResultDependencyMember(tile, head))
+            following = (
+                member.following if type(member) is ResultDependencyLinks else None
+            )
             self._remove_key(head)
             head = following
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_TILE_RETIREMENTS)

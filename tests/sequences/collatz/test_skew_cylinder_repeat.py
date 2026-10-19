@@ -207,10 +207,13 @@ def test_production_executor_powers_only_when_width_spine_is_not_demanded() -> N
     ordinary = PoweredCollatzTerm(77, 8, max_context_nodes=10_000)
     assert ordinary.materialize(max_bits=32) == physical_values(77, 8)[-1] == 11
     assert (
-        ordinary._ledger.counters["collatz_physical_unified_skew_powered_actions"] == 1
+        ordinary.resource_ledger.counters[
+            "collatz_physical_unified_skew_powered_actions"
+        ]
+        == 1
     )
     assert (
-        ordinary._ledger.counters[
+        ordinary.resource_ledger.counters[
             "collatz_physical_unified_skew_additional_repetitions"
         ]
         == 1
@@ -230,13 +233,13 @@ def test_production_executor_powers_only_when_width_spine_is_not_demanded() -> N
     # The exact second segment loses only one bit, so the endpoint is width 4.
     assert summary.blank.delta == -3
     assert (
-        width_demand._ledger.counters.get(
+        width_demand.resource_ledger.counters.get(
             "collatz_physical_unified_skew_powered_actions", 0
         )
         == 0
     )
     assert (
-        width_demand._ledger.counters.get(
+        width_demand.resource_ledger.counters.get(
             "collatz_physical_unified_skew_additional_repetitions", 0
         )
         == 0

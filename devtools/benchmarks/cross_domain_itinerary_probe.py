@@ -55,7 +55,7 @@ def _summarize_horizons(values: Sequence[int | None]) -> dict[str, float]:
 
 
 def reverse_int(value: int, base: int = 10) -> int:
-    ds = []
+    ds: list[int] = []
     n = int(value)
     while n:
         ds.append(n % base)
@@ -80,9 +80,9 @@ def reverse_trace(
 ]:
     pair = pair_from_int(196)
     pairs = [pair]
-    carries = []
-    growths = []
-    events = []
+    carries: list[tuple[int, ...]] = []
+    growths: list[int] = []
+    events: list[tuple[int, ...]] = []
     neutral = resets = positions = 0
     for _ in range(steps + 20):
         c = carry_field(pair, base=10)
@@ -102,8 +102,8 @@ def reverse_trace(
 def vertical_itinerary_metrics(
     carries: list[tuple[int, ...]], horizon: int = 20, windows: int = 256
 ) -> dict[str, int]:
-    words = set()
-    active_words = set()
+    words: set[int] = set()
+    active_words: set[tuple[int, int]] = set()
     cols = 0
     end = min(len(carries), horizon + windows)
     for t in range(horizon, end):
@@ -165,7 +165,9 @@ def bucket_alphabet_probe(steps: int = 256) -> dict[str, object]:
         event = forcing_event(pair, target, growth)
         if growth:
             next_b = [growth_apply(row) for row in buckets]
-            next_b[0] = tuple((x + e) & 31 for x, e in zip(next_b[0], event))
+            next_b[0] = tuple(
+                (x + e) & 31 for x, e in zip(next_b[0], event, strict=True)
+            )
         else:
             next_b = [tuple(e & 31 for e in event), *buckets[:-1]]
         reconstructed = tuple(
@@ -240,10 +242,10 @@ def live_carry_probe(steps: int = 512) -> dict[str, float]:
     pair = pair_from_int(196)
     pair, fixed = carry_seed_rows(pair, 20)
     live = LiveCarryItinerary.seed(fixed, base=10)
-    rows = []
-    live_bits = []
-    fixed_bits = []
-    for __2 in range(steps):
+    rows: list[int] = []
+    live_bits: list[int] = []
+    fixed_bits: list[int] = []
+    for _ in range(steps):
         assert live.pair == pair
         rows.append(live.row_count)
         live_bits.append(live.charged_carry_bits)
@@ -251,7 +253,7 @@ def live_carry_probe(steps: int = 512) -> dict[str, float]:
         nxt_carry = carry_field(pair, base=10)
         live = live.advance()
         fixed = fixed[1:] + [nxt_carry]
-        pair, __2 = pair_step(pair, 10)
+        pair, _growth = pair_step(pair, 10)
     return {
         "steps": steps,
         "row_count_average": sum(rows) / len(rows),
@@ -266,7 +268,7 @@ def live_carry_probe(steps: int = 512) -> dict[str, float]:
 
 def mod99_trace(steps: int = 15) -> list[dict[str, int]]:
     n = 196
-    rows = []
+    rows: list[dict[str, int]] = []
     for t in range(steps):
         width = len(str(n))
         minus, plus = reverse_add_base_pm_residues(n, width, base=10)
@@ -305,7 +307,7 @@ def main() -> None:
     preimage_bits = [
         log2(pair_field_preimage_count(pair, base=10)) for pair in pairs[:513]
     ]
-    cyclic_memory = {}
+    cyclic_memory: dict[str, dict[str, float]] = {}
     for classes in (1, 2, 4, 8, 16):
         hs = [
             adaptive_cyclic_memory_horizon(growths, endpoint, classes=classes, bits=5)
@@ -313,7 +315,7 @@ def main() -> None:
         ]
         cyclic_memory[str(classes)] = _summarize_horizons(hs)
 
-    negacyclic_memory = {}
+    negacyclic_memory: dict[str, dict[str, float]] = {}
     for classes in (1, 2, 4, 8):
         hs = [
             adaptive_negacyclic_memory_horizon(
@@ -323,7 +325,7 @@ def main() -> None:
         ]
         negacyclic_memory[str(classes)] = _summarize_horizons(hs)
 
-    primary_memory = {}
+    primary_memory: dict[str, dict[str, float]] = {}
     for degree in (1, 2, 4, 8, 16):
         hs = [
             adaptive_zplus1_memory_horizon(growths, endpoint, degree=degree, bits=5)
@@ -367,7 +369,7 @@ def main() -> None:
 
     vals = collatz_valuation_itinerary(27)
     slab = valuation_itinerary_slab(vals)
-    decimal_fields = []
+    decimal_fields: list[CollatzRawDigitField] = []
     n = 27
     physical = 0
     odd_steps = 0

@@ -18,7 +18,11 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
 )
-from tests.support.tile_kernel import _runtime, _tile, powered_runtime
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    powered_runtime,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.behavior.future_behavior import FutureBehaviorClassID
@@ -38,11 +42,11 @@ def _binding() -> tuple[
     BehaviorBindingKey,
     FutureBehaviorClassID,
 ]:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)
     engine = CausalTileEngine(scheduler)
     blank = adapter.primitive_law(primitive).blank
-    source = _tile(tiles, adapter, primitive, (blank,) * 4)
+    source = make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4)
     key = engine._composite_key(
         action,
         source.tile,
@@ -146,7 +150,9 @@ def test_behavior_binding_publication_is_atomic_at_exhausted_budget() -> None:
 
 def test_behavior_binding_rejects_foreign_profile_before_mutation() -> None:
     ledger, _adapter, results, source, key, _behavior = _binding()
-    _ledger2, _tiles2, adapter2, primitive2, _scheduler2 = _runtime(BaseBlockEffect(3))
+    _ledger2, _tiles2, adapter2, primitive2, _scheduler2 = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     quotient2 = adapter2.kernels.behavioral_quotient(
         adapter2._action(primitive2).kernel,
     )
@@ -171,11 +177,13 @@ def test_public_warm_behavior_point_and_width_skip_construction(
     import number_compiler.hashlife.tiles.tile_behavior_memo as behavior_memo
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 8)
     blank = adapter.primitive_law(primitive).blank
     with (
-        _tile(tiles, adapter, primitive, (blank,) * 8) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 8) as source,
         scheduler.application(
             action,
             source.tile,
@@ -207,7 +215,7 @@ def test_new_behavior_admission_fails_before_semantic_publication_at_zero_budget
         BaseBlockEffect(3), 4
     )
     with (
-        _tile(tiles, adapter, primitive, (blank,) * 4) as source,
+        make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source,
         scheduler.application(
             action,
             source.tile,

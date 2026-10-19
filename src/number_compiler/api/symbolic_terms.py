@@ -5,12 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from number_compiler.api.observation_types import FamilyId
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.symbolic_extent import integer_text
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import (
-        NumberFamily,
         ProjectedNumberTerm,
         ProjectionMetrics,
         TermPayload,
@@ -52,7 +51,7 @@ class SymbolicExpression:
 
 def initialize_projected(
     term: ProjectedNumberTerm,
-    family: NumberFamily,
+    family: FamilyId,
     index: int,
     parameter: int | None,
     source_radix: int | None,
@@ -78,4 +77,4 @@ def initialize_projected(
 
 
 def render_symbolic(term: ProjectedNumberTerm, index_text: str) -> str:
-    return term._symbolic.render(index_text)
+    return term.symbolic_expression.render(index_text)

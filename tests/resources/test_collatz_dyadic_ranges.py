@@ -7,9 +7,11 @@ from typing import Never
 
 import pytest
 
-from devtools.verification.lazy_collatz import (
+from devtools.verification.collatz_carry_ranges import (
     CarryRangeSummary,
     CarryRangeTransfer,
+)
+from devtools.verification.lazy_collatz import (
     LazyCollatzApplication,
     _Program,
 )

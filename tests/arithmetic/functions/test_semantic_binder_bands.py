@@ -13,7 +13,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     ProductSort,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena, _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    BooleanCircuit,
+)
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     _aliases,
@@ -38,7 +41,7 @@ def mux(
     selector = port(0, "selector", width)
     entries = tuple(port(index + 1, "entry") for index in range(width))
     inputs = (selector, *entries)
-    circuit = _Circuit(arena.functions, inputs)
+    circuit = BooleanCircuit(arena.functions, inputs)
     leaves = {
         index: circuit.tx.bit(inputs, entry.variable)
         for index, entry in enumerate(entries)
@@ -49,7 +52,7 @@ def mux(
             index: circuit.choose(condition, leaves[index | (1 << bit)], leaves[index])
             for index in range(1 << bit)
         }
-    factored = arena.bits._publish(
+    factored = arena.bits.publish_circuit(
         circuit,
         (
             circuit.normalized(

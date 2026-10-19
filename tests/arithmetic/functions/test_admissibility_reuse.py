@@ -17,7 +17,10 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena, _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    BooleanCircuit,
+)
 from number_compiler.hashlife.interfaces.semantic_publication import PreparedFunctions
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -41,7 +44,7 @@ def test_new_circuit_reuses_complete_admission_without_threshold_descent(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("warm port admission rebuilt its threshold function")
 
-    monkeypatch.setattr(_Circuit, "_admitted_port", forbidden)
+    monkeypatch.setattr(BooleanCircuit, "_admitted_port", forbidden)
     second = bits.constant(signature, 1)
     assert ledger.counters["semantic_bit_admissibility_early_hits"] > 0
     for value in range(64):
@@ -82,7 +85,7 @@ def test_admission_lookup_rejects_another_signature_before_reuse() -> None:
     other = bits.constant(FunctionSignature((other_port,), BOOL), 1)
     bits.functions.memo[key] = bits.resolve(other).valid
     before = ledger.snapshot()
-    circuit = _Circuit(bits.functions, (port,))
+    circuit = BooleanCircuit(bits.functions, (port,))
     try:
         with pytest.raises(ValueError, match="another signature"):
             circuit.admitted()

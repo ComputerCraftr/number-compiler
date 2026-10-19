@@ -18,37 +18,40 @@ def audit_tiles(
     containers: Mapping[int, object],
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Read retained records without executing the tile compiler or observer."""
+    state = arena.audit_snapshot()
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     stores = (
-        (arena._alphabet_owner, arena._alphabets),
-        (arena._alphabet_key_owner, arena._alphabet_keys),
-        (arena._node_owner, arena._nodes),
-        (arena._key_owner, arena._keys),
-        (arena._ref_owner, arena._refs),
-        (arena._edge_owner, arena._edges),
-        (arena._lease_owner, arena._leases),
+        (state.alphabet_owner, state.alphabet_store_identity),
+        (state.alphabet_key_owner, state.alphabet_key_store_identity),
+        (state.node_owner, state.node_store_identity),
+        (state.key_owner, state.key_store_identity),
+        (state.ref_owner, state.ref_store_identity),
+        (state.edge_owner, state.edge_store_identity),
+        (state.lease_owner, state.lease_store_identity),
     )
-    valid_owner = all(containers.get(owner) is store for owner, store in stores)
+    valid_owner = all(
+        id(containers.get(owner)) == store_id for owner, store_id in stores
+    )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 
-    if arena._results is not None and (
-        type(arena._results) is not CompletedResultArena
-        or arena._results.tiles is not arena
-        or arena._results.ledger is not arena.ledger
+    if state.results is not None and (
+        type(state.results) is not CompletedResultArena
+        or state.results.tiles is not arena
+        or state.results.ledger is not state.ledger
     ):
-        invalid.add((arena._node_owner, id(arena._results)))
+        invalid.add((state.node_owner, id(state.results)))
         valid_owner = False
     if any(
         type(value) is not int or value < 0
         for value in (
-            arena._next_tile,
-            arena._next_alphabet,
-            arena._next_lease,
+            state.next_tile,
+            state.next_alphabet,
+            state.next_lease,
         )
     ):
-        return approved, {(arena._node_owner, id(arena))}
-    expected_refs = dict.fromkeys(arena._nodes, 0)
+        return approved, {(state.node_owner, id(arena))}
+    expected_refs = dict.fromkeys(state.nodes, 0)
     expected_edges: set[tuple[int, int, int]] = set()
     expected_keys: dict[tuple[int, int, int, int, int], int] = {}
 
@@ -59,8 +62,8 @@ def audit_tiles(
             and type(handle.kind) is str
             and handle.kind == "canonical-tile"
             and type(handle.local_id) is int
-            and handle.local_id in arena._nodes
-            and 0 <= handle.local_id < arena._next_tile
+            and handle.local_id in state.nodes
+            and 0 <= handle.local_id < state.next_tile
         )
 
     def exact_mirror(source: int, target: int) -> bool:
@@ -71,8 +74,8 @@ def audit_tiles(
             if pair in seen:
                 continue
             seen.add(pair)
-            before = arena._nodes.get(pair[0])
-            after = arena._nodes.get(pair[1])
+            before = state.nodes.get(pair[0])
+            after = state.nodes.get(pair[1])
             if (
                 before is None
                 or after is None
@@ -98,30 +101,30 @@ def audit_tiles(
             )
         return True
 
-    for index, alphabet in arena._alphabets.items():
-        valid = valid_owner and type(index) is int and 0 <= index < arena._next_alphabet
+    for index, alphabet in state.alphabets.items():
+        valid = valid_owner and type(index) is int and 0 <= index < state.next_alphabet
         try:
             valid &= type(alphabet) is TileAlphabet
             alphabet.__post_init__()
-            valid &= arena._alphabet_keys.get(alphabet) == index
+            valid &= state.alphabet_keys.get(alphabet) == index
         except (TypeError, ValueError, AttributeError):
             valid = False
         if valid:
             approved.add(id(alphabet))
         else:
-            invalid.add((arena._alphabet_owner, id(alphabet)))
-    for alphabet_key, index in arena._alphabet_keys.items():
+            invalid.add((state.alphabet_owner, id(alphabet)))
+    for alphabet_key, index in state.alphabet_keys.items():
         if (
             type(index) is int
             and type(alphabet_key) is TileAlphabet
-            and arena._alphabets.get(index) == alphabet_key
+            and state.alphabets.get(index) == alphabet_key
         ):
             approved.add(id(alphabet_key))
         else:
-            invalid.add((arena._alphabet_key_owner, id(alphabet_key)))
+            invalid.add((state.alphabet_key_owner, id(alphabet_key)))
 
-    for index, record in arena._nodes.items():
-        valid = valid_owner and type(index) is int and 0 <= index < arena._next_tile
+    for index, record in state.nodes.items():
+        valid = valid_owner and type(index) is int and 0 <= index < state.next_tile
         try:
             valid &= (
                 type(record) is TileRecord
@@ -136,7 +139,7 @@ def audit_tiles(
                 and alphabet_id.kind == "tile-alphabet"
                 and type(alphabet_id.local_id) is int
             )
-            alphabet = arena._alphabets[alphabet_id.local_id]
+            alphabet = state.alphabets[alphabet_id.local_id]
             if record.level == 0:
                 if type(record.symbol) is not int:
                     raise TypeError("leaf symbol is not an exact integer")
@@ -157,8 +160,8 @@ def audit_tiles(
                 if not valid or record.left is None or record.right is None:
                     raise ValueError("malformed child reference")
                 left, right = (
-                    arena._nodes[record.left.local_id],
-                    arena._nodes[record.right.local_id],
+                    state.nodes[record.left.local_id],
+                    state.nodes[record.right.local_id],
                 )
                 valid &= (
                     left.level == record.level - 1
@@ -223,21 +226,21 @@ def audit_tiles(
                 if optional_child is not None:
                     approved.add(id(optional_child))
         else:
-            invalid.add((arena._node_owner, id(record)))
+            invalid.add((state.node_owner, id(record)))
     observed_content: dict[tuple[int, int, int, int, int], int] = {}
-    for key, index in arena._keys.items():
+    for key, index in state.keys.items():
         valid_key = (
             type(key) is tuple
             and len(key) == 5
             and all(type(value) is int for value in key)
             and type(index) is int
         )
-        if valid_key and key == arena._mirror_key(key[1]):
+        if valid_key and key == arena.mirror_key(key[1]):
             source = key[1]
             valid_key &= (
-                source in arena._nodes
-                and index in arena._nodes
-                and arena._keys.get(arena._mirror_key(index)) == source
+                source in state.nodes
+                and index in state.nodes
+                and state.keys.get(arena.mirror_key(index)) == source
                 and exact_mirror(source, index)
             )
         elif valid_key:
@@ -247,26 +250,26 @@ def audit_tiles(
         if valid_key:
             approved.add(id(key))
         else:
-            invalid.add((arena._key_owner, id(key)))
-    for lease_id, tile in arena._leases.items():
+            invalid.add((state.key_owner, id(key)))
+    for lease_id, tile in state.leases.items():
         if (
             type(lease_id) is int
-            and 0 <= lease_id < arena._next_lease
+            and 0 <= lease_id < state.next_lease
             and valid_tile(tile)
         ):
             expected_refs[tile.local_id] += 1
             approved.add(id(tile))
         else:
-            invalid.add((arena._lease_owner, id(tile)))
-    for index, count in arena._refs.items():
+            invalid.add((state.lease_owner, id(tile)))
+    for index, count in state.refs.items():
         if (
             type(index) is not int
             or type(count) is not int
             or count < 1
             or expected_refs.get(index) != count
         ):
-            invalid.add((arena._ref_owner, id(index)))
-    for edge, value in arena._edges.items():
+            invalid.add((state.ref_owner, id(index)))
+    for edge, value in state.edges.items():
         if (
             type(edge) is tuple
             and len(edge) == 3
@@ -276,16 +279,16 @@ def audit_tiles(
         ):
             approved.add(id(edge))
         else:
-            invalid.add((arena._edge_owner, id(edge)))
+            invalid.add((state.edge_owner, id(edge)))
     if (
-        set(arena._refs) != set(expected_refs)
-        or set(arena._edges) != expected_edges
+        set(state.refs) != set(expected_refs)
+        or set(state.edges) != expected_edges
         or observed_content != expected_keys
     ):
-        invalid.add((arena._node_owner, id(arena._nodes)))
+        invalid.add((state.node_owner, state.node_store_identity))
     if not invalid:
         approved.add(id(arena))
-        approved.update(id(store) for _, store in stores)
+        approved.update(store_id for _, store_id in stores)
     return approved, invalid
 
 

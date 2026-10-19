@@ -32,11 +32,10 @@ def _read_records(path: Path) -> list[dict[str, object]]:
 
 @pytest.mark.parametrize("phase", ("setup", "call", "teardown"))
 def test_failure_report_is_utf8_safe_and_per_record_bounded(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+    tmp_path: Path, phase: str
 ) -> None:
-    monkeypatch.setattr(pytest_timing, "_FAILURE_TEXT_LIMIT", 64)
     path = tmp_path / "phases.jsonl"
-    plugin = pytest_timing.PhaseTiming(path)
+    plugin = pytest_timing.PhaseTiming(path, failure_text_limit=64)
     plugin.pytest_runtest_logreport(_failed_report("π traceback " * 100, phase))
     plugin.pytest_sessionfinish(exitstatus=1)
     plugin.pytest_unconfigure()
@@ -53,12 +52,14 @@ def test_failure_report_is_utf8_safe_and_per_record_bounded(
 
 
 def test_phase_log_byte_cap_writes_truncation_marker(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(pytest_timing, "_BYTE_LIMIT", 650)
-    monkeypatch.setattr(pytest_timing, "_FAILURE_TEXT_LIMIT", 80)
     path = tmp_path / "phases.jsonl"
-    plugin = pytest_timing.PhaseTiming(path)
+    plugin = pytest_timing.PhaseTiming(
+        path,
+        byte_limit=650,
+        failure_text_limit=80,
+    )
     for _ in range(10):
         plugin.pytest_runtest_logreport(_failed_report("traceback " * 100))
     plugin.pytest_sessionfinish(exitstatus=1)
@@ -72,7 +73,7 @@ def test_phase_log_byte_cap_writes_truncation_marker(
 
 
 def test_record_allowance_scales_from_selection_past_previous_ceiling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     # One selected item beyond the former three-phase record threshold.
     previous_ceiling = 32768
@@ -86,7 +87,7 @@ def test_record_allowance_scales_from_selection_past_previous_ceiling(
     expected_allowance = 3 * selected_items + 3
     assert expected_allowance > previous_ceiling
     assert plugin.record_limit == expected_allowance
-    assert plugin.record_safety_limit == pytest_timing._RECORD_SAFETY_LIMIT
+    assert plugin.record_safety_limit >= expected_allowance
 
     # Model the reports preceding the final ordinary phase without writing
     # thirty thousand fixture records. The selected run fits; an extra report
@@ -106,13 +107,38 @@ def test_record_allowance_scales_from_selection_past_previous_ceiling(
 
     cap_path = tmp_path / "capped-selection.jsonl"
     safety_ceiling = expected_allowance - 1
-    monkeypatch.setattr(pytest_timing, "_RECORD_SAFETY_LIMIT", safety_ceiling)
-    capped = pytest_timing.PhaseTiming(cap_path)
+    capped = pytest_timing.PhaseTiming(cap_path, record_safety_limit=safety_ceiling)
     capped.pytest_collection_finish(
         cast(pytest.Session, SimpleNamespace(items=range(selected_items)))
     )
     assert capped.record_limit == safety_ceiling
     capped.pytest_unconfigure()
+
+
+@pytest.mark.parametrize("invalid_limit", (0, -1, True))
+def test_record_safety_limit_is_validated_before_opening_output(
+    tmp_path: Path, invalid_limit: int
+) -> None:
+    path = tmp_path / "invalid-limit.jsonl"
+    with pytest.raises(ValueError, match="positive exact integer"):
+        pytest_timing.PhaseTiming(path, record_safety_limit=invalid_limit)
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "invalid_limit"),
+    (("byte_limit", 0), ("failure_text_limit", False)),
+)
+def test_other_diagnostic_limits_are_validated_before_opening_output(
+    tmp_path: Path, limit_name: str, invalid_limit: int
+) -> None:
+    path = tmp_path / "invalid-limit.jsonl"
+    with pytest.raises(ValueError, match="positive exact integer"):
+        if limit_name == "byte_limit":
+            pytest_timing.PhaseTiming(path, byte_limit=invalid_limit)
+        else:
+            pytest_timing.PhaseTiming(path, failure_text_limit=invalid_limit)
+    assert not path.exists()
 
 
 def test_optional_profile_records_executed_calls_without_changing_phase_output(
@@ -131,15 +157,22 @@ def test_optional_profile_records_executed_calls_without_changing_phase_output(
 
 
 def test_diagnostic_limits_are_bound_to_each_recorder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     path = tmp_path / "running-suite.jsonl"
+    limited = pytest_timing.PhaseTiming(
+        tmp_path / "limited.jsonl",
+        record_safety_limit=1,
+        byte_limit=1,
+        failure_text_limit=32,
+    )
     recorder = pytest_timing.PhaseTiming(path)
-    monkeypatch.setattr(pytest_timing, "_BYTE_LIMIT", 1)
-    monkeypatch.setattr(pytest_timing, "_RECORD_SAFETY_LIMIT", 1)
-    monkeypatch.setattr(pytest_timing, "_FAILURE_TEXT_LIMIT", 32)
+    assert limited.record_safety_limit == 1
+    assert limited.byte_limit == 1
+    assert limited.failure_text_limit == 32
     recorder.pytest_runtest_logreport(_failed_report("full diagnostic " * 10))
     recorder.pytest_unconfigure()
+    limited.pytest_unconfigure()
     row = _read_records(path)[0]
     assert row["outcome"] == "failed"
     assert row["failure_longrepr"] == "full diagnostic " * 10

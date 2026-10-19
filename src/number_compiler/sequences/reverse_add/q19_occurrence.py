@@ -50,8 +50,24 @@ class ReversePairOutputOccurrence:
         ):
             raise ValueError("invalid pair output occurrence metadata")
 
+    @property
+    def publication_binding(self) -> tuple[object, ...] | None:
+        """Read the snapshot attached when this exact handle was published."""
+        return self._publication_binding
 
-def _occurrence_publication_binding(
+    def bind_publication(self, snapshot: tuple[object, ...]) -> None:
+        """Attach the canonical issue-time snapshot once, rejecting rebinding."""
+        if type(snapshot) is not tuple or snapshot != occurrence_publication_snapshot(
+            self
+        ):
+            raise ValueError("Q19 publication snapshot does not match this occurrence")
+        current = self._publication_binding
+        if current is not None and current != snapshot:
+            raise ValueError("Q19 occurrence is already bound to another publication")
+        object.__setattr__(self, "_publication_binding", snapshot)
+
+
+def occurrence_publication_snapshot(
     occurrence: ReversePairOutputOccurrence,
 ) -> tuple[object, ...]:
     """Snapshot the exact owner and scalar fields retained when an occurrence issues."""
@@ -67,4 +83,4 @@ def _occurrence_publication_binding(
     )
 
 
-__all__ = ["ReversePairOutputOccurrence"]
+__all__ = ["ReversePairOutputOccurrence", "occurrence_publication_snapshot"]

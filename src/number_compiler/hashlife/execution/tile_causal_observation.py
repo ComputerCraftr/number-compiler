@@ -10,6 +10,7 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.resources.causal_types import CausalChildStates, CausalState
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -26,33 +27,33 @@ class CausalObservationEngine(Protocol):
         self,
         action: FieldCellActionID,
         tile: TileID,
-        left: object,
-        right: object,
+        left: CausalState,
+        right: CausalState,
     ) -> CausalInterfacePayload: ...
 
     def child_states(
         self,
         action: FieldCellActionID,
         parent: TileID,
-        left: object,
-        right: object,
-    ) -> tuple[tuple[object, object], tuple[object, object]]: ...
+        left: CausalState,
+        right: CausalState,
+    ) -> CausalChildStates: ...
 
 
 @dataclass(frozen=True, slots=True)
 class _WidthFrame:
     origin: int
     tile: TileID
-    left: object
-    right: object
+    left: CausalState
+    right: CausalState
 
 
 def causal_width(
     engine: CausalObservationEngine,
     action: FieldCellActionID,
     tile: TileID,
-    left: object,
-    right: object,
+    left: CausalState,
+    right: CausalState,
     *,
     limit: int,
 ) -> int:
@@ -118,14 +119,6 @@ def causal_width(
             frame.left,
             frame.right,
         )
-        if (
-            type(contexts) is not tuple
-            or len(contexts) != 2
-            or any(
-                type(context) is not tuple or len(context) != 2 for context in contexts
-            )
-        ):
-            raise TypeError("causal child-state task returned another shape")
         left_context, right_context = contexts
         half = node.width // 2
         # LIFO: queue left first so the rightmost admissible child is inspected

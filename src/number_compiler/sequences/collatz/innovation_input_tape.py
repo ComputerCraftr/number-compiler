@@ -298,6 +298,11 @@ class _D8ParityTransition:
 class ParityProgramBuilder:
     """Collect producer-selected compact factors with exact action seams."""
 
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Read the resource owner, including for closed-state inspection."""
+        return self._ledger
+
     __slots__ = (
         "_base_nodes",
         "_closed",
@@ -449,7 +454,7 @@ class ParityProgramBuilder:
                     self._factors.append(factor)
                 self._entries += entries
         except BaseException:
-            self._factors._rollback_unpublished(original_length)
+            self._factors.rollback_unpublished(original_length)
             if original_length and original_last is not None:
                 self._factors[original_length - 1] = original_last
             self._entries = original_entries
@@ -529,7 +534,7 @@ class ParityProgramBuilder:
         if type(macro) is not CollatzBoundaryMacro:
             raise TypeError("boundary grammar needs its exact producer action")
         validate_boundary_macro(macro)
-        specs = _boundary_macro_specs(macro)
+        specs = boundary_macro_specs(macro)
         self._append_admitted(
             macro.source,
             macro.endpoint,
@@ -765,7 +770,7 @@ class ParityProgramBuilder:
         self._closed = True
 
 
-def _boundary_macro_specs(
+def boundary_macro_specs(
     macro: object,
 ) -> tuple[tuple[tuple[int, ...], int], ...]:
     """Return the producer-admitted compact runs before factor allocation."""
@@ -800,4 +805,9 @@ def _boundary_macro_specs(
     raise ValueError("unknown admitted Collatz boundary family")
 
 
-__all__ = ["NormalizedParityProgram", "ParityFactor", "ParityProgramBuilder"]
+__all__ = [
+    "NormalizedParityProgram",
+    "ParityFactor",
+    "ParityProgramBuilder",
+    "boundary_macro_specs",
+]

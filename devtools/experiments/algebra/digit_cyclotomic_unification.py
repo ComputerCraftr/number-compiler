@@ -95,7 +95,7 @@ class UnifiedDigitCyclotomicMetrics:
 def normalization_unit_rows(
     *, modulus: int = 32, max_order: int = 16
 ) -> tuple[NormalizationUnitRow, ...]:
-    rows = []
+    rows: list[NormalizationUnitRow] = []
     for base in (2, 3, 4, 10, 16):
         units: list[int] = []
         singular: list[int] = []
@@ -212,7 +212,7 @@ def family_audit_rows() -> tuple[FamilyAuditRow, ...]:
 
 
 def carry_dependency_profiles() -> tuple[CarryDependencyProfile, ...]:
-    rows = []
+    rows: list[CarryDependencyProfile] = []
     orders = tuple(range(1, 17))
 
     value = 196
@@ -279,7 +279,7 @@ def factor_split_rows() -> tuple[FactorSplitRow, ...]:
         ("fermat", 5, 3, 64),
         ("fermat", 5, 7, 64),
     ]
-    rows = []
+    rows: list[FactorSplitRow] = []
     for family, parameter, prime, order in specs:
         factors = cyclotomic_factors_mod_prime(order, prime)
         degree = multiplicative_order_mod(prime, order)
@@ -391,7 +391,7 @@ def _factor_closure(
 
 
 def factor_closure_rows() -> tuple[FactorClosureRow, ...]:
-    rows = []
+    rows: list[FactorClosureRow] = []
     for family, parameter, prime in (("mersenne", 7, 2), ("fermat", 3, 3)):
         order = parameter if family == "mersenne" else 2 * (1 << parameter)
         count = len(cyclotomic_factors_mod_prime(order, prime))

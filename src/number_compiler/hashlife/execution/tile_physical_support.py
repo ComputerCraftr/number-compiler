@@ -1,4 +1,9 @@
-"""Ordered physical-Collatz support carried by completed tile results."""
+"""Join family-issued ordered Boolean support on completed tile results.
+
+The shared layer preserves ownership, spatial tick uniqueness and temporal
+order. Branch meaning and primitive support construction belong to the
+injected family hooks.
+"""
 
 from __future__ import annotations
 
@@ -29,7 +34,7 @@ def primitive_physical_support(
     hooks = adapter.family_hooks
     if hooks is None:
         return None
-    record = adapter._action(action)
+    record = adapter.action_record(action)
     if record.children is not None:
         return None
     if len(ports) != 2:

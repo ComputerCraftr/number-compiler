@@ -41,7 +41,7 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
 
     monkeypatch.setattr(ReverseAddPoweredTerm, "digit", forbidden)
     assert term.mirror_obstruction() == reference
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     # The Q19 pair grammar is the completed output authority; its digit stream
     # feeds the measured output consumer without point or tile-sheet visits.
     assert counters["reverse_output_stream_emitted_digits"] == len(digits)
@@ -62,19 +62,19 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
     assert_q19_output_authority(term)
     assert counters.get("temporal_point_requests", 0) == 0
     assert counters.get("point_response_requests", 0) == 0
-    for account in term._ledger.inventory():
+    for account in term.resource_ledger.inventory():
         if account.name.startswith("tile-cylinder-"):
             assert account.entries == account.nodes == 0
             assert account.observed_entries == account.observed_nodes == 0
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
     assert term.metrics().resource_audit_complete == 1
     assert term.metrics().forbidden_future_payloads == 0
     assert_mirror_scratch_released(term)
-    owners = len(term._ledger.inventory())
+    owners = len(term.resource_ledger.inventory())
     assert term.mirror_obstruction(first_width=2) == first_mirror_obstruction(
         len(digits), digits.__getitem__, first_width=2
     )
-    assert len(term._ledger.inventory()) == owners
+    assert len(term.resource_ledger.inventory()) == owners
 
 
 def test_powered_mirror_closes_and_accounts_for_cancelled_output(
@@ -90,7 +90,7 @@ def test_powered_mirror_closes_and_accounts_for_cancelled_output(
         scratch: LedgerList[int],
         first_width: int = 1,
     ) -> Never:
-        assert ledger is term._ledger
+        assert ledger is term.resource_ledger
         assert not scratch
         _ = first_width
         next(digits)
@@ -104,7 +104,7 @@ def test_powered_mirror_closes_and_accounts_for_cancelled_output(
     with pytest.raises(RuntimeError, match="observer stopped"):
         term.mirror_obstruction()
 
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["reverse_output_stream_requests"] == 1
     assert counters["reverse_output_stream_emitted_digits"] == 1
     assert counters["reverse_output_stream_cancellations"] == 1
@@ -115,7 +115,7 @@ def test_powered_mirror_closes_and_accounts_for_cancelled_output(
 def test_powered_mirror_budget_refusal_leaves_scratch_empty() -> None:
     term = ReverseAddPoweredTerm(196, 3)
     width = term.width()
-    ledger = term._ledger
+    ledger = term.resource_ledger
     before = ledger.entries, ledger.nodes
     ledger.max_nodes = ledger.nodes + 2 * width - 1
 

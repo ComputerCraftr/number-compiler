@@ -24,10 +24,10 @@ from number_compiler.arithmetic.carry.event_memory import (
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 from number_compiler.arithmetic.polynomials.primary_jet import (
     PrimaryJetAffineMorphism,
-    _poly_add,
-    _poly_mul,
-    _poly_scale,
+    primary_jet_add,
     primary_jet_from_digits,
+    primary_jet_multiply,
+    primary_jet_scale,
 )
 
 DEGREE = 5
@@ -50,8 +50,8 @@ def _kernel(growth: int) -> tuple[int, ...]:
 def _fixed_root(growth: int, birth: tuple[int, ...]) -> tuple[int, ...]:
     """Return ``-B`` for no-growth and ``-z^-1 B`` for growth."""
     if growth == 0:
-        return _poly_scale(birth, -1, MODULUS)
-    return _poly_mul(_NEG_Z_INVERSE, birth, MODULUS)
+        return primary_jet_scale(birth, -1, MODULUS)
+    return primary_jet_multiply(_NEG_Z_INVERSE, birth, MODULUS)
 
 
 def _port_event(
@@ -74,9 +74,12 @@ def _signature(pair: tuple[int, ...]) -> tuple[object, ...]:
             raise AssertionError((pair, port, block.cylinder.rows[port], growth))
         birth = _jet(forcing_event(pair, target, growth))
         root = _fixed_root(growth, birth)
-        tangent = _poly_add(source, _poly_scale(root, -1, MODULUS), MODULUS)
+        tangent = primary_jet_add(source, primary_jet_scale(root, -1, MODULUS), MODULUS)
         rows.append(
-            (growth, _poly_mul(_CLOCK_POWERS[-len(pair) % 128], tangent, MODULUS))
+            (
+                growth,
+                primary_jet_multiply(_CLOCK_POWERS[-len(pair) % 128], tangent, MODULUS),
+            )
         )
         morphism = PrimaryJetAffineMorphism.reverse_add_event(
             forcing_event(pair, target, growth),
@@ -137,7 +140,11 @@ def audit_decimal_root_tangent(
             target, growth, birth, root = _event_root(pair, port)
             fixed_checks += 1
             if (
-                _poly_add(_poly_mul(_kernel(growth), root, MODULUS), birth, MODULUS)
+                primary_jet_add(
+                    primary_jet_multiply(_kernel(growth), root, MODULUS),
+                    birth,
+                    MODULUS,
+                )
                 != root
             ):
                 fixed_failures += 1
@@ -149,14 +156,20 @@ def audit_decimal_root_tangent(
                 _unused_next_birth_binding,
                 next_root,
             ) = _event_root(target, port)
-            left = _poly_add(_jet(target), _poly_scale(next_root, -1, MODULUS), MODULUS)
-            right = _poly_add(
-                _poly_mul(
+            left = primary_jet_add(
+                _jet(target), primary_jet_scale(next_root, -1, MODULUS), MODULUS
+            )
+            right = primary_jet_add(
+                primary_jet_multiply(
                     _kernel(growth),
-                    _poly_add(source, _poly_scale(root, -1, MODULUS), MODULUS),
+                    primary_jet_add(
+                        source, primary_jet_scale(root, -1, MODULUS), MODULUS
+                    ),
                     MODULUS,
                 ),
-                _poly_add(root, _poly_scale(next_root, -1, MODULUS), MODULUS),
+                primary_jet_add(
+                    root, primary_jet_scale(next_root, -1, MODULUS), MODULUS
+                ),
                 MODULUS,
             )
             rebase_checks += 1
@@ -165,16 +178,24 @@ def audit_decimal_root_tangent(
             phase_checks += 1
             old_phase = _CLOCK_POWERS[-len(pair) % 128]
             new_phase = _CLOCK_POWERS[-len(target) % 128]
-            normalized_left = _poly_mul(new_phase, left, MODULUS)
-            tangent = _poly_add(source, _poly_scale(root, -1, MODULUS), MODULUS)
-            transport = _poly_mul(
+            normalized_left = primary_jet_multiply(new_phase, left, MODULUS)
+            tangent = primary_jet_add(
+                source, primary_jet_scale(root, -1, MODULUS), MODULUS
+            )
+            transport = primary_jet_multiply(
                 _CLOCK_POWERS[-growth % 128], _kernel(growth), MODULUS
             )
-            normalized_right = _poly_add(
-                _poly_mul(transport, _poly_mul(old_phase, tangent, MODULUS), MODULUS),
-                _poly_mul(
+            normalized_right = primary_jet_add(
+                primary_jet_multiply(
+                    transport,
+                    primary_jet_multiply(old_phase, tangent, MODULUS),
+                    MODULUS,
+                ),
+                primary_jet_multiply(
                     new_phase,
-                    _poly_add(root, _poly_scale(next_root, -1, MODULUS), MODULUS),
+                    primary_jet_add(
+                        root, primary_jet_scale(next_root, -1, MODULUS), MODULUS
+                    ),
                     MODULUS,
                 ),
                 MODULUS,

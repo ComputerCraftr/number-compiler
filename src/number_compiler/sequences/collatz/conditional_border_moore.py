@@ -17,13 +17,13 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    MacroTraceGrammar,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 
@@ -63,7 +63,7 @@ class ConditionalBorderState:
 class PointedBorderPath:
     """Certified pointed branch retaining its exact ORIGINAL-source guard."""
 
-    action: CrossFamilyPortAction
+    action: SourceClosedPortAction
     target: CollatzTwoSidedCylinder
     tails: tuple[int, ...]
     physical_ticks: int
@@ -102,7 +102,7 @@ class ConditionalBorderMoore:
             if node.status == "complete":
                 if full.steps == 0:
                     return None
-                port = CrossFamilyPortAction(full, guard, odd_events, None)
+                port = SourceClosedPortAction(full, guard, odd_events, None)
                 if (
                     not port.admits(pointed_source)
                     or port.endpoint(pointed_source) != source
@@ -522,7 +522,7 @@ class ConditionalPoweredBranch:
 
     inlet: CollatzTwoSidedCylinder
     target: CollatzTwoSidedCylinder | None
-    port: CrossFamilyPortAction | None
+    port: SourceClosedPortAction | None
     physical_ticks: int
     tails: MacroTraceGrammar
     refusal: str | None = None
@@ -637,7 +637,7 @@ def _one_return_relation(
         action = _return_action(j)
         for _, admitted, target in _landing_parts(part, action):
             guard = SourceCongruence(admitted.residue, admitted.modulus)
-            port = CrossFamilyPortAction(action, guard, 2, None)
+            port = SourceClosedPortAction(action, guard, 2, None)
             branches.append(
                 ConditionalPoweredBranch(
                     admitted,
@@ -684,7 +684,7 @@ def try_compile_conditional_repeated_motif(
     """Power a small *whole-fiber* driver, never a guessed seed period.
 
     The forced prefix is independently issued from both source ends.
-    CrossFamilyPortAction.power then proves ALL repetitions by source
+    SourceClosedPortAction.power then proves ALL repetitions by source
     guard preimages. This avoids expanding 2**k copies or their Moore
     inlet nodes when the existing 6305 cylinder is already closed.
     """
@@ -716,7 +716,7 @@ def try_compile_conditional_repeated_motif(
         )
         if guard is None:
             raise ArithmeticError("source-forced driver lost its F5 guard")
-        port = CrossFamilyPortAction(prefix, guard, 2 * motif_length, None)
+        port = SourceClosedPortAction(prefix, guard, 2 * motif_length, None)
         try:
             powered = port.power(
                 copies // motif_length,
@@ -919,9 +919,7 @@ def compile_conditional_return_power(
                 if combined is None or not _covers_entire_cylinder(
                     input_part, combined.guard
                 ):
-                    raise ArithmeticError(
-                        "cross-family source guard failed a binary square"
-                    )
+                    raise ArithmeticError("source-closed guard failed a binary square")
                 certified_input = input_part.intersect_congruence(
                     combined.guard.residue, combined.guard.modulus
                 )

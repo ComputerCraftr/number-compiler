@@ -5,17 +5,22 @@ from __future__ import annotations
 from collections.abc import Hashable
 from typing import TYPE_CHECKING
 
-from number_compiler.hashlife.execution.source_bound_images import SourceImageBinding
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageBinding
 
 if TYPE_CHECKING:
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorImagePayload,
+    )
+    from number_compiler.sequences.prime.successor_image_adapter import (
+        PrimeSuccessorImageAdapter,
     )
 
 from math import prod
 
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
@@ -25,9 +30,14 @@ from number_compiler.resources.payload_contracts import (
 
 def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContribution:
     """Validate one arena's exact action stores, without traversing image records."""
-    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.coprime_rank import (
+        CoprimeRankDAG,
+        PrimeFactorSourceIdentity,
+    )
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
+    )
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorActionDescriptor,
         PrimeSuccessorActionID,
         PrimeSuccessorActionNode,
@@ -41,6 +51,7 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
     ):
         raise TypeError("prime action audit requires its exact ledger-owned arena")
     arena = root
+    snapshot = arena.audit_snapshot()
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
 
@@ -50,42 +61,48 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
     def reject(owner: int, value: object) -> None:
         invalid.append(PayloadAuditEntry(owner, value))
 
-    stores = (arena._nodes, arena._normal_forms, arena._ports)
     if (
-        arena.rank.ledger is not ledger
-        or type(arena.rank) is not CoprimeRankDAG
-        or arena._closed
-        or arena._audit_nodes is not stores[0]._data
-        or arena._audit_normal_forms is not stores[1]._data
-        or arena._audit_ports is not stores[2]._data
+        snapshot.ledger is not ledger
+        or type(snapshot.rank) is not CoprimeRankDAG
+        or snapshot.rank.ledger is not ledger
+        or snapshot.closed
+        or not snapshot.stores_valid
     ):
-        reject(arena._nodes.owner, arena)
+        reject(snapshot.node_owner, arena)
         return PayloadAuditContribution((), tuple(invalid))
 
-    rank, rank_ledger, factors = arena._rank_authority
-    descriptor = arena.descriptor
+    rank_authority = snapshot.rank_authority
+    if not is_object_tuple(rank_authority) or len(rank_authority) != 3:
+        reject(snapshot.node_owner, arena)
+        return PayloadAuditContribution((), tuple(invalid))
+    rank, rank_ledger, factor_source = rank_authority
+    if type(rank) is not CoprimeRankDAG:
+        reject(snapshot.node_owner, arena)
+        return PayloadAuditContribution((), tuple(invalid))
+    descriptor = snapshot.descriptor
     if type(descriptor) is not PrimeSuccessorActionDescriptor:
-        reject(arena._nodes.owner, arena)
+        reject(snapshot.node_owner, arena)
         return PayloadAuditContribution((), tuple(invalid))
     parent = descriptor.parent_factors
     q = descriptor.fresh_prime
-    descriptor_authority = getattr(arena, "_descriptor_authority", None)
+    descriptor_authority = snapshot.descriptor_authority
     descriptor_valid = not (
-        type(descriptor_authority) is not tuple
+        not is_object_tuple(descriptor_authority)
         or len(descriptor_authority) != 5
         or descriptor_authority[0] is not descriptor
         or descriptor_authority[1:]
         != (parent, descriptor.parent_period, q, descriptor.forbidden_residues)
-        or arena.rank is not rank
+        or snapshot.rank is not rank
         or rank_ledger is not ledger
-        or arena.rank._factor_store_authority is not factors
-        or type(arena._parent_depth) is not int
-        or arena._parent_depth < 0
-        or arena._parent_depth != len(parent)
-        or type(arena._admitted_successor) is not bool
+        or type(factor_source) is not PrimeFactorSourceIdentity
+        or not rank.validates_factor_source(factor_source)
+        or type(snapshot.parent_depth) is not int
+        or snapshot.parent_depth < 0
+        or snapshot.parent_depth != len(parent)
+        or type(snapshot.admitted_successor) is not bool
         or type(parent) is not tuple
         or any(type(value) is not int or value < 2 for value in parent)
-        or parent != arena.rank.primes[: arena._parent_depth]
+        or parent != rank.primes[: snapshot.parent_depth]
         or descriptor.parent_period != prod(parent)
         or type(q) is not int
         or q < 2
@@ -98,33 +115,33 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
         or descriptor.forbidden_residues
         != tuple(sorted(set(descriptor.forbidden_residues)))
         or (
-            arena._admitted_successor
+            snapshot.admitted_successor
             and (
-                len(arena.rank.primes) <= arena._parent_depth
-                or arena.rank.primes[arena._parent_depth] != q
+                len(rank.primes) <= snapshot.parent_depth
+                or rank.primes[snapshot.parent_depth] != q
             )
         )
     )
     try:
-        if type(arena.descriptor_id) is not PrimeSuccessorDescriptorID:
+        if type(snapshot.descriptor_id) is not PrimeSuccessorDescriptorID:
             raise TypeError("prime arena has another descriptor handle sort")
-        arena.descriptor_id.validate(arena._owner, "prime-successor-descriptor", size=1)
+        arena.validate_descriptor(snapshot.descriptor_id)
     except (TypeError, ValueError, AttributeError):
         descriptor_valid = False
     if not descriptor_valid:
-        reject(arena._nodes.owner, arena)
+        reject(snapshot.node_owner, arena)
         return PayloadAuditContribution((), tuple(invalid))
 
-    nodes = tuple(arena._nodes.items())
-    normal_forms = tuple(arena._normal_forms.items())
+    nodes = snapshot.nodes
+    normal_forms = snapshot.normal_forms
     node_index_valid = (
-        type(arena._next_node) is int
-        and arena._next_node == len(nodes)
+        type(snapshot.next_node) is int
+        and snapshot.next_node == len(nodes)
         and all(type(key) is int for key, _ in nodes)
         and tuple(key for key, _ in nodes) == tuple(range(len(nodes)))
     )
     if not node_index_valid:
-        reject(arena._nodes.owner, arena._audit_nodes)
+        reject(snapshot.node_owner, arena)
         return PayloadAuditContribution((), tuple(invalid))
 
     normal_ids: set[int] = set()
@@ -135,21 +152,21 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
                 raise ValueError("prime normal form has an invalid width")
             if type(action) is not PrimeSuccessorActionID:
                 raise TypeError("prime normal form has another handle sort")
-            action.validate(arena._owner, "prime-successor-action", size=len(nodes))
+            arena.validate_action_handle(action, size=len(nodes))
             if nodes[action.local_id][1].width != width:
                 raise ValueError("prime normal form has another node width")
         except (TypeError, ValueError, IndexError, AttributeError):
-            reject(arena._normal_forms.owner, action)
+            reject(snapshot.normal_form_owner, action)
         else:
             normal_ids.add(action.local_id)
             canonical_actions[action.local_id] = action
-            approve(arena._normal_forms.owner, action)
+            approve(snapshot.normal_form_owner, action)
 
     width = descriptor.parent_period
-    if arena.identity is not canonical_actions.get(
+    if snapshot.identity is not canonical_actions.get(
         0
-    ) or arena.base is not canonical_actions.get(1):
-        reject(arena._normal_forms.owner, arena)
+    ) or snapshot.base is not canonical_actions.get(1):
+        reject(snapshot.normal_form_owner, arena)
     for local_id, node in nodes:
         valid = (
             type(node) is PrimeSuccessorActionNode
@@ -179,11 +196,11 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
                 == node.width
             )
         if valid:
-            approve(arena._nodes.owner, node)
+            approve(snapshot.node_owner, node)
         else:
-            reject(arena._nodes.owner, node)
+            reject(snapshot.node_owner, node)
 
-    for key, effect in arena._ports.items():
+    for key, effect in snapshot.ports:
         valid = (
             type(key) is tuple
             and len(key) == 2
@@ -217,10 +234,10 @@ def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContri
             and effect.parent_survivors <= nodes[key[0].local_id][1].width
         )
         if valid:
-            approve(arena._ports.owner, key)
-            approve(arena._ports.owner, effect)
+            approve(snapshot.port_owner, key)
+            approve(snapshot.port_owner, effect)
         else:
-            reject(arena._ports.owner, effect)
+            reject(snapshot.port_owner, effect)
 
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
@@ -235,7 +252,7 @@ def audit_prime_image_binding(
     failure_prefix: Hashable | None,
 ) -> None:
     """Check one published image binding without charging or mutating state."""
-    from number_compiler.sequences.prime.successor_action import (
+    from number_compiler.sequences.prime.successor_action_contracts import (
         PrimeSuccessorActionID,
         PrimeSuccessorActionNode,
         PrimeSuccessorImagePayload,
@@ -258,16 +275,9 @@ def audit_prime_image_binding(
         or type(binding.action) is not PrimeSuccessorActionID
     ):
         raise ValueError("prime image binding has another source or action")
-    try:
-        binding.action.validate(
-            arena._owner, "prime-successor-action", size=len(arena._nodes)
-        )
-    except (TypeError, ValueError) as error:
-        raise ValueError("prime image binding has a foreign action") from error
-    node = arena._nodes._data.get(binding.action.local_id)
+    node = arena.audit_action_node(binding.action)
     if (
         type(node) is not PrimeSuccessorActionNode
-        or arena._normal_forms._data.get(node.width) is not binding.action
         or type(payload) is not PrimeSuccessorImagePayload
         or payload.descriptor is not arena.descriptor_id
         or payload.action is not binding.action
@@ -289,22 +299,23 @@ def register_prime_action_audit(arena: PrimeSuccessorActionArena) -> None:
     )
 
     arena.rank.ledger.register_execution_root(arena)
+    snapshot = arena.audit_snapshot()
     arena.rank.ledger.register_payload_audit_contract(
         arena,
         "prime",
         (
             PayloadAuditStoreBinding(
-                arena._nodes.owner,
+                snapshot.node_owner,
                 "_audit_nodes",
                 "fresh-prime chronological action nodes",
             ),
             PayloadAuditStoreBinding(
-                arena._normal_forms.owner,
+                snapshot.normal_form_owner,
                 "_audit_normal_forms",
                 "fresh-prime action normal forms",
             ),
             PayloadAuditStoreBinding(
-                arena._ports.owner,
+                snapshot.port_owner,
                 "_audit_ports",
                 "demanded fresh-prime port effects",
             ),

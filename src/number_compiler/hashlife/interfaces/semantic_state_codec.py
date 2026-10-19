@@ -32,15 +32,15 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
+    BooleanCircuit,
     FactoredFunctionID,
-    _Circuit,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
+    StructureBuilder,
     StructuredNode,
     StructureID,
     _aliases,
-    _Builder,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -170,7 +170,7 @@ class StateCodecArena:
                 PortVariable(0, 0, "semantic-argument", 0), admitted.opposite_count
             )
         )
-        builder = _Builder(self.structures)
+        builder = StructureBuilder(self.structures)
         outer = builder.circuit(ports)
         valid = outer.one
         anchor_roots = _decoded_numeric_port(outer, anchor, admitted.anchor_count)
@@ -286,7 +286,7 @@ class StateCodecArena:
 
 
 def _filter(
-    circuit: _Circuit, port: FinitePort, accepted: int, bit: int | None = None
+    circuit: BooleanCircuit, port: FinitePort, accepted: int, bit: int | None = None
 ) -> int:
     """A fixed primitive domain test with an already constructed later suffix."""
     leaves = {
@@ -312,7 +312,7 @@ def _filter(
 
 
 def _decoded_numeric_port(
-    circuit: _Circuit, storage: FinitePort, cardinality: int
+    circuit: BooleanCircuit, storage: FinitePort, cardinality: int
 ) -> tuple[int, ...]:
     """A primitive ordinal, with every unused storage code normalized to zero."""
     original = FinitePort(storage.variable, cardinality)
@@ -322,7 +322,7 @@ def _decoded_numeric_port(
 
 
 def _lookup(
-    circuit: _Circuit, selector: FinitePort, leaves: dict[int, tuple[int, ...]]
+    circuit: BooleanCircuit, selector: FinitePort, leaves: dict[int, tuple[int, ...]]
 ) -> tuple[int, ...]:
     for bit in reversed(range(selector.bits)):
         variable = PortVariable(
@@ -331,7 +331,9 @@ def _lookup(
         leaves = {
             prefix: tuple(
                 circuit.tx.decision(circuit.signature, variable, low, high)
-                for low, high in zip(leaves[prefix], leaves[prefix | (1 << bit)])
+                for low, high in zip(
+                    leaves[prefix], leaves[prefix | (1 << bit)], strict=True
+                )
             )
             for prefix in range(1 << bit)
         }

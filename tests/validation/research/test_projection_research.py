@@ -252,7 +252,7 @@ def test_canonical_output_boxes_reconstruct_exact_t2_relation() -> None:
         a = rng.choice(t2.alphabet)
         r = rng.choice(t2.right.states)
         hits = []
-        for word, (lm, am, rm) in boxes_by_symbol[a]:
+        for word, (lm, _am, rm) in boxes_by_symbol[a]:
             if ((lm >> left_index) & 1) and ((rm >> r) & 1):
                 hits.append(word)
         expected = t2.emit(left_index, a, r)

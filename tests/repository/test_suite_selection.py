@@ -20,8 +20,9 @@ ROOT = repository_root()
 
 
 class _Item:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, fixtures: tuple[str, ...] = ()) -> None:
         self.path = path
+        self.fixturenames = fixtures
         self.config = SimpleNamespace(rootpath=ROOT)
         self.nodeid = f"{path.relative_to(ROOT).as_posix()}::test_sample"
         self.user_properties: list[tuple[str, str]] = []
@@ -41,6 +42,23 @@ def test_test_collection_assigns_validation_partition_automatically() -> None:
     )
     assert "validation" not in ordinary.markers
     assert "validation" in automatic_validation.markers
+
+
+def test_source_graph_collection_is_stable_and_preserves_every_node() -> None:
+    graph = _Item(ROOT / "tests/test_graph.py", ("production_ast_graph",))
+    runtime = _Item(ROOT / "tests/test_runtime.py")
+    proof = _Item(ROOT / "tests/test_proof.py", ("repository_proof_graph",))
+    registry = _Item(ROOT / "tests/test_registry.py", ("repository_sessions",))
+    lifecycle = _Item(ROOT / "tests/test_lifecycle.py")
+    items = [
+        cast(pytest.Item, item) for item in (graph, runtime, proof, registry, lifecycle)
+    ]
+    pytest_collection_modifyitems(items)
+    expected = [
+        cast(pytest.Item, item) for item in (runtime, registry, lifecycle, graph, proof)
+    ]
+    assert items == expected
+    assert all(len(item.user_properties) == 1 for item in items)
 
 
 def test_guarded_pytest_environment_drops_external_filters(

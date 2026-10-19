@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ._temporal_bank_authority import (
-    _SourceAuthority,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
+    SourceRecordAuthority,
     issue_source_record,
     validate_source_record,
 )
@@ -23,11 +23,11 @@ class SourceConditionedDepthWindowUnavailable(ValueError):
     """Expected refusal while preparing a finite source-conditioned window."""
 
 
-def _ring_outer(state: BirthRingState, pairs: int) -> BirthRingState:
+def ring_outer(state: BirthRingState, pairs: int) -> BirthRingState:
     return BirthRingState(state.left[:pairs], state.right[-pairs:], state.phase)
 
 
-def _ring_next_pair(state: BirthRingState, pairs: int) -> tuple[int, int]:
+def ring_next_pair(state: BirthRingState, pairs: int) -> tuple[int, int]:
     return state.left[pairs], state.right[-1 - pairs]
 
 
@@ -89,14 +89,14 @@ class CertifiedHalo:
     def outer(self, pairs: int) -> BirthRingState:
         if type(pairs) is not int or not 1 <= pairs <= self.certified_pairs:
             raise ValueError("requested halo digits are not source-certified")
-        return _ring_outer(self.state, pairs)
+        return ring_outer(self.state, pairs)
 
     def step(self) -> CertifiedHalo:
         """Apply the exact graded transition H_L -> H_(L-1)."""
         if self.certified_pairs < 2:
             raise ValueError("cannot step without a certified inward carry port")
         evolved = _advance_halo_without_frames(self.state)
-        retained = _ring_outer(evolved, self.certified_pairs - 1)
+        retained = ring_outer(evolved, self.certified_pairs - 1)
         return CertifiedHalo(retained, self.certified_pairs - 1, self.f_offset + 1)
 
     def refill(self, authentic: BirthRingState) -> CertifiedHalo:
@@ -121,7 +121,7 @@ class CertifiedHalo:
         return CertifiedHalo(authentic, authentic.pairs, self.f_offset)
 
 
-def _halo_outer_odd_row(
+def halo_outer_odd_row(
     halo: CertifiedHalo, outer_pairs: int
 ) -> tuple[BirthRingState, tuple[tuple[int, int], ...] | None]:
     """Read one certified even/odd boundary row from a retained halo."""
@@ -141,7 +141,7 @@ def _halo_outer_odd_row(
 
 
 @dataclass(frozen=True, slots=True)
-class SourceContinuedHaloTrace(_SourceAuthorizedRecord):
+class SourceContinuedHaloTrace(SourceAuthorizedRecord):
     """Finite halo trace whose refills come from one prepared source cursor."""
 
     physical_prefix: int
@@ -158,7 +158,7 @@ class SourceContinuedHaloTrace(_SourceAuthorizedRecord):
     minimum_certified_pairs: int
     maximum_halo_pairs: int
 
-    def validate_source_authority(self) -> _SourceAuthority:
+    def validate_source_authority(self) -> SourceRecordAuthority:
         authority = validate_source_record(self)
         expected_refills = tuple(
             self.start_f_steps + offset
@@ -277,7 +277,7 @@ def _source_halo_at(
     return BirthRingState(left, right, (source.phase + 2 * f_offset) % 4)
 
 
-def _build_source_continued_halo_trace(
+def build_source_continued_halo_trace(
     source: PointedBankSource,
     *,
     outer_pairs: int,
@@ -326,7 +326,7 @@ def _build_source_continued_halo_trace(
             maximum_halo = max(maximum_halo, current.certified_pairs)
 
         for _ in range(block):
-            state, odd_row = _halo_outer_odd_row(current, outer_pairs)
+            state, odd_row = halo_outer_odd_row(current, outer_pairs)
             even.append(state)
             odd.append(odd_row)
             current = current.step()
@@ -375,7 +375,7 @@ def source_continued_halo_trace_packet_from_source(
     if type(source) is not BankSource:
         raise TypeError("halo continuation needs an existing PointedBankSource")
     with source.ledger.reservation(source.scratch_owner, entries=256, nodes=256):
-        trace = _build_source_continued_halo_trace(
+        trace = build_source_continued_halo_trace(
             source,
             outer_pairs=outer_pairs,
             start_f_steps=start_f_steps,

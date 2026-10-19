@@ -6,6 +6,7 @@ from typing import Never
 import pytest
 
 from number_compiler.projection import lazy_radix
+from number_compiler.projection.microblock_cache import MicroblockCache
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.process_cache import ProcessCache
 from number_compiler.sequences.antihydra import mahler_source_actions
@@ -30,7 +31,7 @@ def test_prime_teardown_releases_lease_after_child_failure(
         max_states=10_000, max_work=100_000, max_stages=100, shared_cache=True
     )
     assert owner.count_prime_interval(2, 30) == 10
-    query = owner._partial_query
+    query = owner.partial_successor_query
     assert isinstance(query, PrimePartialSuccessorQuery)
     assert cache.stats().active_leases == 1
 
@@ -117,7 +118,7 @@ def test_failed_radix_constructor_retires_unpublished_allocations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = PoweredCollatzTerm(27, 1)
-    ledger = term._ledger
+    ledger = term.audit_snapshot().ledger
     before = ledger.entries, ledger.nodes
     roots = tuple(ledger.iter_execution_roots())
     original = lazy_radix.RadixProjection.__init__
@@ -127,7 +128,7 @@ def test_failed_radix_constructor_retires_unpublished_allocations(
         radix: int,
         width: int,
         ledger: ResourceLedger,
-        microblocks: object = None,
+        microblocks: MicroblockCache | None = None,
         *,
         width_is_upper_bound: bool = False,
     ) -> Never:
@@ -136,7 +137,7 @@ def test_failed_radix_constructor_retires_unpublished_allocations(
             radix,
             width,
             ledger,
-            term._microblocks,
+            microblocks,
             width_is_upper_bound=width_is_upper_bound,
         )
         raise RuntimeError("radix setup failed")
@@ -147,5 +148,7 @@ def test_failed_radix_constructor_retires_unpublished_allocations(
             lazy_radix.collatz_radix_digit(term, 3, 0)
     assert (ledger.entries, ledger.nodes) == before
     assert tuple(ledger.iter_execution_roots()) == roots
-    assert 3 not in term._radix_projections
+    audit_source = term.radix_projection_audit_source(ledger)
+    assert audit_source is not None
+    assert 3 not in audit_source.projections
     assert lazy_radix.collatz_radix_digit(term, 3, 0) == 82 % 3

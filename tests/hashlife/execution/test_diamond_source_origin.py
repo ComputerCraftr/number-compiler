@@ -22,7 +22,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_higher_context import machine
+from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 def _joined_source(
     level: int = 6,
 ) -> tuple[DiamondRuntime, ActionProgramID, CellID]:
-    runtime, action = machine((0, 1), 2)
+    runtime, action = collatz_higher_context_runtime((0, 1), 2)
     cell = runtime.cells.join(runtime.cells.source(1, 0), runtime.cells.source(0, 0))
     for _ in range(level - 1):
         cell = runtime.cells.join(cell, cell)
@@ -155,7 +155,7 @@ def test_original_metadata_is_derived_and_independently_audited() -> None:
 def test_origin_metadata_and_node_publication_share_the_same_budget_reservation() -> (
     None
 ):
-    runtime, _ = machine((0, 1), 2)
+    runtime, _ = collatz_higher_context_runtime((0, 1), 2)
     leaf = runtime.cells.source(0, 0)
     runtime.ledger.tighten_limits(None, runtime.ledger.entries + 1)
     before = runtime.ledger.snapshot()

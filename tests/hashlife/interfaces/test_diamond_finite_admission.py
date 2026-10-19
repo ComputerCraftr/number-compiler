@@ -18,11 +18,11 @@ from number_compiler.hashlife.interfaces.diamond_finite_admission import (
 from number_compiler.hashlife.interfaces.diamond_kernel import FiniteExpression
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import input_expression
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 
 def test_warm_interface_proof_avoids_range_revalidation() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     admission = runtime.primitive_continuations.admission
     sort = StateSort(action, 1)
     function = input_expression(
@@ -42,8 +42,8 @@ def test_warm_interface_proof_avoids_range_revalidation() -> None:
 def test_foreign_and_wrong_port_reject_before_telemetry_or_retention(
     warm: bool,
 ) -> None:
-    runtime, action = machine()
-    foreign, foreign_action = machine()
+    runtime, action = collatz_continuation_runtime()
+    foreign, foreign_action = collatz_continuation_runtime()
     admission = runtime.primitive_continuations.admission
     sort = StateSort(action, 1)
     valid = input_expression(
@@ -71,7 +71,7 @@ def test_foreign_and_wrong_port_reject_before_telemetry_or_retention(
 
 
 def test_invalid_admissible_output_code_is_not_certified() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     admission = runtime.primitive_continuations.admission
     sort = StateSort(action, 1)
     assert runtime.kernel(action).right_count == 3
@@ -85,7 +85,7 @@ def test_invalid_admissible_output_code_is_not_certified() -> None:
 def test_exhausted_budget_validates_without_retaining_and_eviction_revalidates() -> (
     None
 ):
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     admission = FiniteFunctionAdmission(runtime.higher.expressions)
     sort = StateSort(action, 1)
     function = input_expression(

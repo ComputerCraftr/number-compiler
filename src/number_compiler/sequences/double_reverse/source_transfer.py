@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from itertools import pairwise
+from typing import cast
 
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.hashlife.interfaces.border_macros import BorderMacroIdentity
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
@@ -33,6 +33,7 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 from .power import DoubleReverseTerm
 
 MAX_PHYSICAL_STEPS = 128
+MAX_POWERED_PHYSICAL_STEPS = 4096
 MAX_PAIR_DEPTH = 16
 MAX_F_STEPS_PER_WINDOW = 4
 PAIR_COORDINATE_ORDER = ("upper_msd_inward", "lower_lsd_inward")
@@ -46,16 +47,6 @@ def _unavailable(reason: str, *, steps: int, pair_depth: int) -> dict[str, objec
         "pair_depth": pair_depth,
         "physical_repeat_certified": False,
         "future_repetition_claimed": False,
-    }
-
-
-def _identity_packet(identity: BorderMacroIdentity) -> dict[str, object]:
-    if type(identity) is not BorderMacroIdentity:
-        raise TypeError("source transfer metadata requires a typed border identity")
-    return {
-        "family": identity.family.value,
-        "kind": identity.kind.value,
-        "signature": identity.signature,
     }
 
 
@@ -89,15 +80,15 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
 
     def record_visit(is_node: bool) -> None:
         if is_node:
-            term._ledger.bump(
+            term.resource_ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_NODE_VISITS
             )
 
     def reserve_task() -> None:
-        term._ledger.reserve(term._scratch_owner, entries=1, nodes=1)
+        term.resource_ledger.reserve(term._scratch_owner, entries=1, nodes=1)
 
     def release_tasks(count: int) -> None:
-        term._ledger.release(term._scratch_owner, entries=count, nodes=count)
+        term.resource_ledger.release(term._scratch_owner, entries=count, nodes=count)
 
     with ExitStack() as streams:
         left_symbols = streams.enter_context(
@@ -125,7 +116,7 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
             )
         )
         for left_symbol, right_symbol in zip(left_symbols, right_symbols, strict=True):
-            term._ledger.bump(
+            term.resource_ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_DIGITS
             )
             if left_symbol != right_symbol:
@@ -133,8 +124,12 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
     return True
 
 
-def source_transfer_packet(
-    term: DoubleReverseTerm, *, steps: int, pair_depth: int
+def _chronological_source_transfer_packet(
+    term: DoubleReverseTerm,
+    *,
+    steps: int,
+    pair_depth: int,
+    include_trace: bool,
 ) -> dict[str, object]:
     """Join a bounded forward interval to exact endpoint children.
 
@@ -246,19 +241,19 @@ def source_transfer_packet(
             roots.append(current_root)
         root_path = tuple(roots)
         action_path = tuple(actions)
-        from .border_macro_catalogue import (
-            SourceBorderMacroCatalogue,
-            source_border_macro_catalogue,
+        from .border_occurrences import (
+            DoubleReverseBorderTrace,
+            trace_double_reverse_border_occurrences,
         )
 
-        catalogue = source_border_macro_catalogue(
+        border_occurrences = trace_double_reverse_border_occurrences(
             future,
             root_path,
             action_path,
             pair_depth=pair_depth,
         )
-        if type(catalogue) is not SourceBorderMacroCatalogue:
-            raise TypeError("source border owner returned an invalid catalogue")
+        if type(border_occurrences) is not DoubleReverseBorderTrace:
+            raise TypeError("2rev10 trace owner returned an invalid border trace")
     except UncertifiedPointedStencilError as exc:
         return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
     except BlockContextBudgetExceeded as exc:
@@ -330,7 +325,7 @@ def source_transfer_packet(
     source_matrices: list[BooleanPairMatrix] = []
 
     for ordinal, (source_root, target_root) in enumerate(pairwise(root_path)):
-        phase = catalogue.phases[ordinal]
+        phase = border_occurrences.phases[ordinal]
         if (
             phase.phase.source.root != source_root
             or phase.phase.target.root != target_root
@@ -349,11 +344,26 @@ def source_transfer_packet(
         rows = [0] * len(ALL_PAIRS)
         rows[source_index] = 1 << target_index
         guarded = BooleanPairMatrix(tuple(rows))
-        source_matrices.append(guarded)
+        if include_trace:
+            source_matrices.append(guarded)
         source_action = source_action.then(guarded)
 
     if source_action.endpoints(actual_pairs[0]) != (actual_pairs[-1],):
         raise AssertionError("source-scoped matrix lost its exact completed child path")
+
+    summary = _chronological_summary(
+        family="2rev10",
+        source_generation=term.generation,
+        steps=steps,
+        pair_depth=pair_depth,
+        source_root=action_root,
+        target_root=root_path[-1],
+        source_pair=actual_pairs[0],
+        target_pair=actual_pairs[-1],
+        matrix_semantics="source_scoped_exact_pair_path",
+    )
+    if not include_trace:
+        return summary
 
     border_phases = tuple(
         {
@@ -362,9 +372,9 @@ def source_transfer_packet(
                 item.phase.source.physical_tick,
                 item.phase.target.physical_tick,
             ),
-            "identity": _identity_packet(item.phase.identity),
-            "source_root": item.phase.source.root,
-            "target_root": item.phase.target.root,
+            "identity": item.phase.identity.packet(),
+            "source_root_local_diagnostic": item.phase.source.root,
+            "target_root_local_diagnostic": item.phase.target.root,
             "source_border": item.phase.source_state,
             "target_border": item.phase.target_state,
             "fourth_digit_carries": item.fourth_digit_carries,
@@ -378,28 +388,18 @@ def source_transfer_packet(
                 item.residue_action.target_mod198,
             ),
         }
-        for item in catalogue.phases
+        for item in border_occurrences.phases
     )
     return {
+        **summary,
         "status": "available",
-        "family": "2rev10",
-        "source_generation": term.generation,
-        "physical_interval": (term.generation, term.generation + steps),
-        "physical_ticks": steps,
-        "pair_depth": pair_depth,
-        "pair_coordinate_order": PAIR_COORDINATE_ORDER,
-        "source_root": action_root,
-        "target_root": root_path[-1],
-        "exact_completed_children_joined": True,
-        "source_guard_applied_before_matrix_composition": True,
-        "matrix_semantics": "source_scoped_exact_pair_path",
         "source_pair_path": actual_pairs,
         "transition_rows": source_action.rows,
         "phase_matrices": tuple(matrix.rows for matrix in source_matrices),
         "border_phases": border_phases,
         "four_tick_observed_words": tuple(
             {
-                "identity": _identity_packet(macro.identity),
+                "identity": macro.identity.packet(),
                 "physical_interval": (
                     term.generation + 2 * macro.start_phase,
                     term.generation + 2 * macro.end_phase,
@@ -409,7 +409,7 @@ def source_transfer_packet(
                 "mod198": (macro.mod198_in, macro.mod198_out),
                 "physical_repeat_certified": False,
             }
-            for macro in catalogue.four_tick_macros
+            for macro in border_occurrences.four_tick_occurrences
         ),
         "depth_windows": tuple(
             {
@@ -417,8 +417,10 @@ def source_transfer_packet(
                     window.start_generation,
                     window.end_generation,
                 ),
-                "source_root": root_path[window.start_f_steps],
-                "target_root": root_path[window.start_f_steps + window.f_steps],
+                "source_root_local_diagnostic": root_path[window.start_f_steps],
+                "target_root_local_diagnostic": root_path[
+                    window.start_f_steps + window.f_steps
+                ],
                 "source_pair_path": window.transfer.pointed_trace,
                 "causal_halo_pairs": window.source_halo.pairs,
                 "transition_rows": window.transfer.action.rows,
@@ -432,10 +434,140 @@ def source_transfer_packet(
     }
 
 
+def _chronological_summary(
+    *,
+    family: str,
+    source_generation: int,
+    steps: int,
+    pair_depth: int,
+    source_root: int,
+    target_root: int,
+    source_pair: tuple[int, int],
+    target_pair: tuple[int, int],
+    matrix_semantics: str,
+) -> dict[str, object]:
+    """Build the non-trace packet shared by exact-path consumers."""
+    return {
+        "status": "available",
+        "family": family,
+        "source_generation": source_generation,
+        "physical_interval": (source_generation, source_generation + steps),
+        "physical_ticks": steps,
+        "pair_depth": pair_depth,
+        "pair_coordinate_order": PAIR_COORDINATE_ORDER,
+        "source_root_local_diagnostic": source_root,
+        "target_root_local_diagnostic": target_root,
+        "source_pair": source_pair,
+        "pointed_target_pair": target_pair,
+        "matrix_semantics": matrix_semantics,
+        "source_pair_path_guarded": True,
+        "source_guard_applied_before_matrix_composition": True,
+        "exact_completed_children_joined": True,
+        "physical_repeat_certified": False,
+        "future_repetition_claimed": False,
+        "execution_authority": False,
+    }
+
+
+def _chronological_packet_summary(packet: dict[str, object]) -> dict[str, object]:
+    """Project an explicitly requested full chronological packet to its summary."""
+    source_path = cast(tuple[tuple[int, int], ...], packet["source_pair_path"])
+    return _chronological_summary(
+        family=cast(str, packet["family"]),
+        source_generation=cast(int, packet["source_generation"]),
+        steps=cast(int, packet["physical_ticks"]),
+        pair_depth=cast(int, packet["pair_depth"]),
+        source_root=cast(int, packet["source_root_local_diagnostic"]),
+        target_root=cast(int, packet["target_root_local_diagnostic"]),
+        source_pair=source_path[0],
+        target_pair=source_path[-1],
+        matrix_semantics=cast(str, packet["matrix_semantics"]),
+    )
+
+
+def _with_trace(
+    summary: dict[str, object], details: dict[str, object]
+) -> dict[str, object]:
+    """Nest chronological detail under one declared trace field."""
+    trace_keys = {
+        "source_pair_path",
+        "transition_rows",
+        "phase_matrices",
+        "matrix_semantics",
+        "exact_completed_children_joined",
+        "source_guard_applied_before_matrix_composition",
+        "border_phases",
+        "four_tick_observed_words",
+        "depth_windows",
+        "depth_window_joined_transition_rows",
+        "source_horizon_physical_ticks",
+    }
+    trace = {key: value for key, value in details.items() if key in trace_keys}
+    return {**summary, "trace": trace}
+
+
+def source_transfer_packet(
+    term: DoubleReverseTerm,
+    *,
+    steps: int,
+    pair_depth: int,
+    trace: bool = False,
+) -> dict[str, object]:
+    """Return the powered endpoint projection or an explicit bounded trace.
+
+    On an admitted closed border, the default powers the nine-state border
+    relation and residue clock, then reads the exact requested pair through
+    source-rooted cones. If that projection is unavailable, a bounded exact
+    chronological path remains the fallback. ``trace=True`` asks for that
+    chronological detail explicitly and is capped at 128 physical ticks.
+    """
+    if type(trace) is not bool:
+        raise TypeError("trace demand must be Boolean")
+    if type(steps) is not int or steps < 2 or steps % 2:
+        raise ValueError("physical matrix ticks must be a positive even number")
+    if type(pair_depth) is not int or not 1 <= pair_depth <= MAX_PAIR_DEPTH:
+        raise ValueError(f"pair depth must be in 1..{MAX_PAIR_DEPTH}")
+    if trace:
+        if steps > MAX_PHYSICAL_STEPS:
+            raise ValueError(
+                f"chronological trace is limited to {MAX_PHYSICAL_STEPS} physical ticks"
+            )
+        packet = _chronological_source_transfer_packet(
+            term, steps=steps, pair_depth=pair_depth, include_trace=True
+        )
+        if packet.get("status") != "available":
+            return packet
+        return _with_trace(_chronological_packet_summary(packet), packet)
+
+    if steps > MAX_POWERED_PHYSICAL_STEPS:
+        raise ValueError(
+            f"powered matrix ticks are limited to {MAX_POWERED_PHYSICAL_STEPS}"
+        )
+    from .temporal_predictive_border import predictive_source_transfer
+
+    powered = predictive_source_transfer(term, steps=steps, pair_depth=pair_depth)
+    if powered.get("status") == "available":
+        return powered
+    if steps <= MAX_PHYSICAL_STEPS:
+        # Preserve the prior exact source path when the powered cylinder does
+        # not apply, while making its extra work visible in the packet.
+        fallback = _chronological_source_transfer_packet(
+            term, steps=steps, pair_depth=pair_depth, include_trace=False
+        )
+        if fallback.get("status") == "available":
+            return {
+                **fallback,
+                "construction": "bounded_exact_source_fallback",
+                "powered_projection_unavailable": powered.get("reason"),
+            }
+    return powered
+
+
 __all__ = [
     "MAX_F_STEPS_PER_WINDOW",
     "MAX_PAIR_DEPTH",
     "MAX_PHYSICAL_STEPS",
+    "MAX_POWERED_PHYSICAL_STEPS",
     "PAIR_COORDINATE_ORDER",
     "source_transfer_packet",
 ]

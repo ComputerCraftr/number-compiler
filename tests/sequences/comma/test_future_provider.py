@@ -17,7 +17,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import future_authority, future_provider
 from number_compiler.sequences.comma.boundary_chart import PERIOD
-from number_compiler.sequences.comma.boundary_quotient import BoundaryState
+from number_compiler.sequences.comma.boundary_quotient import (
+    BoundaryState,
+    boundary_source_index,
+)
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import (
     candidate_record as _candidate_record,
@@ -334,7 +337,7 @@ def test_preflight_charges_before_validation_and_in_bounded_string_chunks() -> N
 
 def test_lease_rejects_a_total_fake_store_and_direct_unretained_binding() -> None:
     class FakeStore:
-        def _resolve(self, _digest: str, _token: ArenaToken) -> object:
+        def resolve_checked(self, _digest: str, _token: ArenaToken) -> object:
             raise AssertionError("fake store should never resolve")
 
     with pytest.raises(TypeError, match="exact provider store"):
@@ -372,7 +375,7 @@ def test_admitted_provider_selects_one_slot_and_preserves_literal_children(
     # This ensures the selection follows the source-to-CID map before reading
     # the class row, rather than treating the source offset as a class ID.
     source = BoundaryState("N", 2, 3)
-    source_index = future_provider._source_index(source)
+    source_index = boundary_source_index(source)
     assert source_index == 3
 
     selection = provider.select_unique_unranked_child(source, charge_work=charge_work)
@@ -429,7 +432,7 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
     assert "producer-writer-point-and-prefix-refinement" in (
         future_authority.GLOBAL_RELEASE_CLAIMS
     )
-    fixture = future_authority._KernelInstanceAdmission(
+    fixture = future_authority.KernelInstanceAdmission(
         artifact_sha256=digest,
         instance_id=future_authority.FINITE_TEST_FIXTURE_SESSION_ID,
         theorem_id=future_authority.FINITE_TEST_FIXTURE_THEOREM_ID,
@@ -437,12 +440,12 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
         claims=future_authority.FINITE_TEST_FIXTURE_CLAIMS,
         scope=future_authority.FINITE_TEST_FIXTURE_SCOPE,
     )
-    assert future_authority._registered_admission_matches(fixture, digest)
-    assert not future_authority._global_release_admission_matches(fixture, digest)
+    assert future_authority.registered_admission_matches(fixture, digest)
+    assert not future_authority.global_release_admission_matches(fixture, digest)
 
     # These release-shaped records are deliberately incomplete contract probes;
     # they are never installed in the empty production registry.
-    release_shape = future_authority._KernelInstanceAdmission(
+    release_shape = future_authority.KernelInstanceAdmission(
         artifact_sha256=digest,
         instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
         theorem_id=future_authority.GLOBAL_RELEASE_THEOREM_ID,
@@ -475,8 +478,8 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
         ),
     )
     for probe in malformed:
-        assert not future_authority._registered_admission_matches(probe, digest)
-        assert not future_authority._global_release_admission_matches(probe, digest)
+        assert not future_authority.registered_admission_matches(probe, digest)
+        assert not future_authority.global_release_admission_matches(probe, digest)
 
     assert future_provider._ADMITTED_KERNEL_INSTANCES == {}
 

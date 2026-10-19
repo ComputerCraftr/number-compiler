@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import statistics
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager, nullcontext
 from importlib import import_module
 from typing import Literal, TypedDict
@@ -25,8 +25,8 @@ from devtools.benchmarks.public_query_comparison import (
     run_jsonl_report,
 )
 from devtools.verification.oracles.sequence_arithmetic import collatz_literal
-from number_compiler.api.family_registry import option_argv
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.registry_cli import option_argv
 from number_compiler.sequences.collatz.border_harmonic_ring import (
     PeriodicTail6305Ring,
 )
@@ -81,7 +81,7 @@ def _disabled_selector(*_args: object, **_kwargs: object) -> None:
 
 
 @contextmanager
-def _selector_ablation(*, include_mixed: bool = False) -> Iterator[None]:
+def _selector_ablation(*, include_mixed: bool = False) -> Generator[None, None, None]:
     """Disable named 6305 selector call sites and optionally mixed selection."""
     execution = import_module(
         "number_compiler.sequences.collatz.temporal_border_return_execution"

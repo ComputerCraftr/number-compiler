@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.interfaces.diamond_quotient import (
+    from number_compiler.hashlife.interfaces.semantic_structures import (
         MacroComponents,
         MacroInterface,
     )
@@ -58,7 +58,7 @@ def attach_leaf_sectors(
     symbol: int,
 ) -> MacroComponents:
     """Attach one exact bounded leaf product without changing 13 channels."""
-    from number_compiler.hashlife.interfaces.diamond_quotient import MacroComponents
+    from number_compiler.hashlife.interfaces.semantic_structures import MacroComponents
 
     if type(components) is not MacroComponents:
         raise TypeError("reverse leaf sectors require complete macro components")
@@ -108,7 +108,7 @@ def compose_reverse_sectors(
     return result
 
 
-def _aligned_reverse_interval_forcing(
+def aligned_reverse_interval_forcing(
     adapter: PrimitiveTileKernelAdapter,
     primary: CausalInterfacePayload,
     reflected: CausalInterfacePayload,
@@ -196,7 +196,7 @@ def supports_reverse_sector_width(
 
     if type(adapter) is not PrimitiveTileKernelAdapter:
         raise TypeError("reverse width requires the primitive tile adapter")
-    record = adapter._action(action)
+    record = adapter.action_record(action)
     kernel = adapter.kernels.kernel(record.kernel)
     supported = (
         record.homogeneous
@@ -209,8 +209,8 @@ def supports_reverse_sector_width(
             supported = True
         else:
             before, after = children
-            producer = adapter._action(before)
-            consumer = adapter._action(after)
+            producer = adapter.action_record(before)
+            consumer = adapter.action_record(after)
             producer_kernel = adapter.kernels.kernel(producer.kernel)
             consumer_kernel = adapter.kernels.kernel(consumer.kernel)
             supported = (

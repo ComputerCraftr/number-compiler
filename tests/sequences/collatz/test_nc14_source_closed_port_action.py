@@ -1,4 +1,4 @@
-"""Exact finite source closure for already-issued cross-family actions."""
+"""Exact finite source closure for already-issued source-closed actions."""
 
 from __future__ import annotations
 
@@ -20,17 +20,17 @@ from number_compiler.sequences.collatz.border_identity import (
     BoundaryActionIdentity,
 )
 from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    MacroTraceGrammar,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.joint_radix_border import (
     JointRadix6Source,
     candidate_family_guard,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (
     select_unified_skew_chain,
@@ -111,8 +111,8 @@ def test_affine_preimage_transports_minimum_source_bound() -> None:
 def test_poisoned_guard_cannot_strip_the_parity_source_authority() -> None:
     action = DyadicTerminalFieldAction.one_run(1)
     with pytest.raises(ValueError, match="imply"):
-        CrossFamilyPortAction(action, SourceCongruence(), 1, None)
-    issued = CrossFamilyPortAction(action, SourceCongruence(1, 2), 1, None, (19,))
+        SourceClosedPortAction(action, SourceCongruence(), 1, None)
+    issued = SourceClosedPortAction(action, SourceCongruence(1, 2), 1, None, (19,))
     with pytest.raises(ValueError, match="imply"):
         replace(issued, guard=SourceCongruence(0, 2))
     with pytest.raises(ValueError, match="outside"):
@@ -123,13 +123,13 @@ def test_external_event_count_and_clock_cannot_forge_growth_moments() -> None:
     action = DyadicTerminalFieldAction.one_run(1)
     guard = SourceCongruence(1, 2)
     with pytest.raises(ValueError, match="event count.*gain"):
-        CrossFamilyPortAction(action, guard, 0, None)
+        SourceClosedPortAction(action, guard, 0, None)
 
     authentic = SkewQuadraticClock.atom(1, precision=8)
     forged_moments = replace(authentic, linear=1, quadratic=3)
     assert forged_moments.value == action.offset % (1 << forged_moments.precision)
     with pytest.raises(TypeError, match="checked internal producer"):
-        CrossFamilyPortAction(action, guard, 1, forged_moments)
+        SourceClosedPortAction(action, guard, 1, forged_moments)
 
 
 def test_issued_clock_seal_rejects_replace_and_mutation_before_readout() -> None:
@@ -206,7 +206,7 @@ def test_temporal_power_is_bounded_and_does_not_expand_trace() -> None:
     action = DyadicTerminalFieldAction.one_run(1).then(
         DyadicTerminalFieldAction.zero_run(1)
     )
-    guarded = CrossFamilyPortAction(action, SourceCongruence(1, 20), 1, None, (1, 2))
+    guarded = SourceClosedPortAction(action, SourceCongruence(1, 20), 1, None, (1, 2))
     ledger = ResourceLedger()
     powered = guarded.power(64, max_coefficient_bits=2_048, ledger=ledger)
     assert powered is not None

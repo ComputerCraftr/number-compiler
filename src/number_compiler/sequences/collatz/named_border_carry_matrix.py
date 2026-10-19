@@ -22,7 +22,9 @@ from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.border_identity import NonBorderSegment
+from number_compiler.sequences.collatz.border_identity import (
+    CollatzSegmentIdentity,
+)
 from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     validate_border_return_macro,
@@ -35,7 +37,6 @@ from number_compiler.sequences.collatz.boundary_macros import (
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import SourceCongruence
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -45,6 +46,9 @@ from number_compiler.sequences.collatz.guarded_port_join import (
     PortPuncture,
     certify_pointed_port_join,
 )
+from number_compiler.sequences.collatz.source_closed_port_action import SourceCongruence
+
+MAX_NAMED_MATRIX_TRACE_PREFIX = 64
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -248,6 +252,82 @@ class NamedBorderCarryMatrix:
             raise ValueError("named matrix lost its retained source parity grammar")
         return tape.prefix_units(time)
 
+    def trace_packet(
+        self, *, normalized_steps: int = MAX_NAMED_MATRIX_TRACE_PREFIX
+    ) -> dict[str, object]:
+        """Read a bounded parity prefix from the retained authenticated SLP.
+
+        The packet keeps the three clocks distinct: normalized halvings,
+        odd events, and physical Collatz ticks.  It never reconstructs an
+        itinerary from the source integer or creates a scheduler occurrence.
+        """
+        if type(normalized_steps) is not int or not 0 <= normalized_steps <= min(
+            self.units.steps, MAX_NAMED_MATRIX_TRACE_PREFIX
+        ):
+            raise ValueError("Collatz matrix trace prefix exceeds 64 normalized steps")
+        if type(self.macro) is CollatzBoundaryMacro:
+            validate_boundary_macro(self.macro)
+            physical_ticks = self.macro.physical_ticks
+        elif type(self.macro) is BorderReturnMacro:
+            validate_border_return_macro(self.macro)
+            physical_ticks = self.macro.physical_ticks
+        else:
+            raise TypeError("trace requires a producer-issued Collatz macro")
+        self.joined.port._verify_issued()
+        tape = self.joined._tape()
+        if tape is None:
+            raise ValueError("named matrix has no retained authenticated parity tape")
+        parity = tape.prefix_letters(normalized_steps)
+        prefix_units = tape.prefix_units(normalized_steps)
+        prefix_action = tape.prefix_action(normalized_steps)
+        target_mod5, tens_carries = prefix_units.apply(self.macro.source % 5)
+        if (
+            not prefix_action.certifies(self.macro.source)
+            or prefix_action.endpoint(self.macro.source) % 5 != target_mod5
+            or prefix_units.odds != sum(parity)
+        ):
+            raise ArithmeticError("bounded trace differs from retained carry action")
+        odd_events = sum(parity)
+        trace_physical_ticks = normalized_steps + odd_events
+        clock = self.joined.port.clock
+        return {
+            "action_identity": self.macro.identity.display_label,
+            "clocks": {
+                "normalized_steps": {
+                    "value": self.units.steps,
+                    "unit": "normalized-halving-events",
+                },
+                "odd_events": {"value": self.units.odds, "unit": "odd-events"},
+                "physical_ticks": {"value": physical_ticks, "unit": "physical-ticks"},
+                "skew_clock": (
+                    None
+                    if clock is None
+                    else {
+                        "steps": clock.steps,
+                        "unit": "normalized-halving-events",
+                        "precision_bits": clock.precision,
+                        "value": clock.value,
+                    }
+                ),
+            },
+            "trace": {
+                "unit": "normalized-halving-events",
+                "normalized_steps": normalized_steps,
+                "parity": parity,
+                "odd_events": odd_events,
+                "physical_ticks": {
+                    "value": trace_physical_ticks,
+                    "unit": "physical-ticks",
+                },
+                "source_mod5": self.macro.source % 5,
+                "endpoint_mod5": target_mod5,
+                "forced_tens_carries": tens_carries,
+                "physical_prefix_status": (
+                    "complete" if normalized_steps == self.units.steps else "partial"
+                ),
+            },
+        }
+
     def weighted_carry_counts(
         self, pointed_source: int, *, max_steps: int = 512
     ) -> GuardedTemporalCarryCounts:
@@ -277,7 +357,7 @@ class NamedBorderCarryMatrix:
 
     def successor_candidate_partition(
         self,
-    ) -> tuple[tuple[object | None, CollatzTwoSidedCylinder], ...]:
+    ) -> tuple[tuple[CollatzSegmentIdentity | None, CollatzTwoSidedCylinder], ...]:
         """Exact root partitions by *every* named next-border candidate.
 
         These are source-pulled modulo-160 entry guards. An entry family is
@@ -285,48 +365,7 @@ class NamedBorderCarryMatrix:
         valuation/width/horizon guard must still be issued by the canonical
         successor selector. Unknown odd entrances are retained as None.
         """
-        from math import gcd
-
-        from number_compiler.sequences.collatz.guarded_port_source import (
-            restrict_source,
-        )
-        from number_compiler.sequences.collatz.joint_radix_border import (
-            _CANDIDATE_FAMILIES,
-        )
-
-        target = self.joined.bridge.target
-        period = 160 // gcd(160, target.modulus)
-        possible = min(target.count, period)
-        residues = tuple(
-            (target.first + target.modulus * i) % 160 for i in range(possible)
-        )
-        results: list[tuple[object | None, CollatzTwoSidedCylinder]] = []
-        for residue in residues:
-            future = SourceCongruence(residue, 160).pullback(self.joined.port.action)
-            guard = None if future is None else self.joined.port.guard.meet(future)
-            root = None if guard is None else restrict_source(self.joined.source, guard)
-            if root is None:
-                continue
-            matching = tuple(
-                identity
-                for identity, r, m, _ in _CANDIDATE_FAMILIES
-                if residue % m == r
-            )
-            if len(matching) > 1:
-                raise ArithmeticError(
-                    "candidate border families overlap on their entrance guard"
-                )
-            family = (
-                matching[0]
-                if matching
-                else (NonBorderSegment.ZERO_RUN if residue % 2 == 0 else None)
-            )
-            results.append((family, root))
-        if sum(child.count for _, child in results) != self.joined.source.count:
-            raise ArithmeticError(
-                "named matrix successor guards lost original-source alternatives"
-            )
-        return tuple(results)
+        return self.joined.future_family_partition()
 
     def successor_partition(self) -> tuple[tuple[int, GuardedPortJoin], ...]:
         """Partition all possible next decimal borders on original-source guards.
@@ -465,7 +504,7 @@ def powered_from_term(
     ):
         raise ValueError("powered Collatz physical span exceeds its finite horizon")
     if term.steps == 0:
-        return _admit_next_macro(term.seed, term._ledger, physical_steps)
+        return _admit_next_macro(term.seed, term.resource_ledger, physical_steps)
     try:
         root = term.true_root_morphism()
     except ValueError:

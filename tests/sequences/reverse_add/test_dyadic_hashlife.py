@@ -77,7 +77,7 @@ def test_reverse_q19_completed_occurrence_reuses_public_projection() -> None:
     exact_width = term.width()
     assert occurrence.output_width == exact_width
 
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     t2 = counters.get("reverse_q19_punctured_t2_applications", 0)
     t4 = counters.get("reverse_q19_punctured_t4_applications", 0)
     assert 2 * t2 + 4 * t4 > 0

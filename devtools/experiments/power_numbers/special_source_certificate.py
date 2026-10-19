@@ -445,7 +445,7 @@ def _local_mismatches(
 ) -> int:
     return sum(
         (value % control.prime_factor == 0) != control.expected_pass
-        for value, control in zip(vector, controls)
+        for value, control in zip(vector, controls, strict=True)
     )
 
 
@@ -461,21 +461,29 @@ def _combine_vector(
         return c.modulus if global_values else c.prime_factor
 
     if op == "neg":
-        return tuple((-a) % modulus(c) for a, c in zip(left, controls))
+        return tuple((-a) % modulus(c) for a, c in zip(left, controls, strict=True))
     if op == "square":
-        return tuple((a * a) % modulus(c) for a, c in zip(left, controls))
+        return tuple((a * a) % modulus(c) for a, c in zip(left, controls, strict=True))
     if op == "gcd_n":
         if not global_values:
             raise ValueError("gcd_n requires candidate-global semantic vectors")
-        return tuple(gcd(a, c.modulus) % c.modulus for a, c in zip(left, controls))
+        return tuple(
+            gcd(a, c.modulus) % c.modulus for a, c in zip(left, controls, strict=True)
+        )
     if right is None:
         raise ValueError(op)
     if op == "add":
-        return tuple((a + b) % modulus(c) for a, b, c in zip(left, right, controls))
+        return tuple(
+            (a + b) % modulus(c) for a, b, c in zip(left, right, controls, strict=True)
+        )
     if op == "sub":
-        return tuple((a - b) % modulus(c) for a, b, c in zip(left, right, controls))
+        return tuple(
+            (a - b) % modulus(c) for a, b, c in zip(left, right, controls, strict=True)
+        )
     if op == "mul":
-        return tuple((a * b) % modulus(c) for a, b, c in zip(left, right, controls))
+        return tuple(
+            (a * b) % modulus(c) for a, b, c in zip(left, right, controls, strict=True)
+        )
     raise ValueError(op)
 
 

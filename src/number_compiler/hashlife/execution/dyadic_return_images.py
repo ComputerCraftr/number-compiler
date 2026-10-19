@@ -9,9 +9,10 @@ discovery still costs linear work in the requested physical extent.
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterator
+from collections.abc import Generator, Hashable, Iterator
 from contextlib import contextmanager
 from operator import add, mul
+from types import MappingProxyType
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -22,39 +23,40 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION,
     DyadicAggregateSummary,
     DyadicCycleSummary,
+    DyadicFiniteCacheAuditSnapshot,
     DyadicImageSummary,
     DyadicReturnActionID,
+    DyadicReturnActionRecord,
     DyadicReturnCycle,
     DyadicReturnImageID,
+    DyadicReturnImageRecord,
     DyadicReturnLaw,
     DyadicReturnSourceID,
+    DyadicReturnSourceRecord,
     DyadicReturnSupportID,
-    _ActionNode,
-    _ImageNode,
-    _SourceNode,
-    _SupportNode,
+    DyadicReturnSupportRecord,
+)
+from number_compiler.hashlife.execution.dyadic_return_store_bundle import (
+    create_dyadic_return_store_bundle,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
-    _low_bits,
     cycle_phase_summaries,
+    low_bits,
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_application import (
+    SourceBoundSplitContextAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
     SourceImageView,
 )
-from number_compiler.hashlife.execution.source_image_application import (
-    SourceBoundSplitContextAdapter,
-)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.stores import LedgerDict, LedgerList
-
-
-def _identity_transfer() -> SkewTransfer[int]:
-    return SkewTransfer(1, 0, 1)
 
 
 class DyadicReturnImageWorkspace(
@@ -64,10 +66,10 @@ class DyadicReturnImageWorkspace(
 
     family = "dyadic-return-source-image"
     semantic_version = DYADIC_RETURN_SOURCE_IMAGE_SEMANTIC_VERSION
-    _ACTION_KIND = "dyadic-return-action"
-    _SOURCE_KIND = "dyadic-return-source"
-    _SUPPORT_KIND = "dyadic-return-support"
-    _IMAGE_KIND = "dyadic-return-image"
+    ACTION_KIND = "dyadic-return-action"
+    SOURCE_KIND = "dyadic-return-source"
+    SUPPORT_KIND = "dyadic-return-support"
+    IMAGE_KIND = "dyadic-return-image"
     MAX_LEAF_STEPS = 64
 
     def __init__(
@@ -127,98 +129,51 @@ class DyadicReturnImageWorkspace(
             if law.family.startswith("antihydra")
             else "dyadic_return_image"
         )
-        self.action_owner = ledger.register(prefix + "-actions", action_role)
-        self.source_owner = ledger.register(prefix + "-sources", source_role)
-        self.support_owner = ledger.register(prefix + "-support", support_role)
-        self.image_owner = ledger.register(prefix + "-images", image_role)
-        self.width_owner = ledger.register(
-            prefix + "-widths", "dyadic_return_action_index"
+        stores = create_dyadic_return_store_bundle(
+            ledger,
+            prefix,
+            action_role=action_role,
+            source_role=source_role,
+            support_role=support_role,
+            image_role=image_role,
         )
-        self.construction_owner = ledger.register(prefix + "-construction", "workspace")
-        self.action_snapshot_owner = ledger.register(
-            prefix + "-action-snapshots", "workspace"
-        )
-        self.source_snapshot_owner = ledger.register(
-            prefix + "-source-snapshots", "workspace"
-        )
-        self.support_snapshot_owner = ledger.register(
-            prefix + "-support-snapshots", "workspace"
-        )
-        self.image_snapshot_owner = ledger.register(
-            prefix + "-image-snapshots", "workspace"
-        )
-        self.macro_owner = ledger.register(
-            prefix + "-macros", "dyadic_return_macro_index"
-        )
-        self.macro_stack_owner = ledger.register(prefix + "-macro-stack", "workspace")
-        self.balanced_stack_owner = ledger.register(
-            prefix + "-balanced-stack", "workspace"
-        )
-        self.demanded_support_owner = ledger.register(
-            prefix + "-demanded-support", "dyadic_return_support_demand_index"
-        )
-        self.demanded_support: LedgerDict[
-            DyadicReturnImageID, DyadicReturnSupportID
-        ] = ledger.make_dict(self.demanded_support_owner, nodes_per_entry=0)
-        self.macros: LedgerDict[tuple[object, ...], _SupportNode] = ledger.make_dict(
-            self.macro_owner, nodes_per_entry=1
-        )
-        self.macro_stack: LedgerList[tuple[int, int, _SupportNode | None]] = (
-            ledger.make_list(
-                self.macro_stack_owner, nodes_per_entry=1, append_only=False
-            )
-        )
-        self.balanced_stack: LedgerList[
-            tuple[int, int, tuple[_SupportNode, DyadicReturnSupportID | None] | None]
-        ] = ledger.make_list(
-            self.balanced_stack_owner, nodes_per_entry=1, append_only=False
-        )
-        self.actions: LedgerList[_ActionNode] = ledger.make_list(
-            self.action_owner, nodes_per_entry=1, append_only=False
-        )
-        self.sources: LedgerList[_SourceNode] = ledger.make_list(
-            self.source_owner, nodes_per_entry=1, append_only=False
-        )
-        self.support: LedgerList[_SupportNode] = ledger.make_list(
-            self.support_owner, nodes_per_entry=1, append_only=False
-        )
-        self.images: LedgerList[_ImageNode] = ledger.make_list(
-            self.image_owner, nodes_per_entry=1, append_only=False
-        )
-        self.by_width: LedgerDict[int, DyadicReturnActionID] = ledger.make_dict(
-            self.width_owner, nodes_per_entry=0
-        )
-        self.construction_stack: LedgerList[int] = ledger.make_list(
-            self.construction_owner, nodes_per_entry=1, append_only=False
-        )
-        self.action_snapshots: LedgerDict[int, object] = ledger.make_dict(
-            self.action_snapshot_owner, nodes_per_entry=1
-        )
-        self.source_snapshots: LedgerDict[int, object] = ledger.make_dict(
-            self.source_snapshot_owner, nodes_per_entry=1
-        )
-        self.support_snapshots: LedgerDict[int, object] = ledger.make_dict(
-            self.support_snapshot_owner, nodes_per_entry=1
-        )
-        self.image_snapshots: LedgerDict[int, object] = ledger.make_dict(
-            self.image_snapshot_owner, nodes_per_entry=1
-        )
+        self.action_owner = stores.action_owner
+        self.source_owner = stores.source_owner
+        self.support_owner = stores.support_owner
+        self.image_owner = stores.image_owner
+        self.width_owner = stores.width_owner
+        self.construction_owner = stores.construction_owner
+        self.action_snapshot_owner = stores.action_snapshot_owner
+        self.source_snapshot_owner = stores.source_snapshot_owner
+        self.support_snapshot_owner = stores.support_snapshot_owner
+        self.image_snapshot_owner = stores.image_snapshot_owner
+        self.macro_owner = stores.macro_owner
+        self.macro_stack_owner = stores.macro_stack_owner
+        self.balanced_stack_owner = stores.balanced_stack_owner
+        self.demanded_support_owner = stores.demanded_support_owner
+        self.demanded_support = stores.demanded_support
+        self.macros = stores.macros
+        self.macro_stack = stores.macro_stack
+        self.balanced_stack = stores.balanced_stack
+        self.actions = stores.actions
+        self.sources = stores.sources
+        self.support = stores.support
+        self.images = stores.images
+        self.by_width = stores.by_width
+        self.construction_stack = stores.construction_stack
+        self.action_snapshots = stores.action_snapshots
+        self.source_snapshots = stores.source_snapshots
+        self.support_snapshots = stores.support_snapshots
+        self.image_snapshots = stores.image_snapshots
         # ``LedgerDict`` registers each scalar snapshot store with its own
         # owner.  The snapshots make later object.__setattr__ tampering
         # observable without replaying a composed image.
         self.scheduler = TileScheduler.source_only(ledger)
         try:
             self.scheduler.register_source_image_adapter(self)
-            self.identity = self._append_action(_ActionNode(0, None))
-            self.root_action = self._action(steps)
-            if steps:
-                residue = _low_bits(seed, steps)
-                lift = 0 if seed.bit_length() <= steps else seed >> steps
-            else:
-                residue, lift = 0, seed
-            self.root_source = self._append_source(
-                _SourceNode(residue, steps, lift, None, None, None, 0, True)
-            )
+            self.identity = self.append_action(DyadicReturnActionRecord(0, None))
+            self.root_action = self.action_for_extent(steps)
+            self.root_source = self.admitted_source(seed, steps)
             self.root_image = self.scheduler.source_image_demanded(
                 self,
                 self.root_source,
@@ -232,70 +187,119 @@ class DyadicReturnImageWorkspace(
                 raise TypeError("dyadic return projection changed its payload sort")
             self.root_payload: DyadicReturnImageID = projected
         except BaseException:
-            self._rollback_construction()
-            self._bump("image_rollbacks")
+            self.rollback_construction()
+            self.bump_metric("image_rollbacks")
             raise
         ledger.register_execution_root(self)
 
-    def _rollback_construction(self) -> None:
+    @property
+    def closed(self) -> bool:
+        """Whether this source-bound image workspace has been invalidated."""
+        return self._closed
+
+    def rollback_construction(self) -> None:
+        """Rollback all workspace stores after a failed construction."""
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             rollback_construction,
         )
 
         rollback_construction(self)
 
+    def invalidate_after_rollback(self) -> None:
+        """Invalidate issued workspace handles after stores were reclaimed."""
+        self.owner = ArenaToken("dyadic-return-images-disposed")
+        self._closed = True
+
     def dispose(self) -> None:
         from number_compiler.hashlife.execution.dyadic_return_actions import dispose
 
         dispose(self)
 
-    def _append_action(self, node: _ActionNode) -> DyadicReturnActionID:
+    def finite_cache_audit_snapshot(self) -> DyadicFiniteCacheAuditSnapshot:
+        """Expose finite memo state without exposing a mutation API."""
+        return DyadicFiniteCacheAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self.closed,
+            self.macro_owner,
+            MappingProxyType(self.macros),
+            tuple(self.macro_stack),
+            tuple(self.balanced_stack),
+        )
+
+    def clear_finite_support_cache(self) -> None:
+        """Release retained finite-cylinder atoms through their ledger owner."""
+        from number_compiler.hashlife.execution.dyadic_return_transport import (
+            clear_finite_support_cache,
+        )
+
+        clear_finite_support_cache(self)
+
+    def finite_residue_effect(
+        self,
+        width: int,
+        residue: int,
+        *,
+        retain_cache: bool = False,
+    ) -> DyadicReturnSupportRecord:
+        """Evaluate one finite cylinder with optional memo retention."""
+        from number_compiler.hashlife.execution.dyadic_return_transport import (
+            finite_residue_effect,
+        )
+
+        return finite_residue_effect(
+            self,
+            width,
+            residue,
+            retain_cache=retain_cache,
+        )
+
+    def append_action(self, node: DyadicReturnActionRecord) -> DyadicReturnActionID:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             append_action,
         )
 
         return append_action(self, node)
 
-    def _action(self, width: int) -> DyadicReturnActionID:
+    def action_for_extent(self, extent: int) -> DyadicReturnActionID:
+        """Return the authenticated action spanning an exact tick extent."""
+        if type(extent) is not int or extent < 0:
+            raise ValueError("dyadic return extent must be a nonnegative integer")
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             build_action,
         )
 
-        return build_action(self, width)
+        return build_action(self, extent)
 
-    def _append_source(self, node: _SourceNode) -> DyadicReturnSourceID:
-        self.ledger.reserve_many(
-            ((self.source_owner, 1, 1), (self.source_snapshot_owner, 1, 1))
+    def admitted_source(self, seed: int, steps: int) -> DyadicReturnSourceID:
+        """Publish an exact integer source at the requested low-bit precision."""
+        if type(seed) is not int or seed < 0:
+            raise ValueError("dyadic return source must be a nonnegative integer")
+        if type(steps) is not int or steps < 0:
+            raise ValueError("dyadic return source precision must be nonnegative")
+        if self._closed:
+            raise ValueError("disposed dyadic return workspace")
+        residue = low_bits(seed, steps)
+        lift = seed >> steps
+        return self._append_source(
+            DyadicReturnSourceRecord(residue, steps, lift, None, None, None, 0, True)
         )
-        identity = DyadicReturnSourceID(
-            self.owner, self._SOURCE_KIND, len(self.sources)
-        )
-        try:
-            self.sources.append(node)
-            self.source_snapshots[identity.local_id] = (
-                node.residue,
-                node.precision,
-                node.lift,
-                node.parent,
-                node.parent_action,
-                node.before_image,
-                node.side,
-                node.exact,
-            )
-        except BaseException:
-            self.ledger.release(self.source_owner, entries=1, nodes=1)
-            self.ledger.release(self.source_snapshot_owner, entries=1, nodes=1)
-            raise
-        return identity
 
-    def _append_support(self, node: _SupportNode) -> DyadicReturnSupportID:
+    def _append_source(self, node: DyadicReturnSourceRecord) -> DyadicReturnSourceID:
+        from number_compiler.hashlife.execution.dyadic_return_actions import (
+            append_source,
+        )
+
+        return append_source(self, node)
+
+    def _append_support(self, node: DyadicReturnSupportRecord) -> DyadicReturnSupportID:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             append_support,
         )
 
         return append_support(self, node)
 
-    def _append_image(self, node: _ImageNode) -> DyadicReturnImageID:
+    def _append_image(self, node: DyadicReturnImageRecord) -> DyadicReturnImageID:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             append_image,
         )
@@ -309,28 +313,28 @@ class DyadicReturnImageWorkspace(
 
         rollback_new_publications(self, support_start, image_start)
 
-    def action_node(self, action: DyadicReturnActionID) -> _ActionNode:
+    def action_node(self, action: DyadicReturnActionID) -> DyadicReturnActionRecord:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             action_node,
         )
 
         return action_node(self, action)
 
-    def source_node(self, source: DyadicReturnSourceID) -> _SourceNode:
+    def source_node(self, source: DyadicReturnSourceID) -> DyadicReturnSourceRecord:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             source_node,
         )
 
         return source_node(self, source)
 
-    def support_node(self, support: DyadicReturnSupportID) -> _SupportNode:
+    def support_node(self, support: DyadicReturnSupportID) -> DyadicReturnSupportRecord:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             support_node,
         )
 
         return support_node(self, support)
 
-    def image_node(self, image: DyadicReturnImageID) -> _ImageNode:
+    def image_node(self, image: DyadicReturnImageID) -> DyadicReturnImageRecord:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             image_node,
         )
@@ -365,7 +369,7 @@ class DyadicReturnImageWorkspace(
 
         validate_law(self)
 
-    def _bump(self, suffix: str, amount: int = 1) -> None:
+    def bump_metric(self, suffix: str, amount: int = 1) -> None:
         self.ledger.bump(f"{self.counter_prefix}_{suffix}", amount)
 
     def retain_chronological_support(self) -> bool:
@@ -390,11 +394,11 @@ class DyadicReturnImageWorkspace(
         self.validate_action(after)
         assert type(before) is DyadicReturnActionID
         assert type(after) is DyadicReturnActionID
-        return self._action(
+        return self.action_for_extent(
             self.action_node(before).width + self.action_node(after).width
         )
 
-    def _source_value(self, source: _SourceNode) -> int:
+    def _source_value(self, source: DyadicReturnSourceRecord) -> int:
         from number_compiler.hashlife.execution.dyadic_return_transport import (
             source_value,
         )
@@ -415,9 +419,11 @@ class DyadicReturnImageWorkspace(
         assert type(source) is DyadicReturnSourceID
         node = self.source_node(source)
         summary = DyadicImageSummary(
-            0, node.residue, _identity_transfer(), 0, 0, 0, None
+            0, node.residue, SkewTransfer(1, 0, 1), 0, 0, 0, None
         )
-        payload = self._append_image(_ImageNode(source, self.identity, summary))
+        payload = self._append_image(
+            DyadicReturnImageRecord(source, self.identity, summary)
+        )
         return SourceImageCandidate(
             payload,
             0,
@@ -467,9 +473,9 @@ class DyadicReturnImageWorkspace(
             return None
         entry_phase = None
         for phase, value in enumerate(cycle.states):
-            self._bump("cycle_source_comparisons")
+            self.bump_metric("cycle_source_comparisons")
             if (
-                source_node.residue == _low_bits(value, source_node.precision)
+                source_node.residue == low_bits(value, source_node.precision)
                 and source_node.lift == value >> source_node.precision
             ):
                 entry_phase = phase
@@ -487,7 +493,7 @@ class DyadicReturnImageWorkspace(
         )
         safety = cycle_safety.repeat(cycles).then(remainder_safety)
         tail_delta, tail_minimum = safety.delta, safety.minimum
-        self._bump("cycle_safety_transformer_applications")
+        self.bump_metric("cycle_safety_transformer_applications")
         tail_odd = cycles * cycle_odd + remainder_odd
         terminal = cycle.states[terminal_phase]
         cycle_summary = DyadicCycleSummary(
@@ -500,7 +506,7 @@ class DyadicReturnImageWorkspace(
             tail_delta,
             tail_minimum,
         )
-        self._bump(
+        self.bump_metric(
             "cycle_repeat_operand_bits",
             max(
                 1,
@@ -511,7 +517,7 @@ class DyadicReturnImageWorkspace(
         )
         transfer = SkewTransfer(0, terminal, 1)
         support = self._append_support(
-            _SupportNode(
+            DyadicReturnSupportRecord(
                 action_node.width,
                 source_node.residue,
                 transfer,
@@ -533,8 +539,10 @@ class DyadicReturnImageWorkspace(
             support,
             cycle_summary,
         )
-        payload = self._append_image(_ImageNode(source_id, action, summary))
-        self._bump("cycle_compressions")
+        payload = self._append_image(
+            DyadicReturnImageRecord(source_id, action, summary)
+        )
+        self.bump_metric("cycle_compressions")
         return SourceImageCandidate(
             payload,
             action_node.width,
@@ -561,7 +569,7 @@ class DyadicReturnImageWorkspace(
             return complete_composite_candidate(self, action, source)
 
     @contextmanager
-    def composite_transaction(self) -> Iterator[None]:
+    def composite_transaction(self) -> Generator[None, None, None]:
         """Keep adapter records provisional until the scheduler publishes them."""
         support_start, image_start = len(self.support), len(self.images)
         try:
@@ -569,7 +577,7 @@ class DyadicReturnImageWorkspace(
         except BaseException:
             if len(self.support) > support_start or len(self.images) > image_start:
                 self._rollback_new_publications(support_start, image_start)
-                self._bump("composite_cutover_rollbacks")
+                self.bump_metric("composite_cutover_rollbacks")
             raise
 
     def primitive_run_candidate(
@@ -622,9 +630,11 @@ class DyadicReturnImageWorkspace(
             odd_steps,
             support,
         )
-        payload = self._append_image(_ImageNode(source.binding.source, action, summary))
-        self._bump("leaf_steps", node.width)
-        self._bump(
+        payload = self._append_image(
+            DyadicReturnImageRecord(source.binding.source, action, summary)
+        )
+        self.bump_metric("leaf_steps", node.width)
+        self.bump_metric(
             "leaf_operand_bits",
             source_node.residue.bit_length() + transfer.offset.bit_length(),
         )
@@ -669,8 +679,8 @@ class DyadicReturnImageWorkspace(
         parent_value = self._source_value(parent) if exact else 0
         lift = parent_value >> before_width if exact else 0
         return self._append_source(
-            _SourceNode(
-                _low_bits(parent.residue, before_width),
+            DyadicReturnSourceRecord(
+                low_bits(parent.residue, before_width),
                 before_width,
                 lift,
                 parent_source.binding.source,
@@ -725,7 +735,7 @@ class DyadicReturnImageWorkspace(
             if numerator % before.transfer.lower:
                 raise ArithmeticError("dyadic return exact transport was not integral")
             after_value = numerator // before.transfer.lower
-            self._bump(
+            self.bump_metric(
                 "transport_exact_operand_bits",
                 max(
                     1,
@@ -737,11 +747,11 @@ class DyadicReturnImageWorkspace(
                     after_value.bit_length(),
                 ),
             )
-            residue = _low_bits(after_value, after_width)
+            residue = low_bits(after_value, after_width)
             lift = after_value >> after_width
             exact = True
         return self._append_source(
-            _SourceNode(
+            DyadicReturnSourceRecord(
                 residue,
                 after_width,
                 lift,
@@ -816,7 +826,7 @@ class DyadicReturnImageWorkspace(
             left.delta, left.minimum, right.delta, right.minimum
         )
         support = self._append_support(
-            _SupportNode(
+            DyadicReturnSupportRecord(
                 left.width + right.width,
                 parent.residue,
                 transfer,
@@ -838,8 +848,10 @@ class DyadicReturnImageWorkspace(
             support,
             cycle,
         )
-        payload = self._append_image(_ImageNode(source.binding.source, action, summary))
-        self._bump(
+        payload = self._append_image(
+            DyadicReturnImageRecord(source.binding.source, action, summary)
+        )
+        self.bump_metric(
             "composition_operand_bits",
             parent.residue.bit_length() + transfer.offset.bit_length(),
         )
@@ -904,7 +916,7 @@ class DyadicReturnImageWorkspace(
     def saturated_summary(self) -> DyadicAggregateSummary:
         """Project an authenticated image; never cache unchecked public records."""
         value = self.summary()
-        self._bump("aggregate_demands")
+        self.bump_metric("aggregate_demands")
         return DyadicAggregateSummary(
             value.width,
             value.residue,
@@ -965,13 +977,6 @@ class DyadicReturnImageWorkspace(
 
         return first_failure_index(self)
 
-    def _first_failure(self, summary: DyadicImageSummary) -> int | None:
-        from number_compiler.hashlife.execution.dyadic_return_observers import (
-            _first_failure,
-        )
-
-        return _first_failure(self, summary)
-
     def validate(self) -> None:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             validate_workspace,
@@ -990,9 +995,4 @@ __all__ = [
     "DyadicReturnLaw",
     "DyadicReturnSourceID",
     "DyadicReturnSupportID",
-    "_ActionNode",
-    "_ImageNode",
-    "_SourceNode",
-    "_SupportNode",
-    "_low_bits",
 ]

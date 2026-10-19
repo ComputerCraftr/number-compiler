@@ -12,9 +12,17 @@ repeat exponent, never the represented characters.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, MutableMapping, MutableSequence, Sequence
+from collections.abc import (
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Sequence,
+)
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from types import MappingProxyType
+from typing import Generic, Protocol, TypeVar
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.transducer import (
@@ -25,6 +33,51 @@ from number_compiler.arithmetic.fields.radix import bit_width
 
 _bits = bit_width
 _InternKey = TypeVar("_InternKey")
+_CacheKey = TypeVar("_CacheKey")
+_CacheValue = TypeVar("_CacheValue")
+
+
+class SLPCacheAuditView(Mapping[_CacheKey, object], Generic[_CacheKey]):
+    """Read-only projector cache view with its exact backing identity."""
+
+    __slots__ = ("_values", "_backing_store_identity")
+
+    def __init__(
+        self,
+        values: Mapping[_CacheKey, object],
+        backing_store_identity: object,
+    ) -> None:
+        self._values = values
+        self._backing_store_identity = backing_store_identity
+
+    def __getitem__(self, key: _CacheKey) -> object:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[_CacheKey]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    @property
+    def backing_store_identity(self) -> object:
+        """Expose backing identity without exposing mutation operations."""
+        return self._backing_store_identity
+
+
+def _slp_cache_audit_view(
+    store: MutableMapping[_CacheKey, _CacheValue],
+) -> SLPCacheAuditView[_CacheKey]:
+    from number_compiler.resources.owned_memo import OwnedMemo
+
+    values: Mapping[_CacheKey, object]
+    if type(store) is OwnedMemo:
+        values = store.audit_payload_view()
+        backing_store = values.backing_store_identity
+    else:
+        values = MappingProxyType(store)
+        backing_store = store
+    return SLPCacheAuditView(values, backing_store)
 
 
 class _StateStart(Protocol):
@@ -268,12 +321,13 @@ class BimachineSLPProjector:
         "_fwd_power",
         "_rev",
         "_rev_power",
+        "_cache_stores_bound",
         "arena",
         "machine",
         "section_calls",
     )
 
-    def __init__(self, machine: _SLPTransducer, arena: SLPArena):
+    def __init__(self, machine: _SLPTransducer, arena: SLPArena) -> None:
         self.machine = machine
         self.arena = arena
         self._fwd: MutableMapping[tuple[int, int], int | None] = {}
@@ -281,7 +335,64 @@ class BimachineSLPProjector:
         self._block: MutableMapping[tuple[int, int, int], int] = {}
         self._fwd_power: MutableMapping[tuple[int, int, int], int | None] = {}
         self._rev_power: MutableMapping[tuple[int, int, int], int | None] = {}
+        self._cache_stores_bound = False
         self.section_calls = 0
+
+    def bind_cache_stores(
+        self,
+        *,
+        forward: MutableMapping[tuple[int, int], int | None],
+        reverse: MutableMapping[tuple[int, int], int | None],
+        block: MutableMapping[tuple[int, int, int], int],
+        forward_power: MutableMapping[tuple[int, int, int], int | None],
+        reverse_power: MutableMapping[tuple[int, int, int], int | None],
+    ) -> None:
+        """Bind empty caller-owned stores before the first projection."""
+        stores = (forward, reverse, block, forward_power, reverse_power)
+        if (
+            self._cache_stores_bound
+            or self.section_calls
+            or any(
+                len(cache)
+                for cache in (
+                    self._fwd,
+                    self._rev,
+                    self._block,
+                    self._fwd_power,
+                    self._rev_power,
+                )
+            )
+        ):
+            raise ValueError("projector cache stores are already in use")
+        if any(len(store) for store in stores):
+            raise ValueError("projector cache stores must be empty at binding")
+        if len({id(store) for store in stores}) != len(stores):
+            raise ValueError("projector cache stores must have distinct owners")
+        self._fwd = forward
+        self._rev = reverse
+        self._block = block
+        self._fwd_power = forward_power
+        self._rev_power = reverse_power
+        self._cache_stores_bound = True
+
+    @property
+    def audit_cache_stores(
+        self,
+    ) -> tuple[
+        SLPCacheAuditView[tuple[int, int]],
+        SLPCacheAuditView[tuple[int, int]],
+        SLPCacheAuditView[tuple[int, int, int]],
+        SLPCacheAuditView[tuple[int, int, int]],
+        SLPCacheAuditView[tuple[int, int, int]],
+    ]:
+        """Return read-only views of the exact five projector cache stores."""
+        return (
+            _slp_cache_audit_view(self._fwd),
+            _slp_cache_audit_view(self._rev),
+            _slp_cache_audit_view(self._block),
+            _slp_cache_audit_view(self._fwd_power),
+            _slp_cache_audit_view(self._rev_power),
+        )
 
     def _action(self, q: int, state: int, *, right: bool) -> int | None:
         node_cache = self._rev if right else self._fwd

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.automata.primitive_semantics import (
@@ -41,6 +42,9 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
     FieldGeometryID,
 )
+from number_compiler.hashlife.execution.continuations.higher_audit_views import (
+    SemanticBoundaryAuditSnapshot,
+)
 from number_compiler.hashlife.execution.field_images import (
     FieldImageSummary,
     SourceBindingID,
@@ -50,13 +54,7 @@ from number_compiler.hashlife.execution.field_images import (
 from number_compiler.hashlife.execution.field_transfer import FieldTransferCandidate
 from number_compiler.hashlife.execution.field_transfers import FieldTransferID
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
-    DiamondQuotientArena,
-    LocalInterfaceID,
-    MacroComponents,
-    MacroInterface,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     MACRO_LEFT as _LEFT,
 )
@@ -71,7 +69,13 @@ from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
-from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
+    LocalInterfaceID,
+    MacroComponents,
+    MacroInterface,
+    StructureID,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
@@ -106,7 +110,7 @@ class SemanticBoundaryID(ArenaHandle):
 
 
 @dataclass(frozen=True, slots=True)
-class _Boundary:
+class SemanticBoundaryRecord:
     left: int
     right: int
 
@@ -122,8 +126,12 @@ class SemanticBoundaryArena:
         prefix = f"semantic-boundaries-{len(ledger.inventory())}"
         self._node_owner = ledger.register(prefix + "-nodes", "observation_port_state")
         self._key_owner = ledger.register(prefix + "-keys", "observation_port_interner")
-        self._nodes: MutableSequence[_Boundary] = ledger.make_list(self._node_owner)
-        self._keys: MutableMapping[_Boundary, int] = ledger.make_dict(self._key_owner)
+        self._nodes: MutableSequence[SemanticBoundaryRecord] = ledger.make_list(
+            self._node_owner
+        )
+        self._keys: MutableMapping[SemanticBoundaryRecord, int] = ledger.make_dict(
+            self._key_owner
+        )
         ledger.register_execution_root(self)
         ledger.register_container(
             self._node_owner,
@@ -140,7 +148,7 @@ class SemanticBoundaryArena:
     def intern(self, left: int, right: int) -> SemanticBoundaryID:
         if type(left) is not int or type(right) is not int or left < 0 or right < 0:
             raise ValueError("boundary values require nonnegative exact integers")
-        record = _Boundary(left, right)
+        record = SemanticBoundaryRecord(left, right)
         found = self._keys.get(record)
         if found is None:
             found = append_indexed_node(
@@ -154,11 +162,30 @@ class SemanticBoundaryArena:
             )
         return SemanticBoundaryID(self.owner, self._KIND, found)
 
-    def resolve(self, reference: ArenaHandle) -> _Boundary:
+    def handle_for_local_id(self, local_id: int) -> SemanticBoundaryID:
+        """Return a handle only for a currently allocated boundary record."""
+        if type(local_id) is not int or not 0 <= local_id < len(self._nodes):
+            raise IndexError("semantic boundary index is outside the arena")
+        return SemanticBoundaryID(self.owner, self._KIND, local_id)
+
+    def resolve(self, reference: ArenaHandle) -> SemanticBoundaryRecord:
         if type(reference) is not SemanticBoundaryID:
             raise TypeError("expected a semantic boundary ID")
         reference.validate(self.owner, self._KIND, size=len(self._nodes))
         return self._nodes[reference.local_id]
+
+    def audit_snapshot(self) -> SemanticBoundaryAuditSnapshot:
+        """Expose read-only views of the exact interned boundary store."""
+        return SemanticBoundaryAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            node_owner=self._node_owner,
+            records=tuple(self._nodes),
+            node_store=self._nodes,
+            key_owner=self._key_owner,
+            keys=MappingProxyType(self._keys),
+            key_store=self._keys,
+        )
 
 
 @dataclass(frozen=True, slots=True)

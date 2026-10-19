@@ -429,7 +429,9 @@ def conditional_return_from_trace(
     ):
         raise ValueError("a complete finite outer-border return is required")
     ports: list[int | None] = []
-    for source, target, bit in zip(outer_pairs, outer_pairs[1:], growth):
+    for source, target, bit in zip(
+        outer_pairs[:-1], outer_pairs[1:], growth, strict=True
+    ):
         allowed = border_carry_port(BorderTile(1, *source)).require_target(
             BorderTile(1, *target)
         )
@@ -550,7 +552,7 @@ def conditional_window_return_from_trace(
     ):
         raise ValueError("a full closed K-digit tile path is required")
     ports: list[int | None] = []
-    for old, new, bit in zip(tiles, tiles[1:], growth):
+    for old, new, bit in zip(tiles[:-1], tiles[1:], growth, strict=True):
         port = border_carry_port(old)
         admitted = port.require_target(new)
         if not admitted or any(

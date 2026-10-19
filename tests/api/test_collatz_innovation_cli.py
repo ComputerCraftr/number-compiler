@@ -1,12 +1,10 @@
-from number_compiler.api import cli_render
-
 """Guarded innovation observations share admission without demanding sums."""
 
 import json
 
 import pytest
 
-from number_compiler.api import cli
+from number_compiler.api import cli, cli_render
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import forbid_explicit_lowering
@@ -40,7 +38,7 @@ def test_guarded_observation_does_not_demand_accumulator_or_render(
     monkeypatch.setattr(
         PoweredCollatzTerm, "prepare_joint_cocycle", forbid_explicit_lowering
     )
-    monkeypatch.setattr(cli_render, "_render_value", forbid_explicit_lowering)
+    monkeypatch.setattr(cli_render, "render_value", forbid_explicit_lowering)
     assert (
         cli.main(
             [

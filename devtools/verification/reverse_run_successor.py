@@ -89,7 +89,7 @@ def compare_trajectory(seed: int, steps: int = 100) -> dict[str, object]:
         raise ValueError((seed, steps))
     field = reverse_pair_sums(seed, 10)
     runs = symbol_runs(field)
-    rows = []
+    rows: list[dict[str, int]] = []
     for event in range(1, steps + 1):
         runs, growth = run_successor(runs)
         field, oracle_growth = pair_step(field, 10)

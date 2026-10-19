@@ -21,7 +21,7 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
-    _Builder,
+    StructureBuilder,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -72,7 +72,7 @@ def test_warm_semantic_declaration_avoids_construction_and_validates_handles(
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("known complete declaration replayed construction")
 
-    monkeypatch.setattr(_Builder, "rewrite", forbidden)
+    monkeypatch.setattr(StructureBuilder, "rewrite", forbidden)
     monkeypatch.setattr(_Transaction, "decision", forbidden)
     retained = ledger.snapshot()
     assert structures.declare(value, inputs) == result
@@ -108,7 +108,7 @@ def test_declaration_budget_rejection_is_atomic_and_eviction_preserves_ids(
         raise AssertionError("exhausted declaration budget entered construction")
 
     with monkeypatch.context() as patch:
-        patch.setattr(_Builder, "rewrite", forbidden)
+        patch.setattr(StructureBuilder, "rewrite", forbidden)
         with pytest.raises(BlockContextBudgetExceeded):
             structures.declare(value, inputs)
     assert (ledger.entries, ledger.nodes, ledger.inventory()) == (

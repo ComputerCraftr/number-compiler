@@ -15,6 +15,8 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,

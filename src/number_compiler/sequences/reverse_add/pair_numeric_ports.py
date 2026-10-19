@@ -13,7 +13,7 @@ return or a shortcut across unvisited generations.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -138,7 +138,9 @@ class PairWordNumericSummary:
 @contextmanager
 def _numeric_fold_workspace(
     ledger: ResourceLedger, workspace_owner: int, node_bound: int
-) -> Iterator[tuple[dict[int, PairWordNumericSummary], list[tuple[int, bool]]]]:
+) -> Generator[
+    tuple[dict[int, PairWordNumericSummary], list[tuple[int, bool]]], None, None
+]:
     """Reserve temporary fold maps and clear them on success or failure."""
     with ledger.reservation(
         workspace_owner,

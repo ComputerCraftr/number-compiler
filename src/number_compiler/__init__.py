@@ -1,6 +1,6 @@
 """Supported number compilation, sequence, term, and resource APIs."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.api.lazy_exports import resolve_export as _resolve_export
 
@@ -12,7 +12,6 @@ if TYPE_CHECKING:
         FormulaTermPayload,
         MersenneTermPayload,
         NumberCompiler,
-        NumberFamily,
         PoweredCollatzTermPayload,
         PoweredReverseAddTermPayload,
         ProjectedNumberTerm,
@@ -21,7 +20,6 @@ if TYPE_CHECKING:
         TermPayload,
     )
     from number_compiler.api.observation_types import (
-        FamilyId,
         IndexEncoding,
         IndexUnit,
         ObservationCategory,
@@ -70,6 +68,7 @@ if TYPE_CHECKING:
         BlockContextBudget,
         BlockContextBudgetExceeded,
     )
+    from number_compiler.arithmetic.contracts.family_identity import FamilyId
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.block_power import (
         CollatzPhysicalBlockMetrics,
@@ -113,7 +112,6 @@ __all__ = [
     "MersenneTermPayload",
     "MersenneTermQuery",
     "NumberCompiler",
-    "NumberFamily",
     "ObservationCategory",
     "ObservationId",
     "ObservationSpec",
@@ -151,7 +149,7 @@ _EXPORT_MODULES = {
     "CommaTermQuery": "number_compiler.api.query_types",
     "DoubleReverseTermQuery": "number_compiler.api.query_types",
     "ExecutionQuery": "number_compiler.api.query_types",
-    "FamilyId": "number_compiler.api.observation_types",
+    "FamilyId": "number_compiler.arithmetic.contracts.family_identity",
     "FermatTermQuery": "number_compiler.api.query_types",
     "IndexEncoding": "number_compiler.api.observation_types",
     "IndexUnit": "number_compiler.api.observation_types",
@@ -165,7 +163,6 @@ _EXPORT_MODULES = {
     "FormulaTermPayload": "number_compiler.api.number_api",
     "MersenneTermPayload": "number_compiler.api.number_api",
     "NumberCompiler": "number_compiler.api.number_api",
-    "NumberFamily": "number_compiler.api.number_api",
     "ObservationCategory": "number_compiler.api.observation_types",
     "ObservationId": "number_compiler.api.observation_types",
     "ObservationSpec": "number_compiler.api.observation_types",
@@ -207,7 +204,7 @@ _EXPORT_MODULES = {
 }
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     return _resolve_export(name, _EXPORT_MODULES, globals())
 
 

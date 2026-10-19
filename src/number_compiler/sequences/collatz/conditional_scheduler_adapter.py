@@ -20,16 +20,16 @@ from number_compiler.sequences.collatz.collatz_two_sided_ring import (
 from number_compiler.sequences.collatz.conditional_scheduler_admission import (
     find_bounded_conditional_driver,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    MacroTraceGrammar,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceClosedPortAction,
+    SourceCongruence,
+)
 from number_compiler.sequences.collatz.temporal_f5_observer import (
-    _project_dyadic_fields_f5,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
@@ -104,7 +104,7 @@ class CertifiedSchedulerCandidate:
     normalized_steps: int
     odd_ticks: int
     return_count: int
-    port: CrossFamilyPortAction
+    port: SourceClosedPortAction
     tail_trace: MacroTraceGrammar | None = None
     numerator_phase: UpperNumeratorF5Matrix | None = None
     pair_transfer: GuardedDecimalPairTransfer | None = None
@@ -158,7 +158,7 @@ class CertifiedSchedulerCandidate:
 
     def _verify_scheduler_core(self) -> None:
         if (
-            type(self.port) is not CrossFamilyPortAction
+            type(self.port) is not SourceClosedPortAction
             or type(self.source) is not int
             or type(self.endpoint) is not int
             or type(self.physical_ticks) is not int
@@ -194,7 +194,7 @@ class CertifiedSchedulerCandidate:
         if type(self) is not CertifiedSchedulerCandidate:
             raise TypeError("conditional scheduler candidate has an invalid type")
         if (
-            type(self.port) is not CrossFamilyPortAction
+            type(self.port) is not SourceClosedPortAction
             or type(self.port.action) is not DyadicTerminalFieldAction
             or type(self.port.guard) is not SourceCongruence
             or type(self.port.trace) is not MacroTraceGrammar
@@ -644,7 +644,7 @@ def issue_conditional_scheduler_candidate(
             )
             if border_guard is None or not border_guard.admits(source):
                 raise ArithmeticError("source-certified decimal guard lost its root")
-            port = CrossFamilyPortAction(
+            port = SourceClosedPortAction(
                 raw_port.action,
                 border_guard,
                 raw_port.odd_events,
@@ -791,7 +791,7 @@ def consume_conditional_scheduler_candidate(
     next_normalized_f5 = state.normalized_f5
     next_physical_f5 = state.physical_f5
     if next_normalized_f5 is not None and next_physical_f5 is not None:
-        f5 = _project_dyadic_fields_f5(fields)
+        f5 = project_dyadic_fields_f5(fields)
         next_normalized_f5 = next_normalized_f5.then(f5)
         next_physical_f5 = next_physical_f5.then(f5)
         if f5.apply(state.current) != candidate.endpoint % 5:

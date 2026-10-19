@@ -12,7 +12,7 @@ from number_compiler.api.matrix_contracts import (
     MatrixCoordinate,
     SourceTransferRequest,
 )
-from number_compiler.api.observation_types import FamilyId
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 
 @pytest.mark.parametrize(
@@ -99,7 +99,7 @@ def test_matrix_request_cannot_cross_coordinate_domains() -> None:
 def test_new_matrix_binding_supplies_parser_options_without_dispatch_edits(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    capabilities: dict[FamilyId | str, FamilySpec] = {
+    capabilities: dict[FamilyId, FamilySpec] = {
         family: spec for family, spec in CAPABILITIES.items()
     }
     spec = capabilities[FamilyId.REVERSE_ADD]
@@ -121,11 +121,67 @@ def test_new_matrix_binding_supplies_parser_options_without_dispatch_edits(
     with pytest.raises(ValueError, match="at most 8"):
         parse_request(args, registry=capabilities)
     with pytest.raises(SystemExit) as result:
-        parser(demanded_family="reverse-add", registry=capabilities).parse_args(
+        parser(demanded_family=FamilyId.REVERSE_ADD, registry=capabilities).parse_args(
             ["reverse-add", "--help"]
         )
     assert result.value.code == 0
     assert "--temporal-matrix-kind" in capsys.readouterr().out
+
+
+def test_matrix_kind_selector_is_declared_only_for_innovation_capability(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as result:
+        parser(demanded_family=FamilyId.ANTIHYDRA).parse_args(["antihydra", "--help"])
+    assert result.value.code == 0
+    assert "--temporal-matrix-kind" not in capsys.readouterr().out
+    with pytest.raises(SystemExit) as result:
+        parser(demanded_family=FamilyId.REVERSE_ADD).parse_args(
+            ["reverse-add", "--help"]
+        )
+    assert result.value.code == 0
+    assert "--temporal-matrix-kind" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("module", ""),
+        ("module", "number_compiler..matrix"),
+        ("attribute", ""),
+        ("attribute", "invalid-name"),
+        ("coordinate", "pair-depth"),
+        ("law", "guarded-pair-relation"),
+        ("clock", "physical-recurrence-ticks"),
+        ("innovation", 1),
+        ("max_steps", True),
+        ("max_coordinate", True),
+        ("minimum_coordinate", True),
+        ("default_coordinate", True),
+        ("step_multiple", True),
+        ("max_source_index", True),
+        ("max_trace_steps", True),
+        ("max_steps", 0),
+        ("max_coordinate", -1),
+        ("minimum_coordinate", -1),
+        ("minimum_coordinate", 13),
+        ("default_coordinate", -1),
+        ("default_coordinate", 13),
+        ("step_multiple", 0),
+        ("max_source_index", -1),
+        ("max_trace_steps", 0),
+        ("max_trace_steps", 129),
+    ],
+)
+def test_matrix_capability_rejects_forged_or_untyped_declarations(
+    field: str, value: object
+) -> None:
+    capability = CAPABILITIES[FamilyId.REVERSE_ADD].matrix
+    assert capability is not None
+    forged = replace(capability)
+    object.__setattr__(forged, field, value)
+    with pytest.raises((TypeError, ValueError)):
+        forged.__post_init__()
 
 
 @pytest.mark.parametrize(

@@ -9,8 +9,6 @@ from types import MappingProxyType
 
 import pytest
 
-pytest_plugins = ("devtools.checks.pytest_policy", "tests.support.production_ast")
-
 from devtools.checks import isabelle_syntax
 from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.test_run_evidence import (
@@ -38,8 +36,12 @@ from number_compiler.resources.process_cache import (
 )
 from tests.support.isabelle_proof_graph import RepositoryProofGraph
 
+pytest_plugins = ("devtools.checks.pytest_policy", "tests.support.production_ast")
+
+
 _ROOT = repository_root()
 _STAMP = pytest.StashKey[GitSource]()
+_SOURCE_GRAPH_FIXTURES = frozenset(("production_ast_graph", "repository_proof_graph"))
 
 
 @pytest.fixture(scope="session")
@@ -112,6 +114,14 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # Build the large, read-only session graphs after runtime/lifecycle tests.
+    # Otherwise each explicit GC audit scans those retained ASTs again. Stable
+    # ordering keeps every selected node and its relative order within each group.
+    items.sort(
+        key=lambda item: (
+            not _SOURCE_GRAPH_FIXTURES.isdisjoint(getattr(item, "fixturenames", ()))
+        )
+    )
     for item in items:
         item.user_properties.append((NODE_ID, item.nodeid))
         relative = item.path.relative_to(item.config.rootpath).as_posix()

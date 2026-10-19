@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Final
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BoundarySide,
     BoundaryState,
+    next_operator_id,
 )
 
 PHYSICAL_COLLATZ_KERNEL_NAME: Final[str] = "physical-collatz-four-50x90-v1"
@@ -44,9 +44,7 @@ class PhysicalCollatzFourBlockEffect:
     kernel_name: str = field(default=PHYSICAL_COLLATZ_KERNEL_NAME, init=False)
     storage_bytes: int = field(default=866, init=False)
     uncompressed_bytes: int = field(default=13937, init=False)
-    node_id: int = field(
-        default_factory=lambda: next(_OPERATOR_IDS), init=False, compare=False
-    )
+    node_id: int = field(default_factory=next_operator_id, init=False, compare=False)
     left_transitions: bytes = field(init=False, repr=False)
     right_transitions: bytes = field(init=False, repr=False)
     outputs: bytes = field(init=False, repr=False)

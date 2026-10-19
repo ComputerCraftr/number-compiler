@@ -21,7 +21,7 @@ def main() -> None:
         ("mersenne", 11, (23, 89)),
         ("mersenne", 13, (8191,)),
     )
-    rows = []
+    rows: list[dict[str, object]] = []
     for family, parameter, factors in factor_cases:
         a = cyclotomic_factor_audit(family, parameter, factors)
         rows.append(
@@ -37,7 +37,7 @@ def main() -> None:
                 "agrees_with_prime_truth": a.agrees_with_prime_truth,
             }
         )
-    costs = []
+    costs: list[dict[str, object]] = []
     for family, parameter in (
         ("fermat", 4),
         ("fermat", 16),

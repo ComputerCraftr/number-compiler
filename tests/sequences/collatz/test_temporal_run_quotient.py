@@ -142,7 +142,7 @@ def test_joint_d8_batch_materialization_is_single_and_fully_counted(
 def test_small_source_keeps_direct_d8_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.collatz import temporal_run_executor as runs
+    from number_compiler.sequences.collatz import temporal_d8_execution as runs
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("small source allocated a cylinder cursor")
@@ -267,7 +267,7 @@ def test_run_contraction_retains_scheduler_authority_and_optional_support() -> N
     assert term.materialize(max_bits=100) == 1619
     workspace = term._source_image()
     assert len(workspace.support) == 1 and workspace.support[0].saturated
-    counters = term._ledger.snapshot().counters
+    counters = term.resource_ledger.snapshot().counters
     assert counters["source_image_primitive_applications"] == 1
     assert counters["collatz_physical_run_contraction_publications"] == 1
     assert counters["collatz_physical_temporal_run_actions"] > 0
@@ -369,7 +369,7 @@ def test_scratch_growth_refusal_releases_prior_reservation() -> None:
 def test_homogeneous_horizon_selects_run_constructor(seed: int, ticks: int) -> None:
     term = PoweredCollatzTerm(seed, ticks)
     term.digit(0)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert counters["collatz_physical_temporal_run_routes"] == 1
     assert counters["collatz_physical_temporal_run_actions"] == 1
     assert counters["collatz_physical_temporal_routing_operand_bits"] > 0
@@ -393,8 +393,13 @@ def test_wide_mixed_source_requires_bounded_admission_before_run_compilation(
     assert term.materialize(max_bits=300) == expected
     assert compile_probe.call_count == 1
     assert compile_probe.call_args.kwargs["require_mixed_prefix"] is True
-    assert term._ledger.counters["collatz_physical_temporal_balanced_routes"] == 1
-    assert term._ledger.counters.get("collatz_physical_temporal_run_actions", 0) == 0
+    assert (
+        term.resource_ledger.counters["collatz_physical_temporal_balanced_routes"] == 1
+    )
+    assert (
+        term.resource_ledger.counters.get("collatz_physical_temporal_run_actions", 0)
+        == 0
+    )
 
 
 def test_huge_cycle_explicit_audit_and_support_only_expand_finite_prefix(
@@ -442,7 +447,7 @@ def test_huge_cycle_explicit_audit_and_support_only_expand_finite_prefix(
     workspace = term._source_image()
     cycle = workspace.summary().cycle
     assert cycle is not None and cycle.entry_steps == 111
-    report = audit_registered_payloads(term._ledger)
+    report = audit_registered_payloads(term.resource_ledger)
     assert report.unknown_payloads == report.forbidden_future_payloads == 0
     assert next(workspace.segments())[0] == 0
     assert len(workspace.demanded_support) == 1

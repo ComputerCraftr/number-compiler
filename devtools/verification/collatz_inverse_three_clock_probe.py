@@ -29,7 +29,7 @@ def build_report() -> dict[str, object]:
             for phase in range(min(16, 1 << (precision - 2)))
         }
         lifts[str(precision)] = sorted(coefficients)
-    growth = []
+    growth: list[dict[str, int]] = []
     for extent in (16, 32, 64, 128, 256, 512, 1024):
         clock_keys = {
             InverseThreeClock(6, phase).canonical_key for phase in range(extent)

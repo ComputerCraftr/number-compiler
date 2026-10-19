@@ -16,27 +16,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-BANDS = ("lt_low", "lt_high", "eq", "gt_low", "gt_high")
-
-
-def pair_band(s: int) -> str:
-    if type(s) is not int or not 0 <= s <= 18:
-        raise ValueError("pair coefficient must be in radix-19 alphabet")
-    if s <= 4:
-        return "lt_low"
-    if s <= 8:
-        return "lt_high"
-    if s == 9:
-        return "eq"
-    if s <= 14:
-        return "gt_low"
-    return "gt_high"
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_band,
+)
 
 
 def pair_carry(s: int, incoming: int) -> int:
     if type(incoming) is not int or incoming not in (0, 1):
         raise ValueError("carry ingress must be Boolean")
-    pair_band(s)
+    decimal_pair_band(s)
     return int(s > 9 or (s == 9 and incoming == 1))
 
 
@@ -58,17 +48,17 @@ class InwardBankSelection:
     source_width: int
     growth: int
     source_coefficient: int
-    source_band: str
+    source_band: DecimalPairBand
     low_carry: int
     reflected_carries: tuple[int, ...]
     reset_distance: int | None
     reset_side: str | None
     possible_coefficients: tuple[int, ...]
-    possible_bands: tuple[str, ...]
+    possible_bands: tuple[DecimalPairBand, ...]
     possible_f5: tuple[int, ...]
 
     @property
-    def forced_band(self) -> str | None:
+    def forced_band(self) -> DecimalPairBand | None:
         return self.possible_bands[0] if len(self.possible_bands) == 1 else None
 
     @property
@@ -80,12 +70,12 @@ class InwardBankSelection:
         )
 
     @property
-    def forced_masks(self) -> dict[str, int | None]:
+    def forced_masks(self) -> dict[DecimalPairBand, int | None]:
         """Mask values: 0/1 where forced, None only when carry still matters."""
         possible = set(self.possible_bands)
         return {
             band: (1 if possible == {band} else 0 if band not in possible else None)
-            for band in BANDS
+            for band in DECIMAL_PAIR_BANDS
         }
 
     @property
@@ -117,19 +107,19 @@ class InwardBankWindow:
         ):
             raise ValueError("unaligned or excessive inward bank window")
 
-    def mask_domain(self, channel: str) -> tuple[int | None, ...]:
-        if channel not in BANDS:
+    def mask_domain(self, channel: DecimalPairBand) -> tuple[int | None, ...]:
+        if type(channel) is not DecimalPairBand:
             raise ValueError("unsupported five-band channel")
         return tuple(v.forced_masks[channel] for v in self.selections)
 
-    def must_may_masks(self, channel: str) -> tuple[int, int]:
+    def must_may_masks(self, channel: DecimalPairBand) -> tuple[int, int]:
         """Two Boolean bitmasks enclosing every conditional completion."""
         row = self.mask_domain(channel)
         must = sum(1 << i for i, bit in enumerate(row) if bit == 1)
         may = sum(1 << i for i, bit in enumerate(row) if bit != 0)
         return must, may
 
-    def walsh64_mod5(self, channel: str) -> tuple[int, ...]:
+    def walsh64_mod5(self, channel: DecimalPairBand) -> tuple[int, ...]:
         """An exact 64-lane Walsh output, never a guessed masked projection."""
         if len(self.selections) != 64:
             raise ValueError("Walsh64 requires exactly 64 selected positions")
@@ -183,7 +173,7 @@ def inward_bank_select(
         raise ValueError("inward selector only covers protected low-half cells")
     old_i = coordinate
     s = pair_at(old_i if not (growth and coordinate == 0) else 0)
-    pair_band(s)
+    decimal_pair_band(s)
     if growth and coordinate == 0:
         t = s + 1 - 10 * pair_carry(s, low_carry)
         return InwardBankSelection(
@@ -191,20 +181,20 @@ def inward_bank_select(
             width,
             growth,
             s,
-            pair_band(s),
+            decimal_pair_band(s),
             low_carry,
             tuple(sorted(admitted)),
             None,
             None,
             (t,),
-            (pair_band(t),),
+            (decimal_pair_band(t),),
             (t % 5,),
         )
     if growth and coordinate < 1:
         raise AssertionError("growth border should already be handled")
     prior = pair_at(old_i - 1) if growth else None
     if prior is not None:
-        pair_band(prior)
+        decimal_pair_band(prior)
 
     # Inversion of b_(j-1)=K(s_j)(b_j) along the high-side EQ wire.
     # A non-EQ reset punctures b_j: its output is fixed, but its ingress is not.
@@ -244,7 +234,7 @@ def inward_bank_select(
     if not admitted:
         raise ValueError("border and inward reset constraints are inconsistent")
 
-    targets = set()
+    targets: set[int] = set()
     for b in admitted:
         low_out = pair_carry(s, low_carry)
         high_out = pair_carry(s, b)
@@ -254,16 +244,17 @@ def inward_bank_select(
             t = prior + s + low_carry + high_out - 10 * (low_out + high_after)
         else:
             t = 2 * s + low_carry + b - 10 * (low_out + high_out)
-        pair_band(t)
+        decimal_pair_band(t)
         targets.add(t)
     target_coeffs = tuple(sorted(targets))
-    bands = tuple(x for x in BANDS if x in {pair_band(v) for v in targets})
+    target_bands = {decimal_pair_band(value) for value in targets}
+    bands = tuple(band for band in DECIMAL_PAIR_BANDS if band in target_bands)
     return InwardBankSelection(
         coordinate,
         width,
         growth,
         s,
-        pair_band(s),
+        decimal_pair_band(s),
         low_carry,
         tuple(sorted(admitted)),
         reset_distance,
@@ -275,10 +266,9 @@ def inward_bank_select(
 
 
 __all__ = [
-    "BANDS",
+    "DECIMAL_PAIR_BANDS",
     "InwardBankSelection",
     "InwardBankWindow",
     "inward_bank_select",
-    "pair_band",
     "pair_carry",
 ]

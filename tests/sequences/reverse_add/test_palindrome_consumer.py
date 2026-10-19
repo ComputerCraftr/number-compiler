@@ -75,8 +75,10 @@ def test_powered_palindrome_uses_one_charged_output_stream(
 
     monkeypatch.setattr(ReverseAddPoweredTerm, "digit", forbidden)
     assert term.is_palindrome() == (digits == digits[::-1])
-    assert term._ledger.counters["reverse_output_stream_requests"] == 1
-    assert term._ledger.counters["reverse_output_stream_emitted_digits"] == len(digits)
+    assert term.resource_ledger.counters["reverse_output_stream_requests"] == 1
+    assert term.resource_ledger.counters["reverse_output_stream_emitted_digits"] == len(
+        digits
+    )
     assert_mirror_scratch_released(term)
 
 

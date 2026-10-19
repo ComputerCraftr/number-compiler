@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, MutableMapping, Sequence
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from typing import TypeVar
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
@@ -75,6 +75,22 @@ class LedgerSLPArena(SLPArena):
                 raise error from cleanup_error
             raise
 
+    @property
+    def audit_interner_stores(
+        self,
+    ) -> tuple[
+        Mapping[int, object],
+        Mapping[tuple[int, int], object],
+        Mapping[tuple[int, int], object],
+    ]:
+        """Return the exact registered SLP interners for read-only auditing."""
+        self._check_open()
+        return (
+            self._term_store.audit_container,
+            self._cat_store.audit_container,
+            self._rep_store.audit_container,
+        )
+
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed ledgered SLP arena")
@@ -124,7 +140,7 @@ class LedgerSLPArena(SLPArena):
             self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
         except BaseException:
             if len(self.nodes) > node_id:
-                self._nodes_store._rollback_unpublished(node_id)
+                self._nodes_store.rollback_unpublished(node_id)
             self.ledger.release(owner, entries=1, nodes=1)
             raise
         record_slp_metrics(nodes=1)
@@ -147,7 +163,7 @@ class LedgerSLPArena(SLPArena):
             table[key] = node_id
         except BaseException:
             if len(self.nodes) > node_id:
-                self._nodes_store._rollback_unpublished(node_id)
+                self._nodes_store.rollback_unpublished(node_id)
             self.ledger.release(owner, entries=1, nodes=1)
             raise
         record_slp_metrics(nodes=1)
@@ -160,7 +176,7 @@ class LedgerSLPArena(SLPArena):
         count = len(self.nodes)
 
         def release_nodes() -> None:
-            self._nodes_store._rollback_unpublished(0)
+            self._nodes_store.rollback_unpublished(0)
             if not len(self.nodes) and not self._nodes_released:
                 self.ledger.release(self.owners[0], entries=count, nodes=count)
                 self._nodes_released = True

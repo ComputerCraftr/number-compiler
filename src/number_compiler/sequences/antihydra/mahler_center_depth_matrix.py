@@ -570,7 +570,9 @@ class MahlerCertifiedCenterDepthTransfer:
                 pointed_centers_list.append((source // 10**position) % 100)
         candidate_sets = tuple(candidate_sets_list)
         pointed_centers = tuple(pointed_centers_list)
-        if not all(d in possible for d, possible in zip(sources, candidate_sets)):
+        if not all(
+            d in possible for d, possible in zip(sources, candidate_sets, strict=True)
+        ):
             raise ArithmeticError(
                 "pointed source excluded from a complete center fiber"
             )
@@ -910,12 +912,14 @@ class MahlerCertifiedCenterDepthTransfer:
             frames.append(tuple(separations))
         return tuple(frames)
 
-    def packet(self, *, include_rows: bool = False) -> dict[str, object]:
+    def packet(
+        self, *, include_rows: bool = False, trace: bool = False
+    ) -> dict[str, object]:
         from number_compiler.sequences.antihydra.mahler_center_packet import (
             center_transfer_packet,
         )
 
-        return center_transfer_packet(self, include_rows=include_rows)
+        return center_transfer_packet(self, include_rows=include_rows, trace=trace)
 
 
 __all__ = [

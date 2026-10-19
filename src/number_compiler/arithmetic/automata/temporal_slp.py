@@ -70,3 +70,6 @@ def concatenate_temporal_slp(
         ("concat", left, right),
         make_concat(left, right, left_node, right_node),
     )
+
+
+__all__ = ["concatenate_temporal_slp", "join_equal_repeats"]

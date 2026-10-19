@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
 from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
-from number_compiler.hashlife.interfaces.diamond_quotient import (
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     LocalInterfaceID,
+    StructureID,
 )
-from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (

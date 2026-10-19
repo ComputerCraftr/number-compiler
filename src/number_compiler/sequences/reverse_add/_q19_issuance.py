@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 
 class _SnapshotRecord(Protocol):
-    def _snapshot(self) -> tuple[object, ...]: ...
+    def publication_snapshot(self) -> tuple[object, ...]: ...
 
 
 _Record = TypeVar("_Record", bound=_SnapshotRecord)
@@ -113,15 +113,39 @@ class Q19IssuanceRegistry:
         self.temporal_ring_bank_next = 0
 
     def _check_open(self) -> None:
-        self.owner._check_open()
+        self.owner.validate_issuance_registry(self)
+
+    def validate_stores(
+        self,
+        *,
+        border_certificates: OwnedMemo[
+            tuple[int, int, int, int],
+            tuple[CertifiedBorderGrowth, tuple[object, ...]],
+        ],
+        controlled_gt_banks: OwnedMemo[
+            int, tuple[SourceGuardedGTBankAction, tuple[object, ...]]
+        ],
+        spatial_bank_windows: OwnedMemo[
+            int, tuple[ReverseAddSpatialBankMorphism, tuple[object, ...]]
+        ],
+        temporal_ring_banks: OwnedMemo[
+            int, tuple[ReverseAddTemporalRingBank, tuple[object, ...]]
+        ],
+        diagonal_comparisons: OwnedMemo[
+            int, tuple[CertifiedDiagonalComparison, tuple[object, ...]]
+        ],
+    ) -> None:
+        """Check exact public store mirrors and monotone issuer cursors."""
         if (
-            self.owner._issuance_registry is not self
-            or self.owner._border_certificates is not self.border_certificates
-            or self.owner._controlled_gt_banks is not self.controlled_gt_banks
-            or self.owner._spatial_bank_windows is not self.spatial_bank_windows
-            or self.owner._temporal_ring_banks is not self.temporal_ring_banks
-            or self.owner._diagonal_comparisons is not self.diagonal_comparisons
-            or self.diagonal_comparison_next != len(self.diagonal_comparisons)
+            self.border_certificates is not border_certificates
+            or self.controlled_gt_banks is not controlled_gt_banks
+            or self.spatial_bank_windows is not spatial_bank_windows
+            or self.temporal_ring_banks is not temporal_ring_banks
+            or self.diagonal_comparisons is not diagonal_comparisons
+            or self.controlled_gt_bank_next != len(controlled_gt_banks)
+            or self.spatial_bank_window_next != len(spatial_bank_windows)
+            or self.temporal_ring_bank_next != len(temporal_ring_banks)
+            or self.diagonal_comparison_next != len(diagonal_comparisons)
         ):
             raise ValueError("Q19 issuance registry binding changed")
 
@@ -197,19 +221,6 @@ class Q19IssuanceRegistry:
         issued: tuple[ReverseAddTemporalRingBank, tuple[object, ...]],
     ) -> int:
         record, binding = issued
-        orbit_fields = (
-            "pair_f5",
-            "low_carries",
-            "reflected_carries",
-            "reflected_xor",
-            "raw_innovation_borrow",
-            "carry_borrow_xor",
-            "low_birth",
-            "low_death",
-            "reflected_birth",
-            "reflected_death",
-            "selected_bands",
-        )
         carry_wire_nodes = 1 + len(record.carry_wire_phases)
         for frame in record.carry_wire_phases:
             carry_wire_nodes += 1 + len(frame)
@@ -243,11 +254,8 @@ class Q19IssuanceRegistry:
                 for position_domains in record.phase_pair_domains
                 for domain in position_domains
             )
-            + sum(
-                len(values) + sum(len(row) for row in values)
-                for orbit in record.output_orbits
-                for values in (getattr(orbit, name) for name in orbit_fields)
-            )
+            + sum(orbit.retained_output_nodes for orbit in record.output_orbits)
+            + record.retained_auxiliary_array_nodes
             + sum(len(word.lanes) + 1 for word in record.bank_words)
             + len(record.finite_moore_classes)
             + carry_wire_nodes
@@ -272,15 +280,15 @@ class Q19IssuanceRegistry:
             type(key) is not int
             or key != self.diagonal_comparison_next
             or record.certificate.owner is not self.owner
-            or record._registry_key != key
+            or record.registry_key != key
         ):
             raise ValueError("invalid directed diagonal comparison registration")
-        self.diagonal_comparisons[key] = (record, record._snapshot())
+        self.diagonal_comparisons[key] = (record, record.publication_snapshot())
         self.diagonal_comparison_next += 1
 
     def validate_diagonal_comparison(self, record: CertifiedDiagonalComparison) -> None:
         self._check_open()
-        key = record._registry_key
+        key = record.registry_key
         if type(key) is not int or not 0 <= key < self.diagonal_comparison_next:
             raise ValueError(
                 "directed diagonal comparison is not retained by this Q19 owner"
@@ -291,7 +299,7 @@ class Q19IssuanceRegistry:
                 "directed diagonal comparison was not retained by this Q19 owner"
             )
         if not _snapshot_matches(
-            issued[1], record._snapshot(), identity_positions=(0,)
+            issued[1], record.publication_snapshot(), identity_positions=(0,)
         ):
             raise ValueError("retained directed diagonal comparison was altered")
         if record.certificate.owner is not self.owner:
@@ -302,7 +310,7 @@ class Q19IssuanceRegistry:
         self, key: int, record: CertifiedDiagonalComparison
     ) -> None:
         """Roll back only the latest record after failed publication."""
-        if self.owner._disposed:
+        if self.owner.is_disposed:
             return
         self._check_open()
         if key != self.diagonal_comparison_next - 1:
@@ -322,7 +330,7 @@ class Q19IssuanceRegistry:
         tuple[CertifiedBorderGrowth, tuple[object, ...]] | None,
     ]:
         self._check_open()
-        self.owner._validate_occurrence_handle(source)
+        self.owner.validate_occurrence(source)
         key = _border_certificate_key(source, steps, window_digits)
         return key, self.border_certificates.get(key)
 
@@ -337,7 +345,7 @@ class Q19IssuanceRegistry:
             return None
         record, binding = issued
         if not _snapshot_matches(
-            binding, record._snapshot(), identity_positions=(0, 1)
+            binding, record.publication_snapshot(), identity_positions=(0, 1)
         ):
             raise ValueError("retained border certificate was altered")
         return record
@@ -353,7 +361,7 @@ class Q19IssuanceRegistry:
         if existing is not None:
             retained, binding = existing
             if not _snapshot_matches(
-                binding, retained._snapshot(), identity_positions=(0, 1)
+                binding, retained.publication_snapshot(), identity_positions=(0, 1)
             ):
                 raise ValueError("retained border certificate was altered")
             if retained.growth_word != certificate.growth_word:
@@ -361,7 +369,10 @@ class Q19IssuanceRegistry:
                     "conflicting border certificates for one source horizon"
                 )
             return retained
-        self.border_certificates[key] = (certificate, certificate._snapshot())
+        self.border_certificates[key] = (
+            certificate,
+            certificate.publication_snapshot(),
+        )
         return certificate
 
     def validate_border(self, certificate: CertifiedBorderGrowth) -> None:
@@ -374,14 +385,14 @@ class Q19IssuanceRegistry:
             issued is None
             or issued[0] is not certificate
             or not _snapshot_matches(
-                issued[1], certificate._snapshot(), identity_positions=(0, 1)
+                issued[1], certificate.publication_snapshot(), identity_positions=(0, 1)
             )
         ):
             raise ValueError("border certificate was not retained by this Q19 owner")
 
     def discard_border(self, certificate: CertifiedBorderGrowth) -> None:
         """Roll back only the exact last record after failed publication."""
-        if self.owner._disposed:
+        if self.owner.is_disposed:
             return
         self._check_open()
         key = _border_certificate_key(
@@ -407,15 +418,15 @@ class Q19IssuanceRegistry:
             type(key) is not int
             or key != self.controlled_gt_bank_next
             or action.owner is not self.owner
-            or action._registry_key != key
+            or action.registry_key != key
         ):
             raise ValueError("invalid controlled bank issuer registration")
-        self.controlled_gt_banks[key] = (action, action._snapshot())
+        self.controlled_gt_banks[key] = (action, action.publication_snapshot())
         self.controlled_gt_bank_next += 1
 
     def validate_bank(self, action: SourceGuardedGTBankAction) -> None:
         self._check_open()
-        key = action._registry_key
+        key = action.registry_key
         if type(key) is not int or not 0 <= key < self.controlled_gt_bank_next:
             raise ValueError(
                 "controlled bank action was not retained by this Q19 owner"
@@ -426,7 +437,7 @@ class Q19IssuanceRegistry:
             or issued[0] is not action
             or not _snapshot_matches(
                 issued[1],
-                action._snapshot(),
+                action.publication_snapshot(),
                 identity_positions=(0, 1, 7, 8, 10, 15, 16, 21),
             )
         ):
@@ -436,7 +447,7 @@ class Q19IssuanceRegistry:
 
     def discard_bank(self, key: int, action: SourceGuardedGTBankAction) -> None:
         """Roll back a failed final validation without consuming its key."""
-        if self.owner._disposed:
+        if self.owner.is_disposed:
             return
         self._check_open()
         if key != self.controlled_gt_bank_next - 1:
@@ -462,17 +473,17 @@ class Q19IssuanceRegistry:
             type(key) is not int
             or key != self.spatial_bank_window_next
             or window.action.owner is not self.owner
-            or window._registry_key != key
+            or window.registry_key != key
         ):
             raise ValueError("invalid spatial bank window registration")
-        self.spatial_bank_windows[key] = (window, window._snapshot())
+        self.spatial_bank_windows[key] = (window, window.publication_snapshot())
         self.spatial_bank_window_next += 1
 
     def validate_spatial_bank_window(
         self, window: ReverseAddSpatialBankMorphism
     ) -> None:
         self._check_open()
-        key = window._registry_key
+        key = window.registry_key
         if type(key) is not int or not 0 <= key < self.spatial_bank_window_next:
             raise ValueError("spatial bank window is not retained by this Q19 owner")
         issued = self.spatial_bank_windows.get(key)
@@ -481,7 +492,7 @@ class Q19IssuanceRegistry:
             or issued[0] is not window
             or not _snapshot_matches(
                 issued[1],
-                window._snapshot(),
+                window.publication_snapshot(),
                 identity_positions=(0, 1),
             )
         ):
@@ -491,7 +502,7 @@ class Q19IssuanceRegistry:
         self, key: int, window: ReverseAddSpatialBankMorphism
     ) -> None:
         """Roll back only the latest spatial window after failed publication."""
-        if self.owner._disposed:
+        if self.owner.is_disposed:
             return
         self._check_open()
         if key != self.spatial_bank_window_next - 1:
@@ -517,15 +528,15 @@ class Q19IssuanceRegistry:
             type(key) is not int
             or key != self.temporal_ring_bank_next
             or bank.certificate.owner is not self.owner
-            or bank._registry_key != key
+            or bank.registry_key != key
         ):
             raise ValueError("invalid temporal ring bank registration")
-        self.temporal_ring_banks[key] = (bank, bank._binding)
+        self.temporal_ring_banks[key] = (bank, bank.publication_snapshot())
         self.temporal_ring_bank_next += 1
 
     def validate_temporal_ring_bank(self, bank: ReverseAddTemporalRingBank) -> None:
         self._check_open()
-        key = bank._registry_key
+        key = bank.registry_key
         if type(key) is not int or not 0 <= key < self.temporal_ring_bank_next:
             raise ValueError("temporal ring bank is not retained by this Q19 owner")
         issued = self.temporal_ring_banks.get(key)
@@ -534,8 +545,8 @@ class Q19IssuanceRegistry:
             or issued[0] is not bank
             or not _snapshot_matches(
                 issued[1],
-                bank._snapshot(),
-                identity_positions=(0, 1, 2, 3, 12, 16),
+                bank.publication_snapshot(),
+                identity_positions=(0, 1, 2, 3, 12),
             )
         ):
             raise ValueError("temporal ring bank was not retained by this Q19 owner")
@@ -544,7 +555,7 @@ class Q19IssuanceRegistry:
         self, key: int, bank: ReverseAddTemporalRingBank
     ) -> None:
         """Roll back the latest ring only after failed publication."""
-        if self.owner._disposed:
+        if self.owner.is_disposed:
             return
         self._check_open()
         if key != self.temporal_ring_bank_next - 1:
@@ -562,5 +573,5 @@ def issue_q19_record(
     for name, value in values.items():
         object.__setattr__(record, name, value)
     object.__setattr__(record, "_seal", issuer)
-    object.__setattr__(record, "_binding", record._snapshot())
+    object.__setattr__(record, "_binding", record.publication_snapshot())
     return record

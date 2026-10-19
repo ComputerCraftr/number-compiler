@@ -61,6 +61,21 @@ class BoundaryState:
         return self.a * scale - (self.kind == "N")
 
 
+def boundary_source_index(source: BoundaryState) -> int:
+    if (
+        type(source) is not BoundaryState
+        or type(source.kind) is not str
+        or source.kind not in ("N", "Z")
+        or type(source.a) is not int
+        or not 2 <= source.a <= 9
+        or type(source.exponent_residue) is not int
+        or not 0 <= source.exponent_residue < PERIOD
+    ):
+        raise ValueError("malformed comma boundary source state")
+    kind_offset = 0 if source.kind == "N" else 8 * PERIOD
+    return kind_offset + (source.a - 2) * PERIOD + source.exponent_residue
+
+
 @dataclass(frozen=True, slots=True)
 class AffineWeight:
     """Exact (A*10**p+B)/D, normalized using the shared rational owner."""
@@ -127,7 +142,7 @@ class AffineWeight:
         return value
 
 
-def _boundary_state_signature(state: BoundaryState) -> tuple[str, int, int]:
+def boundary_state_signature(state: BoundaryState) -> tuple[str, int, int]:
     """Return exact canonical state scalars without invoking custom equality."""
     if type(state) is not BoundaryState:
         raise ValueError("comma boundary state changed after construction")
@@ -362,7 +377,7 @@ def _sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
 def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
     if type(template) is not MacroTemplate:
         raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
-    source = _boundary_state_signature(template.source)
+    source = boundary_state_signature(template.source)
     children = template.ordered_children
     fragments = template.sector_fragments
     weights = template.prefix_weights
@@ -390,7 +405,7 @@ def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
         raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
     child_signatures: list[object] = []
     for child in children:
-        child_signatures.extend((id(child), *_boundary_state_signature(child)))
+        child_signatures.extend((id(child), *boundary_state_signature(child)))
     return (
         id(template),
         id(template.source),

@@ -22,8 +22,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from types import FrameType
-from typing import BinaryIO, Protocol, cast
+from types import FrameType, MappingProxyType
+from typing import BinaryIO, Protocol
 from uuid import UUID, uuid4
 
 from devtools.checks.validation_policy import (
@@ -31,6 +31,7 @@ from devtools.checks.validation_policy import (
     PYTHON_COMMAND_SECONDS,
     PYTHON_MEMORY_BYTES,
 )
+from devtools.report_values import string_keyed_mapping
 
 PROOF_GENERATION_ENV = "NUMBER_COMPILER_PROOF_GENERATION"
 GUARDED_COMMAND_ENV = "NUMBER_COMPILER_GUARDED_COMMAND"
@@ -85,7 +86,7 @@ def guard_context_is_live(environment: Mapping[str, str]) -> bool:
 
 def _is_process_ancestor(process_id: int, possible_ancestor: int) -> bool:
     """Confirm a propagated lease's supervisor remains in process ancestry."""
-    snapshot = _process_snapshot()
+    snapshot = process_snapshot()
     seen: set[int] = set()
     current = snapshot.get(process_id)
     while current is not None and current.ppid > 0 and current.ppid not in seen:
@@ -164,9 +165,9 @@ def memory_reader() -> tuple[str, Callable[[int], int]]:
     raise RuntimeError("no supported process-footprint measurement on this platform")
 
 
-@dataclass(frozen=True)
-class _ProcessRecord:
-    """Stable identity for a process observed under the guarded worker."""
+@dataclass(frozen=True, slots=True)
+class ProcessIdentity:
+    """Immutable process identity captured for a guarded worker."""
 
     pid: int
     ppid: int
@@ -175,7 +176,7 @@ class _ProcessRecord:
     start_time: str
 
 
-class _WaitableProcess(Protocol):
+class WaitableProcess(Protocol):
     """The small process interface required by descendant retirement.
 
     Keeping this structural lets lifecycle tests use a finished process
@@ -198,8 +199,8 @@ class ProgressWatchdog(Protocol):
     def finish_output(self, now: float) -> None: ...
 
 
-def _process_snapshot() -> dict[int, _ProcessRecord]:
-    """Return process ancestry and start identities from one system snapshot."""
+def process_snapshot() -> Mapping[int, ProcessIdentity]:
+    """Return an immutable view of process identities in one system snapshot."""
     listing = subprocess.run(
         ["ps", "-axo", "pid=,ppid=,pgid=,stat=,lstart="],
         check=True,
@@ -207,26 +208,26 @@ def _process_snapshot() -> dict[int, _ProcessRecord]:
         text=True,
         timeout=2,
     )
-    records: dict[int, _ProcessRecord] = {}
+    records: dict[int, ProcessIdentity] = {}
     for row in listing.stdout.splitlines():
         fields = row.split(maxsplit=4)
         if len(fields) != 5:
             continue
         pid, ppid, pgid = (int(value) for value in fields[:3])
         state = fields[3]
-        records[pid] = _ProcessRecord(pid, ppid, pgid, state, fields[4])
-    return records
+        records[pid] = ProcessIdentity(pid, ppid, pgid, state, fields[4])
+    return MappingProxyType(records)
 
 
 def _descendants(
-    root: int, snapshot: Mapping[int, _ProcessRecord]
-) -> tuple[_ProcessRecord, ...]:
+    root: int, snapshot: Mapping[int, ProcessIdentity]
+) -> tuple[ProcessIdentity, ...]:
     """Find all observed descendants, including descendants in new sessions."""
-    children: dict[int, list[_ProcessRecord]] = {}
+    children: dict[int, list[ProcessIdentity]] = {}
     for record in snapshot.values():
         children.setdefault(record.ppid, []).append(record)
     pending = list(children.get(root, ()))
-    result: list[_ProcessRecord] = []
+    result: list[ProcessIdentity] = []
     while pending:
         record = pending.pop()
         result.append(record)
@@ -234,9 +235,10 @@ def _descendants(
     return tuple(result)
 
 
-def _live_tracked(
-    tracked: Mapping[int, _ProcessRecord], snapshot: Mapping[int, _ProcessRecord]
-) -> tuple[_ProcessRecord, ...]:
+def live_tracked_processes(
+    tracked: Mapping[int, ProcessIdentity],
+    snapshot: Mapping[int, ProcessIdentity],
+) -> tuple[ProcessIdentity, ...]:
     """Retain only non-zombie processes with the observed start token."""
     return tuple(
         current
@@ -248,7 +250,7 @@ def _live_tracked(
 
 
 def _same_process(
-    expected: _ProcessRecord | None, current: _ProcessRecord | None
+    expected: ProcessIdentity | None, current: ProcessIdentity | None
 ) -> bool:
     return (
         expected is not None
@@ -258,8 +260,8 @@ def _same_process(
     )
 
 
-def _read_member_footprint(
-    member: _ProcessRecord, read_memory: Callable[[int], int]
+def read_member_footprint(
+    member: ProcessIdentity, read_memory: Callable[[int], int]
 ) -> int:
     """Read one sampled identity, retrying only a transient permission race.
 
@@ -275,7 +277,7 @@ def _read_member_footprint(
         except OSError as error:
             if error.errno not in {errno.EPERM, errno.EACCES}:
                 raise
-            current = _process_snapshot().get(member.pid)
+            current = process_snapshot().get(member.pid)
             if (
                 not _same_process(member, current)
                 or current is None
@@ -288,22 +290,34 @@ def _read_member_footprint(
 
 
 def _observe_descendants(
-    root: _ProcessRecord,
-    tracked: dict[int, _ProcessRecord],
-    snapshot: Mapping[int, _ProcessRecord],
+    root: ProcessIdentity,
+    tracked: dict[int, ProcessIdentity],
+    snapshot: Mapping[int, ProcessIdentity],
 ) -> None:
     """Extend tracking only through an identity-checked root or child."""
+    for record in authorized_descendants(root, tracked, snapshot):
+        tracked[record.pid] = record
+
+
+def authorized_descendants(
+    root: ProcessIdentity,
+    tracked: Mapping[int, ProcessIdentity],
+    snapshot: Mapping[int, ProcessIdentity],
+) -> tuple[ProcessIdentity, ...]:
+    """Inspect descendants reachable from a still-authenticated root identity."""
     if not _same_process(root, snapshot.get(root.pid)):
-        return
-    roots = (root, *_live_tracked(tracked, snapshot))
+        return ()
+    roots = (root, *live_tracked_processes(tracked, snapshot))
+    found: dict[int, ProcessIdentity] = {}
     for parent in roots:
         for record in _descendants(parent.pid, snapshot):
-            tracked[record.pid] = record
+            found[record.pid] = record
+    return tuple(found.values())
 
 
-def _group_records(
-    root: _ProcessRecord, snapshot: Mapping[int, _ProcessRecord]
-) -> tuple[_ProcessRecord, ...]:
+def group_records(
+    root: ProcessIdentity, snapshot: Mapping[int, ProcessIdentity]
+) -> tuple[ProcessIdentity, ...]:
     return tuple(
         record
         for record in snapshot.values()
@@ -313,9 +327,9 @@ def _group_records(
 
 def _observe_group(
     group: int,
-    tracked: dict[int, _ProcessRecord],
-    snapshot: Mapping[int, _ProcessRecord],
-    anchors: Mapping[int, _ProcessRecord],
+    tracked: dict[int, ProcessIdentity],
+    snapshot: Mapping[int, ProcessIdentity],
+    anchors: Mapping[int, ProcessIdentity],
 ) -> None:
     """Adopt same-group processes only while an observed anchor is alive.
 
@@ -325,7 +339,9 @@ def _observe_group(
     turn a vanished leader into authority for an unrelated process that
     inherited the numeric PGID.
     """
-    if not any(record.pgid == group for record in _live_tracked(anchors, snapshot)):
+    if not any(
+        record.pgid == group for record in live_tracked_processes(anchors, snapshot)
+    ):
         return
     for record in snapshot.values():
         if record.pgid == group and not record.state.startswith("Z"):
@@ -333,9 +349,9 @@ def _observe_group(
 
 
 def _remember_group_anchors(
-    root: _ProcessRecord,
-    tracked: Mapping[int, _ProcessRecord],
-    anchors: dict[int, _ProcessRecord],
+    root: ProcessIdentity,
+    tracked: Mapping[int, ProcessIdentity],
+    anchors: dict[int, ProcessIdentity],
 ) -> None:
     """Retain identities observed while the original root is still live."""
     anchors[root.pid] = root
@@ -345,10 +361,10 @@ def _remember_group_anchors(
 
 
 def _snapshot_members(
-    root_identity: _ProcessRecord | None,
-    tracked: dict[int, _ProcessRecord],
-    group_anchors: dict[int, _ProcessRecord],
-    snapshot: Mapping[int, _ProcessRecord],
+    root_identity: ProcessIdentity | None,
+    tracked: dict[int, ProcessIdentity],
+    group_anchors: dict[int, ProcessIdentity],
+    snapshot: Mapping[int, ProcessIdentity],
 ) -> tuple[int, ...]:
     """Refresh authorized group and detached members from one snapshot."""
     if root_identity is None:
@@ -358,17 +374,17 @@ def _snapshot_members(
         assert current_root is not None
         _observe_descendants(current_root, tracked, snapshot)
         _remember_group_anchors(current_root, tracked, group_anchors)
-        group_records = _group_records(current_root, snapshot)
-        for record in group_records:
+        members_in_group = group_records(current_root, snapshot)
+        for record in members_in_group:
             group_anchors[record.pid] = record
     elif current_root is None:
         _observe_group(root_identity.pgid, tracked, snapshot, group_anchors)
-        group_records = ()
+        members_in_group = ()
     else:
         # A reused root PID is not authority for a new group or descendants.
-        group_records = ()
-    detached = _live_tracked(tracked, snapshot)
-    group_pids = tuple(record.pid for record in group_records)
+        members_in_group = ()
+    detached = live_tracked_processes(tracked, snapshot)
+    group_pids = tuple(record.pid for record in members_in_group)
     detached_pids = tuple(record.pid for record in detached)
     return tuple(dict.fromkeys((*group_pids, *detached_pids)))
 
@@ -376,7 +392,7 @@ def _snapshot_members(
 def group_members(group: int) -> tuple[int, ...]:
     return tuple(
         record.pid
-        for record in _process_snapshot().values()
+        for record in process_snapshot().values()
         if record.pgid == group and not record.state.startswith("Z")
     )
 
@@ -393,7 +409,7 @@ def _signal_group(group: int, number: int) -> None:
             raise
 
 
-def _signal_unreaped_owned_group(child: _WaitableProcess, number: int) -> None:
+def _signal_unreaped_owned_group(child: WaitableProcess, number: int) -> None:
     """Signal the launched session while its unreaped leader pins the PGID.
 
     ``run_guarded`` always starts the child in a new session, so its PID is
@@ -410,21 +426,21 @@ def _signal_unreaped_owned_group(child: _WaitableProcess, number: int) -> None:
         pass
 
 
-def _signal_tracked(tracked: Mapping[int, _ProcessRecord], number: int) -> None:
+def _signal_tracked(tracked: Mapping[int, ProcessIdentity], number: int) -> None:
     """Signal only descendants whose start identity is still unchanged."""
-    snapshot = _process_snapshot()
-    for record in _live_tracked(tracked, snapshot):
+    snapshot = process_snapshot()
+    for record in live_tracked_processes(tracked, snapshot):
         try:
             os.kill(record.pid, number)
         except ProcessLookupError:
             pass
 
 
-def _retire(
-    child: _WaitableProcess,
-    tracked: Mapping[int, _ProcessRecord] | None = None,
-    root_identity: _ProcessRecord | None = None,
-    group_anchors: Mapping[int, _ProcessRecord] | None = None,
+def retire_process(
+    child: WaitableProcess,
+    tracked: Mapping[int, ProcessIdentity] | None = None,
+    root_identity: ProcessIdentity | None = None,
+    group_anchors: Mapping[int, ProcessIdentity] | None = None,
 ) -> int:
     """Also retire surviving descendants when the group leader already exited."""
     tracked = dict(tracked or {})
@@ -444,7 +460,7 @@ def _retire(
         _signal_unreaped_owned_group(child, signal.SIGKILL)
         deadline = time.monotonic() + 2
         while True:
-            snapshot = _process_snapshot()
+            snapshot = process_snapshot()
             group_live = any(
                 record.pgid == child.pid and not record.state.startswith("Z")
                 for record in snapshot.values()
@@ -455,7 +471,7 @@ def _retire(
                 raise RuntimeError("unbound worker group still live after SIGKILL")
             _signal_unreaped_owned_group(child, signal.SIGKILL)
             time.sleep(0.02)
-    snapshot = _process_snapshot()
+    snapshot = process_snapshot()
     current_root = snapshot.get(child.pid)
     if _same_process(root_identity, current_root):
         assert current_root is not None
@@ -475,7 +491,7 @@ def _retire(
     except subprocess.TimeoutExpired:
         pass
     finally:
-        snapshot = _process_snapshot()
+        snapshot = process_snapshot()
         current_root = snapshot.get(child.pid)
         if _same_process(root_identity, current_root):
             assert current_root is not None
@@ -489,21 +505,21 @@ def _retire(
                 snapshot,
                 anchors,
             )
-            for parent in _live_tracked(tracked, snapshot):
+            for parent in live_tracked_processes(tracked, snapshot):
                 for record in _descendants(parent.pid, snapshot):
                     tracked.setdefault(record.pid, record)
         _signal_tracked(tracked, signal.SIGKILL)
     code = child.wait(timeout=2)
     deadline = time.monotonic() + 2
     while True:
-        snapshot = _process_snapshot()
+        snapshot = process_snapshot()
         current_root = snapshot.get(child.pid)
         if _same_process(root_identity, current_root):
             assert current_root is not None
-            group_live = bool(_group_records(current_root, snapshot))
+            group_live = bool(group_records(current_root, snapshot))
         else:
             group_live = False
-        if not group_live and not _live_tracked(tracked, snapshot):
+        if not group_live and not live_tracked_processes(tracked, snapshot):
             break
         if time.monotonic() >= deadline:
             raise RuntimeError("worker descendants still live after SIGKILL")
@@ -666,9 +682,9 @@ def run_guarded(
             peak: int | None = None
             samples = 0
             sink = _OutputSink(log, output_bytes)
-            tracked: dict[int, _ProcessRecord] = {}
-            group_anchors: dict[int, _ProcessRecord] = {}
-            root_identity: _ProcessRecord | None = None
+            tracked: dict[int, ProcessIdentity] = {}
+            group_anchors: dict[int, ProcessIdentity] = {}
+            root_identity: ProcessIdentity | None = None
             outcome, detail = "completed", ""
             cleanup_confirmed = True
             try:
@@ -679,7 +695,7 @@ def run_guarded(
                     if time.monotonic() - started >= timeout:
                         outcome = "timeout"
                         break
-                    snapshot = _process_snapshot()
+                    snapshot = process_snapshot()
                     if root_identity is None:
                         root_identity = snapshot.get(child.pid)
                     if sink.drain(descriptor, progress_watchdog):
@@ -697,7 +713,7 @@ def run_guarded(
                         root_identity, tracked, group_anchors, snapshot
                     )
                     footprint = sum(
-                        _read_member_footprint(snapshot[pid], read_memory)
+                        read_member_footprint(snapshot[pid], read_memory)
                         for pid in members
                     )
                     if footprint > 0:
@@ -735,7 +751,7 @@ def run_guarded(
                         # The previous membership view predates waitpid. Refresh
                         # after observing leader exit so a descendant that died
                         # between ps and poll cannot cause a stale refusal.
-                        exit_snapshot = _process_snapshot()
+                        exit_snapshot = process_snapshot()
                         members = _snapshot_members(
                             root_identity, tracked, group_anchors, exit_snapshot
                         )
@@ -761,7 +777,9 @@ def run_guarded(
                 outcome, detail = "interrupted", str(error)
             finally:
                 try:
-                    returncode = _retire(child, tracked, root_identity, group_anchors)
+                    returncode = retire_process(
+                        child, tracked, root_identity, group_anchors
+                    )
                 except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                     cleanup_confirmed = False
                     outcome = "measurement_failed"
@@ -826,18 +844,27 @@ def _active_test_timeout(
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
-    marker = json.loads(raw)
-    if not isinstance(marker, dict):
+    marker_value: object = json.loads(raw)
+    marker = string_keyed_mapping(marker_value)
+    if marker is None:
         raise TypeError("active-test marker must contain an object")
     nodeid = marker.get("nodeid")
     started = marker.get("started_monotonic")
     deadline = marker.get("deadline_monotonic")
     if not isinstance(nodeid, str) or not nodeid:
         raise ValueError("active-test marker has no node ID")
-    if type(started) not in (int, float) or type(deadline) not in (int, float):
+    if type(started) is int:
+        started_value = float(started)
+    elif type(started) is float:
+        started_value = started
+    else:
         raise ValueError("active-test marker has invalid timing fields")
-    started_value = float(cast(int | float, started))
-    deadline_value = float(cast(int | float, deadline))
+    if type(deadline) is int:
+        deadline_value = float(deadline)
+    elif type(deadline) is float:
+        deadline_value = deadline
+    else:
+        raise ValueError("active-test marker has invalid timing fields")
     if not math.isfinite(started_value) or not math.isfinite(deadline_value):
         raise ValueError("active-test marker timing must be finite")
     expected_deadline = started_value + timeout_seconds

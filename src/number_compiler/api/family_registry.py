@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
-from importlib import import_module
-from typing import cast
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final
 
 from number_compiler.api.cli_types import (
     AntihydraObservationOptions,
@@ -12,9 +12,7 @@ from number_compiler.api.cli_types import (
     CollatzTermObservationOptions,
     CommaObservationOptions,
     DoubleReverseObservationOptions,
-    PresentationOptions,
     PrimeObservationOptions,
-    QueryRequest,
     ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
@@ -28,22 +26,22 @@ from number_compiler.api.family_types import (
     ObserveObserver,
     PrepareObserver,
     ProjectionAdapter,
+    SizeBound,
     VerificationAdapter,
 )
 from number_compiler.api.matrix_contracts import (
     MatrixCapability,
+    MatrixClock,
     MatrixCoordinate,
     MatrixLaw,
 )
 from number_compiler.api.observation_types import (
-    FamilyId,
     IndexUnit,
     ObservationAdapterBinding,
     ObservationId,
     OptionSpec,
-    OutputFormat,
+    OptionValueKind,
     SelectorId,
-    family_id,
 )
 from number_compiler.api.query_types import (
     AntihydraTermQuery,
@@ -52,13 +50,12 @@ from number_compiler.api.query_types import (
     CollatzTermQuery,
     CommaTermQuery,
     DoubleReverseTermQuery,
-    ExecutionQuery,
     FermatTermQuery,
     MersenneTermQuery,
     PrimeTermQuery,
     ReverseAddTermQuery,
-    TermQuery,
 )
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 _OBSERVATION_MODULE = "number_compiler.api.observation_adapters"
 _NOOP_PREPARE = "prepare_noop"
@@ -70,52 +67,56 @@ def _observation(
     prepare: str = _NOOP_PREPARE,
     admit: str = _NOOP_ADMIT,
     observe: str = _NOOP_OBSERVE,
+    *,
+    module: str = _OBSERVATION_MODULE,
 ) -> ObservationAdapterBinding:
-    return ObservationAdapterBinding(_OBSERVATION_MODULE, prepare, admit, observe)
+    return ObservationAdapterBinding(module, prepare, admit, observe)
 
 
 _COMMON_OBSERVER_OPTIONS = {
-    "defect": OptionSpec(None, ("number-theory.root",)),
+    "defect": OptionSpec(None, (ObservationId.NUMBER_THEORY_ROOT,)),
     "modulus": OptionSpec(
         257,
         (
-            "arithmetic.modular",
-            "arithmetic.twisted",
-            "spatial.tape",
-            "temporal.spacetime",
-            "arithmetic.hasse",
-            "arithmetic.factor",
-            "temporal.accumulator",
-            "temporal.innovation-borrow",
+            ObservationId.ARITHMETIC_MODULAR,
+            ObservationId.ARITHMETIC_TWISTED,
+            ObservationId.SPATIAL_TAPE,
+            ObservationId.TEMPORAL_SPACETIME,
+            ObservationId.ARITHMETIC_HASSE,
+            ObservationId.ARITHMETIC_FACTOR,
+            ObservationId.TEMPORAL_ACCUMULATOR,
+            ObservationId.TEMPORAL_INNOVATION_BORROW,
         ),
     ),
     "width": OptionSpec(
         2,
         (
-            "spatial.mirror",
-            "arithmetic.twisted",
-            "spatial.tape",
-            "temporal.spacetime",
-            "arithmetic.hasse",
-            "arithmetic.factor",
+            ObservationId.SPATIAL_MIRROR,
+            ObservationId.ARITHMETIC_TWISTED,
+            ObservationId.SPATIAL_TAPE,
+            ObservationId.TEMPORAL_SPACETIME,
+            ObservationId.ARITHMETIC_HASSE,
+            ObservationId.ARITHMETIC_FACTOR,
         ),
         flag_name="spatial_width",
     ),
     "sign": OptionSpec(
         -1,
         (
-            "arithmetic.twisted",
-            "spatial.tape",
-            "temporal.spacetime",
-            "arithmetic.factor",
+            ObservationId.ARITHMETIC_TWISTED,
+            ObservationId.SPATIAL_TAPE,
+            ObservationId.TEMPORAL_SPACETIME,
+            ObservationId.ARITHMETIC_FACTOR,
         ),
     ),
-    "precision": OptionSpec(8, ("arithmetic.hensel", "arithmetic.mahler")),
-    "target": OptionSpec(0, ("arithmetic.hensel",)),
-    "s_weight": OptionSpec(1, ("arithmetic.tropical",)),
-    "z_weight": OptionSpec(1, ("arithmetic.tropical",)),
-    "time_width": OptionSpec(2, ("temporal.spacetime",)),
-    "time_sign": OptionSpec(1, ("temporal.spacetime",)),
+    "precision": OptionSpec(
+        8, (ObservationId.ARITHMETIC_HENSEL, ObservationId.ARITHMETIC_MAHLER)
+    ),
+    "target": OptionSpec(0, (ObservationId.ARITHMETIC_HENSEL,)),
+    "s_weight": OptionSpec(1, (ObservationId.ARITHMETIC_TROPICAL,)),
+    "z_weight": OptionSpec(1, (ObservationId.ARITHMETIC_TROPICAL,)),
+    "time_width": OptionSpec(2, (ObservationId.TEMPORAL_SPACETIME,)),
+    "time_sign": OptionSpec(1, (ObservationId.TEMPORAL_SPACETIME,)),
 }
 
 
@@ -123,21 +124,21 @@ def _opts(*names: str) -> tuple[tuple[str, OptionSpec], ...]:
     return tuple((name, _COMMON_OBSERVER_OPTIONS[name]) for name in names)
 
 
-CAPABILITIES: dict[FamilyId, FamilySpec] = {
+_CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
     FamilyId.REVERSE_ADD: FamilySpec(
         FamilyCapability(
-            "iterations",
+            IndexUnit.ITERATIONS,
             ("seed", "base"),
             (
-                "metrics",
-                "spatial.mirror",
-                "temporal.macro",
-                "temporal.matrix",
-                "temporal.residue99",
-                "temporal.open-ring",
-                "temporal.seed-orbit",
-                "temporal.stencil",
-                "spatial.bank-morphism",
+                ObservationId.METRICS,
+                ObservationId.SPATIAL_MIRROR,
+                ObservationId.TEMPORAL_MACRO,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.TEMPORAL_RESIDUE99,
+                ObservationId.TEMPORAL_OPEN_RING,
+                ObservationId.TEMPORAL_SEED_ORBIT,
+                ObservationId.TEMPORAL_STENCIL,
+                ObservationId.SPATIAL_BANK_MORPHISM,
             ),
         ),
         ReverseAddTermQuery,
@@ -157,13 +158,18 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
         + (
             (
                 "max_digits",
-                OptionSpec(4096, ("spatial.mirror", "temporal.stencil")),
+                OptionSpec(
+                    4096, (ObservationId.SPATIAL_MIRROR, ObservationId.TEMPORAL_STENCIL)
+                ),
             ),
             (
                 "pair_bank_position",
                 OptionSpec(
                     0,
-                    ("spatial.bank-morphism", "temporal.open-ring"),
+                    (
+                        ObservationId.SPATIAL_BANK_MORPHISM,
+                        ObservationId.TEMPORAL_OPEN_RING,
+                    ),
                     flag_name="spatial_pair_bank_position",
                 ),
             ),
@@ -171,14 +177,19 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "bank_morphism_count",
                 OptionSpec(
                     16,
-                    ("spatial.bank-morphism", "temporal.open-ring"),
+                    (
+                        ObservationId.SPATIAL_BANK_MORPHISM,
+                        ObservationId.TEMPORAL_OPEN_RING,
+                    ),
                     flag_name="spatial_bank_morphism_count",
                 ),
             ),
             (
                 "grammar_period",
                 OptionSpec(
-                    2, ("spatial.bank-morphism",), flag_name="temporal_grammar_period"
+                    2,
+                    (ObservationId.SPATIAL_BANK_MORPHISM,),
+                    flag_name="temporal_grammar_period",
                 ),
             ),
         ),
@@ -187,7 +198,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
             ObservationId.TEMPORAL_STENCIL,
             ObservationId.SPATIAL_BANK_MORPHISM,
         ),
-        output_bound="seed",
+        output_bound=SizeBound.SEED,
         observation_constraints=(
             (
                 ObservationId.TEMPORAL_OPEN_RING,
@@ -244,25 +255,25 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
     ),
     FamilyId.DOUBLE_REVERSE: FamilySpec(
         FamilyCapability(
-            "iterations",
+            IndexUnit.ITERATIONS,
             ("seed",),
             (
-                "metrics",
-                "temporal.matrix",
-                "temporal.closed-form",
-                "temporal.residue99",
-                "temporal.seed-morphism",
-                "temporal.carry-safety",
-                "spatial.stencil",
-                "temporal.bank",
-                "temporal.open-ring",
-                "temporal.birth-layers",
-                "spatial.pair-bank",
-                "spatial.bank-morphism",
-                "spatial.bank-window",
-                "temporal.grammar",
-                "temporal.radix-walsh",
-                "arithmetic.radix25-shift",
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.TEMPORAL_CLOSED_FORM,
+                ObservationId.TEMPORAL_RESIDUE99,
+                ObservationId.TEMPORAL_SEED_MORPHISM,
+                ObservationId.TEMPORAL_CARRY_SAFETY,
+                ObservationId.SPATIAL_STENCIL,
+                ObservationId.TEMPORAL_BANK,
+                ObservationId.TEMPORAL_OPEN_RING,
+                ObservationId.TEMPORAL_BIRTH_LAYERS,
+                ObservationId.SPATIAL_PAIR_BANK,
+                ObservationId.SPATIAL_BANK_MORPHISM,
+                ObservationId.SPATIAL_BANK_WINDOW,
+                ObservationId.TEMPORAL_GRAMMAR,
+                ObservationId.TEMPORAL_RADIX_WALSH,
+                ObservationId.ARITHMETIC_RADIX25_SHIFT,
             ),
         ),
         DoubleReverseTermQuery,
@@ -293,7 +304,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "prefix_horizon",
                 OptionSpec(
                     128,
-                    ("temporal.seed-morphism",),
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
                     flag_name="temporal_prefix_horizon",
                     help="maximum exact chronological prefix before dyadic powering",
                 ),
@@ -302,7 +313,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "period_samples",
                 OptionSpec(
                     0,
-                    ("temporal.seed-morphism",),
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
                     flag_name="temporal_period_samples",
                     help="number of four-phase center samples (0 omits scan)",
                 ),
@@ -311,7 +322,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "period_stride",
                 OptionSpec(
                     1,
-                    ("temporal.seed-morphism",),
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
                     flag_name="temporal_period_stride",
                     help="spacing in four-generation blocks",
                 ),
@@ -320,7 +331,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "period_depth",
                 OptionSpec(
                     2,
-                    ("temporal.seed-morphism",),
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
                     flag_name="temporal_period_depth",
                     help="maximum inward center-window radius",
                 ),
@@ -329,7 +340,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "period_max_lag",
                 OptionSpec(
                     16,
-                    ("temporal.seed-morphism",),
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
                     flag_name="temporal_period_max_lag",
                     help="maximum sampled lag to check for finite-window returns",
                 ),
@@ -338,8 +349,8 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "period_drivers",
                 OptionSpec(
                     False,
-                    ("temporal.seed-morphism",),
-                    value_kind="boolean",
+                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    value_kind=OptionValueKind.BOOLEAN,
                     flag_name="temporal_period_drivers",
                     help="also certify actual four-tick carry/F5 center drivers",
                 ),
@@ -348,7 +359,10 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "open_ring_lookback",
                 OptionSpec(
                     8,
-                    ("temporal.open-ring", "temporal.birth-layers"),
+                    (
+                        ObservationId.TEMPORAL_OPEN_RING,
+                        ObservationId.TEMPORAL_BIRTH_LAYERS,
+                    ),
                     flag_name="temporal_open_ring_lookback",
                 ),
             ),
@@ -356,7 +370,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "modulus",
                 OptionSpec(
                     None,
-                    ("temporal.closed-form",),
+                    (ObservationId.TEMPORAL_CLOSED_FORM,),
                     flag_name="temporal_closed_form_modulus",
                 ),
             ),
@@ -364,7 +378,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "stencil_position",
                 OptionSpec(
                     0,
-                    ("spatial.stencil",),
+                    (ObservationId.SPATIAL_STENCIL,),
                     flag_name="spatial_stencil_position",
                 ),
             ),
@@ -373,10 +387,10 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     0,
                     (
-                        "spatial.pair-bank",
-                        "spatial.bank-morphism",
-                        "spatial.bank-window",
-                        "temporal.open-ring",
+                        ObservationId.SPATIAL_PAIR_BANK,
+                        ObservationId.SPATIAL_BANK_MORPHISM,
+                        ObservationId.SPATIAL_BANK_WINDOW,
+                        ObservationId.TEMPORAL_OPEN_RING,
                     ),
                     flag_name="spatial_pair_bank_position",
                 ),
@@ -386,10 +400,10 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     16,
                     (
-                        "spatial.bank-morphism",
-                        "spatial.bank-window",
-                        "temporal.open-ring",
-                        "temporal.birth-layers",
+                        ObservationId.SPATIAL_BANK_MORPHISM,
+                        ObservationId.SPATIAL_BANK_WINDOW,
+                        ObservationId.TEMPORAL_OPEN_RING,
+                        ObservationId.TEMPORAL_BIRTH_LAYERS,
                     ),
                     flag_name="spatial_bank_morphism_count",
                 ),
@@ -398,7 +412,10 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "grammar_position",
                 OptionSpec(
                     0,
-                    ("temporal.grammar", "temporal.radix-walsh"),
+                    (
+                        ObservationId.TEMPORAL_GRAMMAR,
+                        ObservationId.TEMPORAL_RADIX_WALSH,
+                    ),
                     flag_name="temporal_grammar_position",
                 ),
             ),
@@ -407,9 +424,9 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     2,
                     (
-                        "temporal.grammar",
-                        "temporal.radix-walsh",
-                        "spatial.bank-morphism",
+                        ObservationId.TEMPORAL_GRAMMAR,
+                        ObservationId.TEMPORAL_RADIX_WALSH,
+                        ObservationId.SPATIAL_BANK_MORPHISM,
                     ),
                     flag_name="temporal_grammar_period",
                 ),
@@ -418,49 +435,55 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "radix_places",
                 OptionSpec(
                     8,
-                    ("arithmetic.radix25-shift", "temporal.radix-walsh"),
+                    (
+                        ObservationId.ARITHMETIC_RADIX25_SHIFT,
+                        ObservationId.TEMPORAL_RADIX_WALSH,
+                    ),
                     flag_name="arithmetic_radix_places",
                 ),
             ),
             (
                 "walsh_start",
                 OptionSpec(
-                    0, ("temporal.radix-walsh",), flag_name="temporal_walsh_start"
+                    0,
+                    (ObservationId.TEMPORAL_RADIX_WALSH,),
+                    flag_name="temporal_walsh_start",
                 ),
             ),
         ),
-        output_bound="seed",
+        output_bound=SizeBound.SEED,
         matrix=MatrixCapability(
             "number_compiler.api.matrix_observation",
             "double_reverse_transfer",
             MatrixCoordinate.PAIR_DEPTH,
-            128,
+            4096,
             16,
             step_multiple=2,
             minimum_coordinate=1,
+            max_trace_steps=128,
         ),
     ),
     FamilyId.COLLATZ: FamilySpec(
         FamilyCapability(
-            "physical_iterations",
+            IndexUnit.PHYSICAL_ITERATIONS,
             ("seed", "radix"),
             (
-                "metrics",
-                "temporal.matrix",
-                "temporal.clock",
-                "temporal.accumulator",
-                "temporal.macro",
-                "temporal.innovation-borrow",
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.TEMPORAL_CLOCK,
+                ObservationId.TEMPORAL_ACCUMULATOR,
+                ObservationId.TEMPORAL_MACRO,
+                ObservationId.TEMPORAL_INNOVATION_BORROW,
             ),
             (
-                "temporal.clock",
-                "arithmetic.modular",
-                "arithmetic.twisted",
-                "arithmetic.hasse",
-                "arithmetic.hensel",
-                "arithmetic.tropical",
-                "arithmetic.factor",
-                "safety.execution",
+                ObservationId.TEMPORAL_CLOCK,
+                ObservationId.ARITHMETIC_MODULAR,
+                ObservationId.ARITHMETIC_TWISTED,
+                ObservationId.ARITHMETIC_HASSE,
+                ObservationId.ARITHMETIC_HENSEL,
+                ObservationId.ARITHMETIC_TROPICAL,
+                ObservationId.ARITHMETIC_FACTOR,
+                ObservationId.SAFETY_EXECUTION,
             ),
             event_unit=IndexUnit.ACCELERATED_ODD_EVENTS,
         ),
@@ -496,12 +519,12 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     257,
                     (
-                        "arithmetic.modular",
-                        "arithmetic.twisted",
-                        "arithmetic.hasse",
-                        "arithmetic.hensel",
-                        "arithmetic.tropical",
-                        "arithmetic.factor",
+                        ObservationId.ARITHMETIC_MODULAR,
+                        ObservationId.ARITHMETIC_TWISTED,
+                        ObservationId.ARITHMETIC_HASSE,
+                        ObservationId.ARITHMETIC_HENSEL,
+                        ObservationId.ARITHMETIC_TROPICAL,
+                        ObservationId.ARITHMETIC_FACTOR,
                     ),
                     flag_name="arithmetic_modulus",
                 ),
@@ -510,7 +533,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "precision",
                 OptionSpec(
                     8,
-                    ("arithmetic.hensel",),
+                    (ObservationId.ARITHMETIC_HENSEL,),
                     flag_name="arithmetic_hensel_precision",
                 ),
             ),
@@ -518,7 +541,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "target",
                 OptionSpec(
                     0,
-                    ("arithmetic.hensel",),
+                    (ObservationId.ARITHMETIC_HENSEL,),
                     flag_name="arithmetic_hensel_target",
                 ),
             ),
@@ -526,7 +549,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "s_weight",
                 OptionSpec(
                     1,
-                    ("arithmetic.tropical",),
+                    (ObservationId.ARITHMETIC_TROPICAL,),
                     flag_name="arithmetic_tropical_s_weight",
                 ),
             ),
@@ -534,7 +557,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "z_weight",
                 OptionSpec(
                     1,
-                    ("arithmetic.tropical",),
+                    (ObservationId.ARITHMETIC_TROPICAL,),
                     flag_name="arithmetic_tropical_z_weight",
                 ),
             ),
@@ -544,7 +567,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "twisted_width",
                 OptionSpec(
                     2,
-                    ("arithmetic.twisted",),
+                    (ObservationId.ARITHMETIC_TWISTED,),
                     flag_name="arithmetic_twisted_width",
                 ),
             ),
@@ -552,7 +575,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "twisted_sign",
                 OptionSpec(
                     -1,
-                    ("arithmetic.twisted",),
+                    (ObservationId.ARITHMETIC_TWISTED,),
                     flag_name="arithmetic_twisted_sign",
                 ),
             ),
@@ -560,7 +583,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "hasse_order",
                 OptionSpec(
                     2,
-                    ("arithmetic.hasse",),
+                    (ObservationId.ARITHMETIC_HASSE,),
                     flag_name="arithmetic_hasse_order",
                 ),
             ),
@@ -570,7 +593,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "accumulator_modulus",
                 OptionSpec(
                     257,
-                    ("temporal.accumulator",),
+                    (ObservationId.TEMPORAL_ACCUMULATOR,),
                     flag_name="temporal_accumulator_modulus",
                 ),
             ),
@@ -578,7 +601,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "innovation_modulus",
                 OptionSpec(
                     257,
-                    ("temporal.innovation-borrow",),
+                    (ObservationId.TEMPORAL_INNOVATION_BORROW,),
                     flag_name="temporal_innovation_borrow_modulus",
                 ),
             ),
@@ -586,7 +609,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "clock_max_events",
                 OptionSpec(
                     4096,
-                    ("temporal.clock",),
+                    (ObservationId.TEMPORAL_CLOCK,),
                     flag_name="temporal_clock_max_events",
                 ),
             ),
@@ -594,7 +617,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "clock_max_digits",
                 OptionSpec(
                     4096,
-                    ("temporal.clock",),
+                    (ObservationId.TEMPORAL_CLOCK,),
                     flag_name="temporal_clock_max_digits",
                 ),
             ),
@@ -618,7 +641,7 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "--radix applies to Collatz --nth terms, not --events",
             ),
         ),
-        output_bound="collatz_seed_at_zero",
+        output_bound=SizeBound.COLLATZ_SEED_AT_ZERO,
         matrix=MatrixCapability(
             "number_compiler.api.matrix_observation",
             "collatz_transfer",
@@ -631,27 +654,32 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
     ),
     FamilyId.ANTIHYDRA: FamilySpec(
         FamilyCapability(
-            "macro_returns_after_startup",
+            IndexUnit.MACRO_RETURNS_AFTER_STARTUP,
             (),
             (
-                "metrics",
-                "temporal.matrix",
-                "safety.ledger",
-                "temporal.clock",
-                "arithmetic.modular",
-                "spatial.tape",
-                "arithmetic.twisted",
-                "temporal.spacetime",
-                "arithmetic.hasse",
-                "arithmetic.hensel",
-                "arithmetic.mahler",
-                "arithmetic.tropical",
-                "arithmetic.factor",
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.SAFETY_LEDGER,
+                ObservationId.TEMPORAL_CLOCK,
+                ObservationId.ARITHMETIC_MODULAR,
+                ObservationId.SPATIAL_TAPE,
+                ObservationId.ARITHMETIC_TWISTED,
+                ObservationId.TEMPORAL_SPACETIME,
+                ObservationId.ARITHMETIC_HASSE,
+                ObservationId.ARITHMETIC_HENSEL,
+                ObservationId.ARITHMETIC_MAHLER,
+                ObservationId.ARITHMETIC_TROPICAL,
+                ObservationId.ARITHMETIC_FACTOR,
             ),
         ),
         AntihydraTermQuery,
         AdapterBinding("number_compiler.api.projections.antihydra", "project"),
-        _observation("prepare_antihydra", "admit_noop", "observe_antihydra"),
+        _observation(
+            "prepare_antihydra",
+            "admit_antihydra",
+            "observe_antihydra",
+            module="number_compiler.api.antihydra_adapters",
+        ),
         verify_query_type=AntihydraVerifyQuery,
         verify_flag="verify_nonhalting",
         verification=AdapterBinding(
@@ -676,7 +704,12 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
         observer_options=_opts(
             "modulus", "width", "sign", "precision", "time_width", "time_sign"
         )
-        + (("max_observer_terms", OptionSpec(1_000_000, ("temporal.spacetime",))),),
+        + (
+            (
+                "max_observer_terms",
+                OptionSpec(1_000_000, (ObservationId.TEMPORAL_SPACETIME,)),
+            ),
+        ),
         matrix=MatrixCapability(
             "number_compiler.api.matrix_observation",
             "antihydra_transfer",
@@ -689,9 +722,14 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
     ),
     FamilyId.A367620: FamilySpec(
         FamilyCapability(
-            "oeis_index",
+            IndexUnit.OEIS_INDEX,
             (),
-            ("metrics", "temporal.clock", "arithmetic.tropical", "safety.certificate"),
+            (
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_CLOCK,
+                ObservationId.ARITHMETIC_TROPICAL,
+                ObservationId.SAFETY_CERTIFICATE,
+            ),
         ),
         CommaTermQuery,
         AdapterBinding("number_compiler.api.projections.comma", "project"),
@@ -704,23 +742,23 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
         ),
     ),
     FamilyId.PRIME: FamilySpec(
-        FamilyCapability("prime_index", ("start",), ("metrics",)),
+        FamilyCapability(IndexUnit.PRIME_INDEX, ("start",), (ObservationId.METRICS,)),
         PrimeTermQuery,
         AdapterBinding("number_compiler.api.projections.prime", "project"),
         _observation(),
         term_observation=ObservationValueBinding(PrimeObservationOptions),
-        output_bound="prime_upper",
+        output_bound=SizeBound.PRIME_UPPER,
     ),
     FamilyId.FERMAT: FamilySpec(
         FamilyCapability(
-            "fermat_index",
+            IndexUnit.FERMAT_INDEX,
             (),
             (
-                "metrics",
-                "temporal.matrix",
-                "number-theory.primality",
-                "number-theory.factor",
-                "number-theory.root",
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.NUMBER_THEORY_PRIMALITY,
+                ObservationId.NUMBER_THEORY_FACTOR,
+                ObservationId.NUMBER_THEORY_ROOT,
             ),
         ),
         FermatTermQuery,
@@ -745,16 +783,20 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
             ("max_factor_products", OptionSpec(4096, ())),
             (
                 "ordered_carry_windows",
-                OptionSpec(False, ("number-theory.primality",), value_kind="boolean"),
+                OptionSpec(
+                    False,
+                    (ObservationId.NUMBER_THEORY_PRIMALITY,),
+                    value_kind=OptionValueKind.BOOLEAN,
+                ),
             ),
         ),
-        candidate_bound="dyadic",
+        candidate_bound=SizeBound.DYADIC,
         candidate_information=(
             ObservationId.NUMBER_THEORY_PRIMALITY,
             ObservationId.NUMBER_THEORY_FACTOR,
             ObservationId.NUMBER_THEORY_ROOT,
         ),
-        output_bound="dyadic",
+        output_bound=SizeBound.DYADIC,
         matrix=MatrixCapability(
             "number_compiler.api.matrix_observation",
             "fermat_transfer",
@@ -763,17 +805,20 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
             256,
             max_source_index=16,
             law=MatrixLaw.ORDERED_TRIPLING_CARRY,
+            clock=MatrixClock.TRIPLING,
+            max_trace_steps=64,
         ),
     ),
     FamilyId.MERSENNE: FamilySpec(
         FamilyCapability(
-            "mersenne_exponent",
+            IndexUnit.MERSENNE_EXPONENT,
             (),
             (
-                "metrics",
-                "number-theory.primality",
-                "number-theory.factor",
-                "number-theory.root",
+                ObservationId.METRICS,
+                ObservationId.TEMPORAL_MATRIX,
+                ObservationId.NUMBER_THEORY_PRIMALITY,
+                ObservationId.NUMBER_THEORY_FACTOR,
+                ObservationId.NUMBER_THEORY_ROOT,
             ),
         ),
         MersenneTermQuery,
@@ -802,150 +847,40 @@ CAPABILITIES: dict[FamilyId, FamilySpec] = {
                 "special theorem parameter must be at least 2",
             ),
         ),
-        candidate_bound="index",
+        candidate_bound=SizeBound.INDEX,
         candidate_information=(
             ObservationId.NUMBER_THEORY_PRIMALITY,
             ObservationId.NUMBER_THEORY_FACTOR,
             ObservationId.NUMBER_THEORY_ROOT,
         ),
-        output_bound="index",
+        output_bound=SizeBound.INDEX,
+        matrix=MatrixCapability(
+            "number_compiler.api.matrix_observation",
+            "mersenne_transfer",
+            MatrixCoordinate.DIGIT_POSITION,
+            4096,
+            64,
+            max_source_index=1_000_000,
+            law=MatrixLaw.NORM_ONE_TRACE,
+            clock=MatrixClock.TRACE_SQUARING,
+            max_trace_steps=64,
+        ),
     ),
 }
+CAPABILITIES: Final[Mapping[FamilyId, FamilySpec]] = MappingProxyType(
+    _CAPABILITY_ENTRIES
+)
+del _CAPABILITY_ENTRIES
 
 
-def family_spec(family: str | FamilyId) -> FamilySpec:
+def family_spec(family: FamilyId) -> FamilySpec:
+    """Return a registered family using its already-admitted identifier."""
+    if type(family) is not FamilyId:
+        raise TypeError("family lookup requires an admitted FamilyId")
     try:
-        return CAPABILITIES[family_id(family)]
-    except ValueError as exc:
+        return CAPABILITIES[family]
+    except KeyError as exc:
         raise ValueError(f"unknown family: {family}") from exc
-
-
-def family_listing() -> tuple[str, ...]:
-    """Return the canonical `--list-families` lines from registered metadata."""
-    lines: list[str] = []
-    for family, spec in CAPABILITIES.items():
-        lines.append(
-            f"{family}: --nth N ({spec.unit}); info: {', '.join(spec.nth_info)}"
-        )
-        lines.append("  --nth-power10 K (exact index 10^K, K >= 0)")
-        if spec.event_query_type is not None:
-            lines.append(
-                "  --events E (accelerated_odd_events); info: "
-                + ", ".join(spec.event_info)
-            )
-        if spec.verify_flag is not None:
-            lines.append(f"  --{spec.verify_flag.replace('_', '-')} PATH")
-    return tuple(lines)
-
-
-def presentation_options() -> dict[str, OptionSpec]:
-    """Derive shared CLI presentation flags from their typed-record defaults."""
-    result: dict[str, OptionSpec] = {}
-    for field in fields(PresentationOptions):
-        if field.name == "index":
-            continue
-        default = field.default
-        kind = "boolean" if type(default) is bool else "integer"
-        choices: tuple[str, ...] = ()
-        if field.name == "format":
-            kind = "choice"
-            choices = tuple(value.value for value in OutputFormat)
-        result[field.name] = OptionSpec(
-            default,
-            (),
-            name=field.name,
-            value_kind=kind,
-            choices=choices,
-        )
-    max_index_bits = next(
-        field for field in fields(QueryRequest) if field.name == "max_index_bits"
-    )
-    result["max_index_bits"] = OptionSpec(
-        max_index_bits.default,
-        (),
-        name="max_index_bits",
-    )
-    return result
-
-
-def resolve_projection_adapter(query: TermQuery) -> ProjectionAdapter:
-    """Load only the projection code for the already-selected family query."""
-    family = getattr(query, "family", None)
-    spec = CAPABILITIES.get(family) if type(family) is FamilyId else None
-    if spec is None or type(query) is not spec.query_type:
-        raise TypeError("unsupported family query type")
-    binding = spec.projection
-    adapter = getattr(import_module(binding.module), binding.attribute)
-    if not callable(adapter):
-        raise TypeError("registered projection adapter is not callable")
-    return cast(ProjectionAdapter, adapter)
-
-
-@dataclass(frozen=True, slots=True)
-class ResolvedObservationAdapter:
-    prepare: PrepareObserver
-    admit: AdmitObserver
-    observe: ObserveObserver
-
-
-def resolve_observation_adapter(
-    family: str | FamilyId,
-    identifier: ObservationId | None = None,
-) -> ResolvedObservationAdapter:
-    specification = family_spec(family)
-    if identifier is None:
-        binding = specification.observation
-    else:
-        selected = next(
-            (
-                item
-                for item in specification.observation_specs
-                if item.identifier is identifier
-            ),
-            None,
-        )
-        if selected is None or selected.adapter is None:
-            raise ValueError(
-                f"observation is not registered for {family}: {identifier}"
-            )
-        binding = selected.adapter
-    module = import_module(binding.module)
-    functions = tuple(
-        getattr(module, name)
-        for name in (binding.prepare, binding.admit, binding.observe)
-    )
-    if any(not callable(function) for function in functions):
-        raise TypeError("registered observation adapter is not callable")
-    return ResolvedObservationAdapter(
-        cast(PrepareObserver, functions[0]),
-        cast(AdmitObserver, functions[1]),
-        cast(ObserveObserver, functions[2]),
-    )
-
-
-def resolve_verification_adapter(query: ExecutionQuery) -> VerificationAdapter:
-    """Load the selected family's verifier for its exact typed query."""
-    spec = family_spec(query.family)
-    if spec.verify_query_type is None or type(query) is not spec.verify_query_type:
-        raise TypeError("unsupported certificate verification query type")
-    binding = spec.verification
-    if binding is None:
-        raise ValueError("family has no certificate verifier")
-    verifier = getattr(import_module(binding.module), binding.attribute)
-    if not callable(verifier):
-        raise TypeError("registered certificate verifier is not callable")
-    return cast(VerificationAdapter, verifier)
-
-
-def option_argv(name: str, value: object) -> list[str]:
-    """Render one canonical family/observer option for reproducible probes."""
-    if name.startswith("--"):
-        flag = name
-    else:
-        flag = "--" + name.replace("_", "-")
-    if isinstance(value, bool):
-        return [flag] if value else []
-    return [flag, str(value)]
 
 
 __all__ = [
@@ -961,13 +896,6 @@ __all__ = [
     "OptionSpec",
     "PrepareObserver",
     "ProjectionAdapter",
-    "ResolvedObservationAdapter",
     "VerificationAdapter",
-    "family_listing",
     "family_spec",
-    "option_argv",
-    "presentation_options",
-    "resolve_observation_adapter",
-    "resolve_projection_adapter",
-    "resolve_verification_adapter",
 ]

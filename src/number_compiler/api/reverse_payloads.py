@@ -51,7 +51,7 @@ class PoweredReverseAddTermPayload:
         index = require_integer(index, "digit coordinate")
         if index < 0:
             raise IndexError(index)
-        self.term._prepare_recursive_source_authority()
+        self.term.prepare_recursive_source_authority()
         return self._digit_source_only(index)
 
     @source_reads_only

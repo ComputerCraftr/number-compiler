@@ -27,8 +27,14 @@ if TYPE_CHECKING:
     from number_compiler.sequences.power_numbers.fermat_causal_border_matrix import (
         FermatCausalBorderMatrix,
     )
+    from number_compiler.sequences.power_numbers.fermat_powered_port_matrix import (
+        FermatPoweredPortMatrix,
+    )
     from number_compiler.sequences.power_numbers.fermat_pumped_radial_unit import (
         FermatPumpedRadialUnit,
+    )
+    from number_compiler.sequences.power_numbers.mersenne_trace_port_matrix import (
+        MersennePoweredTraceMatrix,
     )
     from number_compiler.sequences.power_numbers.signed_terminal_halo import (
         SignedFoldBirthWindow,
@@ -576,6 +582,29 @@ class FermatNumberSpec:
             max_work_units=max_work_units,
         )
 
+    def demand_fermat_powered_port_matrix(
+        self,
+        level: int,
+        physical_steps: int,
+        *,
+        base: int = 10,
+        position: int = 0,
+    ) -> FermatPoweredPortMatrix:
+        """Production, registry-first conditional 3X port action.
+
+        Unlike a finite row trace, this transports authenticated modular
+        inlet/outlet conditions in logarithmic temporal work and supports
+        genuine physical ``then``/``square`` without reissuing the root.
+        It does not decide the candidate's primality bit.
+        """
+        from number_compiler.sequences.power_numbers.fermat_powered_port_matrix import (
+            demand_fermat_powered_port_matrix,
+        )
+
+        return demand_fermat_powered_port_matrix(
+            self, level, physical_steps, base=base, position=position
+        )
+
     def demand_unwrapped_inner_radix_port(
         self, level: int, base: int
     ) -> UnwrappedInnerRadixPort:
@@ -676,6 +705,18 @@ class MersenneNumberSpec:
         if source.sign != 1 or source.width != self.exponent:
             raise ValueError("Mersenne signed-fold width or cyclic seam mismatch")
         return demand_signed_birth_window(source, start=start, length=length)
+
+    def demand_mersenne_trace_matrix(
+        self, trace_steps: int, *, base: int = 10, position: int = 0
+    ) -> MersennePoweredTraceMatrix:
+        """Source-only norm-one trace matrix; never a primality witness."""
+        from number_compiler.sequences.power_numbers.mersenne_trace_port_matrix import (
+            demand_mersenne_trace_matrix,
+        )
+
+        return demand_mersenne_trace_matrix(
+            self.exponent, trace_steps, base=base, position=position
+        )
 
     def demand_unwrapped_inner_radix_port(
         self, level: int, base: int

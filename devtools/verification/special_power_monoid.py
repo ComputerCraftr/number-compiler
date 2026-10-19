@@ -33,8 +33,6 @@ class SpecialPowerProgram:
             raise ValueError((family, parameter, compositions))
         if family == "mersenne" and parameter < 2:
             raise ValueError((family, parameter))
-        if not isinstance(self.operator, QuadraticPower):
-            raise TypeError(type(self.operator))
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "parameter", parameter)
         object.__setattr__(self, "construction_compositions", compositions)

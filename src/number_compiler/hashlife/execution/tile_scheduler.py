@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from number_compiler.hashlife.execution.source_bound_mixin import (
@@ -48,11 +51,46 @@ if TYPE_CHECKING:
         ResultLease,
     )
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+    from number_compiler.resources.causal_audit_contracts import (
+        CausalSpatialWorkspaceAuditSnapshot,
+        CausalTaskWorkspaceAuditSnapshot,
+    )
+    from number_compiler.resources.causal_types import CausalSpatialValue
+    from number_compiler.resources.causal_workspace import (
+        CausalSpatialWorkspace,
+        CausalTaskWorkspace,
+    )
     from number_compiler.resources.stores import LedgerDict
+
+
+@dataclass(frozen=True, slots=True)
+class TileSchedulerAuditSnapshot:
+    """Read-only observation of one scheduler's retained owner relationships."""
+
+    ledger: ResourceLedger
+    source_only: bool
+    next_application: int | None
+    pin_owner: int | None
+    pins: Mapping[tuple[int, PoweredResultKey], ResultLease]
+    pin_store: LedgerDict[tuple[int, PoweredResultKey], ResultLease] | None
+    causal_tasks: CausalTaskWorkspaceAuditSnapshot | None
+    causal_workspace: CausalSpatialWorkspaceAuditSnapshot[CausalSpatialValue] | None
+
+
+@dataclass(frozen=True, slots=True)
+class CausalSchedulerAuditOwners:
+    """Exact causal owner objects exposed to the resource inventory audit."""
+
+    spatial: CausalSpatialWorkspace[CausalSpatialValue]
+    tasks: CausalTaskWorkspace
+    pins: LedgerDict[tuple[int, PoweredResultKey], ResultLease]
 
 
 class TileScheduler(SourceBoundImageMixin):
     """One iterative complete-result and demand-observation executor."""
+
+    _causal_workspace: CausalSpatialWorkspace[CausalSpatialValue]
+    _causal_tasks: CausalTaskWorkspace
 
     def __init__(
         self,
@@ -72,7 +110,7 @@ class TileScheduler(SourceBoundImageMixin):
             raise ValueError("tile scheduler stores belong to another index")
         if getattr(adapter, "ledger", tiles.ledger) is not tiles.ledger:
             raise ValueError("tile adapter belongs to another index")
-        if results._causal_tasks is not None:
+        if results.causal_tasks is not None:
             raise ValueError("completed results already belong to another scheduler")
         self.tiles, self.results, self.adapter = tiles, results, adapter
         self.ledger = tiles.ledger
@@ -124,6 +162,106 @@ class TileScheduler(SourceBoundImageMixin):
             raise RuntimeError(
                 "source-only tile scheduler cannot execute physical tile methods"
             )
+
+    @property
+    def is_source_only(self) -> bool:
+        """Whether this scheduler was issued for source-image work only."""
+        return self._source_only
+
+    def audit_causal_owners(self) -> CausalSchedulerAuditOwners:
+        """Expose the exact owners whose retained causal state must be audited."""
+        self._require_physical_scheduler()
+        return CausalSchedulerAuditOwners(
+            self._causal_workspace,
+            self._causal_tasks,
+            self._pins,
+        )
+
+    def audit_application_registry(
+        self, containers: Mapping[int, object]
+    ) -> tuple[set[int], set[tuple[int, int]]]:
+        """Audit the scheduler's application registry through its owner API."""
+        self._require_physical_scheduler()
+        return self._applications.audit(containers)
+
+    def audit_application_bindings(
+        self, applications: Mapping[int, TileApplication]
+    ) -> bool:
+        """Check exact registry membership for the discovered live applications."""
+        self._require_physical_scheduler()
+        return self._applications.matches_live_applications(applications)
+
+    def application_registry_is(self, registry: object) -> bool:
+        """Check exact registry ownership without exposing the registry field."""
+        return registry is self._applications
+
+    def application_identity_is_live(self, identity: int) -> bool:
+        """Check that an application ID was allocated by this scheduler."""
+        return type(identity) is int and 0 <= identity < self._next_application
+
+    def validate_application_identity(self, identity: object) -> int:
+        """Validate an untrusted ID and return its admitted integer value."""
+        if type(identity) is not int or not self.application_identity_is_live(identity):
+            raise ValueError("tile application has an invalid scoped identity")
+        return identity
+
+    def application_is_registered(self, application: TileApplication) -> bool:
+        """Check that this exact application is registered under its identity."""
+        if not self.application_identity_is_live(application.identity):
+            return False
+        try:
+            return self._applications.application(application.identity) is application
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return False
+
+    def application_by_id(self, identity: object) -> TileApplication:
+        """Resolve one application after validating an untrusted scoped ID."""
+        admitted_identity = self.validate_application_identity(identity)
+        return self._applications.application(admitted_identity)
+
+    def register_application(
+        self, application: TileApplication, admitted: PoweredResultKey
+    ) -> None:
+        """Publish an application through the scheduler-owned registry."""
+        self._applications.register(application, admitted)
+
+    def unregister_application(self, application: TileApplication) -> None:
+        """Remove an application through its scheduler-owned registry."""
+        self._applications.unregister(application)
+
+    def replace_application_root(
+        self, application: TileApplication, root: ResultLease
+    ) -> None:
+        """Replace one registered application's completed root lease."""
+        if not self.application_is_registered(application):
+            raise ValueError("tile application is not registered with this scheduler")
+        if root.audit_snapshot().issuer is not self.results:
+            raise ValueError("application root belongs to another result arena")
+        self._applications.replace_root(application, root)
+
+    def audit_snapshot(self) -> TileSchedulerAuditSnapshot:
+        """Return detached pin contents and exact backing-owner identities."""
+        if self._source_only:
+            return TileSchedulerAuditSnapshot(
+                ledger=self.ledger,
+                source_only=True,
+                next_application=None,
+                pin_owner=None,
+                pins=MappingProxyType({}),
+                pin_store=None,
+                causal_tasks=None,
+                causal_workspace=None,
+            )
+        return TileSchedulerAuditSnapshot(
+            ledger=self.ledger,
+            source_only=False,
+            next_application=self._next_application,
+            pin_owner=self._pin_owner,
+            pins=MappingProxyType(dict(self._pins.items())),
+            pin_store=self._pins,
+            causal_tasks=self._causal_tasks.audit_snapshot(),
+            causal_workspace=self._causal_workspace.audit_snapshot(),
+        )
 
     @property
     def physical_supports(self) -> OrderedBooleanSupportArena:
@@ -215,9 +353,10 @@ class TileScheduler(SourceBoundImageMixin):
             or type(lease) is not impl.ResultLease
         ):
             raise TypeError("causal pins require an exact result binding")
-        self.results._validate_key(key)
+        self.results.validate_key(key)
         key = impl.normalize_output_region(self.tiles, key)
-        if lease._issuer is not self.results or lease._key != key:
+        lease_binding = lease.audit_snapshot()
+        if lease_binding.issuer is not self.results or lease_binding.key != key:
             raise ValueError("causal pin result belongs to another request")
         _ = lease.result
         application_source = impl.application_by_id(self, application).source
@@ -243,7 +382,10 @@ class TileScheduler(SourceBoundImageMixin):
         binding = application, key
         found = self._pins.get(binding)
         if found is not None:
-            if type(found) is not impl.ResultLease or found._issuer is not self.results:
+            if (
+                type(found) is not impl.ResultLease
+                or found.audit_snapshot().issuer is not self.results
+            ):
                 raise ValueError("causal result pin contains a foreign lease")
             _ = found.result
             expected = {(application, tile) for tile in dependencies}
@@ -274,7 +416,7 @@ class TileScheduler(SourceBoundImageMixin):
             raise
         self.ledger.bump(_execution_keys.TILE_SCHEDULER_DEMANDED_RESULT_PINS)
 
-    def _release_pins(self, application: int) -> None:
+    def release_application_pins(self, application: int) -> None:
         from number_compiler.hashlife.execution.tile_result_pinning import (
             release_result_pins,
         )
@@ -315,20 +457,20 @@ class TileScheduler(SourceBoundImageMixin):
             raise ValueError("field action cannot directly contain itself")
         return before, after
 
-    def _validate_execution_key(self, key: PoweredResultKey) -> None:
-        self.results._validate_key(key)
-        self._validate_execution_context(key)
+    def validate_execution_key(self, key: PoweredResultKey) -> None:
+        self.results.validate_key(key)
+        self.validate_execution_context(key)
 
-    def _validate_execution_context(self, key: PoweredResultKey) -> None:
+    def validate_execution_context(self, key: PoweredResultKey) -> None:
         from number_compiler.hashlife.execution.tile_execution_validation import (
             validate_execution_context,
         )
 
         validate_execution_context(self, key)
 
-    def _lookup_execution_key(self, key: PoweredResultKey) -> ResultLease | None:
+    def lookup_execution_key(self, key: PoweredResultKey) -> ResultLease | None:
         return self.results.lookup(
-            key, validate_context=self._validate_execution_context
+            key, validate_context=self.validate_execution_context
         )
 
     def _publish_leaf(
@@ -349,7 +491,7 @@ class TileScheduler(SourceBoundImageMixin):
     def _complete_leaf(self, root: PoweredResultKey) -> ResultLease:
         import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
 
-        self.results._validate_key(root)
+        self.results.validate_key(root)
         source = self.tiles.resolve(root.input)
         if source.level or source.symbol is None:
             raise ValueError("leaf completion requires one canonical leaf")
@@ -433,10 +575,10 @@ class TileScheduler(SourceBoundImageMixin):
                 key = frame.key
                 if frame.stage == 0:
                     if frame.checked_miss:
-                        self._validate_execution_key(key)
+                        self.validate_execution_key(key)
                         found = None
                     else:
-                        found = self._lookup_execution_key(key)
+                        found = self.lookup_execution_key(key)
                     if found is not None:
                         values.append(found)
                         continue
@@ -563,7 +705,7 @@ class TileScheduler(SourceBoundImageMixin):
         if validator is not None:
             validator(action, wiring)
         key = self._key(action, source, ports, wiring, boundaries, fusion)
-        found = self._lookup_execution_key(key)
+        found = self.lookup_execution_key(key)
         if found is not None:
             self.ledger.bump(_execution_keys.TILE_SCHEDULER_PARENT_EARLY_HITS)
             return found
@@ -600,7 +742,7 @@ class TileScheduler(SourceBoundImageMixin):
                 producer.wiring,
                 producer.boundaries,
             )
-            midpoint = self._lookup_execution_key(before_key)
+            midpoint = self.lookup_execution_key(before_key)
             if midpoint is not None:
                 try:
                     context = impl.after_context(
@@ -705,7 +847,7 @@ class TileScheduler(SourceBoundImageMixin):
         )
         return self.adapter.output_active(action, tile, bound.ports, bound.wiring)
 
-    def _prefix_active(
+    def prefix_active(
         self,
         action: FieldCellActionID,
         source: TileID,
@@ -714,9 +856,9 @@ class TileScheduler(SourceBoundImageMixin):
         limit: int,
         boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     ) -> bool:
-        from number_compiler.hashlife.observation.demanded_tiles import _prefix_active
+        from number_compiler.hashlife.observation.demanded_tiles import prefix_active
 
-        return _prefix_active(self, action, source, ports, wiring, limit, boundaries)
+        return prefix_active(self, action, source, ports, wiring, limit, boundaries)
 
     def application(
         self,
@@ -729,7 +871,7 @@ class TileScheduler(SourceBoundImageMixin):
 
         self._require_physical_scheduler()
         key = impl.PoweredResultKey(action, source, ports, wiring)
-        found = self._lookup_execution_key(key)
+        found = self.lookup_execution_key(key)
         identity = self._next_application
         self._next_application += 1
         try:

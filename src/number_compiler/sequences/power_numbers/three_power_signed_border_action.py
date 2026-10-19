@@ -43,7 +43,7 @@ from number_compiler.sequences.power_numbers._harmonic_authority import (
 )
 from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
     ThreePowerBilateralInteriorQuotient,
-    _carry_h5,
+    carry_h5,
     demand_three_power_inward_phase_quotient,
 )
 
@@ -122,8 +122,14 @@ class CyclotomicTriplingClock:
         if type(level) is not int or not 1 <= level <= 65_535:
             raise ValueError("source level outside Fermat bounded horizon")
         period = decimal_tripling_order(decimal_places)
-        phase = pow(2, level, period)
-        return cls(level, decimal_places, 0, phase, pow(3, phase, 10**decimal_places))
+        phase = int.__pow__(2, level, period)
+        return cls(
+            level,
+            decimal_places,
+            0,
+            phase,
+            int.__pow__(3, phase, 10**decimal_places),
+        )
 
     @property
     def period(self) -> int:
@@ -141,9 +147,9 @@ class CyclotomicTriplingClock:
         ):
             raise ValueError("invalid physical source clock coordinates")
         period = self.period
-        if self.phase != (pow(2, self.level, period) + self.offset) % period:
+        if self.phase != (int.__pow__(2, self.level, period) + self.offset) % period:
             raise ArithmeticError("physical cyclotomic phase does not belong to source")
-        if self.residue != pow(3, self.phase, 10**self.decimal_places):
+        if self.residue != int.__pow__(3, self.phase, 10**self.decimal_places):
             raise ArithmeticError("cyclotomic source digit mismatch")
 
     def advance(self, ordinary_triplings: int) -> CyclotomicTriplingClock:
@@ -160,7 +166,7 @@ class CyclotomicTriplingClock:
             self.decimal_places,
             self.offset + ordinary_triplings,
             phase,
-            pow(3, phase, 10**self.decimal_places),
+            int.__pow__(3, phase, 10**self.decimal_places),
         )
         new.verify()
         return new
@@ -184,7 +190,7 @@ class CyclotomicTriplingClock:
         )
 
     def carry_h5(self) -> tuple[WalshH5, WalshH5]:
-        return _carry_h5(self.carry_vector(), 0)
+        return carry_h5(self.carry_vector(), 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,14 +272,14 @@ class WeightedBinaryCarryBlock:
         self.emitted_value(incoming, outgoing)
         carry = incoming
         residue = self.source_value
-        carries = []
+        carries: list[int] = []
         for _ in range(self.width):
             residue, digit = divmod(residue, 2)
             carry = (3 * digit + carry) // 2
             carries.append(carry)
         if carry != outgoing:
             raise ArithmeticError("H5 carry and weighted action disagree")
-        return _carry_h5(tuple(carries), self.start)
+        return carry_h5(tuple(carries), self.start)
 
     def signed_source(self, fold_width: int) -> int | None:
         if self.source_value is None:
@@ -360,10 +366,10 @@ class SourceWeightedTriplingAction:
                 self.origin.decimal_phase_bank is None
                 or self.origin.decimal_phase_bank.producer_verified
             )
-            and harmonic_verified(self, self._payload(), issuer=_WEIGHTED_ISSUER)
+            and harmonic_verified(self, self.issuer_payload(), issuer=_WEIGHTED_ISSUER)
         )
 
-    def _payload(self) -> tuple[object, ...]:
+    def issuer_payload(self) -> tuple[object, ...]:
         binary = self.origin.bilateral.binary
         decimal = self.origin.bilateral.decimal
         bin_middle = self.origin.binary_middle
@@ -507,7 +513,7 @@ class SourceWeightedTriplingAction:
         """
         if not self.producer_verified:
             raise ValueError("unissued weighted source")
-        answer = []
+        answer: list[tuple[tuple[int, int, int | None, int | None], ...]] = []
         for block, edges in zip(self.blocks, self.admissible_edges, strict=True):
             signed = block.signed_source(self.fold_width)
             answer.append(
@@ -817,7 +823,7 @@ def signed_action_from_interior(
         if blocks[-1].emission_h5(ci, co) != dict(border.high_h5_options)[ci]:
             raise ArithmeticError("weighted high H5 contradicts certified border")
     result = SourceWeightedTriplingAction(origin, tuple(blocks), tuple(result_edges))
-    issue_harmonic(result, result._payload(), issuer=_WEIGHTED_ISSUER)
+    issue_harmonic(result, result.issuer_payload(), issuer=_WEIGHTED_ISSUER)
     return result
 
 

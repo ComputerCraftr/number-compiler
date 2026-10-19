@@ -100,6 +100,12 @@ def main() -> None:
             unknown_branch=lambda d: d.kind,
         )
 
+    special_candidates = [
+        _frobenius_row("fermat", 4),
+        _frobenius_row("fermat", 5),
+        _frobenius_row("mersenne", 11),
+        _frobenius_row("mersenne", 13),
+    ]
     data = {
         "shared_handler": {
             "generic": handler.canonical_key,
@@ -117,12 +123,7 @@ def main() -> None:
             }
             for k in (10, 5)
         ],
-        "special_candidates": [
-            _frobenius_row("fermat", 4),
-            _frobenius_row("fermat", 5),
-            _frobenius_row("mersenne", 11),
-            _frobenius_row("mersenne", 13),
-        ],
+        "special_candidates": special_candidates,
         "conclusion": {
             "shared_binary_control_cleanup_complete": True,
             "frobenius_per_level_controller_removed": True,
@@ -144,7 +145,7 @@ def main() -> None:
         f"{('-' if r['chunk'] is None else record(r['chunk'])['span'])} | "
         f"{('ALL_PASS' if r['structural_pass'] else r['production_status'])} | "
         f"{('-' if r['structural_pass'] else 'output-selector-unavailable')} |"
-        for r in records(data["special_candidates"])
+        for r in records(special_candidates)
     )
     md = f"""# Shared binary piecewise cleanup / theorem-closure audit
 

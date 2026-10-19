@@ -121,7 +121,7 @@ def test_public_digit_is_pointed_and_does_not_prepare_endpoint(
         assert counters["double_reverse_pointed_stencil_publications"] == 5
         assert counters.get("double_reverse_temporal_hashlife_publications", 0) == 0
         # The pointed cone and slice cache must pass the same payload audit.
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 @pytest.mark.parametrize(

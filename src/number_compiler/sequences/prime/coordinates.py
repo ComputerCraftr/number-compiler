@@ -79,7 +79,7 @@ def prime_pair_field(origin: int, offset: int, *, base: int = 10) -> PrimePairFi
     width = max(len(x), len(y))
     x = digits_lsd(origin, base, width)
     y = digits_lsd(offset, base, width)
-    pair = tuple(a + b for a, b in zip(x, y))
+    pair = tuple(a + b for a, b in zip(x, y, strict=True))
     carries = [0]
     digits: list[int] = []
     carry = 0

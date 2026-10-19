@@ -6,12 +6,14 @@ import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
+    SourceImageRecord,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
     SourceImageProjection,
     SourceImageView,
-    _ImageRecord,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.source_bound_payload_audit import (
@@ -21,11 +23,11 @@ from number_compiler.resources.source_bound_payload_audit import (
 
 
 @dataclass(frozen=True, slots=True)
-class _Action:
+class DecimalImageAction:
     digits: tuple[int, ...]
 
 
-class _DecimalAdapter:
+class DecimalImageAdapter:
     family = "test-decimal"
     semantic_version = "test-decimal-v1"
 
@@ -39,7 +41,7 @@ class _DecimalAdapter:
             raise ValueError("invalid decimal source")
 
     def validate_action(self, action: object) -> None:
-        if type(action) is not _Action or any(
+        if type(action) is not DecimalImageAction or any(
             type(digit) is not int or not 0 <= digit < 10 for digit in action.digits
         ):
             raise ValueError("invalid decimal action")
@@ -48,22 +50,28 @@ class _DecimalAdapter:
         if type(payload) is not int or payload < 0:
             raise ValueError("invalid decimal payload")
 
-    def identity_action(self, source: object) -> _Action:
-        return _Action(())
+    def identity_action(self, source: object) -> DecimalImageAction:
+        return DecimalImageAction(())
 
-    def action_children(self, action: object) -> tuple[_Action, _Action] | None:
+    def action_children(
+        self, action: object
+    ) -> tuple[DecimalImageAction, DecimalImageAction] | None:
         self.validate_action(action)
-        assert isinstance(action, _Action)
+        assert isinstance(action, DecimalImageAction)
         if len(action.digits) <= 1:
             return None
         split = len(action.digits) // 2
-        return _Action(action.digits[:split]), _Action(action.digits[split:])
+        return DecimalImageAction(action.digits[:split]), DecimalImageAction(
+            action.digits[split:]
+        )
 
-    def compose_actions(self, before: object, after: object) -> _Action:
+    def compose_actions(self, before: object, after: object) -> DecimalImageAction:
         self.validate_action(before)
         self.validate_action(after)
-        assert isinstance(before, _Action) and isinstance(after, _Action)
-        return _Action(before.digits + after.digits)
+        assert isinstance(before, DecimalImageAction) and isinstance(
+            after, DecimalImageAction
+        )
+        return DecimalImageAction(before.digits + after.digits)
 
     def admit_source(self, source: object) -> SourceImageCandidate:
         self.validate_source(source)
@@ -74,10 +82,10 @@ class _DecimalAdapter:
         self, action: object, source: SourceImageView
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        assert isinstance(action, _Action) and len(action.digits) == 1
+        assert isinstance(action, DecimalImageAction) and len(action.digits) == 1
         assert isinstance(source.payload, int)
         previous = source.binding.action
-        assert isinstance(previous, _Action)
+        assert isinstance(previous, DecimalImageAction)
         self.primitive_calls += 1
         value = source.payload * 10 + action.digits[0]
         failure = source.failure_prefix
@@ -126,7 +134,7 @@ class _DecimalAdapter:
         source: SourceImageView,
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        assert isinstance(action, _Action)
+        assert isinstance(action, DecimalImageAction)
         assert isinstance(source.payload, int)
         # This adapter only admits relative reuse for a one-digit source state.
         value = source.payload
@@ -159,17 +167,17 @@ class _DecimalAdapter:
         )
 
 
-def _runtime(
+def source_image_runtime(
     *, max_nodes: int | None = None, max_entries: int | None = None
-) -> tuple[ResourceLedger, SourceBoundSchedulerCore, _DecimalAdapter]:
+) -> tuple[ResourceLedger, SourceBoundSchedulerCore, DecimalImageAdapter]:
     ledger = ResourceLedger(max_nodes=max_nodes, max_cache_entries=max_entries)
     core = SourceBoundSchedulerCore(ledger)
-    adapter = _DecimalAdapter(ledger)
+    adapter = DecimalImageAdapter(ledger)
     core.register(adapter)
     return ledger, core, adapter
 
 
-def _source_audit(
+def source_audit(
     ledger: ResourceLedger, core: SourceBoundSchedulerCore
 ) -> SourceBoundPayloadAudit:
     return audit_source_bound_payloads(
@@ -182,20 +190,20 @@ def _source_audit(
 def one_image() -> tuple[
     ResourceLedger,
     SourceBoundSchedulerCore,
-    _DecimalAdapter,
+    DecimalImageAdapter,
     SourceImageID,
-    _ImageRecord,
+    SourceImageRecord,
 ]:
-    ledger, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
+    ledger, core, adapter = source_image_runtime()
+    image = core.apply(adapter, 0, DecimalImageAction((1,)))
     return ledger, core, adapter, image, core.resolve(image)
 
 
 def assert_budget_refusal(
-    ledger: ResourceLedger, core: SourceBoundSchedulerCore, adapter: _DecimalAdapter
+    ledger: ResourceLedger, core: SourceBoundSchedulerCore, adapter: DecimalImageAdapter
 ) -> None:
     before = ledger.snapshot()
     with pytest.raises(Exception, match="budget exceeded"):
-        core.apply(adapter, 0, _Action((1,)))
+        core.apply(adapter, 0, DecimalImageAction((1,)))
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)

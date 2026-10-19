@@ -27,7 +27,12 @@ from number_compiler.sequences.collatz.block_power import (
 )
 from tests.support.reference_arithmetic import physical_collatz_literal as _physical
 from tests.support.source_image_assertions import assert_collatz_source_publications
-from tests.support.tile_kernel import _oracle, _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    literal_tile_output,
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3, 7, 27))
@@ -44,7 +49,7 @@ def test_public_certified_collatz_matches_small_exact_oracle(
 
 def test_physical_collatz_leaf_consumer_is_exact_in_every_finite_context() -> None:
     effect = CollatzPhysicalBlockEffect()
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(effect)
+    _ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(effect)
     alphabet = adapter.alphabet(primitive)
     expected = (
         ((0, 1, 2), (0, 1, 2), (0, 0, 0), (1, 1, 1), (1, 1, 1), (0, 0, 0)),
@@ -53,10 +58,10 @@ def test_physical_collatz_leaf_consumer_is_exact_in_every_finite_context() -> No
     )
     for symbol in range(3):
         with tiles.leaf(alphabet, symbol) as leaf:
-            interface = adapter._compile_interface(
+            interface = adapter.compile_interface(
                 primitive, leaf.tile, adapter.wiring(primitive)
             )
-        output = adapter._components(interface)[2]
+        output = adapter.interface_components(interface)[2]
         for left in range(6):
             for right in range(3):
                 binding = {
@@ -76,7 +81,7 @@ def test_public_powered_collatz_uses_source_image_consumer(steps: int) -> None:
     assert tuple(term.digit(i) for i in range(term.width())) == tuple(
         (expected >> i) & 1 for i in range(expected.bit_length())
     )
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert_collatz_source_publications(counters)
     assert counters.get("sequential_generation_advances", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
@@ -86,7 +91,7 @@ def test_nonboundary_collatz_interfaces_elide_the_low_source_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, (0, 1, 1, 0, 1, 0, 1, 1)
     )
     right = effect.initial(BoundarySide.RIGHT)
@@ -120,7 +125,7 @@ def test_boundary_collatz_interface_reads_the_low_source_for_event_weight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+    _ledger, tiles, adapter, primitive, scheduler, source = make_tile_runtime_source(
         effect, (1, 1, 1, 0, 1, 0, 1, 1)
     )
     original = type(tiles).point
@@ -153,10 +158,10 @@ def test_zero_field_uses_current_tile_interface_under_original_limits(
     steps: int,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(effect)
     ledger.tighten_limits(100_000, 200_000)
     action = adapter.power(primitive, steps)
-    source = _tile(tiles, adapter, primitive, (0,) * 8)
+    source = make_tile_from_symbols(tiles, adapter, primitive, (0,) * 8)
     application = scheduler.application(
         action,
         source.tile,
@@ -165,7 +170,7 @@ def test_zero_field_uses_current_tile_interface_under_original_limits(
     )
     expected: tuple[int, ...] = (0,) * 8
     for _ in range(steps):
-        expected = _oracle(effect, expected)
+        expected = literal_tile_output(effect, expected)
     try:
         first = application.interface()
         before = ledger.counters.get("causal_interface_result_early_hits", 0)
@@ -253,7 +258,7 @@ def test_noncycle_public_observations_do_not_use_higher_point_or_width(
 def test_noncycle_point_does_not_eagerly_observe_width_channels() -> None:
     term = PoweredCollatzTerm(27, 4)
     assert term.digit(0) == 0
-    assert term._ledger.counters.get("direct_powered_point_queries", 0) == 1
+    assert term.resource_ledger.counters.get("direct_powered_point_queries", 0) == 1
     assert term._active_width is None
 
 
@@ -317,8 +322,10 @@ def test_temporal_prefix_uses_admitted_image_without_observer_reentry(
     assert cell_calls == 1
     assert peak == 0
     assert term._workspace is not None
-    assert term._workspace.ledger is term._ledger
-    assert term._ledger.counters.get("collatz_physical_point_germ_demands", 0) == 1
+    assert term._workspace.ledger is term.resource_ledger
+    assert (
+        term.resource_ledger.counters.get("collatz_physical_point_germ_demands", 0) == 1
+    )
 
 
 @pytest.mark.parametrize("steps", (16, 32))
@@ -333,12 +340,12 @@ def test_powered_parent_exact_extent_and_payload_boundary(steps: int) -> None:
     )
     with pytest.raises(IndexError):
         term.digit(term.width())
-    audit = audit_registered_payloads(term._ledger)
+    audit = audit_registered_payloads(term.resource_ledger)
     assert audit.forbidden_future_payloads == 0
     assert audit.unbounded_future_integers == 0
     assert audit.unknown_payloads == 0
-    assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
-    assert term._ledger.counters.get("whole_word_symbol_visits", 0) == 0
+    assert term.resource_ledger.counters.get("sequential_generation_advances", 0) == 0
+    assert term.resource_ledger.counters.get("whole_word_symbol_visits", 0) == 0
 
 
 @pytest.mark.parametrize(

@@ -44,7 +44,7 @@ MAX_PHASE_FIBER_BIT_WORK = 4_194_304
 MAX_FIBER_LIMIT = 4_096
 
 
-def _terminal_status_from_signed_folds(
+def terminal_status_from_signed_folds(
     source_level: int, fold_width: int, signed_folds: tuple[int, ...]
 ) -> str:
     """Classify only a complete finite source fiber at the terminal level."""
@@ -116,12 +116,12 @@ class FermatTwoSidedSourceCylinder:
     @property
     def producer_verified(self) -> bool:
         return self.source.producer_verified and harmonic_verified(
-            self, self._payload(), issuer=_CYLINDER_ISSUER
+            self, self.structural_payload(), issuer=_CYLINDER_ISSUER
         )
 
-    def _payload(self) -> tuple[object, ...]:
+    def structural_payload(self) -> tuple[object, ...]:
         return (
-            self.source._payload(),
+            self.source.issuer_payload(),
             self.combined_residue,
             self.combined_modulus,
             self.binary_low_bits,
@@ -150,7 +150,7 @@ class FermatTwoSidedSourceCylinder:
 
         return FermatOuterCyclotomicClock.from_level(self.source.level)
 
-    def _admitted(self, x: int) -> tuple[tuple[int, int], ...] | None:
+    def admitted_edges(self, x: int) -> tuple[tuple[int, int], ...] | None:
         """Validate ONE entire correlated source/carry path and decimal guards."""
         s = self.source
         if x.bit_length() != s.origin.bilateral.binary.source_digits:
@@ -212,7 +212,7 @@ class FermatTwoSidedSourceCylinder:
             return None
         fibers: list[SignedCylinderFiber] = []
         for x in candidates:
-            edges = self._admitted(x)
+            edges = self.admitted_edges(x)
             if edges is None:
                 continue
             action = BinaryPhaseCarryAction.from_word(x, length, width)
@@ -267,7 +267,7 @@ class FermatTwoSidedSourceCylinder:
         high = (1 << (j - b)) - 1
         base = 3 << b
         denom = 1 << j
-        possible = []
+        possible: list[int] = []
         for carry in (0, 1, 2):
             # carry*2**j <= 3*(r+2**b*t) < (carry+1)*2**j
             lo = -((3 * r - carry * denom) // base)
@@ -305,7 +305,7 @@ class FermatTwoSidedSourceCylinder:
             carry_options: set[int] = set()
             boundary_modulus = 1 << boundary
             for x in candidates:
-                if self._admitted(x) is not None:
+                if self.admitted_edges(x) is not None:
                     carry_options.add((3 * (x % boundary_modulus)) >> boundary)
             if not carry_options:
                 raise ArithmeticError(
@@ -336,7 +336,7 @@ class FermatTwoSidedSourceCylinder:
         fibers = self.bounded_phase_fibers(limit)
         if fibers is None:
             return "UNKNOWN"
-        return _terminal_status_from_signed_folds(
+        return terminal_status_from_signed_folds(
             self.source.level, w, tuple(fiber.signed_source for fiber in fibers)
         )
 
@@ -447,7 +447,7 @@ def demand_two_sided_source_cylinder(
         binary.source_top,
         interval,
     )
-    issue_harmonic(result, result._payload(), issuer=_CYLINDER_ISSUER)
+    issue_harmonic(result, result.structural_payload(), issuer=_CYLINDER_ISSUER)
     return result
 
 

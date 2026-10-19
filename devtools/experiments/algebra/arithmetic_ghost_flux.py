@@ -367,7 +367,7 @@ def _forward_difference_first_column(
 ) -> tuple[int, ...]:
     if not values:
         return ()
-    row = [int(value) % modulus for value in values]
+    row: list[int] = [int(value) % modulus for value in values]
     out = [row[0]]
     while len(row) > 1:
         row = [(row[i + 1] - row[i]) % modulus for i in range(len(row) - 1)]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -74,6 +74,17 @@ class Run:
     def source_binding(self) -> str:
         return f"{MACHINE_SHA256}:blank:{self.requested}"
 
+    @property
+    def arithmetic_term(self) -> AntihydraArithmeticTerm:
+        """Return the authenticated arithmetic owner without constructing support."""
+        self.require_source()
+        return self._term
+
+    @property
+    def source_term(self) -> AntihydraArithmeticTerm:
+        """Owner reference; execution authority still requires ``require_source``."""
+        return self._term
+
     def require_source(self) -> None:
         if (
             type(self) is not Run
@@ -85,11 +96,11 @@ class Run:
             or self._term.ledger is not self.ledger
         ):
             raise ValueError("unbound Antihydra result")
-        arithmetic = self._term._result
+        arithmetic = self._term.published_result
         if type(arithmetic) is not ArithmeticResult:
             raise ValueError("unbound Antihydra arithmetic result")
         arithmetic.require_source()
-        self._term._validate_physical(self)
+        self._term.validate_physical(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,16 +173,21 @@ class ArithmeticResult:
     def source_binding(self) -> str:
         return f"{MACHINE_SHA256}:blank:arithmetic:{self.requested}"
 
+    @property
+    def source_term(self) -> AntihydraArithmeticTerm:
+        """Owner reference, without validating or constructing another result."""
+        return self._term
+
     def require_source(self) -> None:
         if (
             type(self) is not ArithmeticResult
             or getattr(self, "_source", None) is not _SOURCE
             or type(getattr(self, "_term", None)) is not AntihydraArithmeticTerm
             or self._term.ledger is not self.ledger
-            or self._term._result is not self
+            or self._term.published_result is not self
         ):
             raise ValueError("unbound Antihydra arithmetic result")
-        self._term._validate_result(self)
+        self._term.validate_result(self)
 
 
 def authenticated_arithmetic_result(
@@ -185,7 +201,7 @@ def authenticated_arithmetic_result(
         result.require_source()
         if result.halted:
             raise ValueError("halted source has no returning Mahler seam")
-        arithmetic = result._term._result
+        arithmetic = result.source_term.published_result
         if type(arithmetic) is not ArithmeticResult:
             raise ValueError("unbound Antihydra arithmetic result")
         # Run.require_source has already authenticated this exact term result
@@ -193,6 +209,14 @@ def authenticated_arithmetic_result(
         # or observer replaces it here, so a second aggregate check repeats work.
         return arithmetic
     raise TypeError("Mahler observations require an Antihydra source result")
+
+
+class ArithmeticTermAuditSnapshot(NamedTuple):
+    """Read-only publication state; taking a snapshot performs no execution."""
+
+    result: ArithmeticResult | None
+    segment_count: int
+    segments_ready: bool
 
 
 class AntihydraArithmeticTerm:
@@ -288,6 +312,16 @@ class AntihydraArithmeticTerm:
 
         register_antihydra_payload_contract(self)
 
+    def audit_snapshot(self) -> ArithmeticTermAuditSnapshot:
+        return ArithmeticTermAuditSnapshot(
+            self._result, len(self._segments), self._segments_ready
+        )
+
+    @property
+    def published_result(self) -> ArithmeticResult | None:
+        """Read the existing publication; never start arithmetic execution."""
+        return self._result
+
     @property
     def _physical(self) -> Run | None:
         if not self.physical_publications:
@@ -297,11 +331,14 @@ class AntihydraArithmeticTerm:
         return self.physical_publications[0].run
 
     @property
+    def physical_run_published(self) -> bool:
+        return self._physical is not None
+
+    @property
     def mahler_window_memo(self) -> object | None:
         """Expose the exact ledger container for the lazy Mahler memo."""
         workspace = self.mahler_workspace
-        memo = None if workspace is None else workspace._window_memo
-        return None if memo is None else memo._data
+        return None if workspace is None else workspace.window_memo_container
 
     @property
     def segments(self) -> LedgerList[ArithmeticSegment]:
@@ -311,7 +348,10 @@ class AntihydraArithmeticTerm:
     def _materialize_segments(
         self, result: Run | ArithmeticResult
     ) -> LedgerList[ArithmeticSegment]:
-        if type(result) not in (Run, ArithmeticResult) or result._term is not self:
+        if (
+            type(result) not in (Run, ArithmeticResult)
+            or result.source_term is not self
+        ):
             raise ValueError("retained Antihydra support has another source result")
         if self._segments_ready:
             return self._segments
@@ -490,7 +530,7 @@ class AntihydraArithmeticTerm:
         self.engine.count("arithmetic_result_publications")
         return result
 
-    def _validate_result(self, result: ArithmeticResult) -> None:
+    def validate_result(self, result: ArithmeticResult) -> None:
         if (
             len(self.result_publications) != 1
             or self.result_publications[0] is not result
@@ -561,14 +601,14 @@ class AntihydraArithmeticTerm:
         ):
             raise ValueError("Antihydra arithmetic result was changed")
 
-    def _validate_physical(self, run: Run) -> None:
+    def validate_physical(self, run: Run) -> None:
         if len(self.physical_publications) != 1:
             raise ValueError("unbound Antihydra physical publication")
         publication = self.physical_publications[0]
         if publication.run is not run or not publication.matches(run):
             raise ValueError("Antihydra physical result was changed")
 
-    def _physical_block(
+    def apply_physical_block(
         self,
         block: ArithmeticCylinder,
         h: int,
@@ -651,7 +691,7 @@ class AntihydraArithmeticTerm:
             if segment.start != completed:
                 raise ValueError("retained Antihydra source block was changed")
             old_balance = balance
-            h, balance, left, right, completed, halted = self._physical_block(
+            h, balance, left, right, completed, halted = self.apply_physical_block(
                 segment.cylinder, h, balance, left, right, completed
             )
             minimum = min(minimum, old_balance + segment.cylinder.minimum)
@@ -747,14 +787,14 @@ class CylinderEngine:
     @property
     def audit_memo_store(self) -> object:
         """Expose the exact registered memo container to the audit contract."""
-        return self.memo._data
+        return self.memo.audit_snapshot().container
 
     @property
     def audit_arithmetic_memo_store(
         self,
     ) -> object:
         """Expose the exact registered arithmetic container to the audit contract."""
-        return self.arithmetic_memo._data
+        return self.arithmetic_memo.audit_snapshot().container
 
     @property
     def shared_cache(self) -> bool:

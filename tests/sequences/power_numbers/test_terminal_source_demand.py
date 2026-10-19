@@ -39,7 +39,7 @@ def test_terminal_queries_receive_source_bound_demand_without_replay(
             "production query is not allowed to materialize source ports"
         )
 
-    monkeypatch.setattr(source_matrix, "_source_residue", fail_if_eager)
+    monkeypatch.setattr(source_matrix, "source_residue", fail_if_eager)
     for family, p in (("fermat", 4), ("fermat", 5), ("mersenne", 11), ("mersenne", 13)):
         result = terminal_threshold_probe(family, p)
         demand = result.source_demand

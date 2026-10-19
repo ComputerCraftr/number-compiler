@@ -27,10 +27,19 @@ def _digits(value: int, base: int) -> tuple[int, ...]:
 
 @pytest.mark.parametrize("base", [2, 3, 10, 16])
 @pytest.mark.parametrize("steps", [3, 4, 6])
+@pytest.mark.parametrize(
+    "exhaustive", [False, pytest.param(True, marks=pytest.mark.validation)]
+)
 def test_chamber_acceptance_matches_independent_full_trajectories(
-    base: int, steps: int
+    base: int, steps: int, exhaustive: bool
 ) -> None:
-    for seed in range(256):
+    seeds = (
+        range(256)
+        if exhaustive
+        else (0, 1, base - 1, base, base + 1, base**2 - 1, 196, 255)
+    )
+    outcomes = set()
+    for seed in seeds:
         digits = _digits(seed, base)
         endpoint = digits
         initial = _step(digits, base)[1]
@@ -38,6 +47,7 @@ def test_chamber_acceptance_matches_independent_full_trajectories(
         for _ in range(steps):
             endpoint, carries = _step(endpoint, base)
             admitted &= carries == initial and len(endpoint) == len(digits)
+        outcomes.add(bool(admitted))
         ledger = ResourceLedger()
         output = iter_same_carry_digits(ExactSource(digits, base), steps, ledger)
         if admitted:
@@ -46,6 +56,7 @@ def test_chamber_acceptance_matches_independent_full_trajectories(
             with pytest.raises(SameCarryChamberRejected):
                 next(output)
             assert ledger.counters["reverse_source_chamber_rejections"] == 1
+    assert outcomes == {False, True}
 
 
 @pytest.mark.parametrize("width", [16, 32, 64, 128, 256, 512, 1024])

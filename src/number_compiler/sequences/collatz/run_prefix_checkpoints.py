@@ -88,7 +88,7 @@ def observe_temporal_run_prefix(
     width_spine.reset_segment()
 
 
-def _crosses_root_checkpoint(start: int, width: int, maximum: int) -> bool:
+def crosses_root_checkpoint(start: int, width: int, maximum: int) -> bool:
     """Check whether a block crosses a retained root width without stepping it."""
     if any(type(value) is not int for value in (start, width, maximum)):
         raise TypeError("Collatz checkpoint extents require exact integers")
@@ -196,7 +196,7 @@ def _publish_checkpoints(
     return published
 
 
-def _publish_run_root_checkpoints(
+def publish_run_root_checkpoints(
     macros: CollatzDyadicMacros,
     scratch: RunArithmeticWorkspace,
     *,
@@ -243,7 +243,7 @@ def _publish_run_root_checkpoints(
     )
 
 
-def _publish_d8_root_checkpoints(
+def publish_d8_root_checkpoints(
     macros: CollatzDyadicMacros,
     scratch: RunArithmeticWorkspace,
     *,
@@ -285,7 +285,7 @@ def _publish_d8_root_checkpoints(
     )
 
 
-def _publish_d8_frame_root_checkpoints(
+def publish_d8_frame_root_checkpoints(
     macros: CollatzDyadicMacros,
     scratch: RunArithmeticWorkspace,
     *,
@@ -307,7 +307,7 @@ def _publish_d8_frame_root_checkpoints(
         _collatz_keys.COLLATZ_TEMPORAL_ROOT_CHECKPOINT_FRAME_OPERAND_BITS,
         source.bit_length() + endpoint.bit_length(),
     )
-    _publish_d8_root_checkpoints(
+    publish_d8_root_checkpoints(
         macros,
         scratch,
         anchor=anchor,

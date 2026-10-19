@@ -16,7 +16,7 @@ from number_compiler.sequences.comma.future_authority import (
     GLOBAL_RELEASE_SESSION_ID,
     GLOBAL_RELEASE_THEOREM_ID,
     KERNEL_RELEASE_SCOPE,
-    _KernelInstanceAdmission,
+    KernelInstanceAdmission,
 )
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import candidate_record
@@ -93,7 +93,7 @@ def test_admitted_global_lease_marks_runtime_status_verified(
 
     parsed = future_provider.parse_future_candidate(record, charge_work=no_work_limit)
     digest = parsed.artifact_sha256
-    admission = _KernelInstanceAdmission(
+    admission = KernelInstanceAdmission(
         artifact_sha256=digest,
         instance_id=GLOBAL_RELEASE_SESSION_ID,
         theorem_id=GLOBAL_RELEASE_THEOREM_ID,

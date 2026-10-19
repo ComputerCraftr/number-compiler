@@ -18,9 +18,7 @@ from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_a
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.hashlife.execution.source_bound_images import (
-    SourceImageID,
-)
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
@@ -216,6 +214,9 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 self._ledger, "double_reverse_output_stream"
             )
             self._ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS, 0)
+            from .temporal_packed_ring import initialize_packed_ring_metrics
+
+            initialize_packed_ring_metrics(self._ledger)
             for counter in (
                 _double_reverse_keys.DOUBLE_REVERSE_SPATIAL_TRANSDUCER_APPLICATIONS,
                 _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS,
@@ -977,6 +978,10 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed double-reverse term")
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        return self._ledger
 
     def __enter__(self) -> Self:
         self._check_open()

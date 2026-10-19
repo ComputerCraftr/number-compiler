@@ -58,7 +58,7 @@ def test_actual_fermat_five_source_births_are_nilpotent_and_source_checked(
     sources = tuple(
         _carry_action_from_coefficients(w.folded, sign=-1) for w in witnesses
     )
-    for witness, source in zip(witnesses, sources):
+    for witness, source in zip(witnesses, sources, strict=True):
         assert tuple(source.carry_at(j) for j in range(width + 1)) == witness.carries
     composed = compose_four_exact_birth_observations(sources)
     assert composed.result.source_annihilated

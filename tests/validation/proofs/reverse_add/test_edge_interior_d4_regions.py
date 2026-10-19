@@ -9,8 +9,8 @@ from devtools.experiments.reverse_add.edge_interior_d4_regions import (
     FiniteInterval,
     construct_edge_interior_d4,
 )
+from number_compiler.arithmetic.fields.radial_innovation import RadialMultiplier
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import (

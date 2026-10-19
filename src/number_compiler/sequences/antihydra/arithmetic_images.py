@@ -31,7 +31,7 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
     publish_exact_run_candidate,
 )
-from number_compiler.hashlife.execution.source_bound_images import (
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
@@ -228,48 +228,19 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         except (ValueError, TypeError, AttributeError) as error:
             raise ValueError("Antihydra arithmetic source image was changed") from error
 
-    def _runs(
-        self, h: int, width: int, scratch: RunArithmeticWorkspace | None = None
-    ) -> Iterator[tuple[int, int, int]]:
-        """Select centered maximal runs, retaining only the current exact source."""
-        if scratch is None:
-            with RunArithmeticWorkspace.for_ledger(
-                self.ledger, self.counter_prefix
-            ).scope() as local:
-                yield from self._run_steps(h, width, local)
-            return
-        yield from self._run_steps(h, width, scratch)
-
     @staticmethod
     def _centered_source(h: int, scratch: RunArithmeticWorkspace) -> int:
         scratch.require_bits(8 * (h.bit_length() + 16))
         centered = h - 1
-        if centered <= 0:
-            raise ValueError("Antihydra run source must have positive centered value")
+        if centered < 0:
+            raise ValueError("Antihydra run source must be nonnegative centered value")
         return centered
 
-    def _run_steps(
-        self, h: int, width: int, scratch: RunArithmeticWorkspace
-    ) -> Iterator[tuple[int, int, int]]:
-        """Iterate run arithmetic inside an already reserved workspace scope."""
-        d = self._centered_source(h, scratch)
-        remaining = width
-        while remaining:
-            source_bits = d.bit_length()
-            scratch.require_bits(8 * (source_bits + 16))
-            bit = d & 1
-            length = min(remaining, v2_positive(d + bit))
-            scratch.require_bits(8 * (source_bits + 2 * length + 16))
-            upper = 3**length
-            d = upper * ((d + bit) >> length) - bit
-            self._bump("temporal_run_actions")
-            self._bump("temporal_one_run_pumps" if bit else "temporal_zero_run_pumps")
-            self._bump(
-                "temporal_run_operand_bits",
-                source_bits + d.bit_length() + upper.bit_length(),
-            )
-            yield length, bit, d
-            remaining -= length
+    def _record_fixed_point_run(self, length: int) -> None:
+        """Charge the exact fixed-point summary without building a discarded gain."""
+        self.bump_metric("temporal_zero_run_pumps")
+        self.bump_metric("temporal_run_actions")
+        self.bump_metric("temporal_run_operand_bits", length.bit_length())
 
     def _run_candidate(
         self,
@@ -315,7 +286,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         admitted = self.source_node(source_id)
         if not admitted.exact or admitted.precision != node.width:
             raise ValueError("Antihydra run requires its complete exact source")
-        self._bump("temporal_run_routes")
+        self.bump_metric("temporal_run_routes")
         scratch.require_bits(
             8
             * (
@@ -340,7 +311,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     run_delta,
                     run_minimum,
                     run_odds,
-                    endpoint_d,
+                    prefix_endpoint_d,
                 ) in self._punctured_steps(
                     source_h, macro_selection.prefix_steps, scratch
                 ):
@@ -349,6 +320,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     )
                     odd_steps += run_odds
                     remaining -= prefix_width
+                    endpoint_d = prefix_endpoint_d
             if endpoint_d != macro_selection.source:
                 raise ArithmeticError("odd macro selector changed its admitted source")
             powered_extent = macro_selection.extent
@@ -368,22 +340,24 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             odd_steps += powered.extent - powered.odd_events
             endpoint_d = powered_endpoint
             remaining -= powered_extent
-            self._bump("temporal_odd_macro_evaluations")
-            self._bump("temporal_odd_macro_repetitions", macro_selection.repetitions)
-            self._bump("temporal_odd_macro_return_steps", powered_extent)
-            self._bump(
+            self.bump_metric("temporal_odd_macro_evaluations")
+            self.bump_metric(
+                "temporal_odd_macro_repetitions", macro_selection.repetitions
+            )
+            self.bump_metric("temporal_odd_macro_return_steps", powered_extent)
+            self.bump_metric(
                 "temporal_odd_macro_operand_bits",
                 endpoint_d.bit_length()
                 + powered.joint.gain.bit_length()
                 + powered.joint.innovation.bit_length(),
             )
-            self._bump(
+            self.bump_metric(
                 "temporal_odd_macro_residual_steps",
                 node.width - macro_selection.prefix_steps - powered_extent,
             )
         residual_source_h = endpoint_d + 1
         for (
-            length,
+            _length,
             run_delta,
             run_minimum,
             run_odds,
@@ -401,7 +375,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         scratch.require_bits(8 * (source_h.bit_length() + 3 * node.width + 16))
         upper, lower = 3**node.width, 1 << node.width
         offset = (endpoint_d + 1) * lower - upper * source_h
-        self._bump(
+        self.bump_metric(
             "temporal_composition_operand_bits",
             upper.bit_length()
             + lower.bit_length()
@@ -446,8 +420,8 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             remaining_steps=width,
             max_residual_steps=self.MAX_LEAF_STEPS,
         ):
-            self._bump("temporal_odd_macro_prefilter_rejections")
-            self._bump("temporal_odd_macro_selector_misses")
+            self.bump_metric("temporal_odd_macro_prefilter_rejections")
+            self.bump_metric("temporal_odd_macro_selector_misses")
             return None
         scratch_workspace = RunArithmeticWorkspace.for_ledger(
             self.ledger, self.counter_prefix
@@ -471,9 +445,9 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 admitted.residue if admitted.lift == 0 else self._source_value(admitted)
             )
             centered = source_h - 1
-            self._bump("temporal_odd_macro_selector_calls")
+            self.bump_metric("temporal_odd_macro_selector_calls")
             if centered <= 0:
-                self._bump("temporal_odd_macro_selector_misses")
+                self.bump_metric("temporal_odd_macro_selector_misses")
                 return None
             selection = select_source_certified_odd_macro(
                 centered,
@@ -484,13 +458,13 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 on_event_work=self._account_odd_macro_selector_work,
             )
             if selection is None:
-                self._bump("temporal_odd_macro_selector_misses")
+                self.bump_metric("temporal_odd_macro_selector_misses")
                 return None
             residual_steps = width - selection.prefix_steps - selection.extent
             if residual_steps > self.MAX_LEAF_STEPS:
-                self._bump("temporal_odd_macro_partial_fallbacks")
+                self.bump_metric("temporal_odd_macro_partial_fallbacks")
                 return None
-            self._bump(
+            self.bump_metric(
                 "temporal_odd_macro_selection_events", selection.witnessed_events
             )
             return self._run_candidate_with_scratch(
@@ -505,9 +479,9 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         self, event_count: int, operand_bits: int
     ) -> None:
         if event_count:
-            self._bump("temporal_odd_macro_selector_events", event_count)
+            self.bump_metric("temporal_odd_macro_selector_events", event_count)
         if operand_bits:
-            self._bump("temporal_odd_macro_selector_operand_bits", operand_bits)
+            self.bump_metric("temporal_odd_macro_selector_operand_bits", operand_bits)
 
     def _punctured_steps(
         self, h: int, width: int, scratch: RunArithmeticWorkspace
@@ -526,14 +500,21 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         while remaining:
             source_bits = d.bit_length()
             scratch.require_bits(8 * (source_bits + 16))
-            if d & 1:
+            if d == 0:
+                # h=1 is fixed, hence all remaining family symbols are odd.
+                # Keep its exact skew/safety summary without evaluating v2(0).
+                length = remaining
+                self._record_fixed_point_run(length)
+                yield length, -length, -length, length, 0
+                return
+            elif d & 1:
                 # Preserve the homogeneous run quotient, including large runs.
                 length = min(remaining, v2_positive(d + 1))
                 scratch.require_bits(8 * (source_bits + 2 * length + 16))
                 upper = 3**length
                 d = upper * ((d + 1) >> length) - 1
                 delta, minimum, odd_steps = 2 * length, 0, 0
-                self._bump("temporal_one_run_pumps")
+                self.bump_metric("temporal_one_run_pumps")
             else:
                 zeros = v2_positive(d)
                 length = min(remaining, zeros + 1)
@@ -542,14 +523,14 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 if length > zeros:
                     d = upper * (d >> length) + (upper + 1) // 2
                     delta, minimum, odd_steps = 3 - length, 1 - length, zeros
-                    self._bump("temporal_punctured_event_actions")
-                    self._bump("temporal_punctured_event_symbols", length)
+                    self.bump_metric("temporal_punctured_event_actions")
+                    self.bump_metric("temporal_punctured_event_symbols", length)
                 else:
                     d = upper * (d >> length)
                     delta, minimum, odd_steps = -length, -length, length
-                    self._bump("temporal_zero_run_pumps")
-            self._bump("temporal_run_actions")
-            self._bump(
+                    self.bump_metric("temporal_zero_run_pumps")
+            self.bump_metric("temporal_run_actions")
+            self.bump_metric(
                 "temporal_run_operand_bits",
                 source_bits + d.bit_length() + upper.bit_length(),
             )
@@ -574,7 +555,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         admitted = self.source_node(source_id)
         if not admitted.exact or admitted.precision != width or width <= 0:
             raise ValueError("Antihydra run selection requires its exact cylinder")
-        self._bump(
+        self.bump_metric(
             "temporal_run_selection_operand_bits",
             admitted.residue.bit_length()
             + admitted.lift.bit_length()
@@ -632,12 +613,21 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         elif self.source_node(source_id).exact:
             macro_candidate = self._try_odd_macro_candidate(action, source)
             if macro_candidate is None:
-                self._bump("temporal_balanced_routes")
-                candidate = self.complete_composite_candidate(action, source)
+                # For this bounded high-cost span, the exact admitted integer
+                # lets the existing punctured carry/run constructor avoid the
+                # balanced residue tree. This is an occurrence constructor,
+                # not authority borrowed from a matrix observer. Keep smaller
+                # exact-source clients on their established saturated path.
+                if 1536 <= width <= 2048:
+                    self.bump_metric("temporal_run_routes")
+                    candidate = self._run_candidate(action, source)
+                else:
+                    self.bump_metric("temporal_balanced_routes")
+                    candidate = self.complete_composite_candidate(action, source)
             else:
                 candidate = macro_candidate
         else:
-            self._bump("temporal_balanced_routes")
+            self.bump_metric("temporal_balanced_routes")
             candidate = self.complete_composite_candidate(action, source)
         if consumer is not None and candidate is not None:
             self._publish_mahler_root_candidate(candidate, action, source)

@@ -1,6 +1,6 @@
 """Stable public API facade for projected number terms."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from number_compiler.api.lazy_exports import resolve_export as _resolve_export
 
@@ -11,14 +11,12 @@ if TYPE_CHECKING:
         FormulaTermPayload,
         MersenneTermPayload,
         NumberCompiler,
-        NumberFamily,
         PoweredReverseAddTermPayload,
         ProjectedNumberTerm,
         ProjectionMetrics,
         ScalarTermPayload,
     )
     from number_compiler.api.observation_types import (
-        FamilyId,
         IndexEncoding,
         IndexUnit,
         ObservationCategory,
@@ -42,6 +40,7 @@ if TYPE_CHECKING:
         ReverseAddTermQuery,
         TermQuery,
     )
+    from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 __all__ = [
     "AntihydraTermQuery",
@@ -61,7 +60,6 @@ __all__ = [
     "MersenneTermPayload",
     "MersenneTermQuery",
     "NumberCompiler",
-    "NumberFamily",
     "ObservationCategory",
     "ObservationId",
     "ObservationSpec",
@@ -86,7 +84,7 @@ _EXPORT_MODULES = {
     "DoubleReverseTermQuery": "number_compiler.api.query_types",
     "DoubleReverseTermPayload": "number_compiler.api.number_api",
     "ExecutionQuery": "number_compiler.api.query_types",
-    "FamilyId": "number_compiler.api.observation_types",
+    "FamilyId": "number_compiler.arithmetic.contracts.family_identity",
     "FermatTermPayload": "number_compiler.api.number_api",
     "FermatTermQuery": "number_compiler.api.query_types",
     "IndexEncoding": "number_compiler.api.observation_types",
@@ -95,7 +93,6 @@ _EXPORT_MODULES = {
     "MersenneTermPayload": "number_compiler.api.number_api",
     "MersenneTermQuery": "number_compiler.api.query_types",
     "NumberCompiler": "number_compiler.api.number_api",
-    "NumberFamily": "number_compiler.api.number_api",
     "PrimeTermQuery": "number_compiler.api.query_types",
     "PoweredReverseAddTermPayload": "number_compiler.api.number_api",
     "ProjectedNumberTerm": "number_compiler.api.number_api",
@@ -112,7 +109,7 @@ _EXPORT_MODULES = {
 }
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     return _resolve_export(name, _EXPORT_MODULES, globals())
 
 

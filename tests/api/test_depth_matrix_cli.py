@@ -37,7 +37,12 @@ def test_matrix_cli_demand_and_default_laziness(
     matrix = requested["info"]["temporal.matrix"]
     assert matrix["status"] == "available"
     assert matrix["physical_interval"] == [index, index + horizon]
-    assert matrix["exact_completed_children_joined"] is True
+    assert matrix["execution_authority"] is False
+    assert "trace" not in matrix
+    if family == "2rev10":
+        assert matrix["chronological_future_roots_constructed"] is False
+    else:
+        assert matrix["exact_completed_children_joined"] is False
     assert "conditional_depth_matrix" not in matrix
 
     def forbidden(*args: object, **kwargs: object) -> None:

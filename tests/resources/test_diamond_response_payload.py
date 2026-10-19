@@ -12,8 +12,8 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.diamond_observation_adversarial import (
-    _bound_projection_fixture,
     bound_observation_fixture,
+    bound_projection_fixture,
     structured_projection,
     unsafe_capture,
 )
@@ -24,7 +24,7 @@ def test_injected_bound_substitution_response_fails_independent_inventory(
     structured: bool,
 ) -> None:
     ledger, arena, variable, incoming, projection, literal, right = (
-        _bound_projection_fixture()
+        bound_projection_fixture()
     )
     result = literal
     if structured:
@@ -60,7 +60,7 @@ def test_injected_higher_bound_observation_response_fails_independent_inventory(
 
 
 def test_universal_finite_identity_on_a_literal_port_remains_valid() -> None:
-    ledger, arena, _, _, _, literal, _ = _bound_projection_fixture()
+    ledger, arena, _, _, _, literal, _ = bound_projection_fixture()
     parameter = arena.variable(arena.node(literal).sort, "universal-finite-input")
     key = ExprSubstitutionKey(parameter, (ExprBinding(parameter, literal),))
     ledger.reserve(arena.memo_owner, entries=1)
@@ -74,9 +74,9 @@ def test_universal_finite_identity_on_a_literal_port_remains_valid() -> None:
 def test_open_unsafe_input_cannot_acquire_a_safe_program_response_binding(
     store: str,
 ) -> None:
-    from tests.support.diamond_continuation_payload import populated
+    from tests.support.collatz_diamond_fixtures import collatz_continuation_payload_case
 
-    runtime, action, variable, expression, _, _ = populated()
+    runtime, action, variable, expression, _, _ = collatz_continuation_payload_case()
     arena, unsafe = unsafe_capture(runtime, action, variable, expression)
     assert arena.node(unsafe).free_ports and not arena.node(unsafe).binding_safe
     assert arena.node(variable).binding_safe

@@ -5,11 +5,13 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_images import (
+    ReverseSourceImageAdapter,
     ReverseSourceImageWorkspace,
-    _ReverseSourceImageAdapter,
 )
 from number_compiler.sequences.reverse_add.source_workspace import (
     ReverseSourceImageWorkspace as DirectReverseSourceImageWorkspace,
@@ -105,9 +107,9 @@ def test_length_queries_never_normalize_or_emit_digits(
         raise AssertionError("length query entered digit normalization")
 
     monkeypatch.setattr(skew, "skew_normalized_digit", forbidden)
-    monkeypatch.setattr(images._ReverseSourceImageAdapter, "_normalized", forbidden)
+    monkeypatch.setattr(images.ReverseSourceImageAdapter, "_normalized", forbidden)
     monkeypatch.setattr(
-        images._ReverseSourceImageAdapter, "iter_primitive_digits", forbidden
+        images.ReverseSourceImageAdapter, "iter_primitive_digits", forbidden
     )
     source = _source(196, 10)
     ledger = ResourceLedger()
@@ -139,16 +141,24 @@ def test_maximum_width_tightens_only_after_the_completed_width_projection() -> N
     image = workspace._image
     assert image is not None
     assert workspace.adapter._q19_owner is not None
-    assert term._ledger.counters.get("recursive_output_stream_emitted_digits", 0) == 0
-    misses = term._ledger.counters.get("source_image_projection_misses", 0)
+    assert (
+        term.resource_ledger.counters.get("recursive_output_stream_emitted_digits", 0)
+        == 0
+    )
+    misses = term.resource_ledger.counters.get("source_image_projection_misses", 0)
     assert term.maximum_width == 4
     assert term.maximum_width == 4
-    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+    assert (
+        term.resource_ledger.counters.get("source_image_projection_misses", 0) == misses
+    )
     assert term.digits() == (6, 3, 4, 7)
     assert workspace._image is not None
     assert workspace.adapter._q19_owner is not None
     assert (
-        term._ledger.counters.get("reverse_successor_tape_width_compilations", 0) == 0
+        term.resource_ledger.counters.get(
+            "reverse_successor_tape_width_compilations", 0
+        )
+        == 0
     )
 
 
@@ -180,7 +190,7 @@ def test_maximum_width_rejects_a_mutated_source_action_binding() -> None:
 
 
 def test_maximum_width_does_not_trust_a_replaced_cached_projection() -> None:
-    from number_compiler.hashlife.execution.source_bound_images import (
+    from number_compiler.hashlife.execution.source_image_inventory import (
         SourceImageProjection,
     )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -205,7 +215,7 @@ def test_maximum_width_does_not_trust_a_replaced_cached_projection() -> None:
 
 
 def test_maximum_width_falls_back_when_the_retained_projection_is_missing() -> None:
-    from number_compiler.hashlife.execution.source_bound_images import (
+    from number_compiler.hashlife.execution.source_image_inventory import (
         SourceImageDemand,
     )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -223,19 +233,44 @@ def test_maximum_width_falls_back_when_the_retained_projection_is_missing() -> N
     assert record.projection.value == 4
     core._publication_seals.drop_projection(key)
     core.ledger.release(core._projection_owner, entries=1, nodes=1)
-    misses = term._ledger.counters.get("source_image_projection_misses", 0)
+    misses = term.resource_ledger.counters.get("source_image_projection_misses", 0)
 
     # Neither a direct cache lookup nor maximum_width may rebuild this result.
     assert core.cached_projection(workspace.adapter, image, demand) is None
-    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+    assert (
+        term.resource_ledger.counters.get("source_image_projection_misses", 0) == misses
+    )
 
     assert term.maximum_width == 6
-    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+    assert (
+        term.resource_ledger.counters.get("source_image_projection_misses", 0) == misses
+    )
 
 
 @pytest.mark.parametrize("base", [2, 3, 10, 16])
-def test_all_small_sources_match_two_literal_lengths(base: int) -> None:
-    for seed in range(1024):
+@pytest.mark.parametrize(
+    "exhaustive", [False, pytest.param(True, marks=pytest.mark.validation)]
+)
+def test_all_small_sources_match_two_literal_lengths(
+    base: int, exhaustive: bool
+) -> None:
+    seeds = (
+        range(1024)
+        if exhaustive
+        else (
+            0,
+            1,
+            base - 1,
+            base,
+            base + 1,
+            base**2 - 1,
+            base**2,
+            base**2 + 1,
+            196,
+            1023,
+        )
+    )
+    for seed in seeds:
         source = _source(seed, base)
         first = _step(seed, base)
         second = _step(first, base)
@@ -263,9 +298,7 @@ def test_scheduler_width_demand_never_calls_digit_consumers(
         "iter_second_digits",
         "iter_same_carry_digits",
     ):
-        monkeypatch.setattr(
-            _ReverseSourceImageAdapter, method, forbidden, raising=False
-        )
+        monkeypatch.setattr(ReverseSourceImageAdapter, method, forbidden, raising=False)
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, steps)
     assert workspace.width() == width
     before = dict(workspace.ledger.counters)
@@ -303,7 +336,9 @@ def test_long_neutral_gap_is_not_researched_at_every_boundary(width: int) -> Non
     for digit in reversed(digits):
         seed = 10 * seed + digit
     first_digits = _digits(_step(seed, 10), 10)
-    expected = tuple(a + b for a, b in zip(first_digits, reversed(first_digits)))
+    expected = tuple(
+        a + b for a, b in zip(first_digits, reversed(first_digits), strict=True)
+    )
     ledger = ResourceLedger()
     assert tuple(iter_second_pairs(source, ledger)) == expected
     assert ledger.counters["reverse_source_pullback_predecessor_search"] <= width

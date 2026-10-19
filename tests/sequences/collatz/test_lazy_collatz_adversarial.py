@@ -7,8 +7,8 @@ from typing import cast
 
 import pytest
 
+from devtools.verification.collatz_carry_ranges import CarryRangeTransfer
 from devtools.verification.lazy_collatz import (
-    CarryRangeTransfer,
     CollatzLazyView,
     LazyCollatzApplication,
     _Program,
@@ -119,7 +119,7 @@ def test_far_mul3_microblock_retains_only_bounded_window_blocks() -> None:
         expected.bit_length(),
     )
     block = 32
-    observed = application._program_block(view.program, block)
+    observed = application.program_block(view.program, block)
     assert observed == (expected >> (64 * block)) & ((1 << 64) - 1)
     owned = tuple(
         key

@@ -28,16 +28,19 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
-    _require_immutable_key,
-    _TypedKey,
+    TypedPayloadKey,
+    require_immutable_key,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
+from number_compiler.resources.field_image_audit_contracts import (
+    ProviderAbsorptionAuditSnapshot,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.stores import (
-    make_node_index,
+    NodeIndexFactory,
     record_indexed_node,
     reserve_indexed_id,
 )
@@ -89,7 +92,7 @@ class ProviderBindingKey:
                 self.interface,
                 self.image,
                 self.active_extent,
-                _TypedKey(self.context),
+                TypedPayloadKey(self.context),
             )
         )
 
@@ -102,7 +105,7 @@ class ProviderBindingKey:
             and self.interface == other.interface
             and self.image == other.image
             and self.active_extent == other.active_extent
-            and _TypedKey(self.context) == _TypedKey(other.context)
+            and TypedPayloadKey(self.context) == TypedPayloadKey(other.context)
         )
 
 
@@ -128,7 +131,7 @@ ProviderBindingRequest: TypeAlias = (
 
 
 @dataclass(frozen=True, slots=True)
-class _PointKey:
+class ProviderPointKey:
     binding: ProviderBindingKey
     left: ProviderBoundary
     right: ProviderBoundary
@@ -219,25 +222,22 @@ class ProviderAbsorptionArena:
         self._key_owner = ledger.register(prefix + "-keys", "provider_action_interner")
         self._binding_owner = ledger.register(prefix + "-bindings", "spatial_binding")
         self._point_owner = ledger.register(prefix + "-points", "observation_memo")
-        self._nodes, self._keys = make_node_index(
-            ledger, self._node_owner, self._key_owner
-        )
+        self._nodes, self._keys = NodeIndexFactory[
+            ProviderAction, ProviderAction
+        ].sparse(ledger, self._node_owner, self._key_owner)
         self._bindings: MutableMapping[ProviderBindingKey, None] = ledger.make_dict(
             self._binding_owner,
         )
-        self._points: MutableMapping[_PointKey, int] = ledger.make_dict(
+        self._points: MutableMapping[ProviderPointKey, int] = ledger.make_dict(
             self._point_owner
         )
-        for owner, container, nodes, evict in (
-            (self._node_owner, self._nodes, True, None),
-            (self._key_owner, self._keys, False, None),
-            (self._binding_owner, self._bindings, False, self.clear_observations),
-            (self._point_owner, self._points, False, self.clear_observations),
+        for owner, container, evict in (
+            (self._binding_owner, self._bindings, self.clear_observations),
+            (self._point_owner, self._points, self.clear_observations),
         ):
             ledger.register_container(
                 owner,
                 container,
-                node_count=(lambda: len(self._nodes)) if nodes else None,
                 payloads=container.items,
                 evict=evict,
             )
@@ -296,6 +296,37 @@ class ProviderAbsorptionArena:
 
     def _handle(self, local_id: int) -> ProviderActionID:
         return ProviderActionID(self.owner, self._KIND, local_id)
+
+    @property
+    def action_kind(self) -> str:
+        """Return the nominal handle kind used by this provider arena."""
+        return self._KIND
+
+    def audit_snapshot(self) -> ProviderAbsorptionAuditSnapshot:
+        """Expose exact backing stores through a read-only audit view."""
+        return ProviderAbsorptionAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._next_id,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+            self._binding_owner,
+            self._bindings,
+            self._point_owner,
+            self._points,
+        )
+
+    def validate_action_record(self, record: ProviderAction) -> None:
+        """Validate a published action payload through its issuing owner."""
+        if type(record) is not ProviderAction:
+            raise TypeError("expected a canonical provider action")
+        record.__post_init__()
+        self._validate_output(record.output)
+        self._validate_interface(record.interface)
+        self._validate_action(record.action)
 
     def resolve(self, provider: ProviderActionID) -> ProviderAction:
         if type(provider) is not ProviderActionID:
@@ -395,7 +426,7 @@ class ProviderAbsorptionArena:
             ):
                 raise ValueError("provider active extent lies outside its source")
             if context is not None:
-                _require_immutable_key(context, "provider image binding context")
+                require_immutable_key(context, "provider image binding context")
             if image is not None:
                 action = self.resolve(provider).action
                 self._validate_image_binding(
@@ -432,7 +463,7 @@ class ProviderAbsorptionArena:
         if coordinate < 0:
             raise IndexError(coordinate)
         self.validate_binding(binding, left, right)
-        key = _PointKey(binding, left, right, coordinate)
+        key = ProviderPointKey(binding, left, right, coordinate)
         found = self._points.get(key)
         if found is not None:
             self.ledger.bump(_execution_keys.PROVIDER_OBSERVATION_HITS)
@@ -524,6 +555,37 @@ class ProviderAbsorptionArena:
             raise ValueError("provider occurrence was not published")
         return record
 
+    def validate_binding_authority(self, binding: ProviderBindingKey) -> ProviderAction:
+        """Validate a published binding, including optional image authority."""
+        if type(binding) is not ProviderBindingKey:
+            raise TypeError("expected a scoped provider binding")
+        record = self._validate_bound_channels(binding)
+        source_extent = self.sources.binding_extent(binding.source)
+        if binding.active_extent is not None and (
+            type(binding.active_extent) is not int
+            or not 0 <= binding.active_extent <= source_extent
+        ):
+            raise ValueError("provider binding extent is outside its source")
+        if binding.image is not None:
+            self._validate_image_binding(
+                binding.image,
+                binding.source,
+                record.action,
+                binding.output,
+                binding.interface,
+                binding.active_extent,
+                binding.context,
+            )
+        elif binding.active_extent is not None or binding.context is not None:
+            raise ValueError("unimaged provider binding carries image metadata")
+        if binding not in self._bindings:
+            raise ValueError("provider binding was not published")
+        return record
+
+    def validate_boundary(self, boundary: ProviderBoundary) -> None:
+        """Validate one caller supplied boundary through the configured owner."""
+        self._validate_boundary(boundary)
+
 
 __all__ = [
     "ProviderAbsorptionArena",
@@ -531,4 +593,5 @@ __all__ = [
     "ProviderActionID",
     "ProviderBindingKey",
     "ProviderBoundary",
+    "ProviderPointKey",
 ]

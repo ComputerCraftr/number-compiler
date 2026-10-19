@@ -131,7 +131,7 @@ def harmonic_probe(steps: int, seed: int) -> dict[str, object]:
         for order in orders
     }
     stack: list[dict[int, ReverseAddSymmetryInnovationBlock] | None] = []
-    rows = []
+    rows: list[dict[str, object]] = []
     for number in range(1, steps + 1):
         target, growth = pair_step(source, 10)
         event = forcing_event(source, target, growth)

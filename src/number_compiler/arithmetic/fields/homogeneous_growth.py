@@ -9,7 +9,7 @@ never requires constructing either exponential numerator or denominator.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from fractions import Fraction
@@ -300,7 +300,7 @@ class GrowthArithmeticEvaluator:
             self.ledger.bump(counter, 0)
 
     def __enter__(self) -> Self:
-        self._ensure_open()
+        self.ensure_open()
         return self
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -315,7 +315,8 @@ class GrowthArithmeticEvaluator:
         self.ledger.mark_disposed(self._scratch_owner)
         self._closed = True
 
-    def _ensure_open(self) -> None:
+    def ensure_open(self) -> None:
+        """Validate that public arithmetic work may use this live evaluator."""
         if self._closed:
             raise RuntimeError("growth arithmetic evaluator has been closed")
 
@@ -329,15 +330,15 @@ class GrowthArithmeticEvaluator:
         return self._closed
 
     @contextmanager
-    def _charge_work(
+    def charge_work(
         self,
         units: int,
         precision_bits: int,
         operand_bits: int = 0,
         *,
         storage_bits: int | None = None,
-    ) -> Iterator[None]:
-        self._ensure_open()
+    ) -> Generator[None, None, None]:
+        self.ensure_open()
         self.ledger.bump(_fields_keys.GROWTH_ARITHMETIC_OPERAND_BITS, operand_bits)
         if self._work_used + units > self.max_work_units:
             self.ledger.bump(_shared_keys.GROWTH_ARITHMETIC_BUDGET_REFUSALS)
@@ -376,7 +377,7 @@ class GrowthArithmeticEvaluator:
         precision_bits: int = 64,
     ) -> tuple[Fraction, Fraction]:
         """Return certified rational bounds for ``H log_b(3)-D log_b(2)``."""
-        self._ensure_open()
+        self.ensure_open()
         self._validate_order_request(scale, radix)
         require_integer(precision_bits, "logarithm precision", 1)
         if precision_bits > self.max_precision_bits:
@@ -411,7 +412,7 @@ class GrowthArithmeticEvaluator:
         Sturmian width oracle authenticate decimal leading-digit thresholds.
         No floating logarithms, source powers, or digit vectors are formed.
         """
-        self._ensure_open()
+        self.ensure_open()
         require_integer(numerator, "threshold numerator", 1)
         require_integer(denominator, "threshold denominator", 1)
         require_integer(radix, "threshold radix", 2)
@@ -422,7 +423,7 @@ class GrowthArithmeticEvaluator:
         operand_bits = (
             numerator.bit_length() + denominator.bit_length() + radix.bit_length()
         )
-        with self._charge_work(max(1, operand_bits), 0, operand_bits):
+        with self.charge_work(max(1, operand_bits), 0, operand_bits):
             if not denominator <= numerator <= radix * denominator:
                 raise ValueError("radix logarithm ratio must be in [1, radix]")
             if numerator == denominator:
@@ -466,7 +467,7 @@ class GrowthArithmeticEvaluator:
         precision or work refusal returns the already certified prefix with
         ``budget_limited=True``; it never guesses the unresolved quotient.
         """
-        self._ensure_open()
+        self.ensure_open()
         self._validate_order_request(scale, radix)
         require_integer(max_terms, "continued fraction term limit", 0)
         for counter in (
@@ -501,7 +502,7 @@ class GrowthArithmeticEvaluator:
         self.ledger.bump(_fields_keys.GROWTH_CF_KEY_LOOKUPS)
         operand_bits = self._scale_operand_bits(scale, radix)
         try:
-            with self._charge_work(max(1, operand_bits), 1, operand_bits):
+            with self.charge_work(max(1, operand_bits), 1, operand_bits):
                 exact_value = _exact_rational_radix_order(scale, radix)
         except BlockContextBudgetExceeded:
             self.ledger.bump(_fields_keys.GROWTH_CF_BUDGET_REFUSALS)
@@ -513,7 +514,7 @@ class GrowthArithmeticEvaluator:
             while denominator and len(terms) < max_terms:
                 operand_work = numerator.bit_length() + denominator.bit_length()
                 try:
-                    with self._charge_work(
+                    with self.charge_work(
                         max(1, operand_work),
                         1,
                         operand_work,
@@ -636,7 +637,7 @@ class GrowthArithmeticEvaluator:
             + upper.denominator.bit_length()
             + partial_quotient.bit_length()
         )
-        with self._charge_work(
+        with self.charge_work(
             max(1, 2 * operand_work),
             precision,
             operand_work,
@@ -648,7 +649,7 @@ class GrowthArithmeticEvaluator:
 
     def radix_order(self, scale: HomogeneousGrowthScale, radix: int = 10) -> int:
         """Return ``floor(H*log_radix(3) - D*log_radix(2))`` exactly."""
-        self._ensure_open()
+        self.ensure_open()
         self._validate_order_request(scale, radix)
         if scale.is_identity:
             self.ledger.bump(_fields_keys.GROWTH_ORDER_IDENTITY_SHORTCUTS)
@@ -656,13 +657,13 @@ class GrowthArithmeticEvaluator:
         self.ledger.bump(_fields_keys.GROWTH_ORDER_KEY_LOOKUPS)
         key = (scale, radix)
         operand_bits = self._scale_operand_bits(scale, radix)
-        with self._charge_work(max(1, operand_bits), 1, operand_bits):
+        with self.charge_work(max(1, operand_bits), 1, operand_bits):
             found = self._orders.get(key)
         if found is not None:
             self.ledger.bump(_fields_keys.GROWTH_ORDER_CACHE_HITS)
             return found
 
-        with self._charge_work(max(1, operand_bits), 1, operand_bits):
+        with self.charge_work(max(1, operand_bits), 1, operand_bits):
             self.ledger.bump(_fields_keys.GROWTH_ORDER_EQUALITY_CHECKS)
             exact_value = _exact_rational_radix_order(scale, radix)
         if exact_value is not None:
@@ -686,7 +687,7 @@ class GrowthArithmeticEvaluator:
                 + radix_bits
             )
             storage_bits = 8 * ratio_bit_estimate + 2 * scale_bits + 32
-            with self._charge_work(
+            with self.charge_work(
                 work_units,
                 0,
                 operand_bits,
@@ -730,7 +731,7 @@ class GrowthArithmeticEvaluator:
     ) -> tuple[Fraction, Fraction]:
         constants_key = (radix, precision_bits)
         self.ledger.bump(_fields_keys.GROWTH_LOG_CONSTANT_LOOKUPS)
-        with self._charge_work(
+        with self.charge_work(
             max(1, radix.bit_length()),
             1,
             radix.bit_length(),
@@ -751,7 +752,7 @@ class GrowthArithmeticEvaluator:
 
         operand_bits = self._scale_operand_bits(scale, radix)
         units = max(1, precision_bits + operand_bits)
-        with self._charge_work(
+        with self.charge_work(
             units,
             precision_bits,
             operand_bits,
@@ -777,7 +778,7 @@ class GrowthArithmeticEvaluator:
         input_bits = radix.bit_length() + operand_bits + 2
         units = 4 * (precision_bits + 1) ** 2 * input_bits
         storage_bits = 16 * (precision_bits + 1) * (radix.bit_length() + 2)
-        return self._charge_work(
+        return self.charge_work(
             units,
             precision_bits,
             operand_bits,

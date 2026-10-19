@@ -1,5 +1,8 @@
 # Collatz physical time, events, and Hensel cylinders
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 Status: **Finite physical/event laws and the numerical balanced worklist are
 checked; Python publication refinement and general construction-cost bounds
 remain open.**
@@ -215,9 +218,9 @@ reduced ports lazily; repeated temporal closure remains unproved.
 ### Cost and reuse boundary
 
 Local F5 operator hits and authenticated temporal-image hits are distinct.
-The measured CLI digit path did not consume the new F5 observer, so those
-benchmarks cannot attribute a CLI speedup to it. Reverse/add construction
-refusals supply no successful-work samples.
+A CLI speedup must be attributed to work avoided by its actual consumer, not
+to an optional observer it never requests. Refusals supply no successful-work
+samples. Dated benchmarks below apply only to their recorded implementation.
 
 [Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#cross-family-work-and-cache-measurements).
 
@@ -365,7 +368,7 @@ remain separate consumers.
 Reproduce the finite closure, minimality, census and shared-consumer checks:
 
 ```console
-python -m pytest -q -o addopts='' tests/sequences/collatz/test_f5_directional_quotient.py tests/validation/research/collatz/test_radix5_future_grammar.py tests/validation/proofs/test_mahler_f5_production_bridge.py
+python -m devtools.checks.release --suite unit --select tests/sequences/collatz/test_f5_directional_quotient.py --select tests/validation/research/collatz/test_radix5_future_grammar.py --select tests/validation/proofs/test_mahler_f5_production_bridge.py
 ```
 
 ## Counterexample scope
@@ -416,7 +419,7 @@ not a successful performance gate.
 Run the exact executable checks (including validation-marked assertions):
 
 ```console
-python -m pytest -o addopts='' tests/hashlife/execution/test_collatz_tile_cycle.py tests/projection/test_collatz_binary_radix_limbs.py
+python -m devtools.checks.release --suite unit --select tests/hashlife/execution/test_collatz_tile_cycle.py --select tests/projection/test_collatz_binary_radix_limbs.py
 ```
 
 ## Joint-adic endpoint projection and source admission
@@ -521,7 +524,7 @@ Reproduce the public path, exact admission, negative drift and short-operand
 regressions:
 
 ```console
-python -m pytest -q tests/api/test_shared_skew_cli.py tests/resources/test_dyadic_return_audit.py tests/hashlife/execution/test_dyadic_effect_reuse.py tests/arithmetic/fields/test_threshold_envelope.py
+python -m devtools.checks.release --suite unit --select tests/api/test_shared_skew_cli.py --select tests/resources/test_dyadic_return_audit.py --select tests/hashlife/execution/test_dyadic_effect_reuse.py --select tests/arithmetic/fields/test_threshold_envelope.py
 python -m number_compiler collatz --seed 27 --nth 1000000000000
 ```
 
@@ -538,9 +541,8 @@ source-discovery bound or the complete release growth manifest.
 ### Scope and authority
 
 An admitted, source-bound Collatz or Antihydra action has a homogeneous
-multiplier `3**H / 2**D`. NC13 already recorded the exponents `(H,D)` but did
-not expose their irrational circle rotation and high binary digits to the
-pumped grammar. This patch adds that *demanded observation*. It does not use
+multiplier `3**H / 2**D`. Its exponents `(H,D)` determine an irrational circle
+rotation and high binary digits as a *demanded observation*. It does not use
 finite prefix words as new Hashlife identities, discover source cylinders, or
 claim an Antihydra non-halting theorem.
 

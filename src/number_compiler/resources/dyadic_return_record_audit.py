@@ -7,10 +7,12 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageID,
     DyadicReturnImageWorkspace,
     DyadicReturnSourceID,
-    _ActionNode,
-    _low_bits,
-    _SourceNode,
 )
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnActionRecord,
+    DyadicReturnSourceRecord,
+)
+from number_compiler.hashlife.execution.dyadic_return_transport import low_bits
 
 
 def audit_action_records(
@@ -19,8 +21,8 @@ def audit_action_records(
     """Validate action node ordering, widths, and canonical width ownership."""
     section_valid = True
     for index, action_record in enumerate(workspace.actions):
-        action_id = DyadicReturnActionID(workspace.owner, workspace._ACTION_KIND, index)
-        bound = type(action_record) is _ActionNode
+        action_id = DyadicReturnActionID(workspace.owner, workspace.ACTION_KIND, index)
+        bound = type(action_record) is DyadicReturnActionRecord
         if bound:
             resolved = DyadicReturnImageWorkspace.action_node(workspace, action_id)
             bound &= (
@@ -58,8 +60,8 @@ def audit_source_records(
     """Validate source lineage, exact lifts, and image-derived residues."""
     section_valid = True
     for index, source_record in enumerate(workspace.sources):
-        source_id = DyadicReturnSourceID(workspace.owner, workspace._SOURCE_KIND, index)
-        bound = type(source_record) is _SourceNode
+        source_id = DyadicReturnSourceID(workspace.owner, workspace.SOURCE_KIND, index)
+        bound = type(source_record) is DyadicReturnSourceRecord
         if bound:
             DyadicReturnImageWorkspace.validate_source(workspace, source_id)
             bound &= (
@@ -117,7 +119,7 @@ def audit_source_records(
                                 workspace, before_action
                             ).width
                             and source_record.residue
-                            == _low_bits(parent.residue, source_record.precision)
+                            == low_bits(parent.residue, source_record.precision)
                             and source_record.lift == expected_lift
                             and source_record.exact == expected_exact
                         )
@@ -153,7 +155,7 @@ def audit_source_records(
                                 == 1
                                 and numerator % previous.transfer.lower == 0
                                 and source_record.residue
-                                == _low_bits(
+                                == low_bits(
                                     numerator // previous.transfer.lower,
                                     source_record.precision,
                                 )

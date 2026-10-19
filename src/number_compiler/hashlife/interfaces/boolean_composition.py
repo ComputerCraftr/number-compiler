@@ -12,7 +12,7 @@ from number_compiler.resources.metric_keys import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+    from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +24,7 @@ class _CompositionKey:
 
 
 def substitute_boolean_fused(
-    circuit: _Circuit, root: int, replacements: Mapping[PortVariable, int]
+    circuit: BooleanCircuit, root: int, replacements: Mapping[PortVariable, int]
 ) -> int:
     """Compose correlated inputs by one ordered external-variable traversal.
 
@@ -32,7 +32,7 @@ def substitute_boolean_fused(
     or a Cartesian port universe. Only final ordered nodes are constructed.
     """
     from number_compiler.hashlife.interfaces.semantic_bits import (
-        _Circuit,
+        BooleanCircuit,
         substitute_boolean,
     )
 
@@ -157,7 +157,7 @@ def substitute_boolean_fused(
     if constants:
         primitive = circuit._cofactor_circuits.get(original.signature.inputs)
         if primitive is None:
-            primitive = _Circuit(tx.arena, original.signature.inputs, tx)
+            primitive = BooleanCircuit(tx.arena, original.signature.inputs, tx)
             circuit._cofactor_circuits[original.signature.inputs] = primitive
             ledger.bump(
                 _interfaces_keys.SEMANTIC_BIT_FUSED_COFACTOR_CONTEXTS_PEAK,

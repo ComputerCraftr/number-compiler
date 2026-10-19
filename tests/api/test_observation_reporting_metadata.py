@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from number_compiler.api.antihydra_observation import (
+    AntihydraArithmeticKind,
+    AntihydraRunKind,
     observe_arithmetic,
     observe_arithmetic_many,
     observe_run,
@@ -13,8 +15,14 @@ from number_compiler.api.cylinder_observation import (
     observe_mirror,
     observe_physical_clock,
 )
-from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, run
+from number_compiler.sequences.antihydra.runtime import (
+    AntihydraArithmeticTerm,
+    run,
+)
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.sequences.collatz.observation_kind import (
+    CollatzObservationKind,
+)
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -38,12 +46,17 @@ def test_cylinder_observers_can_omit_reporting_metadata() -> None:
 
     context = CollatzObservationContext(1, 0, max_events=0, max_digits=8)
     full_event = observe_collatz(
-        1, 0, kind="clock", max_events=0, max_digits=8, _context=context
+        1,
+        0,
+        kind=CollatzObservationKind.CLOCK,
+        max_events=0,
+        max_digits=8,
+        _context=context,
     )
     compact_event = observe_collatz(
         1,
         0,
-        kind="clock",
+        kind=CollatzObservationKind.CLOCK,
         max_events=0,
         max_digits=8,
         _context=context,
@@ -61,6 +74,7 @@ def test_cylinder_observers_can_omit_reporting_metadata() -> None:
     }
     assert reporting <= full_event.keys()
     assert not reporting.intersection(compact_event)
+    assert full_event["kind"] == compact_event["kind"] == "clock"
     assert compact_event["value"] == full_event["value"]
     assert compact_event["discovered_events"] == full_event["discovered_events"]
 
@@ -84,8 +98,10 @@ def test_cylinder_observers_can_omit_reporting_metadata() -> None:
 
 def test_antihydra_observers_can_omit_reporting_metadata() -> None:
     arithmetic = AntihydraArithmeticTerm(0).result()
-    full = observe_arithmetic(arithmetic, kind="hensel")
-    compact = observe_arithmetic(arithmetic, kind="hensel", _include_metrics=False)
+    full = observe_arithmetic(arithmetic, kind=AntihydraArithmeticKind.HENSEL)
+    compact = observe_arithmetic(
+        arithmetic, kind=AntihydraArithmeticKind.HENSEL, _include_metrics=False
+    )
     reporting = {"work_counters", "peak_nodes", "retained_nodes"}
     assert reporting <= full.keys()
     assert not reporting.intersection(compact)
@@ -93,15 +109,21 @@ def test_antihydra_observers_can_omit_reporting_metadata() -> None:
     assert compact["source_binding"] == full["source_binding"]
 
     paired = observe_arithmetic_many(
-        arithmetic, kinds=("hensel", "mahler"), _include_metrics=False
+        arithmetic,
+        kinds=(AntihydraArithmeticKind.HENSEL, AntihydraArithmeticKind.MAHLER),
+        _include_metrics=False,
     )
     assert set(paired) == {"hensel", "mahler"}
     assert all(not reporting.intersection(packet) for packet in paired.values())
-    assert "associated_action" in paired["mahler"]["value"]
+    mahler_value = paired["mahler"]["value"]
+    assert isinstance(mahler_value, dict)
+    assert "associated_action" in mahler_value
 
     physical = run(0)
-    full_run = observe_run(physical, kind="clock")
-    compact_run = observe_run(physical, kind="clock", _include_metrics=False)
+    full_run = observe_run(physical, kind=AntihydraRunKind.CLOCK)
+    compact_run = observe_run(
+        physical, kind=AntihydraRunKind.CLOCK, _include_metrics=False
+    )
     assert reporting <= full_run.keys()
     assert compact_run == {
         key: value for key, value in full_run.items() if key not in reporting

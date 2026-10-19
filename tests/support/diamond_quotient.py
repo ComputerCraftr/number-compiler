@@ -36,14 +36,14 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import Resul
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 from number_compiler.hashlife.interfaces.diamond_quotient import (
+    DiamondQuotientArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
     COMPONENT_ROLES,
     DiamondKey,
-    DiamondQuotientArena,
     LocalInterfaceID,
     MacroComponents,
     MacroInterface,
-)
-from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     StructureID,
 )
@@ -183,7 +183,7 @@ def division_interface(
     adapter = projection.scheduler.adapter
     assert type(adapter) is PrimitiveTileKernelAdapter
     action = adapter.admit(SymbolicBinaryDivisionEffect(257), cocycle=TemporalCocycle())
-    interface = adapter._compile_interface(
+    interface = adapter.compile_interface(
         action, projection._application.source, adapter.wiring(action)
     )
     return adapter, action, interface, projection.scheduler.results.interfaces

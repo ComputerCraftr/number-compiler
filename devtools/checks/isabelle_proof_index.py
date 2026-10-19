@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+from typing import TypeGuard
 
 from devtools.checks.isabelle_oracle_audit import (
     audited_theorems,
@@ -73,12 +74,16 @@ def _declaration_records(
     return tuple(rows)
 
 
-def _declarations(text: str) -> tuple[dict[str, object], ...]:
-    """Lexical navigation inventory; Isabelle remains the authority on statements."""
+def declarations(text: str) -> tuple[dict[str, object], ...]:
+    """Return lexical navigation declarations; Isabelle checks their meaning."""
     return _declaration_records(extract_isabelle_declarations(text))
 
 
-def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
+def _object_list(value: object) -> TypeGuard[list[object]]:
+    return type(value) is list
+
+
+def ml_file_references(text: str, path: Path) -> tuple[str, ...]:
     """Read authored ``ML_file`` paths while ignoring quoted fake commands."""
     clean = navigation_text(text)
     references: list[str] = []
@@ -149,7 +154,7 @@ def build_index() -> dict[str, object]:
             imports,
             _scope(text),
             (),
-            _ml_file_references(text, path),
+            ml_file_references(text, path),
         )
 
     bundle_definitions: dict[str, tuple[str, tuple[str, ...]]] = {}
@@ -361,7 +366,7 @@ def build_index() -> dict[str, object]:
         raise ValueError(
             f"reachable theories without an oracle audit: {missing_audits}"
         )
-    entries = []
+    entries: list[dict[str, object]] = []
     token_uses: dict[str, set[str]] = {}
     for theory, contents in source_texts.items():
         contents = executable_text(contents)
@@ -371,7 +376,7 @@ def build_index() -> dict[str, object]:
         path, imports, scope, audit, _ = declared[name]
         text = source_texts[name]
         declarations = _declaration_records(source_analyses[path].declarations)
-        uses = {}
+        uses: dict[str, tuple[str, ...]] = {}
         for row in declarations:
             theorem = str(row["name"])
             uses[theorem] = tuple(sorted(token_uses.get(theorem, set()) - {name}))
@@ -443,7 +448,7 @@ def main() -> int:
         options.json.write_text(json.dumps(index, indent=2) + "\n")
     sessions = index["sessions"]
     theories = index["theories"]
-    if not isinstance(sessions, list) or not isinstance(theories, list):
+    if not _object_list(sessions) or not _object_list(theories):
         raise TypeError("proof index collections have invalid types")
     print(
         json.dumps(

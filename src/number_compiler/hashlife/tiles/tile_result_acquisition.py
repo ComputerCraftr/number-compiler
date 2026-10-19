@@ -37,7 +37,7 @@ class ResultAcquisitionLeaseOwner:
         try:
             self.retry()
             if not reserved:
-                self.ledger.reserve(self.tiles._lease_owner, entries=count)
+                self.ledger.reserve(self.tiles.lease_owner, entries=count)
                 tile_reservation_owned = True
             self._prepare(count)
         except BaseException:
@@ -150,7 +150,7 @@ class ResultAcquisitionLeaseOwner:
         self.records[index] = None
 
     def _release_slot(self, index: int) -> None:
-        owner = self.tiles._lease_owner
+        owner = self.tiles.lease_owner
         before = self.ledger._account(owner).entries
         try:
             self.ledger.release(owner, entries=1)
@@ -168,7 +168,7 @@ class ResultAcquisitionLeaseOwner:
     def _release_reservation(self, entries: int) -> None:
         if entries <= 0:
             return
-        owner = self.tiles._lease_owner
+        owner = self.tiles.lease_owner
         before = self.ledger._account(owner).entries
         try:
             self.ledger.release(owner, entries=entries)

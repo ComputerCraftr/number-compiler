@@ -8,9 +8,9 @@ from number_compiler.api.number_api import (
     ProjectedNumberTerm,
     ProjectionMetrics,
 )
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.reverse_payloads import PoweredReverseAddTermPayload
 from number_compiler.api.symbolic_terms import SymbolicExpression
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
@@ -32,8 +32,8 @@ def project(
                 query.index,
                 query.base,
             )
-            and owner._ledger.max_nodes == compiler._max_context_nodes
-            and owner._ledger.max_cache_entries == compiler._max_cache_entries
+            and owner.resource_ledger.max_nodes == compiler._max_context_nodes
+            and owner.resource_ledger.max_cache_entries == compiler._max_cache_entries
         )
 
     term = compiler._powered_term(

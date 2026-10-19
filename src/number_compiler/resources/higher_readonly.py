@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
+
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.continuations.higher_types import (
+    HigherActionSchema,
+)
 
 
-def audit_schema_call(schema: object, operation: str, *arguments: object) -> Any:
-    """Prefer an authority's nonmemoizing audit operation when available."""
-    method = getattr(schema, operation + "_readonly", None)
-    if method is None:
-        method = getattr(schema, operation, None)
-    if not callable(method):
-        raise TypeError("higher semantic schema lacks an audit operation")
-    return cast(Callable[..., Any], method)(*arguments)
+@runtime_checkable
+class ReadonlyActionValidation(Protocol):
+    """Optional schema operation that authenticates without memo publication."""
+
+    def validate_action_readonly(self, action: FieldCellActionID) -> None: ...
+
+
+def audit_validate_action(
+    schema: HigherActionSchema, action: FieldCellActionID
+) -> None:
+    """Use the declared read-only authority when the schema provides it."""
+    if isinstance(schema, ReadonlyActionValidation):
+        schema.validate_action_readonly(action)
+    else:
+        schema.validate_action(action)
 
 
 def audit_identity_index(mapping: object, record: object, index: int) -> bool:
@@ -30,4 +42,4 @@ def audit_identity_index(mapping: object, record: object, index: int) -> bool:
         )
 
 
-__all__ = ["audit_identity_index", "audit_schema_call"]
+__all__ = ["audit_identity_index", "audit_validate_action"]

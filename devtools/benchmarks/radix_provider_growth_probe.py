@@ -41,7 +41,7 @@ def cold_row(coordinate: int) -> dict[str, Any]:
     audit_start = perf_counter()
     metrics = term.metrics()
     audit_elapsed = perf_counter() - audit_start
-    work, snapshot = term._ledger.counters, term._ledger.snapshot()
+    work, snapshot = term.resource_ledger.counters, term.resource_ledger.snapshot()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     row = {
         "coordinate": coordinate,

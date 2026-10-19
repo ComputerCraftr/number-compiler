@@ -28,10 +28,10 @@ from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 from tests.support.diamond_continuation_reduction import (
     advance_after_emit,
     literal,
-    machine,
 )
 
 if TYPE_CHECKING:
@@ -90,7 +90,7 @@ def _cubed_reference(
 def test_actual_cubed_step_nested_continuation_evaluates_without_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     outer, kernel, expected = _cubed_reference(runtime, action)
     functions = SemanticFunctionArena(runtime.ledger)
@@ -142,7 +142,7 @@ def _zero_word_recipes(
 def test_different_zero_word_recipes_alias_with_outer_dependent_function_terminal() -> (
     None
 ):
-    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+    runtime, action = collatz_continuation_runtime(PhysicalCollatzFourBlockEffect())
     bodies = _zero_word_recipes(runtime, action)
     functions = SemanticFunctionArena(runtime.ledger)
     compiler = SemanticExpressionCompiler(runtime, functions)
@@ -152,7 +152,7 @@ def test_different_zero_word_recipes_alias_with_outer_dependent_function_termina
 
 
 def test_free_outer_port_and_bound_inner_port_compile_jointly() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "free-x")
     y = arena.variable(arena.state_sort(action, 1), "bound-y")
@@ -178,7 +178,7 @@ def test_free_outer_port_and_bound_inner_port_compile_jointly() -> None:
 
 
 def test_unsupported_composed_input_and_foreign_input_reject_without_mutation() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     paired = runtime.actions.compose(action, action)
     composed = arena.variable(arena.state_sort(paired, 0), "composed-input")
@@ -191,7 +191,7 @@ def test_unsupported_composed_input_and_foreign_input_reject_without_mutation() 
         UnsupportedInterfaceError,
         match="composed input",
     )
-    foreign, foreign_action = machine()
+    foreign, foreign_action = collatz_continuation_runtime()
     other = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 0), "foreign"
     )
@@ -207,7 +207,7 @@ def test_unsupported_composed_input_and_foreign_input_reject_without_mutation() 
 def test_existing_finite_map_is_lifted_with_invalid_codes_preserved() -> None:
     from tests.support.diamond_continuation_reduction import normalize
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "finite-input")
     original = arena.lambda_(
@@ -229,7 +229,7 @@ def test_existing_finite_map_is_lifted_with_invalid_codes_preserved() -> None:
 def test_finite_map_lift_is_canonical_and_its_binding_cache_is_evictable() -> None:
     from tests.support.diamond_continuation_reduction import normalize
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     value = arena.variable(arena.state_sort(action, 0), "finite-cache-input")
     original = arena.lambda_(
@@ -261,7 +261,7 @@ def test_finite_map_lift_is_canonical_and_its_binding_cache_is_evictable() -> No
 
 
 def test_composed_lambda_input_is_rejected_before_semantic_publication() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     composed = runtime.actions.compose(action, action)
     argument = arena.variable(arena.state_sort(composed, 0), "whole-state")
@@ -285,7 +285,7 @@ def test_structured_production_nested_output_never_uses_scalar_product_or_curry(
         FunctionSignature,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     outer, kernel, expected = _cubed_reference(runtime, action)
     functions = runtime.semantic_functions
@@ -333,7 +333,7 @@ def test_structured_production_nested_output_never_uses_scalar_product_or_curry(
 def test_structured_zero_word_alias_preserves_joint_outer_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+    runtime, action = collatz_continuation_runtime(PhysicalCollatzFourBlockEffect())
     expressions = _zero_word_recipes(runtime, action)
     functions = runtime.semantic_functions
     compiler = runtime.semantic_compiler
@@ -353,7 +353,7 @@ def test_structured_zero_word_alias_preserves_joint_outer_dependency(
 def test_structured_rejects_foreign_and_higher_composed_inputs_before_allocating_arena() -> (
     None
 ):
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     composed = runtime.actions.compose(action, action)
     composed = runtime.actions.compose(composed, composed)
@@ -364,7 +364,7 @@ def test_structured_rejects_foreign_and_higher_composed_inputs_before_allocating
         compiler.compile_structured(parameter, (parameter,))
     assert compiler.structures is None
     assert runtime.ledger.snapshot() == before
-    foreign, foreign_action = machine()
+    foreign, foreign_action = collatz_continuation_runtime()
     parameter = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 0), "foreign"
     )
@@ -381,7 +381,7 @@ def test_structured_task_yields_resolution_without_nested_execution(
         StructuredExpressionTask,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "closure-input")
     body = arena.primitive_advance(action, 0, x, arena.symbol(action, 1))
@@ -411,7 +411,7 @@ def test_structured_wrapper_uses_one_runtime_entry_and_keeps_no_result_memo(
         CompileStructuredExpression,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "single-entry")
     body = arena.primitive_advance(action, 0, x, arena.symbol(action, 1))
@@ -455,7 +455,7 @@ def test_structured_task_environment_and_publication_validate_before_mutation() 
         StructuredExpressionTask,
     )
 
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "valid-input")
     compiler = runtime.semantic_compiler
@@ -475,7 +475,7 @@ def test_structured_task_environment_and_publication_validate_before_mutation() 
         with pytest.raises((TypeError, ValueError)):
             compiler.probe_task(task)
         assert runtime.ledger.snapshot() == before
-    foreign, foreign_action = machine()
+    foreign, foreign_action = collatz_continuation_runtime()
     other_x = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 0), "other"
     )
@@ -486,7 +486,7 @@ def test_structured_task_environment_and_publication_validate_before_mutation() 
 
 
 def test_standalone_compiler_cannot_hijack_runtime_structured_owner() -> None:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "input")
     standalone = SemanticExpressionCompiler(

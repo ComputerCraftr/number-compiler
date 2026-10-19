@@ -18,7 +18,9 @@ from number_compiler.hashlife.execution.continuations.higher_summaries import (
 from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeValueArena,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.projection.microblock_cache import MicroblockCache
 from number_compiler.projection.point_response import PointResponseRegister
@@ -57,9 +59,9 @@ def test_reverse_compiled_parent_absorbs_powered_output(
     assert view.binding.source == application.source
     assert view.binding.action == application.root_action
     # Admission must publish support, not retain an intermediate endpoint.
-    audit = audit_registered_payloads(term._ledger)
+    audit = audit_registered_payloads(term.resource_ledger)
     assert audit.forbidden_future_payloads == audit.unknown_payloads == 0
-    before = term._ledger.snapshot()
+    before = term.resource_ledger.snapshot()
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("compiled parent replayed the temporal output interpreter")
@@ -77,7 +79,7 @@ def test_reverse_compiled_parent_absorbs_powered_output(
             assert application.digit(coordinate) == expected[coordinate]
     else:
         assert application.width() == len(expected)
-    after = term._ledger.snapshot()
+    after = term.resource_ledger.snapshot()
     for name in (
         "higher_concrete_operation_evaluations",
         "temporal_leaf_diamond_descents",

@@ -137,7 +137,7 @@ def test_single_digit_projection_never_materializes_the_full_word(
     # materialize_values on the complete term.
     term = c.project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(term.payload, PoweredReverseAddTermPayload)
-    assert term.payload.term._workspace is None
+    assert term.payload.term.published_workspace is None
     assert term.digit(0) == 4
     assert_q19_output_authority(term.payload.term)
     assert c.project_digit(ReverseAddTermQuery(5, seed=196, base=10), 0) == 4
@@ -147,9 +147,9 @@ def test_reverse_payload_digit_publishes_q19_owner() -> None:
     projected = NumberCompiler().project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(projected.payload, PoweredReverseAddTermPayload)
     payload = projected.payload
-    assert payload.term._workspace is None
+    assert payload.term.published_workspace is None
     payload.power_metrics()
-    assert payload.term._workspace is None
+    assert payload.term.published_workspace is None
 
     assert payload.digit(0) == 4
     assert_q19_output_authority(payload.term)
@@ -162,16 +162,16 @@ def test_negative_reverse_digit_rejects_before_authority_or_workspace_allocation
     projected = NumberCompiler().project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(projected.payload, PoweredReverseAddTermPayload)
     term = projected.payload.term
-    ledger_version = term._ledger.mutation_version
-    counters = dict(term._ledger.counters)
+    ledger_version = term.resource_ledger.mutation_version
+    counters = dict(term.resource_ledger.counters)
 
     observer = projected.payload.digit if through_payload else projected.digit
     with pytest.raises(IndexError):
         observer(-1)
 
-    assert term._workspace is None
-    assert term._ledger.mutation_version == ledger_version
-    assert term._ledger.counters == counters
+    assert term.published_workspace is None
+    assert term.resource_ledger.mutation_version == ledger_version
+    assert term.resource_ledger.counters == counters
 
 
 def test_large_fermat_projection_keeps_public_width_symbolic(
@@ -193,7 +193,7 @@ def test_large_fermat_projection_keeps_public_width_symbolic(
 def test_native_binary_special_output_skips_integer_materialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.api.cli_render import _render_value
+    from number_compiler.api.cli_render import render_value
     from number_compiler.sequences.power_numbers.numbers import (
         FermatNumberSpec,
         MersenneNumberSpec,
@@ -206,11 +206,11 @@ def test_native_binary_special_output_skips_integer_materialization(
     monkeypatch.setattr(MersenneNumberSpec, "materialize", forbidden)
     compiler = NumberCompiler()
     assert (
-        _render_value(compiler.project(FermatTermQuery(4)), output_base=2, max_bits=32)
+        render_value(compiler.project(FermatTermQuery(4)), output_base=2, max_bits=32)
         == bin(65537)[2:]
     )
     assert (
-        _render_value(
+        render_value(
             compiler.project(MersenneTermQuery(13)), output_base=2, max_bits=32
         )
         == "1" * 13

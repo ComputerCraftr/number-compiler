@@ -6,9 +6,11 @@ import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
+from number_compiler.sequences.double_reverse.boundary_cycles import Edge
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.source_transfer import (
     MAX_PHYSICAL_STEPS,
+    MAX_POWERED_PHYSICAL_STEPS,
     PAIR_COORDINATE_ORDER,
     _same_word,
     source_transfer_packet,
@@ -43,17 +45,20 @@ def test_double_reverse_transfer_joins_forward_two_tick_children(steps: int) -> 
         expected.append(_double_reverse(expected[-1]))
 
     with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
-        packet = source_transfer_packet(term, steps=steps, pair_depth=1)
+        packet = source_transfer_packet(term, steps=steps, pair_depth=1, trace=True)
 
+    details = packet["trace"]
+    assert isinstance(details, dict)
+    detailed_packet = {**packet, **details}
     expected_pairs = tuple(_pair(value, 1) for value in expected[::2])
     assert_exact_source_transfer_path(
-        packet,
+        detailed_packet,
         expected_pairs,
         physical_interval=(generation, generation + steps),
         border_span=2,
         pair_coordinate_order=PAIR_COORDINATE_ORDER,
     )
-    depth_windows = cast(tuple[dict[str, object], ...], packet["depth_windows"])
+    depth_windows = cast(tuple[dict[str, object], ...], details["depth_windows"])
     expected_window_count = (steps // 2 + 3) // 4
     assert len(depth_windows) == expected_window_count
     joined_action = BooleanPairMatrix.identity()
@@ -75,10 +80,10 @@ def test_double_reverse_transfer_joins_forward_two_tick_children(steps: int) -> 
         joined_action = joined_action.then(window_action)
         f_step_offset += f_steps
     assert f_step_offset == steps // 2
-    assert joined_action.rows == packet["depth_window_joined_transition_rows"]
+    assert joined_action.rows == details["depth_window_joined_transition_rows"]
     assert joined_action.endpoints(expected_pairs[0]) == (expected_pairs[-1],)
 
-    border_phases = cast(tuple[dict[str, object], ...], packet["border_phases"])
+    border_phases = cast(tuple[dict[str, object], ...], details["border_phases"])
     assert tuple(phase["fourth_digit_carries"] for phase in border_phases) == tuple(
         (
             _fourth_digit_carry(expected[index]),
@@ -104,7 +109,77 @@ def test_double_reverse_transfer_reuses_a_warm_query_endpoint(
         packet = source_transfer_packet(term, steps=2, pair_depth=1)
 
         assert packet["status"] == "available"
-        assert packet["source_root"] == endpoint_root
+        assert packet["source_root_local_diagnostic"] == endpoint_root
+        assert packet["chronological_future_roots_constructed"] is False
+        assert packet["inner_pair_matrix_computed"] is False
+
+
+def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.double_reverse import source_transfer as owner
+    from number_compiler.sequences.double_reverse import temporal_predictive_border
+
+    generation = 32
+    steps = 8
+    source = 196
+    for _ in range(generation):
+        source = _double_reverse(source)
+    target = source
+    for _ in range(steps):
+        target = _double_reverse(target)
+
+    monkeypatch.setattr(
+        temporal_predictive_border,
+        "predictive_source_transfer",
+        lambda *_args, **_kwargs: {
+            "status": "unavailable",
+            "reason": "injected powered-cylinder refusal",
+        },
+    )
+    chronological = owner._chronological_source_transfer_packet
+    requested_trace_flags: list[bool] = []
+
+    def record_trace_demand(
+        term: DoubleReverseTerm,
+        *,
+        steps: int,
+        pair_depth: int,
+        include_trace: bool,
+    ) -> dict[str, object]:
+        requested_trace_flags.append(include_trace)
+        return chronological(
+            term,
+            steps=steps,
+            pair_depth=pair_depth,
+            include_trace=include_trace,
+        )
+
+    monkeypatch.setattr(
+        owner, "_chronological_source_transfer_packet", record_trace_demand
+    )
+    with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
+        packet = source_transfer_packet(term, steps=steps, pair_depth=1)
+
+    assert packet["status"] == "available"
+    assert packet["construction"] == "bounded_exact_source_fallback"
+    assert packet["powered_projection_unavailable"] == (
+        "injected powered-cylinder refusal"
+    )
+    assert packet["source_pair"] == _pair(source, 1)
+    assert packet["pointed_target_pair"] == _pair(target, 1)
+    assert "trace" not in packet
+    assert not {
+        "source_pair_path",
+        "transition_rows",
+        "phase_matrices",
+        "border_phases",
+        "four_tick_observed_words",
+        "depth_windows",
+        "depth_window_joined_transition_rows",
+        "source_horizon_physical_ticks",
+    }.intersection(packet)
+    assert requested_trace_flags == [False]
 
 
 def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(
@@ -130,7 +205,7 @@ def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(
         def scratch_usage() -> tuple[int, int]:
             scratch = next(
                 account
-                for account in term._ledger.inventory()
+                for account in term.resource_ledger.inventory()
                 if account.owner == term._scratch_owner
             )
             return scratch.entries, scratch.nodes
@@ -172,7 +247,80 @@ def test_double_reverse_transfer_rejects_oversized_horizon_before_source_work(
         DoubleReverseTerm(196, 2, max_state_bits=16384) as term,
         pytest.raises(ValueError, match="physical ticks"),
     ):
-        source_transfer_packet(term, steps=MAX_PHYSICAL_STEPS + 2, pair_depth=1)
+        source_transfer_packet(
+            term,
+            steps=MAX_PHYSICAL_STEPS + 2,
+            pair_depth=1,
+            trace=True,
+        )
+
+
+def test_border_relation_cache_rejects_bool_aliases_after_warmup() -> None:
+    from number_compiler.sequences.double_reverse.temporal_border_bank import (
+        EDGE_STATES,
+    )
+    from number_compiler.sequences.double_reverse.temporal_predictive_border import (
+        forced_outer_pair_word,
+        powered_border_relation,
+        reachable_edges,
+    )
+
+    edge = next(state for state in EDGE_STATES if 1 in state)
+    assert forced_outer_pair_word(edge, 0) == ((edge[0], edge[-1]),)
+    powered_border_relation(1)
+
+    boolean_edge = cast(Edge, tuple(True if digit == 1 else digit for digit in edge))
+    with pytest.raises(ValueError, match="exact carry-closed"):
+        forced_outer_pair_word(boolean_edge, 0)
+    with pytest.raises(ValueError, match="exact carry-closed"):
+        reachable_edges(boolean_edge, 0)
+    with pytest.raises(ValueError, match="0..4096"):
+        powered_border_relation(True)
+    with pytest.raises(ValueError, match="0..4096"):
+        reachable_edges(edge, True)
+
+
+def _assert_powered_projection_does_not_advance_future_roots(
+    generation: int, steps: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with DoubleReverseTerm(
+        196, generation, max_steps=8192, max_state_bits=16384
+    ) as term:
+        root = term._root()
+
+        def forbid_chronological_action(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("powered projection replayed future F actions")
+
+        monkeypatch.setattr(
+            type(term._adapter.temporal_hashlife),
+            "advance_action",
+            forbid_chronological_action,
+        )
+        packet = source_transfer_packet(term, steps=steps, pair_depth=1)
+
+        assert packet["source_root_local_diagnostic"] == root
+        assert packet["physical_ticks"] == steps
+        assert packet["chronological_future_roots_constructed"] is False
+        assert packet["execution_authority"] is False
+
+
+def test_double_reverse_powered_relation_from_short_source_skips_future_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_powered_projection_does_not_advance_future_roots(32, 128, monkeypatch)
+
+
+@pytest.mark.validation
+def test_double_reverse_powered_relation_admits_4096_ticks_without_trace_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep the long, production-shaped source setup as explicit end-to-end
+    # validation. The unit test above checks the same future-root poison on a
+    # short authenticated source; the unit suite need not also pay the roughly
+    # 21-second generation-1024 endpoint-construction cost.
+    _assert_powered_projection_does_not_advance_future_roots(
+        1024, MAX_POWERED_PHYSICAL_STEPS, monkeypatch
+    )
 
 
 @pytest.mark.parametrize("pair_depth", (14, 15, 16))
@@ -190,13 +338,17 @@ def test_double_reverse_transfer_admits_deep_windows_with_bounded_halos(
     ]
 
     with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
-        packet = source_transfer_packet(term, steps=2, pair_depth=pair_depth)
+        packet = source_transfer_packet(
+            term, steps=2, pair_depth=pair_depth, trace=True
+        )
 
     assert packet["status"] == "available"
-    assert packet["source_pair_path"] == tuple(
+    details = packet["trace"]
+    assert isinstance(details, dict)
+    assert details["source_pair_path"] == tuple(
         _pair(value, pair_depth) for value in expected[::2]
     )
-    depth_windows = cast(tuple[dict[str, object], ...], packet["depth_windows"])
+    depth_windows = cast(tuple[dict[str, object], ...], details["depth_windows"])
     assert len(depth_windows) == 1
     assert cast(int, depth_windows[0]["causal_halo_pairs"]) == pair_depth + 2
     assert cast(int, depth_windows[0]["causal_halo_pairs"]) <= 18

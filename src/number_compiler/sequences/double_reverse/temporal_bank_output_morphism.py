@@ -22,6 +22,9 @@ from typing import cast
 
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    decimal_pair_partition,
+)
 from number_compiler.arithmetic.functions.finite_observer import (
     FiniteOrbitMoore,
     minimize_finite_orbit,
@@ -34,17 +37,22 @@ from number_compiler.resources.metric_keys import (
 
 from ._temporal_bank_authority import (
     FrozenMap,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
     issue_source_record,
     validate_source_record,
 )
 from .protected_temporal_bank import (
+    BANK_CHANNELS,
     MAX_PROTECTED_PERIOD,
     MAX_PROTECTED_TEMPORAL_STATES,
-    PERIODIC_CHANNELS,
+    BankChannel,
     PeriodicBankFrame,
-    _advance,
+    SourceAuthorizedFrameWindow,
+    TemporalBankChannel,
+    advance_periodic_state,
+    bank_channel_name,
     certified_periodic_regions,
+    parse_bank_channel,
 )
 from .temporal_hashlife import edge_phase, growth_ports
 from .temporal_residue_quotient import (
@@ -95,7 +103,7 @@ def _frame_output_label(frame: PeriodicBankFrame) -> tuple[Hashable, ...]:
     )
 
 
-def _row_output_label(
+def row_output_label(
     row: tuple[PeriodicBankFrame, ...],
 ) -> tuple[tuple[Hashable, ...], ...]:
     """Convert one spatial row to labels accepted by the finite observer."""
@@ -110,14 +118,11 @@ def frame_from_digits(
 ) -> PeriodicBankFrame:
     """Shared exact Boolean five-band and conditional-borrow output encoder."""
     pair = sum(before)
+    projection = decimal_pair_partition(pair)
     return PeriodicBankFrame(
         pair,
-        pair % 5,
-        int(pair < 5),
-        int(5 <= pair <= 8),
-        int(pair == 9),
-        int(10 <= pair <= 14),
-        int(15 <= pair <= 18),
+        projection.f5,
+        *projection.masks,
         before,
         after,
         int(before[0] >= 5),
@@ -128,18 +133,6 @@ def frame_from_digits(
         birth_left,
         birth_right,
     )
-
-
-def _authorized_frame_at(
-    record: _SourceAuthorizedRecord,
-    frames: tuple[PeriodicBankFrame, ...],
-    pair_offset: int,
-) -> PeriodicBankFrame:
-    """Read one frame after validating the packet's source authority."""
-    validate_source_record(record)
-    if type(pair_offset) is not int or not 0 <= pair_offset < len(frames):
-        raise IndexError(pair_offset)
-    return frames[pair_offset]
 
 
 def _least_period(frames: tuple[PeriodicBankFrame, ...]) -> int:
@@ -181,7 +174,7 @@ def _joint_moore_counts(
 
     counts: dict[str, int] = {}
     scalar_visits = sum(len(row) for row in outputs)
-    for channel in PERIODIC_CHANNELS:
+    for channel in BANK_CHANNELS:
         labels = tuple(tuple(frame.scalar(channel) for frame in row) for row in outputs)
         if ledger is not None:
             ledger.bump(
@@ -191,7 +184,7 @@ def _joint_moore_counts(
                 _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
                 scalar_visits,
             )
-        counts[channel] = minimize_finite_orbit(
+        counts[bank_channel_name(channel)] = minimize_finite_orbit(
             successors,
             labels,
             max_states=MAX_PROTECTED_TEMPORAL_STATES,
@@ -202,7 +195,7 @@ def _joint_moore_counts(
 
 
 @dataclass(frozen=True, slots=True)
-class CertifiedSpatialBankMorphism(_SourceAuthorizedRecord):
+class CertifiedSpatialBankMorphism(SourceAuthorizedRecord):
     """A source-bound spatial word `motif**repeats + suffix` at time T**(2D).
 
     Pair positions refer to the *entry* word: the final positions are shifted
@@ -267,36 +260,38 @@ class CertifiedSpatialBankMorphism(_SourceAuthorizedRecord):
     def counts(self) -> dict[str, int]:
         validate_source_record(self)
         return {
-            channel: (
+            bank_channel_name(channel): (
                 self.repeats * sum(frame.scalar(channel) for frame in self.motif)
                 + sum(frame.scalar(channel) for frame in self.suffix)
             )
-            for channel in PERIODIC_CHANNELS
+            for channel in BANK_CHANNELS
         }
 
-    def output_word(self, channel: str) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
+    def output_word(
+        self, channel: BankChannel | str
+    ) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
         """Exact CONCAT(REPEAT(motif, repeats), suffix) channel emission."""
         validate_source_record(self)
-        if channel not in PERIODIC_CHANNELS:
-            raise ValueError("unknown GT/EQ/LT bank output channel")
+        selected = parse_bank_channel(channel)
         return (
-            tuple(frame.scalar(channel) for frame in self.motif),
+            tuple(frame.scalar(selected) for frame in self.motif),
             self.repeats,
-            tuple(frame.scalar(channel) for frame in self.suffix),
+            tuple(frame.scalar(selected) for frame in self.suffix),
         )
 
-    def spatial_walsh64(self, channel: str, *, start: int = 0) -> tuple[int, ...]:
+    def spatial_walsh64(
+        self, channel: BankChannel | str, *, start: int = 0
+    ) -> tuple[int, ...]:
         """Demand 64 spatial lanes; never materialize the entire word."""
         from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 
         validate_source_record(self)
-        if channel not in PERIODIC_CHANNELS:
-            raise ValueError("unknown GT/EQ/LT bank output channel")
+        selected = parse_bank_channel(channel)
         if type(start) is not int or start < 0 or start + 64 > self.pair_count:
             raise ValueError("64 spatial lanes are outside the certified bank word")
-        values = [self._at_trusted(start + i).scalar(channel) for i in range(64)]
+        values = [self._at_trusted(start + i).scalar(selected) for i in range(64)]
         # F5 is a 5-valued port; use the linear transform of its exact values.
-        if channel == "f5":
+        if selected is TemporalBankChannel.F5:
             return tuple(
                 sum(
                     (1 if (i & j).bit_count() % 2 == 0 else -1) * values[j]
@@ -310,7 +305,7 @@ class CertifiedSpatialBankMorphism(_SourceAuthorizedRecord):
 
 
 @dataclass(frozen=True, slots=True)
-class ExactPointedBankWindow(_SourceAuthorizedRecord):
+class ExactPointedBankWindow(SourceAuthorizedFrameWindow):
     """Finite source-derived bank word, without a claimed pumped interior.
 
     This explicitly materializes at most a small requested OUTPUT window, not
@@ -347,25 +342,21 @@ class ExactPointedBankWindow(_SourceAuthorizedRecord):
         ):
             raise ValueError("unused open bank cannot publish quotient metadata")
 
-    @property
-    def pair_count(self) -> int:
-        return len(self.frames)
-
-    def at(self, pair_offset: int) -> PeriodicBankFrame:
-        return _authorized_frame_at(self, self.frames, pair_offset)
-
     def counts(self) -> dict[str, int]:
         validate_source_record(self)
         return {
-            channel: sum(frame.scalar(channel) for frame in self.frames)
-            for channel in PERIODIC_CHANNELS
+            bank_channel_name(channel): sum(
+                frame.scalar(channel) for frame in self.frames
+            )
+            for channel in BANK_CHANNELS
         }
 
-    def output_word(self, channel: str) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
+    def output_word(
+        self, channel: BankChannel | str
+    ) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
         validate_source_record(self)
-        if channel not in PERIODIC_CHANNELS:
-            raise ValueError("unknown bank output channel")
-        return (tuple(frame.scalar(channel) for frame in self.frames), 1, ())
+        selected = parse_bank_channel(channel)
+        return (tuple(frame.scalar(selected) for frame in self.frames), 1, ())
 
 
 def certified_spatial_bank_morphism(
@@ -494,7 +485,7 @@ def certified_spatial_bank_morphism(
                 raise ValueError(
                     "temporal bank exceeds the proven finite-state search budget"
                 )
-            nxt, _ = _advance(state, ledger=ledger)
+            nxt, _ = advance_periodic_state(state, ledger=ledger)
             if nxt in indices:
                 cycle_begin = indices[nxt]
                 cycle_size = len(states) - cycle_begin
@@ -545,7 +536,7 @@ def certified_spatial_bank_morphism(
                 for i, state in enumerate(states)
             )
             temporal_output_labels = tuple(
-                _row_output_label(row) for row in temporal_outputs
+                row_output_label(row) for row in temporal_outputs
             )
 
             def record_joint_refinement(size: int) -> None:
@@ -579,7 +570,7 @@ def certified_spatial_bank_morphism(
             # The class action selects the emitted row used for production;
             # raw lasso traversal is retained only as a differential invariant.
             spatial_frames = temporal_outputs[representatives[target_class]]
-            if _row_output_label(spatial_frames) != joint_moore.output(target_class):
+            if row_output_label(spatial_frames) != joint_moore.output(target_class):
                 raise AssertionError("temporal Moore representative changed its output")
             expected_frames = tuple(
                 _frame_at(at_time(f_steps), at_time(depth), i) for i in range(period)

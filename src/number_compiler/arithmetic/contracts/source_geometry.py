@@ -76,6 +76,17 @@ class SourceGeometry:
         self._sources.append(self._construction.source)
         self._read_root: DyadicSpan | None = None
 
+    @property
+    def construction(self) -> OriginalSourceConstruction:
+        """Return the authenticated immutable source construction owner."""
+        OriginalSourceConstruction.validate_source(self._construction)
+        return self._construction
+
+    @property
+    def has_materialized_source(self) -> bool:
+        """Whether this geometry retains its checked dyadic source root."""
+        return self._read_root is not None
+
     @exact_constructor
     def _leaf(self, symbol: int) -> DyadicTile:
         if type(symbol) is not int or symbol < 0:

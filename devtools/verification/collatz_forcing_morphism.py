@@ -157,7 +157,7 @@ class CollatzForcingMorphismArena:
         "source_hits",
     )
 
-    def __init__(self, actions: CollatzBlockActionArena) -> None:
+    def __init__(self, actions: object) -> None:
         if not isinstance(actions, CollatzBlockActionArena):
             raise TypeError(type(actions))
         self.actions = actions

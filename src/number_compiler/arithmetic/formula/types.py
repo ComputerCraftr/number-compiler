@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from number_compiler.arithmetic.fields.radix import bit_width
 
@@ -43,6 +42,13 @@ class Expr:
     local_param_bits: int
 
 
+@dataclass(frozen=True, slots=True)
+class FormulaMasks:
+    """Typed cached predicate planes, distinct from arbitrary compiler metadata."""
+
+    values: tuple[Expr, ...]
+
+
 class FormulaStorage:
     """Shared storage contract for construction and evaluation mixins."""
 
@@ -61,7 +67,7 @@ class FormulaStorage:
     _closed_values: dict[int, int]
     _closed_bit_count: int
     _derived: dict[tuple[object, ...], Expr]
-    _metadata: dict[tuple[object, ...], Any]
+    _metadata: dict[tuple[object, ...], object]
 
     def require_owned(self, node: Expr) -> None:
         """Authenticate an arena-local ID before it can address a memo slot."""

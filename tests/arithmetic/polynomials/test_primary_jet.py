@@ -96,7 +96,7 @@ def test_constant_right_jet_erases_earlier_effect_before_arithmetic(
     def forbidden(*_args: object, **_kwargs: object) -> tuple[int, ...]:
         raise AssertionError("dead inherited jet was multiplied")
 
-    monkeypatch.setattr(owner, "_poly_mul", forbidden)
+    monkeypatch.setattr(owner, "primary_jet_multiply", forbidden)
     result = early.then(later)
     assert result.steps == 105
     assert result.offset == expected

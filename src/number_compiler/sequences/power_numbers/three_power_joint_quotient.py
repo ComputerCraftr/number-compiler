@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     )
 
 from number_compiler.arithmetic.fields.integer_congruence import join_congruences
-from number_compiler.arithmetic.fields.walsh import WalshH5, walsh64
+from number_compiler.arithmetic.fields.walsh import LOW_WALSH_WIDTH, WalshH5, walsh64
 from number_compiler.sequences.power_numbers.source_matrix import (
     MAX_MULTIRADIX_PLACES,
     MULTIRADIX_BASES,
@@ -37,7 +37,6 @@ from number_compiler.sequences.power_numbers.three_dyadic_pivot_moore import (
     moving_unit_innovation_window,
 )
 
-LOW_WALSH_WIDTH = 64
 MAX_JOINED_BITS = 256
 DEFAULT_RADIX_DEMANDS = (
     (2, 16),

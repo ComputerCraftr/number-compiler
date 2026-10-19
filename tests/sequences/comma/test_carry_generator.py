@@ -129,9 +129,13 @@ def test_c1_phase_alias_requires_decisive_endpoint_admission() -> None:
         DecisiveEndpoint(1, 182)
 
 
-def test_all_900_phases_and_durations_zero_through_fifty() -> None:
+@pytest.mark.parametrize(
+    "exhaustive", [False, pytest.param(True, marks=pytest.mark.validation)]
+)
+def test_all_900_phases_and_durations_zero_through_fifty(exhaustive: bool) -> None:
+    suffixes = range(100) if exhaustive else (0, 1, 9, 10, 49, 50, 89, 90, 98, 99)
     for sector in range(1, 10):
-        for suffix in range(100):
+        for suffix in suffixes:
             phase = C1Phase.from_suffix(sector, suffix)
             literal_suffix = suffix
             literal_count = 0

@@ -725,7 +725,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             type(arithmetic) is ArithmeticResult
             and len(term.result_publications) == 1
             and term.result_publications[0] is arithmetic
-            and arithmetic._term is term
+            and arithmetic.source_term is term
             and arithmetic.ledger is ledger
             and arithmetic.requested == term.requested == completed
             and (arithmetic.h, arithmetic.balance, arithmetic.minimum)
@@ -797,7 +797,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             and type(physical.run) is Run
             and physical.matches(physical.run)
             and physical.run._engine is term.engine
-            and physical.run._term is term
+            and physical.run.source_term is term
             and physical.run.ledger is ledger
             and physical.run.requested == term.requested
             and (
@@ -823,20 +823,9 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
 
 
 __all__ = [
-    "audit_antihydra_cursor",
     "audit_antihydra_engine",
-    "audit_antihydra_fragment_adapter",
-    "audit_antihydra_fragment_cache",
     "audit_antihydra_image_workspace",
-    "audit_antihydra_section_workspace",
     "audit_antihydra_term",
     "refresh_antihydra_payload_contract",
     "register_antihydra_payload_contract",
 ]
-
-from number_compiler.sequences.antihydra.projection_payload_audit import (
-    audit_antihydra_cursor,
-    audit_antihydra_fragment_adapter,
-    audit_antihydra_fragment_cache,
-    audit_antihydra_section_workspace,
-)

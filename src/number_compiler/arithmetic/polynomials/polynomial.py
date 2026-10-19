@@ -221,6 +221,25 @@ def evaluate_polynomial(coefficients: Sequence[int], value: int) -> int:
     return out
 
 
+def f5_modes(
+    coefficients: Sequence[int | None],
+) -> tuple[int, int, int, int] | None:
+    """Evaluate a finite ascending-power word at 1, 2, 3 and 4 in F5.
+
+    An unknown coefficient leaves the projection unknown. Horner evaluation
+    keeps every accumulator bounded and grants no future-period authority.
+    """
+    at_one = at_two = at_three = at_four = 0
+    for coefficient in reversed(coefficients):
+        if coefficient is None:
+            return None
+        at_one = (at_one + coefficient) % 5
+        at_two = (2 * at_two + coefficient) % 5
+        at_three = (3 * at_three + coefficient) % 5
+        at_four = (4 * at_four + coefficient) % 5
+    return at_one, at_two, at_three, at_four
+
+
 def trace_square_polynomial(coefficients: Sequence[int]) -> tuple[int, ...]:
     """Polynomial lift of the universal trace square ``u -> u**2 - 2``."""
     return polynomial_add_constant(polynomial_square(coefficients), -2)
@@ -229,6 +248,7 @@ def trace_square_polynomial(coefficients: Sequence[int]) -> tuple[int, ...]:
 __all__ = [
     "MonicPolynomialRing",
     "evaluate_polynomial",
+    "f5_modes",
     "polynomial_add_constant",
     "polynomial_affine",
     "polynomial_divide_exact",

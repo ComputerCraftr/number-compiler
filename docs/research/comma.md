@@ -1,5 +1,8 @@
 # Decimal comma cylinders and A367620
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 - **Definition:** A367620 is the lexicographically earliest infinite path in the
   decimal comma-child graph, with OEIS index one at 20. A smallest-child rule
   alone does not define it. [OEIS definition](https://oeis.org/A367620)

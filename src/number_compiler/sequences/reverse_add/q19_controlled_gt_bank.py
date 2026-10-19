@@ -80,6 +80,11 @@ class SourceGuardedGTBankAction:
     _binding: tuple[object, ...] = field(default=(), repr=False, compare=False)
     _registry_key: int = field(default=-1, repr=False, compare=False)
 
+    @property
+    def registry_key(self) -> int:
+        """Return the issuer slot; ownership is checked by the registry."""
+        return self._registry_key
+
     def __post_init__(self) -> None:
         if self._seal is not _ISSUER or self._binding != self._snapshot():
             raise ValueError("conditional bank action must be issued by a Q19 owner")
@@ -124,7 +129,11 @@ class SourceGuardedGTBankAction:
             self._registry_key,
         )
 
-    def _validate(self) -> None:
+    def publication_snapshot(self) -> tuple[object, ...]:
+        """Return structural fields for the owning issuer's binding check."""
+        return self._snapshot()
+
+    def validate_source_authority(self) -> None:
         action = self.action
         binding = self._binding
         snapshot = self._snapshot()
@@ -157,7 +166,7 @@ class SourceGuardedGTBankAction:
         max_cells: int = 16384,
     ) -> ReverseAddTemporalRingBank:
         """Demand the same authenticated macro-conditioned inward ring ports."""
-        self._validate()
+        self.validate_source_authority()
         if self.border_certificate is None:
             raise ValueError("a live border certificate is required for ring authority")
         return self.border_certificate.temporal_ring_bank(
@@ -176,7 +185,7 @@ class SourceGuardedGTBankAction:
         For horizons >=6, this is unconditional even if the GT bank's growth
         input is only conditional; it does not certify the GT-bank output.
         """
-        self._validate()
+        self.validate_source_authority()
         from .temporal_residue99 import from_issued_pair
 
         return from_issued_pair(
@@ -189,24 +198,24 @@ class SourceGuardedGTBankAction:
 
     @property
     def output_nodes(self) -> int:
-        self._validate()
+        self.validate_source_authority()
         return self.action.program_nodes
 
     @property
     def moore_states(self) -> int:
-        self._validate()
+        self.validate_source_authority()
         return self.action.moore_states
 
     @property
     def growth_count(self) -> int:
-        self._validate()
+        self.validate_source_authority()
         word = WidthMacro.from_bits(self.growth_control)
         whole, tail = divmod(self.steps, len(self.growth_control))
         return word.growth_count * whole + sum(self.growth_control[:tail])
 
     def at(self, depth: int) -> int:
         """Exact conditional pair coefficient for this protected coordinate."""
-        self._validate()
+        self.validate_source_authority()
         if type(depth) is not int or not 0 <= depth <= self.steps:
             raise ValueError("temporal coordinate outside issued action")
         phase = self.coordinate % len(self.period)
@@ -218,7 +227,7 @@ class SourceGuardedGTBankAction:
 
     def frame(self, tick: int) -> MixedFrame:
         """Complete synchronized conditional GT/F5/borrow output at one tick."""
-        self._validate()
+        self.validate_source_authority()
         return self.action.at(tick)
 
     def masks(self, tick: int) -> dict[str, tuple[int, ...]]:
@@ -252,7 +261,7 @@ class SourceGuardedGTBankAction:
 
     def leading_carry_ports(self, tick: int) -> tuple[int, ...] | None:
         """Read the finite Q19-issued exterior carry constraint for one tick."""
-        self._validate()
+        self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps:
             raise IndexError(tick)
         if self.border_certificate is None:
@@ -261,7 +270,7 @@ class SourceGuardedGTBankAction:
 
     def bilateral_carry_port(self, tick: int) -> BilateralCyclePort | None:
         """Expose correlated low overflow and admissible middle transfers."""
-        self._validate()
+        self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps:
             raise IndexError(tick)
         if self.border_certificate is None:
@@ -270,7 +279,7 @@ class SourceGuardedGTBankAction:
 
     def bilateral_window_port(self, tick: int) -> BilateralCyclePort | None:
         """Return a full K-window port only when both finite tiles are known."""
-        self._validate()
+        self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps:
             raise IndexError(tick)
         if self.border_certificate is None:
@@ -286,7 +295,7 @@ class SourceGuardedGTBankAction:
         leaves source-specific affine corrections as explicit consumer inputs
         and does not authorize repeating the Q19 source.
         """
-        self._validate()
+        self.validate_source_authority()
         certificate = self.border_certificate
         if certificate is None:
             raise ValueError("F5 macro action needs certified border control")
@@ -298,7 +307,7 @@ class SourceGuardedGTBankAction:
         self, *, z: int = 2, modulus: int = 5
     ) -> Radix19CarryBlock:
         """Read this action's authenticated source through the carry cochain."""
-        self._validate()
+        self.validate_source_authority()
         return self.owner.radix19_cochain(self.source, z=z, modulus=modulus)
 
     def certified_walsh64_mod5(
@@ -310,7 +319,7 @@ class SourceGuardedGTBankAction:
         from .q19_bank_boolean import CoupledBooleanBankFrame
         from .q19_periodic_cone import _periodic_guard
 
-        self._validate()
+        self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps:
             raise ValueError("bank Walsh tick is outside the issued action")
         if type(start) is not int or start < 0:
@@ -345,7 +354,7 @@ class SourceGuardedGTBankAction:
         from .q19_bank_boolean import CoupledBooleanBankFrame
         from .q19_periodic_cone import _periodic_guard
 
-        self._validate()
+        self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps - 1:
             raise ValueError("following certified nongrowth event is required")
         if self.growth_control[tick + 1] != 0:
@@ -383,7 +392,7 @@ class SourceGuardedGTBankAction:
         growth pattern.  It cannot be used to certify a full-root temporal
         action on the real 196 trajectory by itself.
         """
-        self._validate()
+        self.validate_source_authority()
         if owner is not self.owner:
             raise ValueError("cannot square a foreign owner's conditional action")
         if self.border_certificate is not None:

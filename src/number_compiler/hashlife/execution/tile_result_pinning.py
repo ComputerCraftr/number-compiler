@@ -27,7 +27,7 @@ def pin_result(
     application_by_id(scheduler, application)
     if type(key) is not PoweredResultKey or type(lease) is not ResultLease:
         raise TypeError("application pins require an exact completed result")
-    scheduler.results._validate_key(key)
+    scheduler.results.validate_key(key)
     if lease._issuer is not scheduler.results or lease._key != key:
         raise ValueError("application pin belongs to another result request")
     _ = lease.result

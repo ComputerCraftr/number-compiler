@@ -2,11 +2,13 @@
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.causal_frames import (
+    ReverseInterfaceFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tiles import TileID
 
 
@@ -16,8 +18,7 @@ def reverse_interface_payload(
     tile: TileID,
 ) -> CausalInterfacePayload:
     payload = engine._run(
-        CausalFrame(
-            "reverse_interface",
+        ReverseInterfaceFrame(
             (action, tile, engine._initial(action, 0), engine._initial(action, 1)),
         ),
         tile_result=False,

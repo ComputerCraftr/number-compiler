@@ -45,13 +45,13 @@ def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 
     def issued(value: object) -> bool:
-        reference = index._ledger._execution_roots.get(id(value))
+        reference = index.resource_ledger._execution_roots.get(id(value))
         return reference is not None and reference() is value
 
     projection = index._lazy_application
     if (
         type(projection) is not LazyProjection
-        or projection.ledger is not index._ledger
+        or projection.ledger is not index.resource_ledger
         or projection._closed is not False
         or not issued(projection)
     ):
@@ -59,7 +59,7 @@ def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
     scheduler, application = projection.scheduler, projection._application
     if (
         type(scheduler) is not TileScheduler
-        or scheduler.ledger is not index._ledger
+        or scheduler.ledger is not index.resource_ledger
         or not issued(scheduler)
         or type(application) is not TileApplication
         or application.scheduler is not scheduler
@@ -70,15 +70,15 @@ def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
     tiles, results, adapter = scheduler.tiles, scheduler.results, scheduler.adapter
     if (
         type(tiles) is not TileArena
-        or tiles.ledger is not index._ledger
+        or tiles.ledger is not index.resource_ledger
         or not issued(tiles)
         or type(results) is not CompletedResultArena
-        or results.ledger is not index._ledger
+        or results.ledger is not index.resource_ledger
         or results.tiles is not tiles
         or results.action_authority is not adapter
         or not issued(results)
         or type(adapter) is not PrimitiveTileKernelAdapter
-        or adapter.ledger is not index._ledger
+        or adapter.ledger is not index.resource_ledger
         or not issued(adapter)
         or type(adapter.owner) is not ArenaToken
     ):
@@ -123,7 +123,7 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         LazyProjection as TileProjection,
     )
 
-    ledger = collect_ledger_metrics(index._ledger, audit_payloads=False)
+    ledger = collect_ledger_metrics(index.resource_ledger, audit_payloads=False)
     baseline = dict(index._effect_metric_baseline)
     geometry = tile_metrics(index.evaluation_root)
     tile_nodes = index._retained_tile_node_count()

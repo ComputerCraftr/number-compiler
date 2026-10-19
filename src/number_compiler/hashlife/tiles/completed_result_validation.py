@@ -11,7 +11,7 @@ from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundO
 from number_compiler.hashlife.execution.tile_kernel_validation import (
     validate_kernel_alphabet,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -71,7 +71,7 @@ def admit_validated_signature(
     return cast(Callable[[FieldCellActionID], object], callback)
 
 
-def _validate_fusion(
+def validate_fusion(
     self: CompletedResultArena,
     action: FieldCellActionID,
     fusion: FusedBoundaryContract,
@@ -94,7 +94,7 @@ def _validate_fusion(
     )
 
 
-def _validate_action_wiring(
+def validate_action_wiring(
     self: CompletedResultArena,
     action: FieldCellActionID,
     wiring: ResultWiring,
@@ -150,7 +150,7 @@ def _validate_admitted_input(
     validate_kernel_alphabet(self.tiles, source, kernel)
 
 
-def _validate_base(
+def validate_base(
     self: CompletedResultArena,
     action: FieldCellActionID,
     input_tile: TileID,
@@ -159,9 +159,9 @@ def _validate_base(
     action_admission: object | None = None,
 ) -> None:
     if action_admission is None:
-        self._validate_action_wiring(action, wiring)
+        self.validate_action_wiring(action, wiring)
     else:
-        self._validate_action_wiring(
+        self.validate_action_wiring(
             action,
             wiring,
             action_admission=action_admission,
@@ -175,7 +175,7 @@ def _validate_base(
         self._validate_input(action, input_tile)
 
 
-def _validate_key(
+def validate_key(
     self: CompletedResultArena,
     key: PoweredResultKey,
     *,
@@ -184,9 +184,9 @@ def _validate_key(
     if type(key) is not PoweredResultKey:
         raise TypeError("expected a powered-result key")
     if action_admission is None:
-        self._validate_base(key.action, key.input, key.wiring)
+        self.validate_base(key.action, key.input, key.wiring)
     else:
-        self._validate_base(
+        self.validate_base(
             key.action,
             key.input,
             key.wiring,
@@ -195,7 +195,7 @@ def _validate_key(
     validate_output_region(key.region, input_level=self.tiles.resolve(key.input).level)
     if key.fusion is not None:
         if action_admission is None:
-            visits = self._validate_fusion(
+            visits = self.validate_fusion(
                 key.action,
                 key.fusion,
                 key.bound_ports,
@@ -203,7 +203,7 @@ def _validate_key(
                 counted=False,
             )
         else:
-            visits = self._validate_fusion(
+            visits = self.validate_fusion(
                 key.action,
                 key.fusion,
                 key.bound_ports,
@@ -215,10 +215,10 @@ def _validate_key(
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_VISITS, visits)
     else:
         self._validate_boundaries(key.boundaries, key.input)
-        self._validate_ports(key.wiring.signature, key.ports)
+        self.validate_ports(key.wiring.signature, key.ports)
 
 
-def _validate_spatial_key(
+def validate_spatial_key(
     self: CompletedResultArena,
     key: SpatialInterfaceKey,
 ) -> None:
@@ -239,7 +239,7 @@ def _validate_spatial_key(
             raise ValueError("spatial child has another port signature")
 
 
-def _validate_spatial_result(
+def validate_spatial_result(
     self: CompletedResultArena,
     key: SpatialInterfaceKey,
     result: LocalInterfaceID,
@@ -250,7 +250,7 @@ def _validate_spatial_result(
         raise ValueError("spatial result has another port signature")
 
 
-def _validate_boundary_allocations(
+def validate_boundary_allocations(
     self: CompletedResultArena,
     boundaries: BoundaryTileOperands,
 ) -> None:
@@ -258,10 +258,10 @@ def _validate_boundary_allocations(
         raise ValueError("malformed completed-result boundary operands")
     boundaries.__post_init__()
     for tile in boundaries.tile_ids():
-        tile.validate(self.tiles.owner, "canonical-tile", size=self.tiles._next_tile)
+        tile.validate(self.tiles.owner, "canonical-tile", size=self.tiles.tile_count)
 
 
-def _validate_bound_port_allocations(
+def validate_bound_port_allocations(
     self: CompletedResultArena,
     context: BoundPorts,
     *,
@@ -275,21 +275,21 @@ def _validate_bound_port_allocations(
         raise ValueError("leased bound-port orientation lies outside its signature")
     if context.wiring.phase >= declaration.phase_count:
         raise ValueError("leased bound-port phase lies outside its signature")
-    self._validate_ports(context.signature, context.ports, counted=counted)
-    self._validate_boundary_allocations(context.boundaries)
+    self.validate_ports(context.signature, context.ports, counted=counted)
+    self.validate_boundary_allocations(context.boundaries)
 
 
-def _validate_interface_key(
+def validate_interface_key(
     self: CompletedResultArena,
     key: PoweredInterfaceKey,
 ) -> None:
     if type(key) is not PoweredInterfaceKey:
         raise TypeError("expected a powered-interface key")
-    self._validate_base(key.action, key.input, key.wiring)
+    self.validate_base(key.action, key.input, key.wiring)
     self._validate_boundaries(key.boundaries, key.input)
 
 
-def _validate_interface(
+def validate_interface(
     self: CompletedResultArena,
     key: PoweredInterfaceKey,
     interface: LocalInterfaceID,
@@ -300,7 +300,7 @@ def _validate_interface(
         raise ValueError("powered interface has another port signature")
 
 
-def _result_tile_ids(
+def result_tile_ids(
     self: CompletedResultArena,
     result: CompletedResult,
 ) -> tuple[TileID, ...]:
@@ -315,7 +315,7 @@ def _result_tile_ids(
     )
 
 
-def _result_operand_views(result: CompletedResult) -> tuple[BoundaryTileView, ...]:
+def result_operand_views(result: CompletedResult) -> tuple[BoundaryTileView, ...]:
     operands = [result.outgoing_boundaries]
     if result.fusion is not None:
         operands.extend(
@@ -331,7 +331,7 @@ def _result_operand_views(result: CompletedResult) -> tuple[BoundaryTileView, ..
     )
 
 
-def _validate_result(
+def validate_result(
     self: CompletedResultArena,
     key: PoweredResultKey,
     result: CompletedResult,
@@ -367,9 +367,9 @@ def _validate_result(
     outgoing = self.interfaces.resolve(result.outgoing)
     if outgoing.signature != key.wiring.signature:
         raise ValueError("completed result has another port signature")
-    self._validate_ports(outgoing.signature, result.outgoing_ports)
+    self.validate_ports(outgoing.signature, result.outgoing_ports)
     if result.observed_input_ports is not None:
-        self._validate_ports(key.wiring.signature, result.observed_input_ports)
+        self.validate_ports(key.wiring.signature, result.observed_input_ports)
     expected_consumer = BoundPorts(
         result.outgoing_ports,
         key.wiring,
@@ -382,7 +382,7 @@ def _validate_result(
         if result.fusion is None:
             raise ValueError("fused result omitted its outgoing boundary contract")
         if action_admission is None:
-            self._validate_fusion(
+            self.validate_fusion(
                 key.action,
                 result.fusion,
                 expected_consumer,
@@ -390,7 +390,7 @@ def _validate_result(
                 output=True,
             )
         else:
-            self._validate_fusion(
+            self.validate_fusion(
                 key.action,
                 result.fusion,
                 expected_consumer,
@@ -400,7 +400,7 @@ def _validate_result(
             )
 
 
-def _validate_leased(
+def validate_leased(
     self: CompletedResultArena,
     key: PoweredResultKey,
     result: CompletedResult,
@@ -418,19 +418,19 @@ def _validate_leased(
     key.input.validate(
         self.tiles.owner,
         "canonical-tile",
-        size=self.tiles._next_tile,
+        size=self.tiles.tile_count,
     )
-    self._validate_boundary_allocations(key.boundaries)
-    self._validate_action_wiring(key.action, key.wiring)
-    self._validate_ports(key.wiring.signature, key.ports, counted=False)
+    self.validate_boundary_allocations(key.boundaries)
+    self.validate_action_wiring(key.action, key.wiring)
+    self.validate_ports(key.wiring.signature, key.ports, counted=False)
     if key.fusion is not None:
         if type(key.fusion) is not FusedBoundaryContract:
             raise ValueError("malformed leased fusion contract")
         key.fusion.__post_init__()
         if key.fusion.consumer != key.bound_ports:
             raise ValueError("leased fusion consumer disagrees with its request")
-        self._validate_bound_port_allocations(key.fusion.producer, counted=False)
-        self._validate_bound_port_allocations(key.fusion.consumer, counted=False)
+        self.validate_bound_port_allocations(key.fusion.producer, counted=False)
+        self.validate_bound_port_allocations(key.fusion.consumer, counted=False)
         if self._validate_fused_action is None:
             raise ValueError("action authority does not admit fused interfaces")
         self._validate_fused_action(key.action)
@@ -463,9 +463,9 @@ def _validate_leased(
     outgoing = self.interfaces.resolve(result.outgoing)
     if outgoing.signature != key.wiring.signature:
         raise ValueError("completed-result lease has another interface")
-    self._validate_ports(outgoing.signature, result.outgoing_ports, counted=False)
+    self.validate_ports(outgoing.signature, result.outgoing_ports, counted=False)
     if result.observed_input_ports is not None:
-        self._validate_ports(
+        self.validate_ports(
             key.wiring.signature,
             result.observed_input_ports,
             counted=False,
@@ -482,7 +482,7 @@ def _validate_leased(
     else:
         if result.fusion is None:
             raise ValueError("fused result lease lost its boundary contract")
-        self._validate_fusion(
+        self.validate_fusion(
             key.action,
             result.fusion,
             expected_consumer,
@@ -496,10 +496,10 @@ def _validate_leased(
         raise ValueError("malformed completed-result boundary leases")
     if (
         tuple(value.tile for value in boundary_tiles)
-        != self._result_tile_ids(result)[1:]
+        != self.result_tile_ids(result)[1:]
     ):
         raise ValueError("completed-result lease pins other boundary tiles")
-    if operand_views != self._result_operand_views(result):
+    if operand_views != self.result_operand_views(result):
         raise ValueError("completed-result lease retains other boundary operands")
     if any(
         type(self._leased_boundary_operands.records.get(view)) is not int
@@ -509,7 +509,7 @@ def _validate_leased(
         raise ValueError("completed-result boundary operand is not inventoried")
 
 
-def _tiles_for(
+def tiles_for(
     self: CompletedResultArena,
     key: _ExecutionKey,
     result: _ExecutionValue,
@@ -573,7 +573,7 @@ def _tiles_for(
         return self._unique_tiles(key_tiles)
     if type(result) is not CompletedResult:
         raise TypeError("completed result memo has another value sort")
-    return self._unique_tiles((*key_tiles, *self._result_tile_ids(result)))
+    return self._unique_tiles((*key_tiles, *self.result_tile_ids(result)))
 
 
 def _result_output(

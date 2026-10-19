@@ -23,14 +23,17 @@ def test_mahler_cli_center_matrix_is_optional_and_source_bound(
         "json",
     ]
     assert (
-        main(arguments + ["--info", "temporal.matrix", "--temporal-matrix-steps", "4"])
+        main(
+            arguments
+            + ["--info", "temporal.matrix.trace", "--temporal-matrix-steps", "4"]
+        )
         == 0
     )
     demanded = json.loads(capsys.readouterr().out)
-    packet = demanded["info"]["temporal.matrix"]
+    packet = demanded["info"]["temporal.matrix.trace"]
     assert packet["source_certified_physical_ticks"] == 4
     assert packet["temporal_repeat_certified"] is False
-    assert len(packet["pointed_center_path"]) == 5
+    assert len(packet["trace"]["pointed_center_path"]) == 5
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("ordinary Mahler observer constructed a center matrix")
@@ -61,7 +64,7 @@ def test_mahler_cli_matrix_bounds_rejected(steps: str) -> None:
                 "--nth",
                 "1",
                 "--info",
-                "temporal.matrix",
+                "temporal.matrix.trace",
                 "--temporal-matrix-steps",
                 steps,
             ]
@@ -93,7 +96,7 @@ def test_mahler_cli_small_source_matrix_uses_padded_pointed_center(
                 "--nth",
                 "0",
                 "--info",
-                "temporal.matrix",
+                "temporal.matrix.trace",
                 "--temporal-matrix-steps",
                 "4",
                 "--format",
@@ -104,8 +107,8 @@ def test_mahler_cli_small_source_matrix_uses_padded_pointed_center(
     )
     packet = json.loads(capsys.readouterr().out)
     assert packet["value"] == "8"
-    matrix = packet["info"]["temporal.matrix"]
-    assert matrix["pointed_center_path"] == [0, 1, 1, 2, 3]
+    matrix = packet["info"]["temporal.matrix.trace"]
+    assert matrix["trace"]["pointed_center_path"] == [0, 1, 1, 2, 3]
     assert matrix["temporal_repeat_certified"] is False
 
 

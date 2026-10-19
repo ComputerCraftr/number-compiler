@@ -501,7 +501,9 @@ def test_public_collector_exposes_schema_eight_without_executing_a_query() -> No
 
 
 def test_warm_source_image_requests_record_hits_without_new_publications() -> None:
-    from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+    from number_compiler.hashlife.execution.source_image_inventory import (
+        SourceImageDemand,
+    )
     from number_compiler.sequences.collatz.physical_images import (
         CollatzPhysicalImageWorkspace,
     )
@@ -509,7 +511,7 @@ def test_warm_source_image_requests_record_hits_without_new_publications() -> No
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 16)
     before = collect_ledger_metrics(ledger).temporal_diagnostics
-    assert workspace._action(16) == workspace.root_action
+    assert workspace.action_for_extent(16) == workspace.root_action
     demand = SourceImageDemand("physical-summary")
     assert (
         workspace.scheduler.source_image_demanded(

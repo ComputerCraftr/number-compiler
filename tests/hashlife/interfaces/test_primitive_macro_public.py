@@ -14,10 +14,12 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
-    DiamondQuotientID,
 )
 from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
     PrimitiveMacroArena,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    DiamondQuotientID,
 )
 from tests.support.diamond_query import build, oracle
 

@@ -8,15 +8,17 @@ import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.source_bound_images import _Action, _DecimalAdapter
+from tests.support.source_bound_images import DecimalImageAction, DecimalImageAdapter
 
 
-class _SplitDecimal(_DecimalAdapter):
+class _SplitDecimal(DecimalImageAdapter):
     def admitted_input_key(self, action: object, source: SourceImageView) -> None:
         self.validate_action(action)
         self.validate_payload(source.payload)
@@ -54,7 +56,7 @@ class _SplitDecimal(_DecimalAdapter):
         before: SourceImageView,
         after: SourceImageView,
     ) -> SourceImageCandidate:
-        assert type(action) is _Action
+        assert type(action) is DecimalImageAction
         children = self.action_children(action)
         assert children is not None
         assert before.binding.action == children[0]
@@ -76,7 +78,7 @@ def test_split_contexts_keep_local_children_and_exact_parent_binding() -> None:
     core = SourceBoundSchedulerCore(ledger)
     adapter = _SplitDecimal(ledger)
     core.register(adapter)
-    action = _Action((2, 4, 6, 8))
+    action = DecimalImageAction((2, 4, 6, 8))
     first = core.apply(adapter, 7, action)
     assert core.projection(adapter, first, SourceImageDemand("value")).value == 72468
     assert core.view(first).binding.source == 7
@@ -103,12 +105,15 @@ def test_split_context_rejection_releases_shared_work_stack(
 
     monkeypatch.setattr(adapter, "second_child_source", invalid)
     with pytest.raises(ValueError, match="invalid decimal source"):
-        core.apply(adapter, 7, _Action((2, 4)))
+        core.apply(adapter, 7, DecimalImageAction((2, 4)))
     workspace = next(
         row for row in ledger.inventory() if row.role == "source_image_workspace"
     )
     assert workspace.entries == workspace.nodes == 0
-    assert not any(key.action == _Action((2, 4)) for key in core._applications)
+    assert not any(
+        key.action == DecimalImageAction((2, 4))
+        for key in core.audit_snapshot().applications
+    )
 
 
 def test_split_contexts_do_not_discard_a_guarded_failure() -> None:
@@ -121,6 +126,6 @@ def test_split_contexts_do_not_discard_a_guarded_failure() -> None:
     adapter = FailingSource(ledger)
     core.register(adapter)
     with pytest.raises(ValueError, match="guarded failure"):
-        core.apply(adapter, 7, _Action((2, 4)))
+        core.apply(adapter, 7, DecimalImageAction((2, 4)))
     assert adapter.primitive_calls == 0
-    assert not core._applications
+    assert not core.audit_snapshot().applications

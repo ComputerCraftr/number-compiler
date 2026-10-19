@@ -35,13 +35,15 @@ from number_compiler.hashlife.execution.field_transfers import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    COMPONENT_ROLES,
     DiamondQuotientArena,
 )
 from number_compiler.hashlife.interfaces.semantic_interfaces import (
     PrimitiveSemanticTransferAdapter,
     SemanticBoundaryArena,
     SemanticLocalInterfaceCompiler,
+)
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    COMPONENT_ROLES,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically

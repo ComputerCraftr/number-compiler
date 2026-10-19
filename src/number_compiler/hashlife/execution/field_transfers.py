@@ -25,15 +25,16 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
     SourceForestID,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
-    LocalInterfaceID,
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
+from number_compiler.resources.field_image_audit_contracts import (
+    FieldTransferAuditSnapshot,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
-from number_compiler.resources.stores import make_node_index
+from number_compiler.resources.stores import NodeIndexFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +82,7 @@ class FieldTransferRequestKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _TransferKey:
+class FieldTransferKey:
     """Canonical behavior only; occurrence admission bounds stay on records."""
 
     level: int
@@ -94,7 +95,7 @@ class FieldTransferArena:
     """Lifetime-stable semantic transfers with evictable occurrence bindings."""
 
     _nodes: MutableMapping[int, FieldTransferRecord]
-    _keys: MutableMapping[_TransferKey, int]
+    _keys: MutableMapping[FieldTransferKey, int]
 
     _KIND = "field-transfer"
 
@@ -152,26 +153,15 @@ class FieldTransferArena:
             prefix + "-observation-bindings",
             "observation_memo",
         )
-        self._nodes, self._keys = make_node_index(
-            ledger, self._node_owner, self._key_owner
-        )
+        self._nodes, self._keys = NodeIndexFactory[
+            FieldTransferRecord, FieldTransferKey
+        ].sparse(ledger, self._node_owner, self._key_owner)
         self._bindings: MutableMapping[FieldTransferRequestKey, FieldTransferID] = (
             ledger.make_dict(self._binding_owner)
         )
         self._observation_bindings: MutableMapping[
             tuple[FieldTransferID, SourceBindingID], None
         ] = ledger.make_dict(self._observation_owner)
-        ledger.register_container(
-            self._node_owner,
-            self._nodes,
-            node_count=lambda: len(self._nodes),
-            payloads=self._nodes.items,
-        )
-        ledger.register_container(
-            self._key_owner,
-            self._keys,
-            payloads=self._keys.items,
-        )
         ledger.register_container(
             self._binding_owner,
             self._bindings,
@@ -187,6 +177,40 @@ class FieldTransferArena:
 
     def _handle(self, local_id: int) -> FieldTransferID:
         return FieldTransferID(self.owner, self._KIND, local_id)
+
+    @property
+    def transfer_kind(self) -> str:
+        """Nominal handle kind for this transfer arena."""
+        return self._KIND
+
+    def audit_snapshot(self) -> FieldTransferAuditSnapshot:
+        """Expose exact backing stores through a read-only audit view."""
+        return FieldTransferAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._next_id,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+            self._binding_owner,
+            self._bindings,
+            self._observation_owner,
+            self._observation_bindings,
+        )
+
+    def validate_record(self, record: FieldTransferRecord) -> None:
+        """Validate a stored transfer payload through its semantic owner."""
+        if type(record) is not FieldTransferRecord:
+            raise TypeError("expected a canonical field-transfer record")
+        record.__post_init__()
+        self.interfaces.resolve(record.interface)
+        geometry = self.geometries.resolve(record.geometry)
+        if geometry.spatial_level != record.level:
+            raise ValueError("field-transfer level differs from normalized geometry")
+        record.output.validate(self.output_owner, self.output_kind)
+        self._output_validate(record.output)
 
     def resolve(self, reference: FieldTransferID) -> FieldTransferRecord:
         if type(reference) is not FieldTransferID:
@@ -205,14 +229,14 @@ class FieldTransferArena:
             raise TypeError("field-transfer request requires a field action")
         key.action.validate(self.action_owner, self.action_kind)
         if type(key.source) is SourceCellID:
-            key.source.validate(self.sources.owner, self.sources._KIND)
+            key.source.validate(self.sources.owner, self.sources.source_kind)
         elif type(key.source) is SourceForestID:
-            key.source.validate(self.sources.owner, self.sources._FOREST_KIND)
+            key.source.validate(self.sources.owner, self.sources.forest_kind)
         else:
             raise TypeError("field-transfer request requires a scoped source binding")
         if type(key.geometry) is not FieldGeometryID:
             raise TypeError("field-transfer request requires normalized geometry")
-        key.geometry.validate(self.geometries.owner, self.geometries._KIND)
+        key.geometry.validate(self.geometries.owner, self.geometries.geometry_kind)
         if type(key.signature) is not PortSignatureID:
             raise TypeError("field-transfer request requires a port signature")
         key.signature.validate(self.interfaces.owner, self.interfaces.signature_kind)
@@ -284,7 +308,7 @@ class FieldTransferArena:
             if self.resolve(bound) != record:
                 raise ValueError("field-transfer request already has another result")
             return bound
-        semantic = _TransferKey(
+        semantic = FieldTransferKey(
             record.level,
             record.interface,
             record.output,
@@ -342,6 +366,7 @@ class FieldTransferArena:
 __all__ = [
     "FieldTransferArena",
     "FieldTransferID",
+    "FieldTransferKey",
     "FieldTransferRecord",
     "FieldTransferRequestKey",
 ]

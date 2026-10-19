@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, TypedDict
 
+from devtools.verification.quotient_synthesis import transition_conflict_count
 from number_compiler.arithmetic.carry.carry_normalization import (
     normalization_carry_boundaries,
 )
@@ -203,7 +204,7 @@ def reverse_carry_rows(
     seed: int = 196, *, steps: int = 256, base: int = 10
 ) -> tuple[tuple[int, ...], ...]:
     pair = reverse_pair_sums(seed, base)
-    rows = []
+    rows: list[tuple[int, ...]] = []
     for _ in range(int(steps) + 1):
         rows.append(carry_field(pair, base=base))
         pair, _growth = pair_step(pair, base)
@@ -221,29 +222,25 @@ def reverse_carry_radix_profile(
 ) -> ReverseCarryRadixProfile:
     rows = reverse_carry_rows(seed, steps=steps, base=base)
     current, nxt = rows[:-1], rows[1:]
-    exact_map: dict[tuple[int, ...], tuple[int, ...]] = {}
-    exact_conflicts = 0
-    for row, next_row in zip(current, nxt, strict=True):
-        old = exact_map.setdefault(row, next_row)
-        if old != next_row:
-            exact_conflicts += 1
-
+    exact_conflicts = transition_conflict_count(zip(current, nxt, strict=True))
     features = tuple(_factor_feature(row, order_limit=order_limit) for row in rows)
-    feature_map: dict[tuple[object, ...], tuple[object, ...]] = {}
-    feature_conflicts = 0
-    for feature, next_feature in pairwise(features):
-        previous_feature = feature_map.setdefault(feature, next_feature)
-        if previous_feature != next_feature:
-            feature_conflicts += 1
+    feature_conflicts = transition_conflict_count(pairwise(features))
 
-    bridges = []
+    bridges: list[
+        tuple[
+            int,
+            tuple[int, ...],
+            tuple[tuple[int, int], ...],
+            tuple[tuple[int, int], ...],
+        ]
+    ] = []
     for step in sample_steps:
         step = int(step)
         if not 0 <= step < len(rows):
             continue
         row = rows[step]
         factor = bounded_cyclotomic_factorization(row, order_limit=order_limit)
-        evaluations = []
+        evaluations: list[tuple[int, int]] = []
         for radix in evaluation_bases:
             evaluation = padded_radix_evaluation(row, radix=int(radix))
             divisor = factor.evaluated_cyclotomic_factor(int(radix))
@@ -345,7 +342,7 @@ def special_carry_trajectory_profile(
     iterations = (
         (1 << int(parameter)) - 1 if family == "fermat" else max(0, int(parameter) - 2)
     )
-    rows = []
+    rows: list[tuple[int, ...]] = []
     for _ in range(iterations):
         rows.append(_special_carries(family, parameter, state))
         state = transition(state)

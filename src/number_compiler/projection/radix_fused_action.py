@@ -18,7 +18,7 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import projection as _projection_keys
@@ -103,7 +103,7 @@ class FusedRadixArena:
             ),
             FinitePort(PortVariable(stages + 1, 0, "radix-coordinate", 0), count),
         )
-        circuit = _Circuit(self.functions, ports)
+        circuit = BooleanCircuit(self.functions, ports)
         variables = tuple(
             tuple(
                 circuit.tx.bit(
@@ -212,7 +212,7 @@ class FusedRadixArena:
 
     def _leaf(
         self,
-        c: _Circuit,
+        c: BooleanCircuit,
         symbol: int,
         physical: bool,
         radix: int,
@@ -251,7 +251,7 @@ class FusedRadixArena:
 
     def _join(
         self,
-        c: _Circuit,
+        c: BooleanCircuit,
         ports: tuple[FinitePort, ...],
         left: _BuildingAction,
         right: _BuildingAction,
@@ -300,7 +300,10 @@ class FusedRadixArena:
         return _BuildingAction(left.level + 1, right_physical, exits, output, active)
 
     def _substitute(
-        self, c: _Circuit, roots: tuple[int, ...], replacements: dict[PortVariable, int]
+        self,
+        c: BooleanCircuit,
+        roots: tuple[int, ...],
+        replacements: dict[PortVariable, int],
     ) -> tuple[int, ...]:
         pending = [(root, False) for root in roots]
         done: dict[int, int] = {}

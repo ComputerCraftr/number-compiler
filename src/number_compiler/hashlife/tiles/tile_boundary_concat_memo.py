@@ -98,7 +98,7 @@ def _validate_key(arena: CompletedResultArena, key: BoundaryConcatKey) -> None:
         raise ValueError("boundary concatenation requires two nonempty views")
 
 
-def _validate_value(
+def validate_boundary_concat_value(
     arena: CompletedResultArena,
     key: BoundaryConcatKey,
     value: BoundaryConcatResult,
@@ -166,7 +166,7 @@ def _lookup_canonical(
         return None
     if type(found) is not BoundaryConcatResult:
         raise TypeError("boundary concat memo contains another value sort")
-    _validate_value(arena, canonical, found, published=True)
+    validate_boundary_concat_value(arena, canonical, found, published=True)
     arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_EARLY_HITS)
     return found
 
@@ -177,13 +177,13 @@ def _publish(
     value: BoundaryConcatResult,
 ) -> tuple[BoundaryConcatResult, bool]:
     _validate_key(arena, key)
-    _validate_value(arena, key, value, published=True)
+    validate_boundary_concat_value(arena, key, value, published=True)
     found = arena._memo.get(key)
     arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not BoundaryConcatResult:
             raise TypeError("boundary concat memo contains another value sort")
-        _validate_value(arena, key, found, published=True)
+        validate_boundary_concat_value(arena, key, found, published=True)
         if found != value:
             raise ValueError("boundary concat already has another canonical result")
         arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_LATE_DUPLICATES)

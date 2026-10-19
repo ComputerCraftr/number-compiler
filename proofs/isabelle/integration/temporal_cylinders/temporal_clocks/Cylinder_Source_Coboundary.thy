@@ -92,7 +92,7 @@ lemma source_local_carry_div:
   shows "int (carry_bit (carry_apply (domain s) c)) =
     (int s + int (carry_bit c)) div 10"
   using assms
-  by (cases c; auto simp: carry_bit_def carry_from_domain split: if_splits; arith)
+  by (cases c; auto simp: carry_bit_def carry_apply_decimal_threshold split: if_splits; arith)
 
 lemma source_carry_step_div:
   assumes valid: "source_pair_valid ss" and bound: "j < length ss"

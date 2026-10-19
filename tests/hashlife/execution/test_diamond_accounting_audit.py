@@ -11,12 +11,13 @@ from number_compiler.hashlife.interfaces.diamond_unary import UnaryComposition
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_registry import observed_node_partition
 from tests.support.assertions import measure_operation
+from tests.support.collatz_diamond_fixtures import collatz_context_program_case
 from tests.support.dataclass_records import replace_record
-from tests.support.diamond_context_program import assert_context_inventory, populated
+from tests.support.diamond_context_program import assert_context_inventory
 
 
 def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> None:
-    runtime, _action, contexts, _request = populated()
+    runtime, _action, contexts, _request = collatz_context_program_case()
     arena = runtime.pair_macros
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
@@ -62,7 +63,7 @@ def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> 
 
 
 def test_unary_key_audit_checks_declared_variable_support_and_exact_port_type() -> None:
-    runtime, _, contexts, _ = populated()
+    runtime, _, contexts, _ = collatz_context_program_case()
     key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
     registry = DiamondPayloadRegistry(runtime.ledger)
     assert registry.valid(key)
@@ -77,7 +78,7 @@ def test_unary_key_audit_checks_declared_variable_support_and_exact_port_type() 
 
 
 def test_early_unary_lookup_does_not_mask_late_expression_interning() -> None:
-    runtime, _, contexts, _ = populated()
+    runtime, _, contexts, _ = collatz_context_program_case()
     key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
     before, after = measure_operation(
         runtime.ledger,
@@ -108,7 +109,7 @@ def test_early_unary_lookup_does_not_mask_late_expression_interning() -> None:
 
 
 def test_repeated_finite_function_reduction_reports_late_alias_work() -> None:
-    runtime, action, _, _ = populated()
+    runtime, action, _, _ = collatz_context_program_case()
     primitive = runtime.actions.reference(runtime.actions.node(action).first)
     arena = runtime.boundaries
     count = arena._domain_size(primitive, 0)
@@ -194,9 +195,11 @@ def test_primitive_spatial_bindings_have_actual_slots_and_early_hit_units() -> N
         SpatialSummary,
     )
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from tests.support.diamond_runtime import build
+    from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1
+    )
     request = SpatialSummary(action, runtime.cells.source(0, 2), 0)
     expected = runtime.execute(request)
     before = runtime.ledger.snapshot()
@@ -228,7 +231,7 @@ def test_primitive_spatial_bindings_have_actual_slots_and_early_hit_units() -> N
 
 
 def test_warm_unary_composition_hits_before_repeated_admission_work() -> None:
-    runtime, _, contexts, _ = populated()
+    runtime, _, contexts, _ = collatz_context_program_case()
     key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
     contexts.unary.compose(key.kernel, key.side, key.before, key.after, key.port)
     before, after = measure_operation(
@@ -275,9 +278,11 @@ def test_spatial_source_admission_is_staged_and_warm_validation_work_is_visible(
         SpatialSummary,
     )
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from tests.support.diamond_runtime import build
+    from tests.support.collatz_diamond_fixtures import build_collatz_diamond_runtime
 
-    runtime, action = build(CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1)
+    runtime, action = build_collatz_diamond_runtime(
+        CollatzPhysicalBlockEffect(), (1, 1, 0, 1), 4, 1
+    )
     cell = runtime.cells.source(0, 2)
     before = runtime.ledger.snapshot()
     # The immutable original_forward proof is checked directly: one visit,
@@ -313,7 +318,9 @@ def test_original_source_reads_and_interner_reuse_have_distinct_units() -> None:
     geometry = index._source_geometry
     before = index.metrics()
     assert before.canonical_tile_arena_nodes > 0
-    assert before.tile_observations == index._ledger.counters["source_leaf_reads"]
+    assert (
+        before.tile_observations == index.resource_ledger.counters["source_leaf_reads"]
+    )
     assert geometry.read(0) == geometry.read(0) == 1
     observed = index.metrics()
     assert observed.tile_observations == before.tile_observations + 2

@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BAND_NAMES,
+    DecimalPairBand,
+    decimal_pair_band,
+)
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
@@ -267,11 +272,7 @@ def source_walsh64_mod5(
     if type(start) is not int or start < 0:
         raise ValueError("Walsh lane start must be nonnegative")
     allowed = {
-        "lt_low",
-        "lt_high",
-        "eq",
-        "gt_low",
-        "gt_high",
+        *DECIMAL_PAIR_BAND_NAMES,
         "carry",
         "reflected_xor",
         "future_eq",
@@ -292,7 +293,12 @@ def source_walsh64_mod5(
         index = start + lane
         if channel.startswith("future_"):
             symbol = stencil.cell_at(owner, index).coefficient
-            bit = symbol == 9 if channel == "future_eq" else 15 <= symbol <= 18
+            expected = (
+                DecimalPairBand.EQ
+                if channel == "future_eq"
+                else DecimalPairBand.GT_HIGH
+            )
+            bit = decimal_pair_band(symbol) is expected
         elif channel == "carry":
             bit = bool(stencil.carry_at(owner, index + 1))
         elif channel == "reflected_xor":
@@ -302,17 +308,7 @@ def source_walsh64_mod5(
             )
         else:
             pair = owner._pair_value_at(source, index)
-            bit = (
-                pair <= 4
-                if channel == "lt_low"
-                else 5 <= pair <= 8
-                if channel == "lt_high"
-                else pair == 9
-                if channel == "eq"
-                else 10 <= pair <= 14
-                if channel == "gt_low"
-                else 15 <= pair <= 18
-            )
+            bit = decimal_pair_band(pair) is DecimalPairBand(channel)
         mask |= int(bit) << lane
     return walsh64_mod5(mask)
 

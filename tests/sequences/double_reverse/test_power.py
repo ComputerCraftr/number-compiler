@@ -73,7 +73,7 @@ def test_uncertified_two_step_uses_direct_carry_quotient_without_scalar_replay(
 def test_powered_hashlife_action_and_engine_owners_pass_resource_audit() -> None:
     with DoubleReverseTerm(173488, 8) as term:
         term.prepare_endpoint()
-        owners = term._ledger.inventory()
+        owners = term.resource_ledger.inventory()
         for suffix in (
             "-temporal-cones",
             "-temporal-slices",
@@ -83,7 +83,7 @@ def test_powered_hashlife_action_and_engine_owners_pass_resource_audit() -> None
             assert owner.entries > 0
             if suffix == "-temporal-port-actions":
                 assert owner.nodes > owner.entries
-        assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+        assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
 @pytest.mark.parametrize("memo_name", ("_cone", "_slices"))
@@ -102,7 +102,7 @@ def test_same_width_corrupt_temporal_memo_value_fails_payload_audit(
         assert replacement != original
         assert term._arena.nodes[replacement].length == width
         memo[key] = replacement
-        metrics = collect_ledger_metrics(term._ledger)
+        metrics = collect_ledger_metrics(term.resource_ledger)
         assert metrics.resource_audit_complete == 1
         assert metrics.forbidden_future_payloads > 0
         assert metrics.representation_boundary_complete == 0
@@ -281,12 +281,17 @@ def test_partial_stream_cancellation_releases_temporary_traversal_storage() -> N
     stream.close()
 
     scratch = next(
-        item for item in term._ledger.inventory() if item.name.endswith("-scratch")
+        item
+        for item in term.resource_ledger.inventory()
+        if item.name.endswith("-scratch")
     )
     assert scratch.entries == scratch.nodes == 0
     assert term.metrics()["double_reverse_output_stream_cancellations"] == 1
     term.dispose()
-    assert sum(item.accounting_delta or 0 for item in term._ledger.inventory()) == 0
+    assert (
+        sum(item.accounting_delta or 0 for item in term.resource_ledger.inventory())
+        == 0
+    )
 
 
 def test_output_stream_resumed_after_disposal_rejects_stale_arena() -> None:
@@ -301,7 +306,9 @@ def test_output_stream_resumed_after_disposal_rejects_stale_arena() -> None:
         next(stream)
 
     scratch = next(
-        item for item in term._ledger.inventory() if item.name.endswith("-scratch")
+        item
+        for item in term.resource_ledger.inventory()
+        if item.name.endswith("-scratch")
     )
     assert scratch.entries == scratch.nodes == 0
 
@@ -314,13 +321,15 @@ def test_cancelled_walk_defers_and_retries_scratch_retirement(
     next(stream)
     term.dispose()
     scratch = next(
-        item for item in term._ledger.inventory() if item.name.endswith("-scratch")
+        item
+        for item in term.resource_ledger.inventory()
+        if item.name.endswith("-scratch")
     )
     assert not term._cleanup_complete
     assert not scratch.disposed
     assert scratch.entries > 0
 
-    original_mark_disposed = term._ledger.mark_disposed
+    original_mark_disposed = term.resource_ledger.mark_disposed
     failed_once = False
 
     def fail_scratch_once(owner: int) -> None:
@@ -330,21 +339,21 @@ def test_cancelled_walk_defers_and_retries_scratch_retirement(
             raise RuntimeError("injected deferred scratch disposal failure")
         original_mark_disposed(owner)
 
-    monkeypatch.setattr(term._ledger, "mark_disposed", fail_scratch_once)
+    monkeypatch.setattr(term.resource_ledger, "mark_disposed", fail_scratch_once)
     stream.close()
     after_close = next(
-        item for item in term._ledger.inventory() if item.owner == scratch.owner
+        item for item in term.resource_ledger.inventory() if item.owner == scratch.owner
     )
     assert failed_once
     assert not term._cleanup_complete
     assert not after_close.disposed
     assert after_close.entries == after_close.nodes == 0
 
-    monkeypatch.setattr(term._ledger, "mark_disposed", original_mark_disposed)
+    monkeypatch.setattr(term.resource_ledger, "mark_disposed", original_mark_disposed)
     term.dispose()
     assert term._cleanup_complete
-    accounts = term._ledger.inventory()
-    assert term._ledger.entries == term._ledger.nodes == 0
+    accounts = term.resource_ledger.inventory()
+    assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
     assert all(item.entries == item.nodes == 0 for item in accounts)
     assert all(
         item.accounting_delta == 0
@@ -384,7 +393,7 @@ def test_temporal_phase_rejects_numeric_alias_before_lookup(
         assert engine.certify(root) == 1
         if warm:
             engine.advance_action(root, 1, 1)
-        hits = term._ledger.counters.get(
+        hits = term.resource_ledger.counters.get(
             "double_reverse_temporal_port_action_cache_hits", 0
         )
         action = (
@@ -395,7 +404,7 @@ def test_temporal_phase_rejects_numeric_alias_before_lookup(
         with pytest.raises(ValueError):
             action(root, 1, cast(int, phase))
         assert (
-            term._ledger.counters.get(
+            term.resource_ledger.counters.get(
                 "double_reverse_temporal_port_action_cache_hits", 0
             )
             == hits

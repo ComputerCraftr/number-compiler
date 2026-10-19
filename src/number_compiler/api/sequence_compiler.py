@@ -133,9 +133,9 @@ class CanonicalSequenceCompiler:
                 spec, diagnostics=diagnostics
             )
         elif type(spec) is CollatzSequenceSpec:
-            from number_compiler.api.collatz_compilation import _compile_collatz
+            from number_compiler.api.collatz_compilation import compile_collatz
 
-            out = _compile_collatz(spec, diagnostics=diagnostics)
+            out = compile_collatz(spec, diagnostics=diagnostics)
         elif type(spec) is PrimeBlockSequenceSpec:
             # The residual-divisor set morphism is the sole semantic block
             # projection.  The packed congruence automaton, primary jets and

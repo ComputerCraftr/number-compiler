@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.projection.lazy_radix import RadixProjection
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +29,14 @@ class RadixProjectionSourceAuditor(ABC):
     """A family supplies its exact source authority without shared imports."""
 
     __slots__ = ()
+
+    @property
+    def resource_ledger(self) -> ResourceLedger:
+        """Expose the ledger that owns this audited source's projections."""
+        ledger = getattr(self, "_ledger", None)
+        if type(ledger) is not ResourceLedger:
+            raise TypeError("radix projection source has no owned resource ledger")
+        return ledger
 
     @abstractmethod
     def radix_projection_audit_source(

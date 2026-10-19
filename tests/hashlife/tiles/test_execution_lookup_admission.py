@@ -16,22 +16,22 @@ def test_scheduler_lookup_admits_key_once_on_cold_and_warm_paths(
     try:
         action = runtime.actions.action(0)
         key = runtime.scheduler._key(action, runtime.root.tile, (0,), runtime.wiring)
-        original = runtime.scheduler.results._validate_key
+        original = runtime.scheduler.results.validate_key
         calls: list[PoweredResultKey] = []
 
         def counted(request: PoweredResultKey) -> None:
             calls.append(request)
             original(request)
 
-        monkeypatch.setattr(runtime.scheduler.results, "_validate_key", counted)
-        assert runtime.scheduler._lookup_execution_key(key) is None
+        monkeypatch.setattr(runtime.scheduler.results, "validate_key", counted)
+        assert runtime.scheduler.lookup_execution_key(key) is None
         assert calls == [key]
         held = runtime.scheduler.complete(
             action, runtime.root.tile, (0,), runtime.wiring
         )
         try:
             calls.clear()
-            warm = runtime.scheduler._lookup_execution_key(key)
+            warm = runtime.scheduler.lookup_execution_key(key)
             assert warm is not None
             try:
                 assert calls == [key]

@@ -165,7 +165,7 @@ def test_power10_zero_matches_explicit_first_index_and_stays_compact(
 def test_no_value_metrics_do_not_render_the_term(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", _forbidden)
+    monkeypatch.setattr(cli_render, "render_value", _forbidden)
     assert (
         cli.main(
             [
@@ -279,7 +279,7 @@ def test_double_reverse_cache_key_includes_source_and_both_budgets() -> None:
         DoubleReverseTermQuery(2, seed=10, max_steps=5, max_state_bits=16),
         DoubleReverseTermQuery(2, seed=10, max_steps=4, max_state_bits=17),
     )
-    owners = []
+    owners: list[object] = []
     for query in queries:
         result = compiler.project(query)
         assert isinstance(result.payload, DoubleReverseTermPayload)
@@ -296,8 +296,8 @@ def test_disabled_double_reverse_cache_builds_independent_budgeted_owners() -> N
     assert isinstance(first.payload, DoubleReverseTermPayload)
     assert isinstance(second.payload, DoubleReverseTermPayload)
     assert first.payload.term is not second.payload.term
-    assert first.payload.term._ledger.max_nodes == 4096
-    assert second.payload.term._ledger.max_nodes == 4096
+    assert first.payload.term.resource_ledger.max_nodes == 4096
+    assert second.payload.term.resource_ledger.max_nodes == 4096
     assert compiler.powered_cache_info() == {
         "capacity": 0,
         "retained_terms": 0,

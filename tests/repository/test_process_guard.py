@@ -10,10 +10,10 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from functools import partial
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 from uuid import uuid4
 
 import pytest
@@ -25,6 +25,7 @@ from devtools.checks.validation_policy import (
     PYTHON_MEMORY_BYTES,
 )
 from devtools.paths import repository_root
+from tests.support.process_guard import zero_memory_reader
 
 
 class _FinishedChild:
@@ -60,6 +61,37 @@ class _InitiallyUnboundPipeChild(_FinishedPipeChild):
         return 0
 
 
+def _record_killpg(signals: list[tuple[int, int]], group: int, number: int) -> None:
+    signals.append((group, number))
+
+
+def _fixed_memory_reader(value: int) -> tuple[str, Callable[[int], int]]:
+    def read(_pid: int) -> int:
+        return value
+
+    return "test", read
+
+
+def _no_retirement(*args: object, **kwargs: object) -> int:
+    del args, kwargs
+    return 0
+
+
+def _ignore_tracked_signal(
+    tracked: Mapping[int, process_guard.ProcessIdentity], number: int
+) -> None:
+    del tracked, number
+
+
+def _record_tracked_signal(
+    signalled: list[tuple[int, ...]],
+    tracked: Mapping[int, process_guard.ProcessIdentity],
+    number: int,
+) -> None:
+    del number
+    signalled.append(tuple(sorted(tracked)))
+
+
 def _unbound_signal_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[_InitiallyUnboundPipeChild, list[tuple[int, int]]]:
@@ -70,7 +102,7 @@ def _unbound_signal_probe(
     monkeypatch.setattr(
         os,
         "killpg",
-        lambda group, number: signals.append((group, number)),
+        partial(_record_killpg, signals),
     )
     return child, signals
 
@@ -79,18 +111,20 @@ def _run_guarded_with_snapshots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     child: _FinishedPipeChild,
-    snapshot_rows: tuple[dict[int, process_guard._ProcessRecord] | Exception, ...],
+    snapshot_rows: tuple[dict[int, process_guard.ProcessIdentity] | Exception, ...],
     *,
     timeout: float = 35,
     interval: float = 0.05,
     fake_retirement: bool = True,
     repeat_last_snapshot: bool = False,
 ) -> tuple[process_guard.GuardResult, int]:
-    snapshots = iter(snapshot_rows)
+    snapshots: Iterator[dict[int, process_guard.ProcessIdentity] | Exception] = iter(
+        snapshot_rows
+    )
     snapshot_calls = 0
-    last_row: dict[int, process_guard._ProcessRecord] = {}
+    last_row: dict[int, process_guard.ProcessIdentity] = {}
 
-    def snapshot() -> dict[int, process_guard._ProcessRecord]:
+    def snapshot() -> dict[int, process_guard.ProcessIdentity]:
         nonlocal last_row, snapshot_calls
         snapshot_calls += 1
         try:
@@ -104,13 +138,15 @@ def _run_guarded_with_snapshots(
         last_row = row
         return row
 
-    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: child)
-    monkeypatch.setattr(process_guard, "_process_snapshot", snapshot)
-    monkeypatch.setattr(
-        process_guard, "memory_reader", lambda: ("test", lambda _pid: 0)
-    )
+    def fake_popen(*args: object, **kwargs: object) -> _FinishedPipeChild:
+        del args, kwargs
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(process_guard, "process_snapshot", snapshot)
+    monkeypatch.setattr(process_guard, "memory_reader", zero_memory_reader)
     if fake_retirement:
-        monkeypatch.setattr(process_guard, "_retire", lambda *_args, **_kwargs: 0)
+        monkeypatch.setattr(process_guard, "retire_process", _no_retirement)
 
     result = process_guard.run_guarded(
         ("snapshot-test-child",),
@@ -245,7 +281,7 @@ def test_worker_uses_explicit_working_directory(tmp_path: Path) -> None:
         (
             sys.executable,
             "-c",
-            "import pathlib,time; print(pathlib.Path.cwd()); time.sleep(.15)",
+            "import pathlib; print(pathlib.Path.cwd())",
         ),
         output=tmp_path / "worker.log",
         cwd=working,
@@ -463,21 +499,21 @@ def test_timeout_reaps_late_child_of_detached_descendant(tmp_path: Path) -> None
 
 
 def test_pid_reuse_does_not_retain_a_tracked_process() -> None:
-    expected = process_guard._ProcessRecord(123, 1, 123, "S", "old")
-    reused = process_guard._ProcessRecord(123, 1, 123, "S", "new")
-    assert process_guard._live_tracked({123: expected}, {123: reused}) == ()
+    expected = process_guard.ProcessIdentity(123, 1, 123, "S", "old")
+    reused = process_guard.ProcessIdentity(123, 1, 123, "S", "new")
+    assert process_guard.live_tracked_processes({123: expected}, {123: reused}) == ()
 
 
 @pytest.mark.parametrize("snapshot_kind", ["missing", "zombie", "reused"])
 def test_permission_race_discards_vanished_or_replaced_identity(
     monkeypatch: pytest.MonkeyPatch,
-    snapshot_kind: str,
+    snapshot_kind: Literal["missing", "zombie", "reused"],
 ) -> None:
-    member = process_guard._ProcessRecord(123, 1, 123, "S", "original")
-    current = {
+    member = process_guard.ProcessIdentity(123, 1, 123, "S", "original")
+    current: Mapping[int, process_guard.ProcessIdentity] = {
         "missing": {},
-        "zombie": {123: process_guard._ProcessRecord(123, 1, 123, "Z", "original")},
-        "reused": {123: process_guard._ProcessRecord(123, 1, 123, "S", "replacement")},
+        "zombie": {123: process_guard.ProcessIdentity(123, 1, 123, "Z", "original")},
+        "reused": {123: process_guard.ProcessIdentity(123, 1, 123, "S", "replacement")},
     }[snapshot_kind]
     read_pids: list[int] = []
 
@@ -485,42 +521,41 @@ def test_permission_race_discards_vanished_or_replaced_identity(
         read_pids.append(pid)
         raise PermissionError(errno.EPERM, "process exited during footprint read", pid)
 
-    monkeypatch.setattr(process_guard, "_process_snapshot", lambda: current)
+    monkeypatch.setattr(process_guard, "process_snapshot", lambda: current)
 
-    assert process_guard._read_member_footprint(member, denied) == 0
+    assert process_guard.read_member_footprint(member, denied) == 0
     assert read_pids == [member.pid]
 
 
 def test_permission_race_rechecks_identity_after_bounded_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    member = process_guard._ProcessRecord(123, 1, 123, "S", "original")
-    snapshots = iter(
-        (
-            {member.pid: member},
-            {},
-        )
+    member = process_guard.ProcessIdentity(123, 1, 123, "S", "original")
+    sequence: tuple[Mapping[int, process_guard.ProcessIdentity], ...] = (
+        {member.pid: member},
+        {},
     )
+    snapshots: Iterator[Mapping[int, process_guard.ProcessIdentity]] = iter(sequence)
     read_pids: list[int] = []
 
     def denied(pid: int) -> int:
         read_pids.append(pid)
         raise PermissionError(errno.EPERM, "process exited during footprint read", pid)
 
-    monkeypatch.setattr(process_guard, "_process_snapshot", lambda: next(snapshots))
+    monkeypatch.setattr(process_guard, "process_snapshot", lambda: next(snapshots))
 
-    assert process_guard._read_member_footprint(member, denied) == 0
+    assert process_guard.read_member_footprint(member, denied) == 0
     assert read_pids == [member.pid, member.pid]
 
 
 def test_permission_failure_for_same_live_identity_remains_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    member = process_guard._ProcessRecord(123, 1, 123, "S", "original")
+    member = process_guard.ProcessIdentity(123, 1, 123, "S", "original")
     snapshot_calls = 0
     read_calls = 0
 
-    def snapshot() -> dict[int, process_guard._ProcessRecord]:
+    def snapshot() -> dict[int, process_guard.ProcessIdentity]:
         nonlocal snapshot_calls
         snapshot_calls += 1
         return {member.pid: member}
@@ -532,20 +567,25 @@ def test_permission_failure_for_same_live_identity_remains_fail_closed(
             errno.EPERM, "live process footprint is inaccessible", pid
         )
 
-    monkeypatch.setattr(process_guard, "_process_snapshot", snapshot)
+    monkeypatch.setattr(process_guard, "process_snapshot", snapshot)
 
     with pytest.raises(PermissionError, match="live process footprint is inaccessible"):
-        process_guard._read_member_footprint(member, denied)
-    assert snapshot_calls == process_guard._MEMORY_READ_ATTEMPTS
-    assert read_calls == process_guard._MEMORY_READ_ATTEMPTS
+        process_guard.read_member_footprint(member, denied)
+    assert snapshot_calls == 2
+    assert read_calls == 2
 
 
 def test_reused_root_does_not_adopt_its_new_descendants() -> None:
-    expected = process_guard._ProcessRecord(123, 1, 123, "S", "old")
-    reused = process_guard._ProcessRecord(123, 1, 123, "S", "new")
-    child = process_guard._ProcessRecord(124, 123, 124, "S", "child")
-    tracked: dict[int, process_guard._ProcessRecord] = {}
-    process_guard._observe_descendants(expected, tracked, {123: reused, 124: child})
+    expected = process_guard.ProcessIdentity(123, 1, 123, "S", "old")
+    reused = process_guard.ProcessIdentity(123, 1, 123, "S", "new")
+    child = process_guard.ProcessIdentity(124, 123, 124, "S", "child")
+    tracked: dict[int, process_guard.ProcessIdentity] = {}
+    assert (
+        process_guard.authorized_descendants(
+            expected, tracked, {123: reused, 124: child}
+        )
+        == ()
+    )
     assert tracked == {}
 
 
@@ -555,8 +595,8 @@ def test_child_exit_uses_fresh_descendant_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     descendant_survives: bool,
 ) -> None:
-    root = process_guard._ProcessRecord(123, 1, 123, "S", "root")
-    descendant = process_guard._ProcessRecord(124, 123, 123, "S", "worker")
+    root = process_guard.ProcessIdentity(123, 1, 123, "S", "root")
+    descendant = process_guard.ProcessIdentity(124, 123, 123, "S", "worker")
     read_fd, write_fd = os.pipe()
     os.close(write_fd)
     child = _FinishedPipeChild(root.pid, os.fdopen(read_fd, "rb", buffering=0))
@@ -581,8 +621,8 @@ def test_guard_binds_fast_child_before_reaping_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root = process_guard._ProcessRecord(123, 1, 123, "Z", "root")
-    descendant = process_guard._ProcessRecord(124, 123, 123, "S", "worker")
+    root = process_guard.ProcessIdentity(123, 1, 123, "Z", "root")
+    descendant = process_guard.ProcessIdentity(124, 123, 123, "S", "worker")
     read_fd, write_fd = os.pipe()
     os.close(write_fd)
     child = _InitiallyUnboundPipeChild(root.pid, os.fdopen(read_fd, "rb", buffering=0))
@@ -623,11 +663,11 @@ def test_unbound_retirement_signals_only_while_child_pins_group_id(
         return 0
 
     monkeypatch.setattr(os, "killpg", signal_group)
-    monkeypatch.setattr(process_guard, "_process_snapshot", dict)
-    monkeypatch.setattr(process_guard, "_signal_tracked", lambda *_args: None)
+    monkeypatch.setattr(process_guard, "process_snapshot", dict)
+    monkeypatch.setattr(process_guard, "_signal_tracked", _ignore_tracked_signal)
     monkeypatch.setattr(child, "wait", wait)
 
-    assert process_guard._retire(child) == 0
+    assert process_guard.retire_process(child) == 0
     assert events[:3] == [
         ("signal", signal.SIGTERM),
         ("signal", signal.SIGKILL),
@@ -642,8 +682,12 @@ def test_unbound_retirement_confirms_group_empty_before_wait(
     read_fd, write_fd = os.pipe()
     os.close(write_fd)
     child = _InitiallyUnboundPipeChild(123, os.fdopen(read_fd, "rb", buffering=0))
-    member = process_guard._ProcessRecord(124, 1, child.pid, "S", "member")
-    snapshots = iter(({member.pid: member}, {}))
+    member = process_guard.ProcessIdentity(124, 1, child.pid, "S", "member")
+    sequence: tuple[Mapping[int, process_guard.ProcessIdentity], ...] = (
+        {member.pid: member},
+        {},
+    )
+    snapshots: Iterator[Mapping[int, process_guard.ProcessIdentity]] = iter(sequence)
     events: list[tuple[str, int | None]] = []
 
     def signal_group(group: int, number: int) -> None:
@@ -651,7 +695,7 @@ def test_unbound_retirement_confirms_group_empty_before_wait(
         assert child.returncode is None
         events.append(("signal", number))
 
-    def snapshot() -> dict[int, process_guard._ProcessRecord]:
+    def snapshot() -> Mapping[int, process_guard.ProcessIdentity]:
         return next(snapshots)
 
     def wait(timeout: float | None = None) -> int:
@@ -661,10 +705,10 @@ def test_unbound_retirement_confirms_group_empty_before_wait(
         return 0
 
     monkeypatch.setattr(os, "killpg", signal_group)
-    monkeypatch.setattr(process_guard, "_process_snapshot", snapshot)
+    monkeypatch.setattr(process_guard, "process_snapshot", snapshot)
     monkeypatch.setattr(child, "wait", wait)
 
-    assert process_guard._retire(child) == 0
+    assert process_guard.retire_process(child) == 0
     assert events == [
         ("signal", signal.SIGTERM),
         ("signal", signal.SIGKILL),
@@ -682,12 +726,12 @@ def test_reaped_unbound_child_does_not_authorize_process_group_signal(
     monkeypatch.setattr(
         os,
         "killpg",
-        lambda group, number: signals.append((group, number)),
+        partial(_record_killpg, signals),
     )
-    monkeypatch.setattr(process_guard, "_process_snapshot", dict)
-    monkeypatch.setattr(process_guard, "_signal_tracked", lambda *_args: None)
+    monkeypatch.setattr(process_guard, "process_snapshot", dict)
+    monkeypatch.setattr(process_guard, "_signal_tracked", _ignore_tracked_signal)
 
-    assert process_guard._retire(child) == 0
+    assert process_guard.retire_process(child) == 0
     assert signals == []
 
 
@@ -748,31 +792,31 @@ def test_retirement_snapshot_failure_is_reported_and_reaps_child(
 def test_retirement_does_not_signal_a_reused_root_process_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = process_guard._ProcessRecord(123, 1, 777, "S", "old")
-    reused = process_guard._ProcessRecord(123, 1, 777, "S", "new")
-    foreign = process_guard._ProcessRecord(456, 123, 777, "S", "foreign")
+    expected = process_guard.ProcessIdentity(123, 1, 777, "S", "old")
+    reused = process_guard.ProcessIdentity(123, 1, 777, "S", "new")
+    foreign = process_guard.ProcessIdentity(456, 123, 777, "S", "foreign")
     monkeypatch.setattr(
         process_guard,
-        "_process_snapshot",
+        "process_snapshot",
         lambda: {123: reused, 456: foreign},
     )
     groups: list[tuple[int, int]] = []
     monkeypatch.setattr(
         process_guard,
         "_signal_group",
-        lambda group, number: groups.append((group, number)),
+        partial(_record_killpg, groups),
     )
-    monkeypatch.setattr(process_guard, "_signal_tracked", lambda tracked, number: None)
-    assert process_guard._retire(_FinishedChild(), root_identity=expected) == 0
+    monkeypatch.setattr(process_guard, "_signal_tracked", _ignore_tracked_signal)
+    assert process_guard.retire_process(_FinishedChild(), root_identity=expected) == 0
     assert groups == []
 
 
 def test_retirement_does_not_adopt_foreign_group_after_anchor_vanishes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected_root = process_guard._ProcessRecord(123, 1, 777, "S", "old")
-    original_member = process_guard._ProcessRecord(456, 123, 777, "S", "original")
-    foreign_member = process_guard._ProcessRecord(789, 1, 777, "S", "foreign")
+    expected_root = process_guard.ProcessIdentity(123, 1, 777, "S", "old")
+    original_member = process_guard.ProcessIdentity(456, 123, 777, "S", "original")
+    foreign_member = process_guard.ProcessIdentity(789, 1, 777, "S", "foreign")
     snapshots = iter(
         (
             {456: original_member},
@@ -780,16 +824,16 @@ def test_retirement_does_not_adopt_foreign_group_after_anchor_vanishes(
             {789: foreign_member},
         )
     )
-    monkeypatch.setattr(process_guard, "_process_snapshot", lambda: next(snapshots))
+    monkeypatch.setattr(process_guard, "process_snapshot", lambda: next(snapshots))
     signalled: list[tuple[int, ...]] = []
     monkeypatch.setattr(
         process_guard,
         "_signal_tracked",
-        lambda tracked, number: signalled.append(tuple(sorted(tracked))),
+        partial(_record_tracked_signal, signalled),
     )
 
     assert (
-        process_guard._retire(
+        process_guard.retire_process(
             _FinishedChild(),
             tracked={original_member.pid: original_member},
             root_identity=expected_root,
@@ -808,7 +852,11 @@ def test_detached_descendant_counts_toward_memory_limit(
     def footprint(pid: int) -> int:
         return 1 if pid == owner_pid else 900
 
-    monkeypatch.setattr(process_guard, "memory_reader", lambda: ("test", footprint))
+    monkeypatch.setattr(
+        process_guard,
+        "memory_reader",
+        lambda: ("test", footprint),
+    )
     result = process_guard.run_guarded(
         (
             sys.executable,
@@ -831,7 +879,9 @@ def test_memory_rejection_does_not_need_a_large_allocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        process_guard, "memory_reader", lambda: ("test", lambda pid: 100)
+        process_guard,
+        "memory_reader",
+        partial(_fixed_memory_reader, 100),
     )
     result = process_guard.run_guarded(
         (sys.executable, "-c", "import time; time.sleep(30)"),
@@ -854,7 +904,11 @@ def test_measurement_failure_terminates_group(
             return 1
         raise RuntimeError("instrumentation unavailable")
 
-    monkeypatch.setattr(process_guard, "memory_reader", lambda: ("test", unavailable))
+    monkeypatch.setattr(
+        process_guard,
+        "memory_reader",
+        lambda: ("test", unavailable),
+    )
     result = process_guard.run_guarded(
         (sys.executable, "-c", "import time; time.sleep(30)"),
         output=tmp_path / "worker.log",
@@ -895,17 +949,17 @@ def test_group_retirement_kills_descendant_after_leader_exit(tmp_path: Path) -> 
     try:
         assert child.stdout is not None
         descendant = int(child.stdout.readline().strip())
-        snapshot = process_guard._process_snapshot()
+        snapshot = process_guard.process_snapshot()
         root_identity = snapshot[child.pid]
         anchors = {
             record.pid: record
-            for record in process_guard._group_records(root_identity, snapshot)
+            for record in process_guard.group_records(root_identity, snapshot)
         }
         child.communicate(timeout=2)
         assert child.returncode == 0
         assert descendant in process_guard.group_members(child.pid)
         assert (
-            process_guard._retire(
+            process_guard.retire_process(
                 child,
                 tracked=anchors,
                 root_identity=root_identity,
@@ -923,59 +977,4 @@ def test_group_retirement_kills_descendant_after_leader_exit(tmp_path: Path) -> 
         ).stdout.strip()
         assert not state or state.startswith("Z")
     finally:
-        process_guard._retire(child)
-
-
-def test_output_is_capped_even_if_child_exits_between_samples(tmp_path: Path) -> None:
-    result = process_guard.run_guarded(
-        (sys.executable, "-c", "print('x' * 4096)"),
-        output=tmp_path / "worker.log",
-        output_bytes=128,
-        lock_path=tmp_path / "lock",
-    )
-    assert result.outcome == "output_limit"
-    assert result.output_bytes > 128
-    assert (tmp_path / "worker.log").stat().st_size == 128
-
-
-def test_leader_success_with_background_worker_is_not_completion(
-    tmp_path: Path,
-) -> None:
-    result = process_guard.run_guarded(
-        (
-            sys.executable,
-            "-c",
-            (
-                "import subprocess,sys; "
-                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
-                "print(p.pid, flush=True)"
-            ),
-        ),
-        output=tmp_path / "worker.log",
-        lock_path=tmp_path / "lock",
-    )
-    assert result.outcome == "descendants_retired"
-    descendant = int((tmp_path / "worker.log").read_text().strip())
-    state = subprocess.run(
-        ["ps", "-o", "stat=", "-p", str(descendant)],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=2,
-    ).stdout.strip()
-    assert not state or state.startswith("Z")
-
-
-def test_missing_memory_samples_are_unavailable_not_zero(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(process_guard, "memory_reader", lambda: ("test", lambda pid: 0))
-    result = process_guard.run_guarded(
-        (sys.executable, "-c", "print('small')"),
-        output=tmp_path / "worker.log",
-        lock_path=tmp_path / "lock",
-    )
-    assert result.outcome == "completed"
-    assert result.samples == 0
-    assert result.sampled_peak_bytes is None
+        process_guard.retire_process(child)

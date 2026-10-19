@@ -154,7 +154,7 @@ def valid_semantic_record(
             elif len(arguments) == len(value):
                 pending.extend(
                     (child, annotation, parent, name)
-                    for child, annotation in zip(value, arguments)
+                    for child, annotation in zip(value, arguments, strict=True)
                 )
             else:
                 return False

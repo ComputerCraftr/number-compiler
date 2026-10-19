@@ -23,7 +23,7 @@ def test_query_eviction_does_not_replay_bounded_primitive_kernel(
     powered = term()
     expected = powered.digit(coordinate)
     before = powered.metrics()
-    powered._ledger.evict_query_memos()
+    powered.resource_ledger.evict_query_memos()
     assert powered.digit(coordinate) == expected
     after = powered.metrics()
     assert (

@@ -21,6 +21,20 @@ definition increment_moments_then ::
       im_skew = im_skew first + im_skew second +
         int (im_span second) * im_sum first\<rparr>"
 
+definition increment_moments_weighted_exponent ::
+    "int \<Rightarrow> increment_moments \<Rightarrow> int" where
+  "increment_moments_weighted_exponent width action =
+    int (im_span action) * (width - 1) + im_skew action"
+
+lemma increment_moments_weighted_exponent_then:
+  "increment_moments_weighted_exponent width
+      (increment_moments_then first second) =
+    increment_moments_weighted_exponent width first +
+    increment_moments_weighted_exponent (width + im_sum first) second"
+  by (cases first; cases second)
+    (simp add: increment_moments_weighted_exponent_def
+      increment_moments_then_def algebra_simps)
+
 definition increment_moments_apply ::
     "increment_moments \<Rightarrow> int \<times> int \<Rightarrow> int \<times> int" where
   "increment_moments_apply action state =
@@ -120,6 +134,7 @@ laws.  This prevents the reverse/add skew term from being reused as the
 
 ML \<open>
   val checked = @{thms increment_moments_apply_then
+    increment_moments_weighted_exponent_then
     increment_moments_then_associative increment_moments_power_closed
     last_increment_moments_then_associative
     last_increment_moments_apply_then};

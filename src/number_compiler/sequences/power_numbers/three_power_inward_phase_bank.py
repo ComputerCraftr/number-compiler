@@ -12,6 +12,7 @@ proved finite-radix depth, and there is no full-middle harmonic assumption.
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass, field
 from math import lcm
 from typing import NamedTuple
@@ -36,8 +37,8 @@ from number_compiler.sequences.power_numbers._harmonic_authority import (
 from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
     MAX_BINARY_WINDOW_PRECISION,
     MAX_DECIMAL_WINDOW_PRECISION,
-    _carry_h5,
-    _source_radix_prefix,
+    carry_h5,
+    source_radix_prefix,
 )
 
 MAX_ENUMERATED_TEMPORAL_PERIOD = 2_500
@@ -83,8 +84,8 @@ def _certified_temporal_signal_periods(
         return None
     modulus = base**depth
     below = base**position
-    word = []
-    residue = _source_radix_prefix(transient, base, depth)
+    word: list[tuple[int, int, int]] = []
+    residue = source_radix_prefix(transient, base, depth)
     for _ in range(orbit_period):
         digit = residue // below
         carry_in = (3 * (residue % below)) // below
@@ -92,9 +93,9 @@ def _certified_temporal_signal_periods(
         word.append((digit, carry_in, carry_out))
         residue = residue * residue % modulus
     # Full-orbit closure is an executable cross-check on the order theorem.
-    if residue != _source_radix_prefix(transient, base, depth):
+    if residue != source_radix_prefix(transient, base, depth):
         raise ArithmeticError("source temporal orbit failed to close")
-    words = {
+    words: dict[str, tuple[Hashable, ...]] = {
         "digit": tuple(s[0] for s in word),
         "carry_in": tuple(s[1] for s in word),
         "carry_out": tuple(s[2] for s in word),
@@ -175,7 +176,9 @@ class InwardTemporalPhaseBank:
         seal = self._phase_seal()
         return all(
             harmonic_snapshot_matches(harmonic_payload(position), expected)
-            for position, expected in zip(self.positions, seal.position_snapshots)
+            for position, expected in zip(
+                self.positions, seal.position_snapshots, strict=True
+            )
         )
 
     def _phase_seal(self) -> _InwardPhaseSeal:
@@ -312,11 +315,11 @@ def _phase_bank_from_periods(
     depth: int,
     periods: tuple[tuple[tuple[str, int], ...] | None, ...],
 ) -> InwardTemporalPhaseBank:
-    prefix = _source_radix_prefix(level, base, depth)
+    prefix = source_radix_prefix(level, base, depth)
     quotient = prefix
     carry = 0
-    carries = []
-    positions = []
+    carries: list[int] = []
+    positions: list[InwardTemporalPosition] = []
     for i in range(depth):
         digit = quotient % base
         quotient //= base
@@ -324,7 +327,7 @@ def _phase_bank_from_periods(
         carry = (3 * digit + carry) // base
         carries.append(carry)
         preperiod, period = radix_phase_parameters(base, i + 1)
-        h5lo, h5hi = _carry_h5((carry,), i)
+        h5lo, h5hi = carry_h5((carry,), i)
         positions.append(
             InwardTemporalPosition(
                 base,
@@ -356,7 +359,7 @@ def _phase_bank_from_periods(
         prefix,
         tuple(carries),
         tuple(positions),
-        _carry_h5(tuple(carries), 0),
+        carry_h5(tuple(carries), 0),
         preperiod,
         source_period,
         (level - preperiod) % source_period if level >= preperiod else None,

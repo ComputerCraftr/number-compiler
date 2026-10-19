@@ -20,7 +20,7 @@ from number_compiler.arithmetic.polynomials.f5_transport import (
     F5SpatialTransport,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+from tests.support.symbolic_innovation import evaluate, polynomial
 
 
 @pytest.mark.parametrize("half", [4, 8, 16, 32, 64, 128, 256])
@@ -63,14 +63,14 @@ def test_supplied_blocks_square_through_d512(
     arena = SymbolicInnovationArena(ResourceLedger())
     before = F5AffineTransport(
         F5SpatialTransport(left.no_growths, left.growths),
-        _polynomial(arena, list(left.f5_forcing)),
+        polynomial(arena, list(left.f5_forcing)),
     )
     after = F5AffineTransport(
         F5SpatialTransport(right.no_growths, right.growths),
-        _polynomial(arena, list(right.f5_forcing)),
+        polynomial(arena, list(right.f5_forcing)),
     )
     composed = compose_f5_forcing(arena, before, after)
-    values = _evaluate(arena, composed.forcing)
+    values = evaluate(arena, composed.forcing)
     assert tuple(values.get(i, 0) % 5 for i in range(width)) == full.f5_forcing
     assert not any(v % 5 for i, v in values.items() if not 0 <= i < width)
     arena.close()

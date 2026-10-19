@@ -50,13 +50,13 @@ def test_numeric_parent_hit_does_not_expand_boolean_ports(
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("numeric division entered Boolean parent substitution")
 
-        monkeypatch.setattr(type(adapter), "_parent_components", forbidden)
-        monkeypatch.setattr(type(adapter), "_leaf_components", forbidden)
+        monkeypatch.setattr(type(adapter), "parent_components", forbidden)
+        monkeypatch.setattr(type(adapter), "leaf_components", forbidden)
         interface = app.interface()
         assert interface.outgoing_ports == (0, 26)
         before = ledger.snapshot()
         monkeypatch.setattr(type(adapter), "primitive_law", forbidden)
-        monkeypatch.setattr(type(adapter), "_compile_interface", forbidden)
+        monkeypatch.setattr(type(adapter), "compile_interface", forbidden)
         assert app.interface() == interface
         after = ledger.snapshot()
         assert (before.entries, before.nodes) == (after.entries, after.nodes)

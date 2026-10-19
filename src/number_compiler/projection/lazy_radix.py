@@ -107,7 +107,7 @@ class RadixProjection:
         # Exterior admission uses the same affine image; a zero remainder
         # alone cannot distinguish an internal zero digit from blank padding.
         digit = term._admitted_radix_digit(self.radix, index)
-        term._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
+        term.resource_ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
         if not 0 <= digit < self.radix:
             raise AssertionError("radix provider produced an invalid digit")
         self._microblocks.put(
@@ -135,7 +135,7 @@ class RadixProjection:
             raise TypeError("digit coordinate must be an exact integer")
         source = term._source_construction.validate_source()
         if (
-            term._ledger is not self.ledger
+            term.resource_ledger is not self.ledger
             or self._bound_source is not None
             and (source is not self._bound_source or term.steps != self._bound_steps)
         ):
@@ -302,30 +302,30 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
     width = term.maximum_width
     if not 0 <= index < width:
         raise IndexError(index)
-    term._ledger.bump(_projection_keys.RADIX_OBSERVATIONS)
+    term.resource_ledger.bump(_projection_keys.RADIX_OBSERVATIONS)
     if radix & (radix - 1) == 0:
         symbol = term._point_radix_symbol(radix, index)
         if symbol == radix:
             raise IndexError(index)
-        return term._ledger.observe_arithmetic(symbol)
+        return term.resource_ledger.observe_arithmetic(symbol)
     projection = term._radix_projections.get(radix)
     if projection is None:
-        owner = term._ledger.register(
+        owner = term.resource_ledger.register(
             "radix-applications", "application_index", ResourceScope.INDEX_OWNED
         )
-        term._ledger.reserve(owner, entries=1)
+        term.resource_ledger.reserve(owner, entries=1)
         try:
-            with RuntimeConstruction(term._ledger):
+            with RuntimeConstruction(term.resource_ledger):
                 projection = RadixProjection(
                     radix,
                     width,
-                    term._ledger,
+                    term.resource_ledger,
                     term._microblocks,
                     width_is_upper_bound=True,
                 )
                 term._radix_projections[radix] = projection
         except BaseException:
-            term._ledger.release(owner, entries=1)
+            term.resource_ledger.release(owner, entries=1)
             raise
     return projection.digit(term, index)
 

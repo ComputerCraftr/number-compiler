@@ -40,7 +40,7 @@ def test_public_terminal_preimage_route_precedes_mixed_discovery(
     assert type(projected.payload) is PoweredCollatzTermPayload
     assert projected.payload.materialize(max_bits=512) == 1
 
-    counters = projected.payload.term._ledger.counters
+    counters = projected.payload.term.resource_ledger.counters
     assert counters["collatz_terminal_power2_probe_attempts"] == 1
     assert counters["collatz_terminal_power2_preimage_actions"] == 1
     assert counters.get("collatz_physical_temporal_d8_discovery_symbols", 0) == 0

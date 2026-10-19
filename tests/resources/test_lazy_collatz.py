@@ -3,10 +3,8 @@ from typing import Never
 
 import pytest
 
-from devtools.verification.lazy_collatz import (
-    CarryRangeTransfer,
-    LazyCollatzApplication,
-)
+from devtools.verification.collatz_carry_ranges import CarryRangeTransfer
+from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,

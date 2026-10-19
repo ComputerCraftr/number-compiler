@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BoundarySide,
     BoundaryState,
+    next_operator_id,
 )
 
 
@@ -64,7 +64,7 @@ class DigitNormalizeBlockEffect:
         self.base = base
         self.blank = 2 * base - 1
         self.exponent = 0
-        self.node_id = next(_OPERATOR_IDS)
+        self.node_id = next_operator_id()
         self.blank_left_tail = 1
         self.blank_right_tail = 0
         self.stable_blank_output = True

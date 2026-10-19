@@ -10,14 +10,22 @@ import pytest
 
 from number_compiler.api import cli, cli_context, cli_render, cli_requests
 from number_compiler.api.family_registry import CAPABILITIES
+from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.api.number_api import NumberCompiler
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.query_types import FermatTermQuery, TermQuery
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
     raise AssertionError("unrequested execution was entered")
+
+
+def _json_object(text: str) -> dict[str, object]:
+    decoded: object = json.loads(text)
+    if not is_string_object_mapping(decoded):
+        raise AssertionError("CLI output must be a JSON object")
+    return dict(decoded)
 
 
 def family_options(family: FamilyId) -> list[str]:
@@ -87,8 +95,11 @@ def test_collatz_compact_index_uses_exact_terminal_cycle(
         )
         == 0
     )
-    packet = json.loads(capsys.readouterr().out)
-    assert packet["value"] == str((1, 4, 2)[(10**exponent - entry_ticks) % 3])
+    packet = _json_object(capsys.readouterr().out)
+    terminal_values: tuple[int, ...] = (1, 4, 2)
+    terminal_index: int = (10**exponent - entry_ticks) % len(terminal_values)
+    terminal_value: int = terminal_values[terminal_index]
+    assert packet["value"] == str(terminal_value)
     assert packet["index"] == {"encoding": "power10", "exponent": exponent}
 
 
@@ -245,7 +256,7 @@ def test_real_large_compact_metadata_never_formats_index_text(
     from number_compiler.api import symbolic_terms
 
     monkeypatch.setattr(symbolic_terms, "integer_text", forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     expected = 3 if family == "a367620" else 2 if family == "antihydra" else 0
     assert (
         cli.main(
@@ -382,7 +393,7 @@ def test_compact_information_only_never_renders(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [
@@ -414,7 +425,7 @@ def test_large_compact_unresolved_diagnostics_keep_index_encoded(
         )
 
     monkeypatch.setattr(NumberCompiler, "project", unresolved)
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert cli.main(["a367620", "--nth-power10", "5000", "--format", "json"]) == 3
     captured = capsys.readouterr()
     packet = json.loads(captured.out)
@@ -426,7 +437,7 @@ def test_large_compact_unresolved_diagnostics_keep_index_encoded(
 def test_compact_metadata_only_preserves_unresolved_comma_boundary(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "render_value", forbidden)
     assert (
         cli.main(
             [

@@ -427,10 +427,10 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
     view = core.view(workspace.root_image)
     assert view.binding.source == workspace.root_source
     assert view.binding.action == workspace.root_action
-    assert scheduler.ledger is core.ledger is workspace.ledger is term._ledger
+    assert scheduler.ledger is core.ledger is workspace.ledger is term.resource_ledger
     assert tuple(
         root
-        for root in term._ledger.iter_execution_roots()
+        for root in term.resource_ledger.iter_execution_roots()
         if type(root) is TileScheduler
     ) == (scheduler,)
 

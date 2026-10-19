@@ -74,11 +74,11 @@ def mixed_radix_prime_residual_metrics(
         (1 if ((prime_mask >> j) & 1) else 0) if j < length else 2
         for j in range(domain)
     )
-    counts = []
+    counts: list[int] = []
     stride = 1
     # depth 0 is the whole language; subsequent depths fix one more low digit.
     for depth in range(len(bases) + 1):
-        signatures = set()
+        signatures: set[tuple[int, ...]] = set()
         for prefix in range(stride):
             signatures.add(labels[prefix:domain:stride])
         counts.append(len(signatures))
@@ -131,7 +131,7 @@ def reinterpreted_prime_cyclotomic_metrics(
         raise ValueError((start, length, target_base))
     projection = project_odd_prime_block(start, length)
     # Power-of-two +/- channels, deduplicated; omit modulus 1.
-    mods = []
+    mods: list[int] = []
     for m in (1, 2, 4):
         for modulus in (pow(target_base, m) - 1, pow(target_base, m) + 1):
             if modulus > 1 and modulus not in mods:

@@ -13,11 +13,6 @@ from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
-    MacroTraceGrammar,
-    SourceCongruence,
-)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -27,6 +22,11 @@ from number_compiler.sequences.collatz.guarded_port_join import (
 )
 from number_compiler.sequences.collatz.guarded_radix6_bridge import (
     certify_guarded_radix6_bridge,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    MacroTraceGrammar,
+    SourceClosedPortAction,
+    SourceCongruence,
 )
 
 
@@ -41,7 +41,7 @@ def _join(
         if source.count == 1
         else SourceCongruence(source.residue, source.modulus, source.first)
     )
-    port = CrossFamilyPortAction(
+    port = SourceClosedPortAction(
         action, guard, odds, None, MacroTraceGrammar.leaf(tails)
     )
     bridge = certify_guarded_radix6_bridge(source, action, odds)

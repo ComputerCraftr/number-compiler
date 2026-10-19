@@ -24,9 +24,14 @@ from number_compiler.sequences.collatz.border_return_grammar import (
 from number_compiler.sequences.collatz.boundary_macros import (
     AdmittedBoundaryMacroPlan,
     admit_boundary_macro_plan,
+    select_admitted_boundary_macro,
+    validate_boundary_macro,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.innovation_input_tape import (
+    boundary_macro_specs,
 )
 from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 from number_compiler.sequences.collatz.terminal_preimage import (
@@ -36,12 +41,37 @@ from number_compiler.sequences.collatz.terminal_preimage import (
 from number_compiler.sequences.collatz.unified_skew_chain import (
     FactorSpecs,
     SeamWitness,
-    _select_boundary_plan,
 )
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.boundary_macros import (
         BoundaryActionTemplateMemo,
+    )
+
+
+def _select_admitted_boundary_plan(
+    plan: AdmittedBoundaryMacroPlan,
+    templates: BoundaryActionTemplateMemo,
+    preflight: Callable[[int], None] | None,
+) -> tuple[
+    CollatzSegmentIdentity,
+    int,
+    DyadicTerminalFieldAction,
+    BlankLedger,
+    FactorSpecs,
+    SeamWitness | None,
+]:
+    if preflight is not None:
+        preflight(plan.normalized_symbols)
+    boundary = select_admitted_boundary_macro(plan, templates=templates)
+    validate_boundary_macro(boundary)
+    return (
+        boundary.identity,
+        boundary.odd_symbols,
+        boundary.fields,
+        boundary.width_blank,
+        boundary_macro_specs(boundary),
+        boundary,
     )
 
 
@@ -113,7 +143,7 @@ def admit_next_unified_segment(
         *ENTRY_26847_PHASES,
         ENTRY_89_AT_NINE,
     ):
-        return _select_boundary_plan(plan, templates, preflight)
+        return _select_admitted_boundary_plan(plan, templates, preflight)
 
     if state.decimal_residue(10) in (0, 3, 5) or state.decimal_residue(20) == 6:
         border = select_border_return_macro(
@@ -135,7 +165,7 @@ def admit_next_unified_segment(
             )
 
     if plan is not None:
-        return _select_boundary_plan(plan, templates, preflight)
+        return _select_admitted_boundary_plan(plan, templates, preflight)
 
     if source > 1 and state.even:
         exponent = v2_positive(source)

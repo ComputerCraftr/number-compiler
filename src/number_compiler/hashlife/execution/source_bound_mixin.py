@@ -7,9 +7,12 @@ from collections.abc import Hashable
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+)
+from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageID,
     SourceImageProjection,
+    SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -19,6 +22,11 @@ class SourceBoundImageMixin:
 
     ledger: ResourceLedger
     _source_images: SourceBoundSchedulerCore | None
+
+    @property
+    def published_source_image_core(self) -> SourceBoundSchedulerCore | None:
+        """Return an already-published source-image core without creating one."""
+        return self._source_images
 
     def _source_image_core(self) -> SourceBoundSchedulerCore:
         found = self._source_images
@@ -30,11 +38,17 @@ class SourceBoundImageMixin:
     def register_source_image_adapter(self, adapter: SourceBoundImageAdapter) -> None:
         self._source_image_core().register(adapter)
 
-    def source_origin_image(
+    def source_image_origin(
         self, adapter: SourceBoundImageAdapter, source: Hashable
     ) -> SourceImageID:
         """Admit an original source without executing an identity action."""
-        return self._source_image_core()._origin(adapter, source)
+        return self._source_image_core().origin(adapter, source)
+
+    def source_image_view(
+        self, adapter: SourceBoundImageAdapter, image: SourceImageID
+    ) -> SourceImageView:
+        """Inspect a published image after checking its issuing adapter."""
+        return self._source_image_core().view_for_adapter(adapter, image)
 
     def source_image(
         self,

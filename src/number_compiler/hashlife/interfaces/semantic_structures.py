@@ -8,10 +8,16 @@ not admitted. Bound aliases are separate from named semantic declarations.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Literal, TypeAlias
 
+from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
+from number_compiler.arithmetic.carry.reverse_sector_transfer import (
+    ReverseCarrySectorTransfer,
+)
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FinitePort,
@@ -28,11 +34,13 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
 )
+from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
+from number_compiler.hashlife.actions.diamond_actions import CellID, PortSignatureID
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    BooleanCircuit,
     FactoredFunction,
     FactoredFunctionID,
-    _Circuit,
     _PendingFunction,
     substitute_boolean,
 )
@@ -46,6 +54,90 @@ from number_compiler.resources.stores import LedgerDict, LedgerList
 @dataclass(frozen=True, slots=True)
 class StructureID(ArenaHandle):
     """One canonical eta-long structured finite output."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocalInterfaceID(ArenaHandle):
+    """Complete bounded port behavior, separate from a recursive image."""
+
+
+DiamondQuotientID: TypeAlias = LocalInterfaceID
+
+
+COMPONENT_ROLES = (
+    "boundary_left",
+    "boundary_right",
+    "output",
+    "activity",
+    "first_active",
+    "last_active",
+    "extent",
+    "halo_left",
+    "halo_right",
+    "growth",
+    "termination",
+    "normalization",
+    "frame",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MacroInterface:
+    """Normalized semantic channel contract; no source or occurrence identity."""
+
+    kernel: SemanticIdentity
+    inputs: tuple[FinitePort, ...]
+    outputs: tuple[SemanticSort, ...]
+    admissible: SemanticFunctionID
+    phase_count: int = 1
+    orientations: tuple[int, ...] = (0, 1)
+
+
+SemanticComponent: TypeAlias = (
+    SemanticFunctionID | StructureID | RadixPortFunction | ReversePortFunction
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MacroComponents:
+    boundary_left: SemanticComponent
+    boundary_right: SemanticComponent
+    output: SemanticComponent
+    activity: SemanticComponent
+    first_active: SemanticComponent
+    last_active: SemanticComponent
+    extent: SemanticComponent
+    halo_left: SemanticComponent
+    halo_right: SemanticComponent
+    growth: SemanticComponent
+    termination: SemanticComponent
+    normalization: SemanticComponent
+    frame: SemanticComponent
+    reverse_sectors: ReverseCarrySectorTransfer | None = field(
+        default=None, kw_only=True
+    )
+
+    def functions(self) -> tuple[SemanticComponent, ...]:
+        return tuple(getattr(self, role) for role in COMPONENT_ROLES)
+
+
+@dataclass(frozen=True, slots=True)
+class QuotientRecord:
+    signature: PortSignatureID
+    components: MacroComponents
+
+
+@dataclass(frozen=True, slots=True)
+class DiamondKey:
+    """An occurrence binding to an already canonical complete action."""
+
+    before: DiamondQuotientID
+    after: DiamondQuotientID
+    cell: CellID
+    level: int
+    orientation: int
+    phase: int
+    signature: PortSignatureID
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +163,7 @@ class StructuredNode:
 
 
 @dataclass(frozen=True, slots=True)
-class _Rewrite:
+class StructureRewrite:
     root: int
     replacements: tuple[tuple[FinitePort, int], ...] = ()
     mask: int | None = None
@@ -100,6 +192,21 @@ class StructureArena:
 
     def _handle(self, identity: int) -> StructureID:
         return StructureID(self.token, "semantic-structure", identity)
+
+    def candidate_handle(
+        self, identity: int, *, base: int, candidate_count: int
+    ) -> StructureID:
+        """Create a prospective ID bounded by the active publication window."""
+        require_integer(identity, "structured candidate ID", 0)
+        require_integer(base, "structured publication base", 0)
+        require_integer(candidate_count, "structured candidate count", 0)
+        if base != len(self.nodes):
+            raise RuntimeError("structured publication base is stale")
+        if identity >= base + candidate_count:
+            raise ValueError(
+                "structured candidate ID is outside its publication window"
+            )
+        return self._handle(identity)
 
     def resolve(self, reference: StructureID) -> StructuredNode:
         if type(reference) is not StructureID:
@@ -148,9 +255,9 @@ class StructureArena:
             raise BlockContextBudgetExceeded(
                 "semantic declaration cache budget exhausted before construction"
             )
-        builder = _Builder(self)
+        builder = StructureBuilder(self)
         mask = builder.circuit(inputs).admitted()
-        root = builder.rewrite(_Rewrite(value.local_id, mask=mask))
+        root = builder.rewrite(StructureRewrite(value.local_id, mask=mask))
         from number_compiler.hashlife.interfaces.semantic_structure_publication import (
             prepare_structures,
         )
@@ -174,7 +281,7 @@ class StructureArena:
 
     def atom(self, function: FactoredFunctionID) -> StructureID:
         value = self.bits.resolve(function)
-        builder = _Builder(self)
+        builder = StructureBuilder(self)
         root = builder.intern(
             StructuredNode(value.signature, "atom", value.valid, atom=function)
         )
@@ -187,7 +294,7 @@ class StructureArena:
             )
         nodes = tuple(self.resolve(item) for item in components)
         inputs = _union_inputs(*(node.signature.inputs for node in nodes))
-        builder = _Builder(self)
+        builder = StructureBuilder(self)
         circuit = builder.circuit(inputs)
         valid = circuit.admitted()
         for node in nodes:
@@ -195,7 +302,8 @@ class StructureArena:
                 valid, builder.tx.resign(node.valid.local_id, circuit.signature)
             )
         children = tuple(
-            builder.rewrite(_Rewrite(item.local_id, mask=valid)) for item in components
+            builder.rewrite(StructureRewrite(item.local_id, mask=valid))
+            for item in components
         )
         signature = FunctionSignature(
             inputs, ProductSort(tuple(node.signature.output for node in nodes))
@@ -219,14 +327,16 @@ class StructureArena:
             raise ValueError("lambda declarations are not free inputs of its body")
         outer = tuple(port for port in node.signature.inputs if port not in bound_ports)
         aliases = _aliases(outer, bound_ports, node.signature.output)
-        builder = _Builder(self)
+        builder = StructureBuilder(self)
         joint = _union_inputs(outer, aliases)
         replacements = tuple(
             (old, builder.variable(joint, new))
-            for old, new in zip(bound_ports, aliases)
+            for old, new in zip(bound_ports, aliases, strict=True)
         )
         valid = builder.circuit(outer).admitted()
-        rewritten = builder.rewrite(_Rewrite(body.local_id, replacements, valid))
+        rewritten = builder.rewrite(
+            StructureRewrite(body.local_id, replacements, valid)
+        )
         signature = FunctionSignature(
             outer, FunctionSort(bound_ports, node.signature.output)
         )
@@ -270,8 +380,8 @@ class StructureArena:
     ) -> StructureID:
         node = self.resolve(value)
         arguments = self._arguments(node.signature.inputs, replacements)
-        builder = _Builder(self)
-        root = builder.rewrite(_Rewrite(value.local_id, arguments))
+        builder = StructureBuilder(self)
+        root = builder.rewrite(StructureRewrite(value.local_id, arguments))
         return builder.finish(root)
 
     def apply(
@@ -292,11 +402,13 @@ class StructureArena:
         by_name = {port.variable: value for port, value in replacements}
         actual = tuple(
             (alias, by_name[declaration.variable])
-            for declaration, alias in zip(node.signature.output.inputs, node.bound)
+            for declaration, alias in zip(
+                node.signature.output.inputs, node.bound, strict=True
+            )
         )
-        builder = _Builder(self)
+        builder = StructureBuilder(self)
         root = builder.rewrite(
-            _Rewrite(node.body.local_id, actual, node.valid.local_id)
+            StructureRewrite(node.body.local_id, actual, node.valid.local_id)
         )
         return builder.finish(root)
 
@@ -381,7 +493,7 @@ def _aliases(
     return tuple(aliases)
 
 
-class _Builder:
+class StructureBuilder:
     def __init__(self, arena: StructureArena) -> None:
         self.arena = arena
         self.tx = _Transaction(arena.functions)
@@ -391,17 +503,17 @@ class _Builder:
         self.bit_keys: dict[_PendingFunction, int] = {}
         self.nodes: list[StructuredNode] = []
         self.keys: dict[StructuredNode, int] = {}
-        self.rewrites: dict[_Rewrite, int] = {}
-        self._circuits: dict[tuple[FinitePort, ...], _Circuit] = {}
+        self.rewrites: dict[StructureRewrite, int] = {}
+        self._circuits: dict[tuple[FinitePort, ...], BooleanCircuit] = {}
 
-    def circuit(self, inputs: tuple[FinitePort, ...]) -> _Circuit:
+    def circuit(self, inputs: tuple[FinitePort, ...]) -> BooleanCircuit:
         self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_REQUESTS)
         existing = self._circuits.get(inputs)
         if existing is not None:
             self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_HITS)
             return existing
         self.tx.reserve_workspace(entries=1)
-        result = _Circuit(self.arena.functions, inputs, self.tx)
+        result = BooleanCircuit(self.arena.functions, inputs, self.tx)
         self._circuits[inputs] = result
         self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_EVALUATIONS)
         self.arena.ledger.bump(
@@ -525,8 +637,8 @@ class _Builder:
         return identity
 
     def _prepare_rewrite(
-        self, task: _Rewrite
-    ) -> tuple[_Circuit, dict[PortVariable, int], int]:
+        self, task: StructureRewrite
+    ) -> tuple[BooleanCircuit, dict[PortVariable, int], int]:
         node = self.node(task.root)
         removed = {port.variable for port, _ in task.replacements}
         inputs = _union_inputs(
@@ -557,14 +669,14 @@ class _Builder:
             )
         return circuit, replacements, valid
 
-    def rewrite(self, root: _Rewrite) -> int:
+    def rewrite(self, root: StructureRewrite) -> int:
         pending = [(root, False)]
         prepared: dict[
-            _Rewrite,
+            StructureRewrite,
             tuple[
                 tuple[FinitePort, ...],
                 int,
-                tuple[_Rewrite, ...],
+                tuple[StructureRewrite, ...],
                 tuple[FinitePort, ...],
             ],
         ] = {}
@@ -617,7 +729,7 @@ class _Builder:
                 continue
             if node.kind == "product":
                 children = tuple(
-                    _Rewrite(child.local_id, task.replacements, valid)
+                    StructureRewrite(child.local_id, task.replacements, valid)
                     for child in node.components
                 )
                 aliases = ()
@@ -632,7 +744,7 @@ class _Builder:
                 joint = _union_inputs(circuit.inputs, aliases)
                 renaming = tuple(
                     (old, self.variable(joint, new))
-                    for old, new in zip(node.bound, aliases)
+                    for old, new in zip(node.bound, aliases, strict=True)
                 )
                 arguments = tuple(
                     sorted(
@@ -640,7 +752,7 @@ class _Builder:
                         key=lambda item: item[0].variable,
                     )
                 )
-                children = (_Rewrite(node.body.local_id, arguments, valid),)
+                children = (StructureRewrite(node.body.local_id, arguments, valid),)
             prepared[task] = circuit.inputs, valid, children, aliases
             pending.append((task, True))
             pending.extend((child, False) for child in children)

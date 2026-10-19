@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -10,7 +10,10 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_actions as _actions_keys,
 )
-from number_compiler.resources.stores import append_indexed_node, make_dense_index
+from number_compiler.resources.stores import (
+    NodeIndexFactory,
+    append_indexed_node,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +80,19 @@ class FieldGeometry:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FieldGeometryAuditSnapshot:
+    """Read-only references to the exact stores used by an explicit audit."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    node_kind: str
+    node_owner: int
+    nodes: Sequence[FieldGeometry]
+    key_owner: int
+    keys: Mapping[FieldGeometry, int]
+
+
 class FieldGeometryArena:
     """Index-owned interner for geometry that cannot hide arithmetic payloads."""
 
@@ -94,18 +110,35 @@ class FieldGeometryArena:
         self._key_owner = ledger.register(
             prefix + "-interner", "field_geometry_interner"
         )
-        self._nodes, self._keys = make_dense_index(
+        self._nodes, self._keys = NodeIndexFactory[FieldGeometry, FieldGeometry].dense(
             ledger, self._node_owner, self._key_owner
         )
 
     def _handle(self, local_id: int) -> FieldGeometryID:
         return FieldGeometryID(self.owner, self._KIND, local_id)
 
+    @property
+    def geometry_kind(self) -> str:
+        """Nominal handle kind for this geometry arena."""
+        return self._KIND
+
     def resolve(self, reference: FieldGeometryID) -> FieldGeometry:
         if type(reference) is not FieldGeometryID:
             raise TypeError("expected a field geometry ID")
         reference.validate(self.owner, self._KIND, size=len(self._nodes))
         return self._nodes[reference.local_id]
+
+    def audit_snapshot(self) -> FieldGeometryAuditSnapshot:
+        """Expose current stores read-only to the explicit forensic auditor."""
+        return FieldGeometryAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._node_owner,
+            self._nodes,
+            self._key_owner,
+            self._keys,
+        )
 
     def intern(self, geometry: FieldGeometry) -> FieldGeometryID:
         if type(geometry) is not FieldGeometry:
@@ -150,6 +183,7 @@ __all__ = [
     "CoordinateOutputMorphismID",
     "FieldCellActionID",
     "FieldGeometry",
+    "FieldGeometryAuditSnapshot",
     "FieldGeometryArena",
     "FieldGeometryID",
 ]

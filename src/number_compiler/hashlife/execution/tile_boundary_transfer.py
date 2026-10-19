@@ -10,7 +10,7 @@ from typing import Protocol
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -31,7 +31,7 @@ class _Host(Protocol):
     tiles: TileArena
     ledger: ResourceLedger
 
-    def _require_results(self) -> CompletedResultArena: ...
+    def require_results(self) -> CompletedResultArena: ...
 
     def action_children(
         self,
@@ -42,13 +42,13 @@ class _Host(Protocol):
     def validate_wiring(
         self, action: FieldCellActionID, wiring: ResultWiring
     ) -> None: ...
-    def _compile_interface(
+    def compile_interface(
         self,
         action: FieldCellActionID,
         source: TileID,
         wiring: ResultWiring,
     ) -> LocalInterfaceID: ...
-    def _observe(
+    def observe(
         self,
         interface: LocalInterfaceID,
         channel: str,
@@ -87,7 +87,7 @@ def transfer_view(
             "a directed view transfer requires already bound incoming ports"
         )
     validate_boundaries(host, action, BoundaryTileOperands(view), context.wiring)
-    host._require_results().validate_shape(action, context.ports, context.wiring)
+    host.require_results().validate_shape(action, context.ports, context.wiring)
     if len(context.ports) != 2:
         raise ValueError("primitive boundary transfer requires two finite ports")
     host.ledger.bump(_execution_keys.TILE_BOUNDARY_TRANSFER_REQUESTS)
@@ -125,8 +125,8 @@ def transfer_view(
                         context.wiring,
                     )
                 else:
-                    interface = host._compile_interface(action, current, context.wiring)
-                    state = host._observe(
+                    interface = host.compile_interface(action, current, context.wiring)
+                    state = host.observe(
                         interface,
                         "boundary_right" if side else "boundary_left",
                         ports,
@@ -164,7 +164,7 @@ def bind_boundaries(
         raise TypeError("boundary binding requires typed finite ports")
     context.__post_init__()
     validate_boundaries(host, action, context.boundaries, context.wiring)
-    host._require_results().validate_shape(action, context.ports, context.wiring)
+    host.require_results().validate_shape(action, context.ports, context.wiring)
     left, right = context.boundaries.left, context.boundaries.right
     incoming = BoundPorts(context.ports, context.wiring)
     left_exit = (

@@ -7,14 +7,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from number_compiler.arithmetic.fields.symbolic_innovation import (
+from number_compiler.arithmetic.fields.radial_innovation import (
+    InnovationAdd,
+    InnovationAtom,
+    InnovationCharted,
     InnovationID,
+    InnovationRadial,
+    InnovationScale,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _Add,
-    _Atom,
-    _Charted,
-    _Radial,
-    _Scale,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -37,7 +39,7 @@ def substitute_innovations(
         arena.resolve(root)
     for atom, replacement in replacements.items():
         arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_BINDING_CHECKS)
-        if not isinstance(arena.resolve(atom), _Atom):
+        if not isinstance(arena.resolve(atom), InnovationAtom):
             raise TypeError("innovation substitution keys must be primitive atoms")
         arena.resolve(replacement)
     prefix = f"innovation-pullback-{arena.ledger.owner_count}"
@@ -71,9 +73,9 @@ def substitute_innovations(
                     continue
                 node = arena.resolve(reference)
                 if parity and (
-                    isinstance(node, _Radial)
+                    isinstance(node, InnovationRadial)
                     and node.multiplier.no_growth > 0
-                    or isinstance(node, _Scale)
+                    or isinstance(node, InnovationScale)
                     and node.coefficient % 2 == 0
                 ):
                     # Do not enter the old source or forcing subtree. This
@@ -83,9 +85,11 @@ def substitute_innovations(
                     arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_NODES)
                     continue
                 children: tuple[InnovationID, ...]
-                if isinstance(node, (_Radial, _Charted, _Scale)):
+                if isinstance(
+                    node, (InnovationRadial, InnovationCharted, InnovationScale)
+                ):
                     children = (node.child,)
-                elif isinstance(node, _Add):
+                elif isinstance(node, InnovationAdd):
                     children = (node.left, node.right)
                 else:
                     children = ()
@@ -94,19 +98,19 @@ def substitute_innovations(
                     for child in reversed(children):
                         frames[len(frames)] = (child, False)
                     continue
-                if isinstance(node, _Atom):
+                if isinstance(node, InnovationAtom):
                     result = environment.get(reference, reference)
-                elif isinstance(node, _Radial):
+                elif isinstance(node, InnovationRadial):
                     result = arena.radial(memo[node.child], node.multiplier)
-                elif isinstance(node, _Charted):
+                elif isinstance(node, InnovationCharted):
                     result = arena.chart(memo[node.child], node.chart)
-                elif isinstance(node, _Scale):
+                elif isinstance(node, InnovationScale):
                     result = (
                         memo[node.child]
                         if parity
                         else arena._scale(memo[node.child], node.coefficient)
                     )
-                elif isinstance(node, _Add):
+                elif isinstance(node, InnovationAdd):
                     left, right = memo[node.left], memo[node.right]
                     result = (
                         arena.zero

@@ -7,17 +7,25 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.execution.causal_frames import (
+    CausalTaskFrame,
+    OutputBoundaryFrame,
+    OutputChunkListFrame,
+    ScanChunksFrame,
+)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_boundary_step import (
     boundary_step as _canonical_boundary_step,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    CausalFrame,
-    CausalPrefix,
-)
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from tests.support.tile_kernel import _runtime, _tile, powered_runtime
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import CausalPrefix, CausalTaskValue
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    powered_runtime,
+)
 
 
 @pytest.mark.parametrize("base", (2, 3, 10))
@@ -29,11 +37,13 @@ def test_quiescent_deep_boundary_reuses_input_without_constructors(
     side: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(base))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(base)
+    )
     action = adapter.power(primitive, exponent)
     engine = CausalTileEngine(scheduler)
     blank = adapter.primitive_law(primitive).blank
-    with _tile(tiles, adapter, primitive, (blank,) * 4) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
         view = BoundaryTileView(source.tile, 11, 4, side)
         anchor = engine._initial(action, side)
         argument = engine._initial(action, 1 - side)
@@ -57,18 +67,23 @@ def test_public_scheduler_blank_dependencies_avoid_boundary_output(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, exponent)
     ordinary = _canonical_boundary_step
 
     def forbid_boundary(
-        engine: object, frame: CausalFrame, frames: object, values: list[object]
+        engine: CausalTileEngine,
+        frame: CausalTaskFrame,
+        frames: CausalFrameStack[CausalTaskFrame],
+        values: CausalResults[CausalTaskValue],
     ) -> bool:
-        if frame.op == "output_boundary":
+        if isinstance(frame, OutputBoundaryFrame):
             raise AssertionError("certified blank dependency constructed output")
+        if not isinstance(frame, (OutputChunkListFrame, ScanChunksFrame)):
+            return False
         return ordinary(engine, frame, frames, values)
 
-    with _tile(tiles, adapter, primitive, (5,) * 8) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (5,) * 8) as source:
         monkeypatch.setattr(causal, "boundary_step", forbid_boundary)
         with scheduler.application(
             action,
@@ -84,7 +99,9 @@ def test_public_scheduler_blank_dependencies_avoid_boundary_output(
 
 
 def test_active_input_and_unsafe_physical_left_context_decline() -> None:
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     engine = CausalTileEngine(scheduler)
     law = adapter.primitive_law(primitive)
     action = adapter.power(primitive, 4)
@@ -96,7 +113,7 @@ def test_active_input_and_unsafe_physical_left_context_decline() -> None:
             for right in range(law.right_count)
         )
     )
-    with _tile(tiles, adapter, primitive, (5,) * 4) as blank:
+    with make_tile_from_symbols(tiles, adapter, primitive, (5,) * 4) as blank:
         # For a right scan the physical LEFT context is the opposite argument.
         left = engine._initial(action, 0, unsafe)
         right = engine._initial(action, 1)
@@ -111,7 +128,7 @@ def test_active_input_and_unsafe_physical_left_context_decline() -> None:
             )
             is None
         )
-    with _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as active:
+    with make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as active:
         assert (
             quiescent_boundary(
                 engine,
@@ -132,8 +149,8 @@ def test_nonblank_left_prefix_is_not_erased() -> None:
     engine = CausalTileEngine(scheduler)
     initial = adapter.initial_ports(primitive)
     with (
-        _tile(tiles, adapter, primitive, (5,) * 4) as blank,
-        _tile(
+        make_tile_from_symbols(tiles, adapter, primitive, (5,) * 4) as blank,
+        make_tile_from_symbols(
             tiles,
             adapter,
             primitive,
@@ -173,7 +190,7 @@ def test_failed_behavior_width_releases_active_application_context(
     def fail(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("injected behavior failure")
 
-    with _tile(tiles, adapter, primitive, (5,) * 4) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (5,) * 4) as source:
         monkeypatch.setattr(causal_api, "quiescent_boundary", fail)
         with pytest.raises(RuntimeError, match="injected behavior failure"):
             engine.width(action, source.tile, limit=4, application=17)
@@ -209,10 +226,10 @@ def test_blank_output_proof_does_not_invent_a_right_transfer() -> None:
         blank_right_tail=0,
         stable_blank_output=True,
     )
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(effect)
     law = adapter.primitive_law(primitive)
     assert law.advance(BoundarySide.RIGHT, 1, law.blank) == 0
-    with _tile(tiles, adapter, primitive, (3, 3, 3, 3)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (3, 3, 3, 3)) as source:
         engine = CausalTileEngine(scheduler)
         assert (
             quiescent_boundary(
@@ -239,11 +256,11 @@ def test_blank_output_proof_does_not_invent_a_right_transfer() -> None:
 def test_new_behavior_admission_rolls_back_after_binding_write_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     engine = CausalTileEngine(scheduler)
     action = adapter.power(primitive, 4)
     blank = adapter.primitive_law(primitive).blank
-    with _tile(tiles, adapter, primitive, (blank,) * 4) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
         before = ledger.snapshot()
         next_profile = adapter.quotients._next_future_profile
         next_class = adapter.quotients._next_future_class
@@ -251,7 +268,7 @@ def test_new_behavior_admission_rolls_back_after_binding_write_failure(
         def fail_reverse_index(*_args: object, **_kwargs: object) -> Never:
             raise RuntimeError("injected reverse-index failure")
 
-        monkeypatch.setattr(scheduler.results, "_add_membership", fail_reverse_index)
+        monkeypatch.setattr(scheduler.results, "add_membership", fail_reverse_index)
         with pytest.raises(RuntimeError, match="injected reverse-index failure"):
             quiescent_boundary(
                 engine,
@@ -295,7 +312,9 @@ def test_explicit_producer_and_consumer_admissibility_are_independent() -> None:
         FusedBoundaryContract,
     )
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     action = adapter.power(primitive, 4)
     law = adapter.primitive_law(primitive)
     assert law.behavior is not None
@@ -305,7 +324,7 @@ def test_explicit_producer_and_consumer_admissibility_are_independent() -> None:
     unsafe = next(i for i, q in enumerate(law.behavior.left_classes) if q not in safe)
     right = adapter.initial_ports(action)[1]
     wiring = adapter.wiring(action)
-    with _tile(tiles, adapter, primitive, (5, 5, 5, 5)) as source:
+    with make_tile_from_symbols(tiles, adapter, primitive, (5, 5, 5, 5)) as source:
         engine = CausalTileEngine(scheduler)
         for consumer, accepted in ((raw_safe[-1], True), (unsafe, False)):
             contract = FusedBoundaryContract(

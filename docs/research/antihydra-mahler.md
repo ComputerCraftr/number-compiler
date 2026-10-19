@@ -1,5 +1,8 @@
 # Antihydra arithmetic, literal machine, and Mahler action
 
+[Current release gates](../release-status.md) own validation status; this page
+records mathematical scope and source connections.
+
 Status: **Finite arithmetic and safety laws are checked; complete literal/macro
 refinement and the source-7 all-time barrier remain open.**
 
@@ -217,10 +220,9 @@ The ledger reports `mahler_source_composed_image_reads`; the retired
 fractional predicates and ledger safety remain distinct checks. This eliminates
 the redundant arithmetic fold, not all source validation or rational-integer work.
 
-The blank source's 1,024-step measurement still constructs 31 distinct support
-nodes with no complete-effect reuse. General F5-based normalization across its
-changing source residues remains an open construction obligation; the positive
-aligned-source result does not close it.
+Complete-effect reuse on aligned sources does not establish F5-based
+normalization across changing source residues. Measurements of a particular
+blank source belong to the dated evidence, not a permanent production status.
 
 Finite `--nth` arithmetic and selected projections are available with bounded
 ownership. Reusing retained parity avoids rediscovery, but folding every
@@ -514,7 +516,7 @@ Reproduce the bounded grammar and its joint finite witnesses with:
 
 ```console
 python -m devtools.experiments.antihydra.barrier_search --mode grammar --rounds 4 --max-event 4 --max-nodes 100000
-python -m pytest -o addopts='' tests/validation/proofs/test_mahler_future_grammar.py
+python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_mahler_future_grammar.py
 ```
 
 Finite grammar validation includes supplied-word powering and exact source
@@ -700,7 +702,7 @@ Run the current support/projection checks (including validation-marked assertion
 These do not validate the proposed mixed-coordinate bridge:
 
 ```console
-python -m pytest -o addopts='' tests/api/test_antihydra_support_cache.py tests/api/test_antihydra_projection_occurrences.py
+python -m devtools.checks.release --suite unit --select tests/api/test_antihydra_support_cache.py --select tests/api/test_antihydra_projection_occurrences.py
 ```
 
 ## Demanded history and the shared joint-adic chart

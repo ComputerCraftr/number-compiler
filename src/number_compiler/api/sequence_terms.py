@@ -50,7 +50,7 @@ def factored_word_projection(
     witness = None
     from number_compiler.arithmetic.number_theory import smallest_factor
 
-    for residue, modulus in zip(state.residues, automaton.moduli):
+    for residue, modulus in zip(state.residues, automaton.moduli, strict=True):
         common = gcd(int(residue), int(modulus))
         if common <= 1:
             continue

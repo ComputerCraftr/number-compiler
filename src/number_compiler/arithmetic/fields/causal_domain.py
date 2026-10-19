@@ -82,7 +82,7 @@ class DomainCellCodec:
         self._conjugate_ids: dict[int, int] = {}
 
     def intern(self, cell: DomainCell) -> int:
-        if not isinstance(cell, DomainCell) or cell.family != self.family:
+        if type(cell) is not DomainCell or cell.family != self.family:
             raise ValueError((self.family, cell))
         found = self._ids.get(cell)
         if found is not None:
@@ -104,7 +104,7 @@ class DomainCellCodec:
             return found
         source = self.cell(symbol)
         target = self._conjugate(source)
-        if not isinstance(target, DomainCell) or target.family != self.family:
+        if type(target) is not DomainCell or target.family != self.family:
             raise ValueError((source, target))
         if self._conjugate(target) != source:
             raise ValueError(("non-involutive-domain-conjugacy", source, target))
@@ -420,9 +420,12 @@ def reverse_history_codec(base: int, horizon: int) -> DomainCellCodec:
     def conjugate(cell: DomainCell) -> DomainCell:
         if not cell.active:
             return cell
-        if not isinstance(cell.payload, tuple) or len(cell.payload) != 2:
-            raise TypeError(cell.payload)
-        carry_bits, active_bits = map(int, cell.payload)
+        payload = cell.payload
+        if not isinstance(payload, tuple) or len(payload) != 2:
+            raise TypeError(payload)
+        carry_bits, active_bits = payload
+        if type(carry_bits) is not int or type(active_bits) is not int:
+            raise TypeError(payload)
         active_bits &= mask
         carry_bits &= active_bits
         return DomainCell(

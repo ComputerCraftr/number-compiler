@@ -83,8 +83,8 @@ def _publish(
             raise ValueError("reverse output tile already has another summary")
         results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_LATE_DUPLICATES)
         return found
-    referenced = results._tiles_for(key, value)
-    reverse_entries = results._index_entries(referenced)
+    referenced = results.tiles_for(key, value)
+    reverse_entries = results.index_entries(referenced)
     reservations = (
         (results._memo_owner, 1, REVERSE_BOUND_OUTPUT_RETAINED_NODES),
         (results._reverse_owner, reverse_entries, 0),
@@ -92,14 +92,14 @@ def _publish(
     results.ledger.reserve_many(reservations)
     reverse_snapshot = None
     try:
-        reverse_snapshot = results._reverse_snapshot(referenced, key)
+        reverse_snapshot = results.reverse_snapshot(referenced, key)
         results._memo[key] = value
         for tile in referenced:
-            results._add_membership(tile, key)
+            results.add_membership(tile, key)
     except BaseException:
         results._memo.pop(key, None)
         if reverse_snapshot is not None:
-            results._restore_reverse(reverse_snapshot)
+            results.restore_reverse(reverse_snapshot)
         for owner, entries, nodes in reservations:
             results.ledger.release(owner, entries, nodes)
         raise

@@ -35,20 +35,24 @@ def _validate_poly(values: Sequence[int], degree: int, modulus: int) -> tuple[in
     return vals
 
 
-def _poly_add(a: Sequence[int], b: Sequence[int], modulus: int) -> tuple[int, ...]:
+def primary_jet_add(
+    a: Sequence[int], b: Sequence[int], modulus: int
+) -> tuple[int, ...]:
     if len(a) != len(b):
         raise ValueError((len(a), len(b)))
     m = int(modulus)
-    return tuple((int(x) + int(y)) % m for x, y in zip(a, b))
+    return tuple((int(x) + int(y)) % m for x, y in zip(a, b, strict=True))
 
 
-def _poly_scale(a: Sequence[int], scalar: int, modulus: int) -> tuple[int, ...]:
+def primary_jet_scale(a: Sequence[int], scalar: int, modulus: int) -> tuple[int, ...]:
     m = int(modulus)
     s = int(scalar) % m
     return tuple((s * int(x)) % m for x in a)
 
 
-def _poly_mul(a: Sequence[int], b: Sequence[int], modulus: int) -> tuple[int, ...]:
+def primary_jet_multiply(
+    a: Sequence[int], b: Sequence[int], modulus: int
+) -> tuple[int, ...]:
     """Multiply modulo ``y**degree`` and coefficient ``modulus``."""
     if len(a) != len(b):
         raise ValueError((len(a), len(b)))
@@ -125,26 +129,26 @@ class PrimaryJetBlock:
         """Place ``higher`` immediately above this lower-position block."""
         if (self.degree, self.modulus) != (higher.degree, higher.modulus):
             raise ValueError("incompatible primary jets")
-        shifted = _poly_mul(self.power, higher.jet, self.modulus)
+        shifted = primary_jet_multiply(self.power, higher.jet, self.modulus)
         return PrimaryJetBlock(
             self.degree,
             self.modulus,
             self.length + higher.length,
-            _poly_mul(self.power, higher.power, self.modulus),
-            _poly_add(self.jet, shifted, self.modulus),
+            primary_jet_multiply(self.power, higher.power, self.modulus),
+            primary_jet_add(self.jet, shifted, self.modulus),
             self.compositions + higher.compositions + 1,
         )
 
     def _then_raw(self, higher: PrimaryJetBlock) -> PrimaryJetBlock:
         if (self.degree, self.modulus) != (higher.degree, higher.modulus):
             raise ValueError("incompatible primary jets")
-        shifted = _poly_mul(self.power, higher.jet, self.modulus)
+        shifted = primary_jet_multiply(self.power, higher.jet, self.modulus)
         return PrimaryJetBlock(
             self.degree,
             self.modulus,
             self.length + higher.length,
-            _poly_mul(self.power, higher.power, self.modulus),
-            _poly_add(self.jet, shifted, self.modulus),
+            primary_jet_multiply(self.power, higher.power, self.modulus),
+            primary_jet_add(self.jet, shifted, self.modulus),
             0,
         )
 
@@ -295,7 +299,13 @@ class PrimaryJetAffineMorphism:
         inverse = cls(degree, modulus, (modulus - 1,) * degree, (0,) * degree)
         unit = inverse.power(valuation).kernel
         kernel = (0,) + unit[:-1]
-        return cls(degree, modulus, kernel, _poly_mul(unit, offset, modulus), 1)
+        return cls(
+            degree,
+            modulus,
+            kernel,
+            primary_jet_multiply(unit, offset, modulus),
+            1,
+        )
 
     @classmethod
     def square_tangent(
@@ -322,7 +332,7 @@ class PrimaryJetAffineMorphism:
         return cls(
             degree,
             modulus,
-            _poly_scale(base, 2, modulus),
+            primary_jet_scale(base, 2, modulus),
             offset,
             1,
             0,
@@ -332,8 +342,10 @@ class PrimaryJetAffineMorphism:
         state = _validate_poly(state, self.degree, self.modulus)
         if self.source_annihilated:
             return self.offset
-        return _poly_add(
-            _poly_mul(self.kernel, state, self.modulus), self.offset, self.modulus
+        return primary_jet_add(
+            primary_jet_multiply(self.kernel, state, self.modulus),
+            self.offset,
+            self.modulus,
         )
 
     @property
@@ -361,8 +373,8 @@ class PrimaryJetAffineMorphism:
             )
         cocycle = self.cocycle.then(
             other.cocycle,
-            multiply=lambda a, b: _poly_mul(a, b, self.modulus),
-            add=lambda a, b: _poly_add(a, b, self.modulus),
+            multiply=lambda a, b: primary_jet_multiply(a, b, self.modulus),
+            add=lambda a, b: primary_jet_add(a, b, self.modulus),
         )
         return PrimaryJetAffineMorphism(
             self.degree,

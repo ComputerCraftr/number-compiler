@@ -21,6 +21,12 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     apply_carry_fn,
 )
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BANDS,
+    DecimalPairBand,
+    decimal_pair_band_members,
+)
+from number_compiler.arithmetic.polynomials.polynomial import f5_modes
 
 from .border_carry_safety import (
     BilateralCyclePort,
@@ -189,11 +195,50 @@ class MacroPhaseInwardOrbit:
     low_death: tuple[tuple[int, ...], ...]
     reflected_birth: tuple[tuple[int, ...], ...]
     reflected_death: tuple[tuple[int, ...], ...]
-    selected_bands: tuple[tuple[str, ...], ...]
+    selected_bands: tuple[tuple[DecimalPairBand, ...], ...]
     complete_future_period_certified: bool = False
 
+    def has_duration(self, duration: int) -> bool:
+        """Check every retained output channel against one finite horizon."""
+        return all(
+            type(values) is tuple and len(values) == duration
+            for values in (
+                self.pair_f5,
+                self.low_carries,
+                self.reflected_carries,
+                self.reflected_xor,
+                self.raw_innovation_borrow,
+                self.carry_borrow_xor,
+                self.low_birth,
+                self.low_death,
+                self.reflected_birth,
+                self.reflected_death,
+                self.selected_bands,
+            )
+        )
 
-def _inward_orbit_at(
+    @property
+    def retained_output_nodes(self) -> int:
+        """Count outer and row slots for each retained projected output."""
+        return sum(
+            len(values) + sum(len(row) for row in values)
+            for values in (
+                self.pair_f5,
+                self.low_carries,
+                self.reflected_carries,
+                self.reflected_xor,
+                self.raw_innovation_borrow,
+                self.carry_borrow_xor,
+                self.low_birth,
+                self.low_death,
+                self.reflected_birth,
+                self.reflected_death,
+                self.selected_bands,
+            )
+        )
+
+
+def inward_orbit_at(
     system: ReverseInwardConstraints, start: int, duration: int, position: int
 ) -> MacroPhaseInwardOrbit:
     """Conservative correlated carry responses at an inward position.
@@ -202,14 +247,20 @@ def _inward_orbit_at(
     *superset* of globally admissible sources. It is safe for deciding
     singleton (forced) outputs and cannot invent a carry branch or orbit.
     """
-    from .temporal_inward_constraints import _BANDS
-
-    residues, lows, highs, xors = [], [], [], []
-    borrows, joint_xors = [], []
-    lb, ld, hb, hd, bands = [], [], [], [], []
-    for t in range(start, start + duration):
+    residues: list[tuple[int, ...]] = []
+    lows: list[tuple[int, ...]] = []
+    highs: list[tuple[int, ...]] = []
+    xors: list[tuple[int, ...]] = []
+    borrows: list[tuple[int, ...]] = []
+    joint_xors: list[tuple[int, ...]] = []
+    lb: list[tuple[int, ...]] = []
+    ld: list[tuple[int, ...]] = []
+    hb: list[tuple[int, ...]] = []
+    hd: list[tuple[int, ...]] = []
+    bands: list[tuple[DecimalPairBand, ...]] = []
+    for t in system.admitted_temporal_span(start, duration):
         w = system.widths[t]
-        if not 0 <= position < (w + 1) // 2 or t >= len(system._carries):
+        if not 0 <= position < (w + 1) // 2:
             raise ValueError("inward position crosses center or terminal row")
         loc = position
         reflected = w - 1 - position
@@ -232,9 +283,7 @@ def _inward_orbit_at(
         lows.append(tuple(sorted({v[1] for v in possibilities})))
         highs.append(tuple(sorted({v[2] for v in possibilities})))
         xors.append(tuple(sorted({v[1] ^ v[2] for v in possibilities})))
-        borrows.append(
-            tuple(bit for bit in (0, 1) if system._borrows[t][position] & (1 << bit))
-        )
+        borrows.append(system.raw_borrow_domain(t, position))
         joint_xors.append(system.carry_borrow_xor_domain(t, position))
         lb.append(tuple(sorted({int(v[1] == 0 and v[3] == 1) for v in possibilities})))
         ld.append(tuple(sorted({int(v[1] == 1 and v[3] == 0) for v in possibilities})))
@@ -242,9 +291,12 @@ def _inward_orbit_at(
         hd.append(tuple(sorted({int(v[2] == 1 and v[4] == 0) for v in possibilities})))
         bands.append(
             tuple(
-                name
-                for name, members in _BANDS
-                if any(v[0] in members for v in possibilities)
+                band
+                for band in DECIMAL_PAIR_BANDS
+                if any(
+                    value[0] in decimal_pair_band_members(band)
+                    for value in possibilities
+                )
             )
         )
     return MacroPhaseInwardOrbit(
@@ -502,7 +554,7 @@ class PhaseBankHarmonic:
     """Actual finite macro-phase mask with unknown lanes kept conditional."""
 
     position: int
-    channel: str
+    channel: DecimalPairBand
     selected: tuple[int | None, ...]
     f5_modes: tuple[int, int, int, int] | None
     future_period_certified: bool = False
@@ -524,7 +576,8 @@ class AuthenticatedMacroWindow:
     start: int
     action: CycleHarmonicAction
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
+        """Recheck the certificate-bound cycle before reading its phases."""
         cert = self.certificate
         cert.validate(cert.owner, cert.source)
         end = self.start + self.action.duration
@@ -552,7 +605,7 @@ class AuthenticatedMacroWindow:
         K-window phases remain None: they are not silently replaced by
         a guessed full-K period.
         """
-        self._validate()
+        self.validate()
         ports = self.certificate.bilateral_window_ports()
         results: list[MacroWindowCarrySafety | None] = []
         for j in range(self.action.duration):
@@ -590,7 +643,7 @@ class AuthenticatedMacroWindow:
         system.propagate()
         skip = int(self.certificate.source is not self.certificate.owner.initial)
         return tuple(
-            _inward_orbit_at(system, self.start - skip, self.action.duration, position)
+            inward_orbit_at(system, self.start - skip, self.action.duration, position)
             for position in positions
         )
 
@@ -598,7 +651,7 @@ class AuthenticatedMacroWindow:
         self,
         *,
         positions: tuple[int, ...],
-        channel: str,
+        channel: DecimalPairBand,
         max_cells: int = 16384,
         include_source_digits: bool = False,
         include_source_pairs: bool = False,
@@ -610,7 +663,8 @@ class AuthenticatedMacroWindow:
         remain unknown if even one phase has an unresolved five-band mask.
         """
         if (
-            type(positions) is not tuple
+            type(channel) is not DecimalPairBand
+            or type(positions) is not tuple
             or not positions
             or any(type(i) is not int or i < 0 for i in positions)
         ):
@@ -621,7 +675,7 @@ class AuthenticatedMacroWindow:
             include_source_pairs=include_source_pairs,
         )
         system.propagate()
-        results = []
+        results: list[PhaseBankHarmonic] = []
         for position in positions:
             skip = int(self.certificate.source is not self.certificate.owner.initial)
             selected = tuple(
@@ -630,19 +684,7 @@ class AuthenticatedMacroWindow:
                     self.start - skip, self.start - skip + self.action.duration
                 )
             )
-            modes: tuple[int, int, int, int] | None = None
-            if all(bit is not None for bit in selected):
-                forced = tuple(cast(int, bit) for bit in selected)
-                computed_modes = tuple(
-                    sum(bit * pow(z, t, 5) for t, bit in enumerate(forced)) % 5
-                    for z in (1, 2, 3, 4)
-                )
-                modes = (
-                    computed_modes[0],
-                    computed_modes[1],
-                    computed_modes[2],
-                    computed_modes[3],
-                )
+            modes = f5_modes(selected)
             results.append(
                 PhaseBankHarmonic(
                     position,
@@ -667,7 +709,7 @@ class AuthenticatedMacroWindow:
         the *same* live certificate.  No observed masks/2rev10 periods are
         imported as premises.  Call ``propagate`` to find forced bank masks.
         """
-        self._validate()
+        self.validate()
         system = self.certificate.inward_temporal_constraints(
             max_cells=max_cells,
             include_source_pairs=include_source_pairs,
@@ -709,7 +751,7 @@ def authorize_finite_macro_window(
     window = AuthenticatedMacroWindow(
         certificate, start, CycleHarmonicAction.from_cycle(cycle)
     )
-    window._validate()
+    window.validate()
     return window
 
 
@@ -718,6 +760,7 @@ __all__ = [
     "CycleHarmonicAction",
     "MacroCarrySafetyPhase",
     "MacroPhaseInwardOrbit",
+    "inward_orbit_at",
     "MacroWindowCarrySafety",
     "PhaseBankHarmonic",
     "all_reverse_add_macro_harmonics",

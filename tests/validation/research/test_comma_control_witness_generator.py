@@ -12,8 +12,8 @@ import pytest
 from devtools.experiments.comma import generate_rank_candidate as generator
 from devtools.experiments.comma.generate_rank_candidate import (
     _control_witness,
-    _control_witness_from_chart,
     _witness_slices,
+    control_witness_from_chart,
 )
 from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
 
@@ -45,7 +45,7 @@ def test_tiny_landmine_control_candidate() -> None:
 
 def test_intermediate_entry_candidate_keeps_exact_start() -> None:
     start = BoundaryChart("entry", 1, 0, 3)
-    witness = _control_witness_from_chart(start, 5)
+    witness = control_witness_from_chart(start, 5)
     assert witness["source"] == {
         "chart": ["entry", 1, 0, 3],
         "residue": 5,

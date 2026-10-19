@@ -11,7 +11,11 @@ from devtools.experiments.reverse_add.factored_carrier import (
     OutputResidualID,
     TemporalCell,
 )
-from devtools.experiments.reverse_add.factored_planes import PlaneAlgebra, PlaneGate
+from devtools.experiments.reverse_add.factored_planes import (
+    PlaneAlgebra,
+    PlaneGate,
+    PlaneID,
+)
 from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
@@ -25,6 +29,17 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 
 
+def _pad_plane_to_width(planes: PlaneAlgebra, plane: PlaneID, width: int) -> PlaneID:
+    """Test oracle for zero-extending an F5 plane to an observed endpoint width."""
+    current_width = planes.resolve(plane, "f5").length
+    extra = width - current_width
+    if extra < 0:
+        raise ValueError("test plane cannot be truncated")
+    if extra == 0:
+        return plane
+    return planes.concat(plane, planes.constant("f5", 0, extra))
+
+
 def test_demanded_carry_regions_preserve_both_ordered_entry_cases() -> None:
     # Includes repeated regions reached under different carries. A memo keyed
     # only by the domain node would incorrectly merge these requests.
@@ -32,7 +47,7 @@ def test_demanded_carry_regions_preserve_both_ordered_entry_cases() -> None:
         planes = PlaneAlgebra()
         source = planes.from_values("domain", values)
         for incoming in (0, 1):
-            expected = []
+            expected: list[int] = []
             carry = incoming
             for domain in values:
                 expected.append(carry)
@@ -216,8 +231,9 @@ def test_endpoint_demand_skips_historical_affine_composition_but_not_source_step
             assert carrier.decode(endpoint) == expected
             assert power.advance(source, 16) is endpoint
         assert power.compositions == 0
-        assert not power._memo
-        assert power._endpoint_memo
+        endpoint_cache = power.cache_snapshot()
+        assert endpoint_cache.complete_entries == 0
+        assert endpoint_cache.endpoint_entries > 0
         assert carrier.successor_evaluations == 16
 
         # An endpoint-only cache hit cannot stand in for a complete action.
@@ -226,15 +242,20 @@ def test_endpoint_demand_skips_historical_affine_composition_but_not_source_step
         assert power.compositions > 0
         assert (
             complete.action.apply(
-                power._pad(source.f5, carrier.planes.resolve(endpoint.f5).length),
+                _pad_plane_to_width(
+                    carrier.planes,
+                    source.f5,
+                    carrier.planes.resolve(endpoint.f5).length,
+                ),
                 shift=carrier.planes.shift,
-                add=carrier._add,
-                scale=carrier._scale,
+                add=carrier.add_planes,
+                scale=carrier.scale_plane,
             )
             == endpoint.f5
         )
         power.clear()
-        assert not power._memo and not power._endpoint_memo
+        cleared_cache = power.cache_snapshot()
+        assert cleared_cache.complete_entries == cleared_cache.endpoint_entries == 0
 
 
 def test_invalid_or_foreign_channels_and_point_scope_are_rejected() -> None:
@@ -259,7 +280,7 @@ def test_invalid_or_foreign_channels_and_point_scope_are_rejected() -> None:
     carrier.planes.max_work = 1
     with pytest.raises(BlockContextBudgetExceeded):
         carrier.successor(q)
-    assert not carrier.planes._gates
+    assert carrier.planes.audit_snapshot().gate_entries == 0
 
 
 def test_source_admission_uses_input_symmetry_and_center_before_plane_validation(
@@ -301,7 +322,7 @@ def test_independent_observations_release_their_workspaces() -> None:
         assert carrier.decode(q) == (2, 2, 2, 2)
         assert carrier.residual(q).f5 == q.f5
         assert carrier.planes.work == 0
-        assert not carrier.planes._gates
+        assert carrier.planes.audit_snapshot().gate_entries == 0
 
 
 def test_checkpoint_preserves_separate_planes_without_reencoding() -> None:
@@ -333,11 +354,11 @@ def test_stale_rope_memos_are_removed_without_invalidating_live_hits() -> None:
     leaf = words.slice_runs(source, 0, 1)
     key = source_id, 0, 1
     words.prune_stale_program_word_memos()
-    assert words._SLICE[key] is leaf
+    assert words.program_word_cache_snapshot().slices[key] is leaf
     del source
     gc.collect()
     words.prune_stale_program_word_memos()
-    assert key not in words._SLICE
+    assert key not in words.program_word_cache_snapshot().slices
     assert leaf.symbol == 0
 
 
@@ -410,7 +431,7 @@ def test_all_partial_boolean_tables_preserve_every_cofactor() -> None:
                         )
                 finally:
                     planes.clear_work()
-                assert len(planes._cofactors) <= 2
+                assert planes.audit_snapshot().cofactor_entries <= 2
     assert planes.cofactor_evictions > 0
     assert planes.cofactor_cells > 0
 
@@ -421,16 +442,16 @@ def test_bisimulation_catalog_bypass_and_compile_budget() -> None:
     zero = planes.constant("f5", 0, 4)
     gate = PlaneGate.build("sum", ("f5", "f5"), "f5", lambda a, b: (a + b) % 5)
     assert planes.apply(gate, source, zero) is source
-    assert not planes._cofactors
+    assert planes.audit_snapshot().cofactor_entries == 0
     assert planes.cofactor_cells == 5
     planes.clear_work()
     planes.max_work = 1
     with pytest.raises(BlockContextBudgetExceeded):
         planes.apply(gate, source, zero)
     assert planes.work == 1
-    assert not planes._cofactors
+    assert planes.audit_snapshot().cofactor_entries == 0
     planes.clear_work()
-    assert not planes._gates
+    assert planes.audit_snapshot().gate_entries == 0
 
 
 def test_automatic_memo_cleanup_does_not_rescan_unchanged_tables() -> None:
@@ -441,17 +462,16 @@ def test_automatic_memo_cleanup_does_not_rescan_unchanged_tables() -> None:
         sum(words.prune_stale_program_word_memos(amortized=True) for _ in range(100))
         == 0
     )
-    assert words._SLICE[source.node_id, 0, 1] is observed
+    key = source.node_id, 0, 1
+    assert words.program_word_cache_snapshot().slices[key] is observed
 
 
-def test_rope_cache_reset_starts_a_new_cleanup_epoch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_rope_cache_reset_preserves_live_word_handles() -> None:
     source = words.from_values((0, 1, 2, 3))
-    monkeypatch.setattr(words, "_NEXT_PRUNE_SIZE", 10**9)
+    sliced = words.slice_runs(source, 1, 2)
     words.clear_transient_program_word_caches()
-    assert words._NEXT_PRUNE_SIZE == 256
     assert list(words.iter_runs(source)) == [(0, 1), (1, 1), (2, 1), (3, 1)]
+    assert list(words.iter_runs(sliced)) == [(1, 1), (2, 1)]
 
 
 def test_residual_reuse_is_bounded_and_clear_preserves_live_handles() -> None:
@@ -468,10 +488,11 @@ def test_residual_reuse_is_bounded_and_clear_preserves_live_handles() -> None:
         current = planes.from_values("f5", (i, (i + 1) % 5, i))
         outputs.append(planes.apply(gate, current))
         planes.clear_work()
-        assert len(planes._reuse) <= 2
+        assert planes.audit_snapshot().reuse_entries <= 2
     assert planes.reuse_evictions > 0
     planes.clear_reuse()
-    assert not planes._reuse and not planes._cofactors
+    snapshot = planes.audit_snapshot()
+    assert snapshot.reuse_entries == snapshot.cofactor_entries == 0
     assert tuple(planes.atom(result, i) for i in range(4)) == (1, 2, 3, 4)
     assert planes.apply(gate, source) is result
 

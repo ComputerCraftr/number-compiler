@@ -21,20 +21,25 @@ from number_compiler.resources.metric_keys import (
 
 from ._temporal_bank_authority import (
     FrozenMap,
-    _SourceAuthorizedRecord,
+    SourceAuthorizedRecord,
     issue_source_record,
     require_same_source,
     validate_source_record,
 )
 from .protected_temporal_bank import (
-    PERIODIC_CHANNELS,
+    BANK_CHANNELS,
+    BankChannel,
     ProtectedPeriodicBank,
+    TemporalBankChannel,
+    bank_channel_name,
     protected_periodic_bank,
 )
 from .temporal_ports import DecimalCarryPort, decimal_carry_port
 
 WALSH64_LANES = 64
-BOOL_CHANNELS = tuple(name for name in PERIODIC_CHANNELS if name != "f5")
+BOOL_CHANNELS: tuple[BankChannel, ...] = tuple(
+    channel for channel in BANK_CHANNELS if channel is not TemporalBankChannel.F5
+)
 
 
 def _crt25(value2: int, value5: int, places: int) -> int:
@@ -47,7 +52,7 @@ def _crt25(value2: int, value5: int, places: int) -> int:
 
 
 @dataclass(frozen=True, slots=True)
-class Radix25ShiftPort(_SourceAuthorizedRecord):
+class Radix25ShiftPort(SourceAuthorizedRecord):
     """Exact one-step shift and guarded noncontracting two-step projection."""
 
     places: int
@@ -147,7 +152,7 @@ def radix25_shift_port(
 
 
 @dataclass(frozen=True, slots=True)
-class Walsh64TemporalPort(_SourceAuthorizedRecord):
+class Walsh64TemporalPort(SourceAuthorizedRecord):
     """One exact 64-frame transform over outputs from a protected bank."""
 
     start_tick: int
@@ -171,23 +176,20 @@ def temporal_bank_walsh64(
 
     if type(bank) is not ProtectedPeriodicBank:
         raise TypeError("Walsh64 requires a protected source-bound temporal bank")
-    authority = validate_source_record(bank)
     if type(start_tick) is not int or start_tick < 0:
         raise ValueError("Walsh64 start tick must be nonnegative")
     if start_tick + WALSH64_LANES > bank.f_steps:
         raise ValueError("Walsh64 requires 64 source-certified two-step frames")
 
-    masks = {name: 0 for name in BOOL_CHANNELS}
+    frames, authority = bank.authorized_frames(start_tick, WALSH64_LANES)
+    masks = {bank_channel_name(channel): 0 for channel in BOOL_CHANNELS}
     f5_masks = [0] * 5
-    for lane in range(WALSH64_LANES):
-        # The public read above validated the complete source-authority chain;
-        # use the owner-private accessor for this bounded internal scan.
-        frame = bank._at_trusted(start_tick + lane)
-        for name in BOOL_CHANNELS:
-            bit = frame.scalar(name)
+    for lane, frame in enumerate(frames):
+        for channel in BOOL_CHANNELS:
+            bit = frame.scalar(channel)
             if bit not in (0, 1):
                 raise AssertionError("Walsh64 Boolean output is not a bit")
-            masks[name] |= bit << lane
+            masks[bank_channel_name(channel)] |= bit << lane
         f5_masks[frame.f5] |= 1 << lane
     transformed = {name: walsh64_mod5(mask) for name, mask in masks.items()}
     f5_bands = tuple(walsh64_mod5(mask) for mask in f5_masks)

@@ -10,6 +10,9 @@ import pytest
 import number_compiler.sequences.antihydra.mahler_mixed_harmonic_ring as mixed_ring_module
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.sequences.antihydra.mahler_action import associated_action
+from number_compiler.sequences.antihydra.mahler_border_identity import (
+    MahlerOddMotifSignature,
+)
 from number_compiler.sequences.antihydra.mahler_mixed_harmonic_ring import (
     MahlerMixedOddHarmonicRing as Ring,
 )
@@ -26,6 +29,10 @@ from tests.support.mahler_harmonic_reference import (
 from tests.support.mahler_harmonic_reference import (
     mapping as _mapping,
 )
+
+
+def _ring(source: int, word: tuple[int, ...]) -> Ring:
+    return Ring.from_source(source, MahlerOddMotifSignature(word))
 
 
 def _scalar_events(
@@ -53,7 +60,7 @@ def test_mixed_word_powered_endpoint_and_every_crt_modulus(
     word: tuple[int, ...],
 ) -> None:
     x = source_for_motif(word, 7, extra_bits=6)
-    ring = Ring.from_source(x, word)
+    ring = _ring(x, word)
     assert ring.capacity >= 7
     records = _scalar_events(x, word, 7, 11)
     for copies in range(8):
@@ -67,7 +74,7 @@ def test_mixed_word_powered_endpoint_and_every_crt_modulus(
                     == expected % radix**places
                 )
     with pytest.raises(ValueError):
-        Ring.from_source(x + (1 << ring.extent), word)
+        _ring(x + (1 << ring.extent), word)
     with pytest.raises(ValueError):
         ring.power(ring.capacity + 1)
 
@@ -80,7 +87,7 @@ def test_six_radix_q_carry_borrow_harmonics_match_literal_events(
     copies = 22
     clock = 13
     x = source_for_motif(word, copies, extra_bits=6)
-    ring = Ring.from_source(x, word)
+    ring = _ring(x, word)
     sp = ring.q_phase_spectrum(
         radix, 3, copies, clock=clock, walsh64=len(word) * copies >= 64
     )
@@ -118,7 +125,7 @@ def test_six_radix_q_carry_borrow_harmonics_match_literal_events(
 def test_mixed_very_long_q_orbit_is_periodic_only_under_exact_source_guard() -> None:
     word = (1, 2)
     x = source_for_motif(word, 4096, extra_bits=6)
-    ring = Ring.from_source(x, word)
+    ring = _ring(x, word)
     assert ring.capacity >= 4096
     q = ring.q_phase_spectrum(6, 2, 4096, clock=17, walsh64=True)
     assert q.prefix_length + q.period < 4096 * len(word)
@@ -135,16 +142,29 @@ def test_mixed_very_long_q_orbit_is_periodic_only_under_exact_source_guard() -> 
 def test_bad_motif_and_unproved_repetition_fail_closed() -> None:
     x = source_for_motif((1, 2), 3, extra_bits=6)
     with pytest.raises(ValueError):
-        Ring.from_source(x, (2, 1))
+        _ring(x, (2, 1))
     with pytest.raises(ValueError):
-        Ring.from_source(x, (1, 0))
+        _ring(x, (1, 0))
     with pytest.raises(ValueError):
-        Ring.from_source(x + 1, (1, 2))
-    ring = Ring.from_source(x, (1, 2))
+        _ring(x + 1, (1, 2))
+    ring = _ring(x, (1, 2))
     with pytest.raises(ValueError):
         ring.q_phase_spectrum(5, 2, ring.capacity + 1, clock=0)
     with pytest.raises(ValueError):
         ring.q_phase_spectrum(5, 2, 2, clock=0, walsh64=True)
+
+
+def test_structural_motif_identity_is_shared_but_source_guards_are_not() -> None:
+    word = (1, 2)
+    first = _ring(source_for_motif(word, 4), word)
+    second = _ring(source_for_motif(word, 7), word)
+
+    assert first.source != second.source
+    assert first.macro_identity == second.macro_identity
+    assert first.macro_identity.packet() == second.macro_identity.packet()
+    assert first.capacity >= 4
+    assert second.capacity >= 7
+    assert first.endpoint(4) != second.endpoint(4)
 
 
 def test_source_factory_does_not_recompile_its_authenticated_motif(
@@ -160,7 +180,7 @@ def test_source_factory_does_not_recompile_its_authenticated_motif(
         return compile_motif(exponents)
 
     monkeypatch.setattr(mixed_ring_module, "_compiled_motif", counted)
-    Ring.from_source(source, (1, 2))
+    _ring(source, (1, 2))
     assert calls == 1
 
 
@@ -182,6 +202,10 @@ def test_production_odd_seam_packet_includes_mixed_and_preserves_guard_split() -
     mixed = _mapping(p["source_bound_mixed_odd_ring"])
     motif = mixed["motif"]
     assert motif == (1, 1, 2)
+    macro = _mapping(mixed["macro_identity"])
+    assert macro["family"] == "antihydra"
+    assert macro["kind"] == "path"
+    assert macro["signature"] == ("mahler-odd-run-motif-v1", motif)
     assert mixed["repetitions"] == 2
     assert mixed["fractional_guard_empty"] is True
     assert mixed["ledger_minimum"] == 0

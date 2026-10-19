@@ -14,11 +14,17 @@ from typing import Literal, TypedDict, TypeVar
 
 from devtools.paths import report_output
 from number_compiler.api.cli import main as cli_main
-from number_compiler.api.cli_render import _radix_string
+from number_compiler.api.cli_render import radix_string
 from number_compiler.api.cli_requests import parse_request
-from number_compiler.api.family_registry import CAPABILITIES, family_spec, option_argv
+from number_compiler.api.family_registry import CAPABILITIES, family_spec
+from number_compiler.api.json_output import (
+    is_object_sequence,
+    is_string_object_mapping,
+)
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.query_types import AntihydraVerifyQuery, CollatzEventQuery
+from number_compiler.api.registry_cli import option_argv
+from number_compiler.arithmetic.contracts.family_identity import family_id
 
 Mode = Literal["cold", "warm", "bypass"]
 FAMILIES = tuple(CAPABILITIES)
@@ -38,8 +44,8 @@ class Sample(TypedDict):
     info: object
 
 
-def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, object]]:
-    """Time only the requested CLI route; retain its actual metrics packet."""
+def cli_invocation(arguments: list[str], *, fresh: bool) -> tuple[float, int, str, str]:
+    """Run one CLI request and return elapsed time plus its raw process result."""
     started = perf_counter()
     if fresh:
         process = subprocess.run(
@@ -55,11 +61,18 @@ def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, o
             code = cli_main(arguments)
         output, error = stdout.getvalue(), stderr.getvalue()
     elapsed = perf_counter() - started
+    return elapsed, code, output, error
+
+
+def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, object]]:
+    """Time a successful CLI route and retain its actual metrics packet."""
+    elapsed, code, output, error = cli_invocation(arguments, fresh=fresh)
     if code:
         raise ValueError(f"CLI refused comparison: exit {code}: {error or output}")
-    packet = json.loads(output)
-    if not isinstance(packet, dict):
+    decoded: object = json.loads(output)
+    if not is_string_object_mapping(decoded):
         raise TypeError("CLI did not emit a JSON query packet")
+    packet: dict[str, object] = dict(decoded)
     value = packet.get("value")
     if value is not None and not isinstance(value, str):
         raise TypeError("CLI value must be an exact digit string or null")
@@ -70,12 +83,13 @@ def named_counter_lane(value: object, label: str) -> dict[str, int] | None:
     """Parse a nullable schema-eight named-work lane without inventing zeros."""
     if value is None:
         return None
-    if not isinstance(value, list):
+    if not is_object_sequence(value) or type(value) is not list:
         raise TypeError(f"{label} must be a JSON list of counter pairs")
     counts: dict[str, int] = {}
     for pair in value:
         if (
-            not isinstance(pair, list)
+            not is_object_sequence(pair)
+            or type(pair) is not list
             or len(pair) != 2
             or not isinstance(pair[0], str)
             or type(pair[1]) is not int
@@ -93,25 +107,30 @@ def family_execution_work(
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
     """Select one instrumented family row from a public CLI metrics packet."""
     info = packet.get("info")
-    if not isinstance(info, dict) or "metrics" not in info:
+    if not is_string_object_mapping(info) or "metrics" not in info:
         raise TypeError("CLI did not return its requested metrics packet")
-    metrics = info["metrics"]
-    if not isinstance(metrics, dict):
+    info_packet: dict[str, object] = dict(info)
+    metrics = info_packet["metrics"]
+    if not is_string_object_mapping(metrics):
         raise TypeError("metrics observation is not an object")
-    execution = metrics.get("execution_metrics")
-    if not isinstance(execution, dict):
+    metrics_packet: dict[str, object] = dict(metrics)
+    execution = metrics_packet.get("execution_metrics")
+    if not is_string_object_mapping(execution):
         raise TypeError("metrics omitted execution-work measurements")
-    rows = execution.get("family_work")
-    if not isinstance(rows, list):
+    execution_packet: dict[str, object] = dict(execution)
+    rows = execution_packet.get("family_work")
+    if not is_object_sequence(rows):
         raise TypeError("execution metrics omitted family work rows")
-    matches = [
-        row
-        for row in rows
-        if isinstance(row, dict) and row.get("counter_prefix") == counter_prefix
-    ]
+    matches: list[dict[str, object]] = []
+    for row in rows:
+        if (
+            is_string_object_mapping(row)
+            and row.get("counter_prefix") == counter_prefix
+        ):
+            matches.append(dict(row))
     if len(matches) != 1:
         raise TypeError(f"execution metrics need one {counter_prefix} family work row")
-    return info, metrics, execution, matches[0]
+    return info_packet, metrics_packet, execution_packet, matches[0]
 
 
 def run_jsonl_report(
@@ -180,13 +199,20 @@ def compare(
     Warm point queries reuse their compiler and execution owner. CLI warm queries
     reuse process caches; each CLI invocation still owns its own query context.
     """
-    if family not in FAMILIES or trials < 1 or position < 0 or max_output_bits < 1:
+    selected_family = family_id(family)
+    if (
+        selected_family not in FAMILIES
+        or trials < 1
+        or position < 0
+        or max_output_bits < 1
+    ):
         raise ValueError("invalid public comparison configuration")
     if type(no_value) is not bool:
         raise ValueError("no_value must be Boolean")
     if not info or any(type(name) is not str for name in info):
         raise ValueError("at least one named CLI observation is required")
-    supported_info = set(family_spec(family).nth_info)
+    spec = family_spec(selected_family)
+    supported_info = set(spec.nth_info)
     if any(name not in supported_info for name in info):
         raise ValueError("CLI observation is not supported by the selected family")
     if not horizons or any(horizon < 0 for horizon in horizons):
@@ -195,9 +221,7 @@ def compare(
         raise ValueError("output bases must be between 2 and 36")
     if not modes or any(mode not in ("cold", "warm", "bypass") for mode in modes):
         raise ValueError("invalid comparison mode")
-    source_arguments = (
-        option_argv("seed", seed) if "seed" in family_spec(family).parameters else []
-    )
+    source_arguments = option_argv("seed", seed) if "seed" in spec.parameters else []
     requested_info = tuple(dict.fromkeys(info))
     selected_bases = tuple(bases[:1]) if no_value else tuple(bases)
     rows: list[Sample] = []
@@ -224,7 +248,7 @@ def compare(
             source_radix = projected.source_radix or 2
             expected_digit = (reference // source_radix**position) % source_radix
             expected_outputs = {
-                base: _radix_string(reference, base) for base in selected_bases
+                base: radix_string(reference, base) for base in selected_bases
             }
         semantic_info: object | None = None
         for mode in modes:
@@ -285,11 +309,11 @@ def compare(
                         raise AssertionError(
                             "public CLI output differs from API output"
                         )
-                    if not isinstance(raw_info, dict):
+                    if not is_string_object_mapping(raw_info):
                         raise TypeError("CLI did not return requested information")
                     if set(raw_info) != set(requested_info):
                         raise AssertionError("CLI returned the wrong information keys")
-                    stable_info = {
+                    stable_info: dict[str, object] = {
                         key: item for key, item in raw_info.items() if key != "metrics"
                     }
                     if stable_info:
@@ -362,7 +386,8 @@ def main() -> int:
     options = parser.parse_args()
     modes: list[Mode] = options.modes
     information = tuple(options.information or ("metrics",))
-    selected_spec = family_spec(options.family)
+    selected_family = family_id(options.family)
+    selected_spec = family_spec(selected_family)
     unsupported = set(information) - set(selected_spec.nth_info)
     if unsupported:
         parser.error(

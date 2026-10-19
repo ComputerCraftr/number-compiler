@@ -136,7 +136,7 @@ def source_sections(result: Run) -> Iterator[tuple[int, int, int, int]]:
         # ``result`` was authenticated above. Publish the retained support once
         # and consume its ledger-owned store directly; the public property
         # otherwise repeats whole-result validation before this linear fold.
-        segments = result._term._materialize_segments(result)
+        segments = result.source_term._materialize_segments(result)
         for segment in segments:
             block = segment.cylinder
             if segment.start != completed or block.residue != h % (1 << block.width):

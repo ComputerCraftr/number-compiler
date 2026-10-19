@@ -56,19 +56,23 @@ from number_compiler.sequences.reverse_add._q19_issuance import (
 )
 from number_compiler.sequences.reverse_add.q19_occurrence import (
     ReversePairOutputOccurrence,
-    _occurrence_publication_binding,
+    occurrence_publication_snapshot,
+)
+from number_compiler.sequences.reverse_add.q19_output_contracts import (
+    ReversePairQ19OutputAuditSnapshot,
 )
 from number_compiler.sequences.reverse_add.q19_punctured_producer import (
     PuncturedPairProducer,
 )
-from number_compiler.sequences.reverse_add.q19_word_summary import (
-    _Q19,
-    _UPPER,
-    _pair_step_law,
-    _WordSummary,
+from number_compiler.sequences.reverse_add.q19_summary_builder import (
+    build_word_summary,
 )
-
-_LedgerSLPArena = LedgerSLPArena
+from number_compiler.sequences.reverse_add.q19_word_summary import (
+    Q19_UPPER,
+    Q19Summary,
+    WordSummary,
+    pair_step_law,
+)
 
 
 class ReversePairQ19OutputOwner:
@@ -102,7 +106,7 @@ class ReversePairQ19OutputOwner:
             self.arena = LedgerSLPArena(
                 ledger, prefix, owner_kind="reverse_pair_output"
             )
-            self.machine = _pair_step_law()
+            self.machine = pair_step_law()
             self.projector = BimachineSLPProjector(self.machine, self.arena)
 
             forward_owner = ledger.register(
@@ -151,17 +155,17 @@ class ReversePairQ19OutputOwner:
                 forward_power,
                 backward_power,
             )
-            (
-                self.projector._fwd,
-                self.projector._rev,
-                self.projector._block,
-                self.projector._fwd_power,
-                self.projector._rev_power,
-            ) = self._projector_memos
+            self.projector.bind_cache_stores(
+                forward=forward,
+                reverse=backward,
+                block=block,
+                forward_power=forward_power,
+                reverse_power=backward_power,
+            )
             self._summary_owner = ledger.register(
                 prefix + "-q19-summaries", "reverse_pair_q19_summary"
             )
-            self._summaries = OwnedMemo[int, _WordSummary](
+            self._summaries = OwnedMemo[int, WordSummary](
                 ledger, self._summary_owner, nodes_per_entry=1
             )
             self._issued_owner = ledger.register(
@@ -230,118 +234,120 @@ class ReversePairQ19OutputOwner:
 
     def _register_payload_audit_contract(self) -> None:
         self._audit_nodes = self.arena.nodes
-        self._audit_terms = self.arena._term_store._data
-        self._audit_concats = self.arena._cat_store._data
-        self._audit_repeats = self.arena._rep_store._data
-        self._audit_summaries = self._summaries._data
-        self._audit_issued = self._issued._data
-        self._audit_word_fibers = self._word_fibers._data
-        self._audit_border_certificates = self._border_certificates._data
-        self._audit_controlled_gt_banks = self._controlled_gt_banks._data
-        self._audit_spatial_bank_windows = self._spatial_bank_windows._data
-        self._audit_temporal_ring_banks = self._temporal_ring_banks._data
-        self._audit_diagonal_comparisons = self._diagonal_comparisons._data
+        (
+            self._audit_terms,
+            self._audit_concats,
+            self._audit_repeats,
+        ) = self.arena.audit_interner_stores
+        self._audit_summaries = self._summaries.audit_container
+        self._audit_issued = self._issued.audit_container
+        self._audit_word_fibers = self._word_fibers.audit_container
+        self._audit_border_certificates = self._border_certificates.audit_container
+        self._audit_controlled_gt_banks = self._controlled_gt_banks.audit_container
+        self._audit_spatial_bank_windows = self._spatial_bank_windows.audit_container
+        self._audit_temporal_ring_banks = self._temporal_ring_banks.audit_container
+        self._audit_diagonal_comparisons = self._diagonal_comparisons.audit_container
         (
             self._audit_projector_forward,
             self._audit_projector_reverse,
             self._audit_projector_block,
             self._audit_projector_forward_power,
             self._audit_projector_reverse_power,
-        ) = tuple(memo._data for memo in self._projector_memos)
-        from number_compiler.resources.payload_contracts import (
-            PayloadAuditStoreBinding,
-        )
-        from number_compiler.sequences.reverse_add.q19_payload_audit import (
-            audit_reverse_pair_output_owner,
+        ) = tuple(memo.audit_container for memo in self._projector_memos)
+        from .q19_payload_audit_registration import (
+            register_reverse_pair_output_contract,
         )
 
-        self.ledger.register_payload_audit_contract(
+        register_reverse_pair_output_contract(
+            self.ledger,
             self,
-            "reverse_add",
-            (
-                PayloadAuditStoreBinding(
-                    self.arena.owners[0],
-                    "_audit_nodes",
-                    "reverse_pair_output_grammar",
-                ),
-                PayloadAuditStoreBinding(
-                    self.arena.owners[1],
-                    "_audit_terms",
-                    "reverse_pair_output_interner",
-                ),
-                PayloadAuditStoreBinding(
-                    self.arena.owners[2],
-                    "_audit_concats",
-                    "reverse_pair_output_interner",
-                ),
-                PayloadAuditStoreBinding(
-                    self.arena.owners[3],
-                    "_audit_repeats",
-                    "reverse_pair_output_interner",
-                ),
-                PayloadAuditStoreBinding(
-                    self._summary_owner,
-                    "_audit_summaries",
-                    "reverse_pair_q19_summary",
-                ),
-                PayloadAuditStoreBinding(
-                    self._issued_owner,
-                    "_audit_issued",
-                    "reverse_pair_output_occurrence",
-                ),
-                PayloadAuditStoreBinding(
-                    self._word_fibers_owner,
-                    "_audit_word_fibers",
-                    "observation_memo",
-                ),
-                PayloadAuditStoreBinding(
-                    self._border_certificates_owner,
-                    "_audit_border_certificates",
-                    "reverse_pair_q19_border_certificate",
-                ),
-                PayloadAuditStoreBinding(
-                    self._controlled_gt_banks_owner,
-                    "_audit_controlled_gt_banks",
-                    "reverse_pair_q19_conditional_gt_bank",
-                ),
-                PayloadAuditStoreBinding(
-                    self._spatial_bank_windows_owner,
-                    "_audit_spatial_bank_windows",
-                    "reverse_pair_q19_spatial_bank_window",
-                ),
-                PayloadAuditStoreBinding(
-                    self._temporal_ring_banks_owner,
-                    "_audit_temporal_ring_banks",
-                    "reverse_pair_q19_temporal_ring_bank",
-                ),
-                PayloadAuditStoreBinding(
-                    self._diagonal_comparisons_owner,
-                    "_audit_diagonal_comparisons",
-                    "reverse_pair_q19_directed_diagonal_comparison",
-                ),
-                *(
-                    PayloadAuditStoreBinding(
-                        owner,
-                        attribute,
-                        "reverse_pair_projector_memo",
-                    )
-                    for owner, attribute in zip(
-                        self._projector_owners,
-                        (
-                            "_audit_projector_forward",
-                            "_audit_projector_reverse",
-                            "_audit_projector_block",
-                            "_audit_projector_forward_power",
-                            "_audit_projector_reverse_power",
-                        ),
-                        strict=True,
-                    )
-                ),
-            ),
-            audit_reverse_pair_output_owner,
+            arena_owners=self.arena.owners,
+            summary_owner=self._summary_owner,
+            issued_owner=self._issued_owner,
+            word_fibers_owner=self._word_fibers_owner,
+            border_owner=self._border_certificates_owner,
+            controlled_gt_owner=self._controlled_gt_banks_owner,
+            spatial_owner=self._spatial_bank_windows_owner,
+            ring_owner=self._temporal_ring_banks_owner,
+            diagonal_owner=self._diagonal_comparisons_owner,
+            projector_owners=self._projector_owners,
         )
 
-    def _check_open(self) -> None:
+    def audit_snapshot(self) -> ReversePairQ19OutputAuditSnapshot:
+        """Expose exact backing identities to independent, read-only audits."""
+        (
+            projector_forward,
+            projector_reverse,
+            projector_block,
+            projector_forward_power,
+            projector_reverse_power,
+        ) = self._projector_memos
+        return ReversePairQ19OutputAuditSnapshot(
+            ledger=self.ledger,
+            digits=self._digits,
+            base=self.base,
+            authority=self._authority,
+            disposed=self._disposed,
+            cleanup_complete=self._cleanup_complete,
+            dispose_resources_complete=self._dispose_resources_complete,
+            active_symbol_walks=self._active_symbol_walks,
+            binding=self._binding,
+            arena=self.arena,
+            projector=self.projector,
+            machine=self.machine,
+            issuance_registry=self._issuance_registry,
+            initial=self.initial,
+            summary_owner=self._summary_owner,
+            summaries=self._summaries.audit_snapshot(),
+            issued_owner=self._issued_owner,
+            issued=self._issued.audit_snapshot(),
+            word_fibers_owner=self._word_fibers_owner,
+            word_fibers=self._word_fibers.audit_snapshot(),
+            word_fibers_binding=self._word_fibers,
+            border_certificates_owner=self._border_certificates_owner,
+            border_certificates=self._border_certificates.audit_snapshot(),
+            border_certificates_binding=self._border_certificates,
+            controlled_gt_banks_owner=self._controlled_gt_banks_owner,
+            controlled_gt_banks=self._controlled_gt_banks.audit_snapshot(),
+            controlled_gt_banks_binding=self._controlled_gt_banks,
+            spatial_bank_windows_owner=self._spatial_bank_windows_owner,
+            spatial_bank_windows=self._spatial_bank_windows.audit_snapshot(),
+            spatial_bank_windows_binding=self._spatial_bank_windows,
+            temporal_ring_banks_owner=self._temporal_ring_banks_owner,
+            temporal_ring_banks=self._temporal_ring_banks.audit_snapshot(),
+            temporal_ring_banks_binding=self._temporal_ring_banks,
+            diagonal_comparisons_owner=self._diagonal_comparisons_owner,
+            diagonal_comparisons=self._diagonal_comparisons.audit_snapshot(),
+            diagonal_comparisons_binding=self._diagonal_comparisons,
+            projector_owners=self._projector_owners,
+            projector_forward=projector_forward.audit_snapshot(),
+            projector_reverse=projector_reverse.audit_snapshot(),
+            projector_block=projector_block.audit_snapshot(),
+            projector_forward_power=projector_forward_power.audit_snapshot(),
+            projector_reverse_power=projector_reverse_power.audit_snapshot(),
+            projector_cache_stores=self.projector.audit_cache_stores,
+            audit_bindings=(
+                self._audit_nodes,
+                self._audit_terms,
+                self._audit_concats,
+                self._audit_repeats,
+                self._audit_summaries,
+                self._audit_issued,
+                self._audit_word_fibers,
+                self._audit_border_certificates,
+                self._audit_controlled_gt_banks,
+                self._audit_spatial_bank_windows,
+                self._audit_temporal_ring_banks,
+                self._audit_diagonal_comparisons,
+                self._audit_projector_forward,
+                self._audit_projector_reverse,
+                self._audit_projector_block,
+                self._audit_projector_forward_power,
+                self._audit_projector_reverse_power,
+            ),
+        )
+
+    def validate_open(self) -> None:
         if self._disposed:
             raise ValueError("disposed Q19 pair output owner")
         if self.base != 10 or type(self._digits) is not tuple or not self._digits:
@@ -367,22 +373,24 @@ class ReversePairQ19OutputOwner:
             for original, bound in zip(self._binding, current, strict=True)
         ):
             raise ValueError("Q19 output owner or finite law binding changed")
-        if self._issuance_registry.controlled_gt_bank_next != len(
-            self._controlled_gt_banks
-        ):
-            raise ValueError("Q19 controlled bank registry changed")
-        if self._issuance_registry.spatial_bank_window_next != len(
-            self._spatial_bank_windows
-        ):
-            raise ValueError("Q19 spatial bank window registry changed")
-        if self._issuance_registry.temporal_ring_bank_next != len(
-            self._temporal_ring_banks
-        ):
-            raise ValueError("Q19 temporal ring bank registry changed")
-        if self._issuance_registry.diagonal_comparison_next != len(
-            self._diagonal_comparisons
-        ):
-            raise ValueError("Q19 diagonal comparison registry changed")
+        self._issuance_registry.validate_stores(
+            border_certificates=self._border_certificates,
+            controlled_gt_banks=self._controlled_gt_banks,
+            spatial_bank_windows=self._spatial_bank_windows,
+            temporal_ring_banks=self._temporal_ring_banks,
+            diagonal_comparisons=self._diagonal_comparisons,
+        )
+
+    @property
+    def is_disposed(self) -> bool:
+        """Expose the owner's lifecycle state to its issuance registry."""
+        return self._disposed
+
+    def validate_issuance_registry(self, registry: Q19IssuanceRegistry) -> None:
+        """Authenticate the exact registry and its retained mirrors."""
+        self.validate_open()
+        if self._issuance_registry is not registry:
+            raise ValueError("Q19 issuance registry binding changed")
 
     def _append_word_symbol(self, blocks: list[tuple[int, int]], symbol: int) -> None:
         node = self.arena.terminal(symbol)
@@ -425,7 +433,7 @@ class ReversePairQ19OutputOwner:
     def _symbol_at(self, root: int, index: int) -> int:
         return symbol_at(self.arena, root, index)
 
-    def _word_summary(self, root: int) -> _WordSummary:
+    def _word_summary(self, root: int) -> WordSummary:
         found = self._summaries.get(root)
         if found is not None:
             return found
@@ -434,111 +442,10 @@ class ReversePairQ19OutputOwner:
         ):
             return self._build_word_summary(root)
 
-    def _build_word_summary(self, root: int) -> _WordSummary:
-        found = self._summaries.get(root)
-        if found is not None:
-            self.ledger.bump(_reverse_add_keys.REVERSE_PAIR_Q19_SUMMARY_CACHE_HITS)
-            return found
-        self.ledger.bump(_reverse_add_keys.REVERSE_PAIR_Q19_SUMMARY_CACHE_MISSES)
-        stack: list[tuple[int, bool]] = [(root, False)]
-        identity = _Q19.identity()
-        while stack:
-            node_id, expanded = stack.pop()
-            if self._summaries.get(node_id) is not None:
-                continue
-            node = self.arena.nodes[node_id]
-            if node.kind == "EMPTY":
-                value = _WordSummary(
-                    0, identity, identity, identity, identity, None, None, 0
-                )
-            elif node.kind == "TERM":
-                if 0 <= node.symbol <= 18:
-                    atom = _Q19.atom(node.symbol)
-                    value = _WordSummary(
-                        1, atom, atom, identity, identity, node.symbol, node.symbol, 1
-                    )
-                else:
-                    value = _WordSummary(
-                        0, identity, identity, identity, identity, None, None, 0
-                    )
-            elif node.kind == "CONCAT":
-                if not expanded:
-                    stack.append((node_id, True))
-                    stack.append((node.right, False))
-                    stack.append((node.left, False))
-                    continue
-                left = self._summaries[node.left]
-                right = self._summaries[node.right]
-                if right.symbols:
-                    prefix_forward = left.forward.then(right.prefix_forward)
-                    prefix_reverse = right.prefix_reverse.then(left.reverse)
-                else:
-                    prefix_forward, prefix_reverse = (
-                        left.prefix_forward,
-                        left.prefix_reverse,
-                    )
-                value = _WordSummary(
-                    left.symbols + right.symbols,
-                    left.forward.then(right.forward),
-                    right.reverse.then(left.reverse),
-                    prefix_forward,
-                    prefix_reverse,
-                    left.first_symbol if left.symbols else right.first_symbol,
-                    right.last_symbol if right.symbols else left.last_symbol,
-                    left.runs
-                    + right.runs
-                    - int(
-                        left.last_symbol is not None
-                        and left.last_symbol == right.first_symbol
-                    ),
-                )
-            elif node.kind == "REPEAT":
-                if not expanded:
-                    stack.append((node_id, True))
-                    stack.append((node.child, False))
-                    continue
-                child = self._summaries[node.child]
-                if not child.symbols:
-                    value = _WordSummary(
-                        0, identity, identity, identity, identity, None, None, 0
-                    )
-                else:
-                    whole_forward = child.forward.repeat(node.count)
-                    whole_reverse = child.reverse.repeat(node.count)
-                    if node.count == 1:
-                        prefix_forward = child.prefix_forward
-                        prefix_reverse = child.prefix_reverse
-                    else:
-                        prefix_forward = child.forward.repeat(node.count - 1).then(
-                            child.prefix_forward
-                        )
-                        prefix_reverse = child.prefix_reverse.then(
-                            child.reverse.repeat(node.count - 1)
-                        )
-                    value = _WordSummary(
-                        child.symbols * node.count,
-                        whole_forward,
-                        whole_reverse,
-                        prefix_forward,
-                        prefix_reverse,
-                        child.first_symbol,
-                        child.last_symbol,
-                        child.runs * node.count
-                        - (
-                            node.count - 1
-                            if child.first_symbol == child.last_symbol
-                            else 0
-                        ),
-                    )
-            else:  # pragma: no cover - guarded by SLPArena
-                raise AssertionError(node.kind)
-            self._summaries[node_id] = value
-        result = self._summaries.get(root)
-        if result is None:
-            raise AssertionError("Q19 summary construction lost its root")
-        return result
+    def _build_word_summary(self, root: int) -> WordSummary:
+        return build_word_summary(self.arena, self._summaries, self.ledger, root)
 
-    def _full_summary(self, root: int) -> _Q19:
+    def _full_summary(self, root: int) -> Q19Summary:
         encoded_summary = self._word_summary(root)
         first = self._symbol_at(root, 0)
         parity = first - (2 * self.base - 1)
@@ -554,10 +461,10 @@ class ReversePairQ19OutputOwner:
         return result
 
     def _candidate(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
-        self._check_open()
+        self.validate_open()
         summary = self._full_summary(root)
         pair_width = summary.length
-        output_width = pair_width + int(summary.domain == _UPPER)
+        output_width = pair_width + int(summary.domain == Q19_UPPER)
         growth = output_width - len(self._digits)
         if growth < 0 or growth > temporal_steps:
             raise AssertionError("Q19 width growth escaped the one-cell-per-step bound")
@@ -575,11 +482,11 @@ class ReversePairQ19OutputOwner:
     def _publish(
         self, occurrence: ReversePairOutputOccurrence
     ) -> ReversePairOutputOccurrence:
-        self._check_open()
+        self.validate_open()
         occurrence.__post_init__()
         key = occurrence.root, occurrence.temporal_steps
-        binding = _occurrence_publication_binding(occurrence)
-        published_binding = occurrence._publication_binding
+        binding = occurrence_publication_snapshot(occurrence)
+        published_binding = occurrence.publication_binding
         if published_binding is not None and published_binding != binding:
             raise ValueError("published Q19 occurrence metadata was altered")
         existing = self._issued.get(key)
@@ -590,21 +497,19 @@ class ReversePairQ19OutputOwner:
             # retain it remain valid, but validate that record and compare all
             # exact occurrence metadata before reusing it.
             self.validate(existing)
-            if _occurrence_publication_binding(existing) != binding:
+            if occurrence_publication_snapshot(existing) != binding:
                 raise ValueError("Q19 occurrence key collides with different metadata")
             return existing
         if published_binding is None:
-            object.__setattr__(occurrence, "_publication_binding", binding)
+            occurrence.bind_publication(binding)
         self._issued[key] = occurrence
         return occurrence
 
     def _issue(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
         return self._publish(self._candidate(root, temporal_steps))
 
-    def _validate_occurrence_handle(
-        self, occurrence: ReversePairOutputOccurrence
-    ) -> None:
-        self._check_open()
+    def validate_occurrence(self, occurrence: ReversePairOutputOccurrence) -> None:
+        self.validate_open()
         if type(occurrence) is not ReversePairOutputOccurrence:
             raise TypeError("expected an exact Q19 output occurrence")
         occurrence.__post_init__()
@@ -617,19 +522,20 @@ class ReversePairQ19OutputOwner:
             is not occurrence
         ):
             raise ValueError("Q19 output occurrence was not issued by this owner")
-        if occurrence._publication_binding != _occurrence_publication_binding(
+        if occurrence.publication_binding != occurrence_publication_snapshot(
             occurrence
         ):
             raise ValueError("published Q19 occurrence metadata was altered")
 
     def validate(self, occurrence: ReversePairOutputOccurrence) -> None:
-        self._validate_occurrence_handle(occurrence)
+        self.validate_occurrence(occurrence)
         summary = self._full_summary(occurrence.root)
         if (
             summary.length != occurrence.pair_width
             or summary.domain != occurrence.q19_domain
             or summary.f9 != occurrence.q19_f9
-            or occurrence.output_width != summary.length + int(summary.domain == _UPPER)
+            or occurrence.output_width
+            != summary.length + int(summary.domain == Q19_UPPER)
             or occurrence.growth != occurrence.output_width - len(self._digits)
         ):
             raise ValueError("Q19 output metadata disagrees with its grammar")
@@ -638,7 +544,7 @@ class ReversePairQ19OutputOwner:
         self, occurrence: ReversePairOutputOccurrence
     ) -> None:
         """Check a previously issued immutable handle without re-folding its SLP."""
-        self._validate_occurrence_handle(occurrence)
+        self.validate_occurrence(occurrence)
 
     def apply_pair_step(
         self, occurrence: ReversePairOutputOccurrence
@@ -851,7 +757,8 @@ class ReversePairQ19OutputOwner:
             window_digits=window_digits,
             max_states=max_states,
         )
-        return cert.temporal_ring_bank(
+        return self.authorize_certified_temporal_ring_bank(
+            cert,
             start=start,
             duration=duration,
             positions=positions,
@@ -860,9 +767,62 @@ class ReversePairQ19OutputOwner:
             include_source_digits=include_source_digits,
         )
 
+    def authorize_certified_temporal_ring_bank(
+        self,
+        certificate: CertifiedBorderGrowth,
+        *,
+        start: int = 0,
+        duration: int | None = None,
+        positions: tuple[int, ...] = (0,),
+        source_pair_prefix: int = 0,
+        include_source_digits: bool = False,
+        max_cells: int = 16384,
+        bank_action: SourceGuardedGTBankAction | None = None,
+    ) -> ReverseAddTemporalRingBank:
+        """Build and issue only from an authenticated Q19 certificate."""
+        self.validate_open()
+        from .q19_border_control import CertifiedBorderGrowth
+
+        if type(certificate) is not CertifiedBorderGrowth:
+            raise TypeError("temporal ring requires an exact border certificate")
+        if certificate.owner is not self:
+            raise ValueError("temporal ring certificate belongs to another Q19 owner")
+        certificate.validate(self, certificate.source)
+        from .temporal_ring_harmonics import issue_temporal_ring_bank_from_source
+
+        return issue_temporal_ring_bank_from_source(
+            certificate,
+            self._issuance_registry,
+            start=start,
+            duration=duration,
+            positions=positions,
+            source_pair_prefix=source_pair_prefix,
+            include_source_digits=include_source_digits,
+            max_cells=max_cells,
+            bank_action=bank_action,
+        )
+
+    def compose_temporal_ring_banks(
+        self,
+        first: ReverseAddTemporalRingBank,
+        later: ReverseAddTemporalRingBank,
+    ) -> ReverseAddTemporalRingBank:
+        """Join adjacent issued children and publish through this Q19 owner."""
+        self.validate_open()
+        from .temporal_ring_harmonics import compose_issued_temporal_ring_banks
+
+        return compose_issued_temporal_ring_banks(first, later, self._issuance_registry)
+
+    def validate_temporal_ring_bank(self, bank: ReverseAddTemporalRingBank) -> None:
+        """Validate a retained ring through its owning Q19 registry."""
+        self.validate_open()
+        if bank.certificate.owner is not self:
+            raise ValueError("temporal ring belongs to another Q19 owner")
+        self._issuance_registry.validate_temporal_ring_bank(bank)
+
     def _range_summary(
         self, root: int, begin: int, end: int, *, reverse: bool = False
-    ) -> _Q19:
+    ) -> Q19Summary:
         from .q19_source_authority import range_summary
 
         return range_summary(self, root, begin, end, reverse=reverse)
@@ -891,7 +851,7 @@ class ReversePairQ19OutputOwner:
                     release_tasks=lambda count: self.ledger.release(
                         self._scratch_owner, nodes=count
                     ),
-                    check_open=self._check_open,
+                    check_open=self.validate_open,
                 )
             finally:
                 self._active_symbol_walks -= 1

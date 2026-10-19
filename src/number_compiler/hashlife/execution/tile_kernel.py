@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockEffect,
     BoundarySide,
@@ -28,12 +30,10 @@ from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.tile_action_algebra import (
     ActionSemanticKey,
+    PrimitiveTileAction,
     blank_context_metadata,
     retained_action_nodes,
     retained_reverse_plan_nodes,
-)
-from number_compiler.hashlife.actions.tile_action_algebra import (
-    PrimitiveTileAction as _Action,
 )
 from number_compiler.hashlife.actions.tile_action_algebra import (
     compose_actions as _compose_actions,
@@ -50,6 +50,7 @@ from number_compiler.hashlife.execution.tile_boundary_transfer import (
 from number_compiler.hashlife.execution.tile_execution_adapter import (
     FamilyTileHooks,
     FinitePairTransfer,
+    is_finite_pair_transfer,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     LeafProductKey,
@@ -69,11 +70,14 @@ from number_compiler.hashlife.execution.tile_fused_kernel import (
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     fused_primitive_pair as _fused_primitive_pair,
 )
+from number_compiler.hashlife.execution.tile_kernel_composition import (
+    compose_temporal_semantics as _compose_temporal_semantics,
+)
 from number_compiler.hashlife.execution.tile_kernel_validation import (
     admit_family_effect as _admit_family_effect,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
-    validate_action_record as _validate_action_record,
+    admitted_action_record as _admitted_action_record,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
     validate_fused_action as _validate_fused_action,
@@ -88,10 +92,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
     PrimitiveKernel,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
-    LocalInterfaceID,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     CertifiedLocalSymmetry,
     LocalSymmetryWitness,
@@ -99,7 +100,10 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
-from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+    StructureID,
+)
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.hashlife.tiles.reverse_threshold_summary import (
     observe_current_growth,
@@ -134,6 +138,12 @@ from number_compiler.resources.tile_alphabet_contract import (
     CANONICAL_TILE_ALPHABET_VERSION,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.resources.causal_workspace import CausalActionAdmission
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        PrimitiveTileKernelAuditSnapshot,
+    )
+
 
 class PrimitiveTileKernelAdapter:
     """Action authority and scheduler adapter for immutable primitive kernels."""
@@ -156,10 +166,8 @@ class PrimitiveTileKernelAdapter:
         self.tiles, self.kernels, self.quotients = tiles, kernels, quotients
         if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
             raise TypeError("primitive tile adapter requires canonical family hooks")
-        if pair_transfer is not None and not isinstance(
-            pair_transfer, FinitePairTransfer
-        ):
-            raise TypeError("primitive tile adapter requires a typed pair transfer")
+        if pair_transfer is not None and not is_finite_pair_transfer(pair_transfer):
+            raise TypeError(type(pair_transfer))
         if pair_transfer is not None and pair_transfer.ledger is not tiles.ledger:
             raise ValueError("primitive pair transfer belongs to another ledger")
         self.family_hooks = family_hooks
@@ -183,7 +191,7 @@ class PrimitiveTileKernelAdapter:
             prefix + "-compositions",
             "temporal_action_composition",
         )
-        self._actions: LedgerDict[int, _Action] = self.ledger.make_dict(
+        self._actions: LedgerDict[int, PrimitiveTileAction] = self.ledger.make_dict(
             self._action_owner,
             nodes_per_entry=1,
         )
@@ -265,7 +273,7 @@ class PrimitiveTileKernelAdapter:
             raise ValueError(
                 "primitive right boundary is not invariant under dyadic blank padding"
             )
-        signature = self._signature(primitive, effect)
+        signature = self.signature(primitive, effect)
         semantic_key: ActionSemanticKey = "power", kernel, 1, action_cocycle
         found = self._action_keys.get(semantic_key)
         if found is not None:
@@ -303,7 +311,7 @@ class PrimitiveTileKernelAdapter:
         local_id = self._next_action
         self._next_action += 1
         try:
-            self._actions[local_id] = _Action(
+            self._actions[local_id] = PrimitiveTileAction(
                 kernel,
                 signature,
                 None,
@@ -399,12 +407,44 @@ class PrimitiveTileKernelAdapter:
     ) -> None:
         _validate_fused_wiring(self, action, producer, result)
 
-    def _action(self, action: FieldCellActionID) -> _Action:
+    def _action(self, action: FieldCellActionID) -> PrimitiveTileAction:
         self.validate_action(action)
         return self._actions[action.local_id]
 
-    def _action_record(self, action: FieldCellActionID) -> _Action:
-        return _validate_action_record(self, action)[0]
+    def action_record(self, action: FieldCellActionID) -> PrimitiveTileAction:
+        """Return the exact action row after complete semantic validation."""
+        return self._action(action)
+
+    def audit_snapshot(self) -> PrimitiveTileKernelAuditSnapshot:
+        """Expose immutable rows and exact store identities to resource audits."""
+        from number_compiler.hashlife.execution.tile_kernel_audit import (
+            tile_kernel_audit_snapshot,
+        )
+
+        return tile_kernel_audit_snapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            next_action=self._next_action,
+            action_owner=self._action_owner,
+            actions=self._actions,
+            action_keys_owner=self._action_key_owner,
+            action_keys=self._action_keys,
+            leaf_owner=self._leaf_owner,
+            leaf_records=self._leaf_records,
+            compose_owner=self._compose_owner,
+            compositions=self._compositions,
+            fused_workspace=self._fused_workspace.audit_snapshot(),
+            action_store=self._actions,
+            action_key_store=self._action_keys,
+            leaf_store=self._leaf_records,
+            compose_store=self._compositions,
+        )
+
+    def admitted_action_record(
+        self, action: FieldCellActionID, admission: CausalActionAdmission
+    ) -> PrimitiveTileAction:
+        """Read one row under its exact live run admission without deep replay."""
+        return _admitted_action_record(self, action, admission)
 
     def signature_for(self, action: FieldCellActionID) -> PortSignatureID:
         self.validate_action(action)
@@ -489,34 +529,18 @@ class PrimitiveTileKernelAdapter:
             )
         )
 
-    def _signature(
+    def signature(
         self,
         kernel: PrimitiveKernel,
         effect: BlockEffect,
     ) -> PortSignatureID:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _signature,
+            signature,
         )
 
-        return _signature(self, kernel, effect)
+        return signature(self, kernel, effect)
 
-    @staticmethod
-    def _ports(kernel: PrimitiveKernel) -> tuple[FinitePort, ...]:
-        from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _ports,
-        )
-
-        return _ports(kernel)
-
-    @staticmethod
-    def _output_sorts(kernel: PrimitiveKernel) -> tuple[AtomSort, ...]:
-        from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _output_sorts,
-        )
-
-        return _output_sorts(kernel)
-
-    def _constant(
+    def constant_function(
         self,
         ports: tuple[FinitePort, ...],
         output: AtomSort,
@@ -524,7 +548,7 @@ class PrimitiveTileKernelAdapter:
     ) -> FactoredFunctionID:
         return self.bits.constant(FunctionSignature(ports, output), value)
 
-    def _variable(
+    def variable_function(
         self,
         ports: tuple[FinitePort, ...],
         variable: PortVariable,
@@ -533,18 +557,18 @@ class PrimitiveTileKernelAdapter:
         port = next(item for item in ports if item.variable == variable)
         return self.bits.variable(ports, port, output)
 
-    def _nonblank(
+    def nonblank(
         self,
         function: FactoredFunctionID,
         blank: int,
     ) -> FactoredFunctionID:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _nonblank,
+            nonblank,
         )
 
-        return _nonblank(self, function, blank)
+        return nonblank(self, function, blank)
 
-    def _components(
+    def interface_components(
         self,
         interface: LocalInterfaceID,
     ) -> tuple[FactoredFunctionID, ...]:
@@ -558,7 +582,7 @@ class PrimitiveTileKernelAdapter:
             result.append(atom)
         return tuple(result)
 
-    def _finish(
+    def finish(
         self,
         kernel: PrimitiveKernel,
         left: FactoredFunctionID,
@@ -571,10 +595,10 @@ class PrimitiveTileKernelAdapter:
         last_active: FactoredFunctionID | None = None,
     ) -> tuple[FactoredFunctionID, ...]:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _finish,
+            finish,
         )
 
-        return _finish(
+        return finish(
             self,
             kernel,
             left,
@@ -587,7 +611,7 @@ class PrimitiveTileKernelAdapter:
             last_active,
         )
 
-    def _tabulated(
+    def tabulated(
         self,
         ports: tuple[FinitePort, ...],
         output: AtomSort,
@@ -595,50 +619,50 @@ class PrimitiveTileKernelAdapter:
         table: tuple[int, ...],
     ) -> FactoredFunctionID:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _tabulated,
+            tabulated,
         )
 
-        return _tabulated(self, ports, output, active, table)
+        return tabulated(self, ports, output, active, table)
 
-    def _leaf_components(
+    def leaf_components(
         self,
         kernel: PrimitiveKernel,
         symbol: int,
     ) -> tuple[FactoredFunctionID, ...]:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _leaf_components,
+            leaf_components,
         )
 
-        return _leaf_components(self, kernel, symbol)
+        return leaf_components(self, kernel, symbol)
 
-    def _parent_components(
+    def parent_components(
         self,
         kernel: PrimitiveKernel,
         left: LocalInterfaceID,
         right: LocalInterfaceID,
     ) -> tuple[FactoredFunctionID, ...]:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _parent_components,
+            parent_components,
         )
 
-        return _parent_components(self, kernel, left, right)
+        return parent_components(self, kernel, left, right)
 
-    def _require_results(self) -> CompletedResultArena:
+    def require_results(self) -> CompletedResultArena:
         if self.results is None:
             raise RuntimeError("primitive tile adapter has no result memo")
         return self.results
 
-    def _compile_interface(
+    def compile_interface(
         self,
         action: FieldCellActionID,
         source: TileID,
         wiring: ResultWiring,
     ) -> LocalInterfaceID:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _compile_interface,
+            compile_interface,
         )
 
-        return _compile_interface(self, action, source, wiring)
+        return compile_interface(self, action, source, wiring)
 
     def fused_primitive_pair(
         self,
@@ -734,9 +758,9 @@ class PrimitiveTileKernelAdapter:
     ) -> LocalInterfaceID:
         if self.tiles.resolve(source).level:
             raise ValueError("leaf interface requires one tile symbol")
-        return self._compile_interface(action, source, wiring)
+        return self.compile_interface(action, source, wiring)
 
-    def _observe(
+    def observe(
         self,
         interface: LocalInterfaceID,
         channel: str,
@@ -756,10 +780,10 @@ class PrimitiveTileKernelAdapter:
         binding = self._leaf_records.get(interface)
         if type(binding) is not int:
             raise ValueError("leaf interface has no primitive tile binding")
-        output = self._observe(interface, "output", ports)
+        output = self.observe(interface, "output", ports)
         outgoing = (
-            self._observe(interface, "boundary_left", ports),
-            self._observe(interface, "boundary_right", ports),
+            self.observe(interface, "boundary_left", ports),
+            self.observe(interface, "boundary_right", ports),
         )
         return PrimitiveTileResult(
             output,
@@ -781,9 +805,9 @@ class PrimitiveTileKernelAdapter:
         node = self.tiles.resolve(source)
         if node.level or node.symbol is None:
             raise ValueError("leaf observations require one source symbol")
-        return self._symbol_observation(action, node.symbol, interface, ports)
+        return self.symbol_observation(action, node.symbol, interface, ports)
 
-    def _symbol_observation(
+    def symbol_observation(
         self,
         action: FieldCellActionID,
         symbol: int,
@@ -791,10 +815,10 @@ class PrimitiveTileKernelAdapter:
         ports: tuple[int, ...],
     ) -> TemporalCocycle:
         from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-            _symbol_observation,
+            symbol_observation,
         )
 
-        return _symbol_observation(self, action, symbol, interface, ports)
+        return symbol_observation(self, action, symbol, interface, ports)
 
     def leaf_interface_symbol(
         self,
@@ -829,9 +853,9 @@ class PrimitiveTileKernelAdapter:
         if len(ports) != 2:
             raise ValueError("primitive tile execution requires two boundary ports")
         sibling = right if side == 0 else left
-        interface = self._compile_interface(action, sibling, wiring)
+        interface = self.compile_interface(action, sibling, wiring)
         channel = "boundary_right" if side == 0 else "boundary_left"
-        midpoint = self._observe(interface, channel, ports)
+        midpoint = self.observe(interface, channel, ports)
         child_ports = (ports[0], midpoint) if side == 0 else (midpoint, ports[1])
         return ChildContext(child_ports, wiring)
 
@@ -844,10 +868,10 @@ class PrimitiveTileKernelAdapter:
         left: CompletedResult,
         right: CompletedResult,
     ) -> ResultSemantics:
-        interface = self._compile_interface(action, parent, wiring)
+        interface = self.compile_interface(action, parent, wiring)
         outgoing = (
-            self._observe(interface, "boundary_left", ports),
-            self._observe(interface, "boundary_right", ports),
+            self.observe(interface, "boundary_left", ports),
+            self.observe(interface, "boundary_right", ports),
         )
         kernel = self.kernels.kernel(self._action(action).kernel)
         if left.physical_ticks != right.physical_ticks:
@@ -855,7 +879,7 @@ class PrimitiveTileKernelAdapter:
         if self._spatial_events_add(kernel.effect):
             event_weight = left.event_weight + right.event_weight
             if event_weight not in (0, 1) or left.frame_shift or right.frame_shift:
-                raise ValueError("physical Collatz children have invalid observations")
+                raise ValueError("additive-event children have invalid observations")
             frame_shift = 0
         else:
             if (
@@ -898,7 +922,7 @@ class PrimitiveTileKernelAdapter:
         wiring: ResultWiring,
     ) -> ChildContext:
         # Shape validation authenticates this exact action/wiring call chain.
-        self._require_results().validate_shape(action, original_ports, wiring)
+        self.require_results().validate_shape(action, original_ports, wiring)
         record = self._actions[action.local_id]
         children = record.children
         if children is None or children[0] != before:
@@ -954,32 +978,9 @@ class PrimitiveTileKernelAdapter:
         wiring: ResultWiring,
     ) -> ResultSemantics:
         record = self._action(action)
-        children = record.children
-        if children is None:
+        if record.children is None:
             raise ValueError("temporal semantics require a composed action")
-        expected = record.cocycle
-        if before.physical_ticks + after.physical_ticks != expected.physical_ticks:
-            raise ValueError("temporal child cocycles do not compose to their parent")
-        from number_compiler.hashlife.execution.tile_physical_support import (
-            temporal_physical_support,
-        )
-
-        return ResultSemantics(
-            after.outgoing,
-            after.outgoing_ports,
-            expected.physical_ticks,
-            before.event_weight + after.event_weight,
-            before.frame_shift + after.frame_shift,
-            after.relative_origin,
-            after.relative_extent,
-            observed_input_ports=after.observed_input_ports,
-            physical_support=temporal_physical_support(
-                before.physical_support,
-                after.physical_support,
-                before_ticks=before.physical_ticks,
-                after_ticks=after.physical_ticks,
-            ),
-        )
+        return _compose_temporal_semantics(record.cocycle.physical_ticks, before, after)
 
     def output_active(
         self,
@@ -988,8 +989,8 @@ class PrimitiveTileKernelAdapter:
         ports: tuple[int, ...],
         wiring: ResultWiring,
     ) -> bool:
-        interface = self._compile_interface(action, source, wiring)
-        return bool(self._observe(interface, "activity", ports))
+        interface = self.compile_interface(action, source, wiring)
+        return bool(self.observe(interface, "activity", ports))
 
     current_growth = observe_current_growth
 

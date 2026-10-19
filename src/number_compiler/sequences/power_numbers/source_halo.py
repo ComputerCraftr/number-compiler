@@ -16,7 +16,7 @@ from number_compiler.sequences.power_numbers.source_matrix import (
     PORT_BOUNDARIES,
     SmallModulusWork,
     UnwrappedInnerRadixPort,
-    _radix_port_from_source_residue,
+    radix_port_from_source_residue,
     require_source_no_wrap,
 )
 
@@ -41,7 +41,7 @@ def demand_unwrapped_inner_halo_port(
     """Demand the fixed five carry/borrow wires and six normalized bits."""
     require_source_no_wrap(family, parameter, level)
     source = _stable_source_mod64(family, level)
-    return _radix_port_from_source_residue(
+    return radix_port_from_source_residue(
         family,
         parameter,
         level,

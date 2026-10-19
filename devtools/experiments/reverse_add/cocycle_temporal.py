@@ -24,8 +24,12 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     CompleteFiniteTransform,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
-from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    FactoredFunctionID,
+)
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +42,7 @@ class CocycleAction:
 
 
 @dataclass(frozen=True, slots=True)
-class _CompositionKey:
+class CocycleCompositionKey:
     """Complete scoped identity of one ordered temporal composition."""
 
     before_ports: tuple[FinitePort, ...]
@@ -54,12 +58,33 @@ class _CompositionKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _CompositionEntry:
+class CocycleCompositionEntry:
     """Authenticated value retained for one complete composition key."""
 
-    key: _CompositionKey
+    key: CocycleCompositionKey
     entry_id: int
     result: CocycleAction
+
+
+@dataclass(frozen=True, slots=True)
+class CocycleTemporalAuditSnapshot:
+    """Exact owner and cache references for non-mutating forensic checks."""
+
+    ledger: ResourceLedger
+    bits: BitFunctionArena
+    cocycles: ThresholdCocycleArena
+    primitive_successors: int
+    temporal_compositions: int
+    temporal_composition_cache_hits: int
+    composition_cache: OwnedMemoAuditSnapshot[
+        CocycleCompositionKey, CocycleCompositionEntry
+    ]
+    composition_seals: OwnedMemoAuditSnapshot[CocycleCompositionKey, tuple[object, ...]]
+    composition_cache_identity: object
+    composition_seals_identity: object
+    next_composition_entry: int
+    composition_cache_limit: int
+    root_fields: frozenset[str]
 
 
 class CocycleTemporalArena:
@@ -82,17 +107,17 @@ class CocycleTemporalArena:
             f"cocycle-temporal-{len(self.ledger.inventory())}-composition-seals",
             "query_memo",
         )
-        self._composition_cache: OwnedMemo[_CompositionKey, _CompositionEntry] = (
-            OwnedMemo(self.ledger, owner, evictable=True)
-        )
-        self._composition_seals: OwnedMemo[_CompositionKey, tuple[object, ...]] = (
-            OwnedMemo(self.ledger, seal_owner, evictable=True)
-        )
+        self._composition_cache: OwnedMemo[
+            CocycleCompositionKey, CocycleCompositionEntry
+        ] = OwnedMemo(self.ledger, owner, evictable=True)
+        self._composition_seals: OwnedMemo[
+            CocycleCompositionKey, tuple[object, ...]
+        ] = OwnedMemo(self.ledger, seal_owner, evictable=True)
         self._next_composition_entry = 0
         self.ledger.register_execution_root(self)
 
     @staticmethod
-    def _entry_seal(entry: _CompositionEntry) -> tuple[object, ...]:
+    def _entry_seal(entry: CocycleCompositionEntry) -> tuple[object, ...]:
         """Return the complete immutable publication witness for an entry."""
         result = entry.result
         return (
@@ -120,7 +145,8 @@ class CocycleTemporalArena:
                         del results[-count:]
                     results.append(children)
                 else:
-                    pending.append((current, True))
+                    widened_current: object = current
+                    pending.append((widened_current, True))
                     pending.extend((item, False) for item in reversed(items))
                 continue
             if type(current) is PortVariable:
@@ -204,7 +230,7 @@ class CocycleTemporalArena:
         return True
 
     @staticmethod
-    def _key_fields(key: _CompositionKey) -> tuple[object, ...]:
+    def _key_fields(key: CocycleCompositionKey) -> tuple[object, ...]:
         return (
             key.before_ports,
             key.before_outputs,
@@ -219,7 +245,7 @@ class CocycleTemporalArena:
         )
 
     @staticmethod
-    def _snapshot_key(key: _CompositionKey) -> tuple[object, ...]:
+    def _snapshot_key(key: CocycleCompositionKey) -> tuple[object, ...]:
         return cast(
             tuple[object, ...],
             CocycleTemporalArena._snapshot(CocycleTemporalArena._key_fields(key)),
@@ -308,6 +334,81 @@ class CocycleTemporalArena:
                     "action cocycle has inconsistent context or definedness"
                 )
 
+    def audit_snapshot(self) -> CocycleTemporalAuditSnapshot:
+        """Expose exact read-only cache bindings for resource forensics.
+
+        This snapshot does not normalize actions, resolve handles, or update
+        counters. The memo snapshots retain the exact registered containers.
+        """
+        return CocycleTemporalAuditSnapshot(
+            ledger=self.ledger,
+            bits=self.bits,
+            cocycles=self.cocycles,
+            primitive_successors=self.primitive_successors,
+            temporal_compositions=self.temporal_compositions,
+            temporal_composition_cache_hits=self.temporal_composition_cache_hits,
+            composition_cache=self._composition_cache.audit_snapshot(),
+            composition_seals=self._composition_seals.audit_snapshot(),
+            composition_cache_identity=self._composition_cache,
+            composition_seals_identity=self._composition_seals,
+            next_composition_entry=self._next_composition_entry,
+            composition_cache_limit=self._COMPOSITION_CACHE_LIMIT,
+            root_fields=frozenset(vars(self)),
+        )
+
+    def audit_validate_action(self, action: CocycleAction) -> None:
+        """Validate an existing action without changing counters or stores."""
+        self._validate(action)
+
+    def audit_validate_entry(
+        self,
+        key: CocycleCompositionKey,
+        entry: CocycleCompositionEntry,
+        seal: tuple[object, ...],
+        next_entry_id: int,
+    ) -> bool:
+        """Check a retained row's exact binding without publishing any work."""
+        if (
+            type(key) is not CocycleCompositionKey
+            or type(entry) is not CocycleCompositionEntry
+            or type(entry.key) is not CocycleCompositionKey
+            or type(entry.entry_id) is not int
+            or type(next_entry_id) is not int
+            or type(seal) is not tuple
+            or type(entry.result) is not CocycleAction
+            or type(entry.result.events) is not int
+        ):
+            return False
+        if (
+            entry.key != key
+            or entry.entry_id < 0
+            or entry.entry_id >= next_entry_id
+            or not self._exact_equal(
+                self._snapshot_key(entry.key), self._snapshot_key(key)
+            )
+            or not self._exact_equal(seal, self._entry_seal(entry))
+            or entry.result.events != key.before_events + key.after_events
+        ):
+            return False
+        before_action = CocycleAction(
+            key.before_ports,
+            key.before_outputs,
+            key.before_cocycles,
+            key.before_admissible,
+            key.before_events,
+        )
+        after_action = CocycleAction(
+            key.after_ports,
+            key.after_outputs,
+            key.after_cocycles,
+            key.after_admissible,
+            key.after_events,
+        )
+        self.audit_validate_action(before_action)
+        self.audit_validate_action(after_action)
+        self.audit_validate_action(entry.result)
+        return True
+
     def saturated(self, action: CocycleAction) -> CompleteFiniteTransform:
         """Project complete finite functions, omitting event and cocycle identity.
 
@@ -332,7 +433,7 @@ class CocycleTemporalArena:
         self._validate(after)
         if before.ports != after.ports:
             raise ValueError("temporal composition needs the same complete interface")
-        key = _CompositionKey(
+        key = CocycleCompositionKey(
             before.ports,
             before.outputs,
             before.cocycles,
@@ -349,9 +450,9 @@ class CocycleTemporalArena:
         if (cached is None) != (seal is None):
             raise ValueError("temporal composition cache publication is incomplete")
         if cached is not None and seal is not None:
-            if type(cached) is not _CompositionEntry or type(seal) is not tuple:
+            if type(cached) is not CocycleCompositionEntry or type(seal) is not tuple:
                 raise ValueError("temporal composition cache payload is invalid")
-            if type(cached.key) is not _CompositionKey:
+            if type(cached.key) is not CocycleCompositionKey:
                 raise ValueError("temporal composition cache key is invalid")
             if not self._exact_equal(
                 self._snapshot_key(cached.key), self._snapshot_key(key)
@@ -388,7 +489,7 @@ class CocycleTemporalArena:
         )
         if result.events != before.events + after.events:
             raise ValueError("temporal composition produced invalid chronology")
-        entry = _CompositionEntry(key, self._next_composition_entry, result)
+        entry = CocycleCompositionEntry(key, self._next_composition_entry, result)
         self._next_composition_entry += 1
         entry_seal = self._entry_seal(entry)
         if len(self._composition_cache) >= self._COMPOSITION_CACHE_LIMIT:

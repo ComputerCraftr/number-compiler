@@ -1,6 +1,6 @@
 """Recognize an already masked atomic product without rewriting its decision DAG.
 
-BitFunctionArena publishes output bits through _Circuit.normalized: each bit is
+BitFunctionArena publishes output bits through BooleanCircuit.normalized: each bit is
 masked by its valid predicate. StructureArena.atom preserves that predicate.
 Applying exactly the same mask again cannot change such an atom. Root validity
 alone does not establish this law for a product or a function-valued structure.
@@ -27,6 +27,8 @@ from number_compiler.resources.metric_keys import (
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
+    )
+    from number_compiler.hashlife.interfaces.semantic_structures import (
         MacroComponents,
         MacroInterface,
     )

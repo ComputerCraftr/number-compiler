@@ -165,9 +165,9 @@ recurrence ticks, independently of the family's main query index unit. Pair
 transfers use `--temporal-matrix-pair-depth`. Packets explicitly identify pair
 coordinate order: reverse/add uses lower/LSD then upper/MSD; `2rev10` uses
 upper/MSD then lower/LSD. Reverse/add admits depths 1–12; `2rev10` admits
-1–16 and chooses bounded windows that fit its 18-pair causal halo. `2rev10`
+1–16; powered endpoints use bounded point queries into its admitted causal halo. `2rev10`
 requires an even horizon because one internal paired action spans two physical
-ticks. Fermat carry transfers use `--temporal-matrix-digit-position`; their
+ticks, with powered horizons through 4,096 ticks. Fermat carry transfers use `--temporal-matrix-digit-position`; their
 horizon counts ordinary tripling ticks on the selected terminal source, not
 successive Fermat indices. The Mahler center is selected from its source width. Coordinate kinds and admitted limits are declared by the family
 registry; two equally sized matrices need not have the same state space.
@@ -177,6 +177,18 @@ from `temporal.macro` and `arithmetic.mahler`. Its finite source and conditional
 relation are distinguished, and the packet itself conveys no execution or
 infinite-repetition authority. Ordinary output, temporal summaries and metrics
 never request these detailed matrix observations.
+
+`--info temporal.matrix.trace` explicitly requests chronological detail under
+its packet's `trace` field. A combined matrix and trace request shares one
+source admission and observation. `2rev10` traces are bounded to 128 physical
+ticks; Fermat and Mersenne traces to 64 steps. Trace demands do not select a
+competing execution algorithm. Oversized traces are rejected before construction.
+
+Mersenne source-transfer uses the norm-one matrix associated with the selected
+Mersenne value, evaluated through bounded residues. Its horizon unit is
+`trace-squaring-steps`, not recurrence ticks or successive Mersenne indices.
+Neither this transfer nor Fermat's ordinary-tripling transfer supplies a
+primality certificate. Both support bounded horizons through 4,096 steps.
 
 `fermat --info number-theory.primality --ordered-carry-windows` adds fixed,
 ordered carry samples from the terminal physical-tripling source for Fermat
@@ -195,14 +207,14 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
-| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
+| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
-| `fermat` | `fermat_index` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
-| `mersenne` | `mersenne_exponent` | — | `metrics`, `number-theory.primality`, `number-theory.factor`, `number-theory.root` | — |
+| `fermat` | `fermat_index` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root`, `temporal.matrix.trace` | — |
+| `mersenne` | `mersenne_exponent` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root`, `temporal.matrix.trace` | — |
 <!-- cli-capabilities:end -->
 
 Family help lists the applicable projection parameters. Primality and factor
@@ -413,9 +425,17 @@ both possible unknown carries, so it does not authorize full-integer jumps.
 number-compiler reverse-add --seed 10001 --nth 1 --no-value --info temporal.macro --format json
 ```
 
-Nondecimal `--base` is rejected for this observer. A double-reverse operation
-is available to the finite-window arithmetic tests; it is not registered as a
-new public sequence family.
+Nondecimal `--base` is rejected for this observer. `2rev10` is also a public
+sequence family. It currently has no `temporal.macro` registry entry because
+the term does not publish a reusable occurrence cursor; deriving one by
+advancing adjacent actions would make a summary demand perform future work.
+Its typed border occurrences appear only in an explicit
+`temporal.matrix.trace` request. The reverse/add `temporal.macro` observer
+remains the separate finite boundary-window certificate described above.
+Both trace families use shared typed border identities and exact-join
+contracts, while their source issuers, guards, clocks and recurrence laws
+remain family-owned. An observed finite return or burst does not certify that
+it repeats after its authenticated source interval.
 
 
 ### Collatz accumulator action

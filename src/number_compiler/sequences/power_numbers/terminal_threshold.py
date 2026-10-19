@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import require_instance
 from number_compiler.sequences.power_numbers.admission import (
     require_special_candidate_budget,
 )
@@ -366,8 +367,7 @@ def prime_decision_chunk_spec(
     has no analogous universally reached torus-v2=2 boundary, so its chunk
     starts at level one and may fail before that boundary.
     """
-    if not isinstance(spec, SpecialTerminalThresholdSpec):
-        raise TypeError(type(spec))
+    require_instance(spec, SpecialTerminalThresholdSpec)
     if spec.prime_decision_level <= 0:
         raise ValueError((spec.family, spec.parameter, spec.prime_decision_level))
 

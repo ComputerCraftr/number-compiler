@@ -22,6 +22,8 @@ from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
+    )
+    from number_compiler.hashlife.interfaces.semantic_structures import (
         MacroComponents,
         MacroInterface,
     )

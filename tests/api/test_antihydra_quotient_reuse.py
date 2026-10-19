@@ -5,7 +5,7 @@ import pytest
 from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnImageID,
-    _SourceNode,
+    DyadicReturnSourceRecord,
 )
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
@@ -85,7 +85,7 @@ def test_homogeneous_run_admission_matches_independent_centered_recurrence(
     workspace = term.arithmetic_workspace
     assert workspace is not None
     source = workspace._append_source(
-        _SourceNode(residue, width, lift, None, None, None, 0, True)
+        DyadicReturnSourceRecord(residue, width, lift, None, None, None, 0, True)
     )
     image = workspace.scheduler.source_image(workspace, source, workspace.identity)
     view = workspace.scheduler._source_image_core().view(image)
@@ -116,7 +116,7 @@ def test_even_cylinder_reuses_transport_across_authenticated_high_fibers() -> No
     images = []
     for lift in (1, 2, 3, 7):
         source = workspace._append_source(
-            _SourceNode(0, width, lift, None, None, None, 0, True)
+            DyadicReturnSourceRecord(0, width, lift, None, None, None, 0, True)
         )
         image = workspace.scheduler.source_image(
             workspace, source, workspace.root_action

@@ -4,8 +4,32 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from math import isfinite
+from typing import TypeGuard
 
 from number_compiler.api.output_schema import JsonValue
+
+
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def is_string_object_mapping(
+    value: object,
+) -> TypeGuard[Mapping[str, object]]:
+    """Validate JSON-object keys while retaining values as untrusted objects."""
+    if not _is_object_mapping(value):
+        return False
+    for key in value:
+        if type(key) is not str:
+            return False
+    return True
+
+
+def is_object_sequence(
+    value: object,
+) -> TypeGuard[tuple[object, ...] | list[object]]:
+    """Narrow list/tuple containers without accepting arbitrary iterables."""
+    return isinstance(value, (tuple, list))
 
 
 def json_integers(payload: Mapping[str, object]) -> dict[str, JsonValue]:
@@ -32,11 +56,11 @@ def json_integers(payload: Mapping[str, object]) -> dict[str, JsonValue]:
                     "value": hex(value),
                     "bits": value.bit_length(),
                 }
-            elif isinstance(value, Mapping):
+            elif is_string_object_mapping(value):
                 nested: dict[str, JsonValue] = {}
                 encoded = nested
                 pending.append((value, nested))
-            elif isinstance(value, (tuple, list)):
+            elif is_object_sequence(value):
                 sequence: list[JsonValue] = []
                 encoded = sequence
                 pending.append((value, sequence))
@@ -55,3 +79,8 @@ def json_integers(payload: Mapping[str, object]) -> dict[str, JsonValue]:
             else:
                 destination.append(encoded)
     return result
+
+
+def json_value(value: object) -> JsonValue:
+    """Validate and encode one already-demanded value through the shared walker."""
+    return json_integers({"value": value})["value"]

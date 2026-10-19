@@ -92,7 +92,7 @@ class _PowerRadixMDD:
                 ca = (aa,) * self.radix
             if vb != var:
                 cb = (bb,) * self.radix
-            child_keys = tuple(zip(ca, cb))
+            child_keys = tuple(zip(ca, cb, strict=True))
             if not expanded:
                 stack.append((x, y, True))
                 for cx, cy in reversed(child_keys):

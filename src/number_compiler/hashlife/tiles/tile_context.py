@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 from number_compiler.hashlife.tiles.temporal_cocycle import (
     TemporalCocycle as _TemporalCocycle,

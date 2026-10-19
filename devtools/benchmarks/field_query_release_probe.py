@@ -15,13 +15,18 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 from unittest.mock import patch
 
 from devtools.checks.validation_policy import PYTHON_COMMAND_SECONDS
 from devtools.git_source import git_source, same_git_revision
 from devtools.paths import repository_root
+from devtools.report_values import string_keyed_mapping
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
+if TYPE_CHECKING:
+    from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.projection.point_response import PointResponseRegister
 
 
 class FamilyProbeReport(TypedDict):
@@ -130,8 +135,8 @@ ABSORPTION_FIELDS = (
 
 
 def _direct_response(
-    self: Any,
-    program: Any,
+    self: PointResponseRegister,
+    program: ActionProgramID,
     position: int,
     evaluate: Callable[[int], int],
 ) -> int:
@@ -165,19 +170,19 @@ def worker(family: str, horizon: int) -> dict[str, object]:
         start = perf_counter()
         value = term.digit(0)
         cold_seconds = perf_counter() - start
-        cold = term._ledger.snapshot()
+        cold = term.resource_ledger.snapshot()
         start = perf_counter()
         repeat = term.digit(0)
         warm_seconds = perf_counter() - start
-        warm = term._ledger.snapshot()
+        warm = term.resource_ledger.snapshot()
         start = perf_counter()
         width = term.width()
         width_seconds = perf_counter() - start
-        before_audit = term._ledger.snapshot()
+        before_audit = term.resource_ledger.snapshot()
         start = perf_counter()
         metrics = term.metrics()
         audit_seconds = perf_counter() - start
-        audit_unchanged = before_audit == term._ledger.snapshot()
+        audit_unchanged = before_audit == term.resource_ledger.snapshot()
         observed = {name: getattr(metrics, name) for name in METRICS}
     return {
         "family": family,
@@ -231,10 +236,10 @@ def _worker_failure(
     }
 
 
-def _text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    return value.decode(errors="replace") if isinstance(value, bytes) else value
+def _worker_mapping(value: object) -> Mapping[str, object] | None:
+    if type(value) is not dict:
+        return None
+    return string_keyed_mapping(value)
 
 
 def _family_report(
@@ -242,7 +247,7 @@ def _family_report(
     rows: Sequence[Mapping[str, object]],
     horizons: tuple[int, ...],
 ) -> FamilyProbeReport:
-    from devtools.benchmarks.reverse_temporal_power_probe import _doubling_envelope
+    from devtools.benchmarks.reverse_temporal_power_probe import doubling_envelope
 
     selected = [row for row in rows if row.get("family") == family]
     passed = [row for row in selected if row.get("status") == "passed"]
@@ -254,16 +259,16 @@ def _family_report(
     )
     measurements: list[dict[str, object]] = []
     for row in passed:
-        metrics = row.get("metrics")
-        if type(metrics) is dict and _valid_worker_metrics(metrics):
+        metrics = _worker_mapping(row.get("metrics"))
+        if metrics is not None and _valid_worker_metrics(metrics):
             measurements.append({**metrics, "generation": row["horizon"]})
-    prefix = []
-    for horizon, row in zip(horizons, measurements):
+    prefix: list[dict[str, object]] = []
+    for horizon, row in zip(horizons, measurements, strict=False):
         if row["generation"] != horizon:
             break
         prefix.append(row)
     observed = {
-        field: _doubling_envelope(prefix, field) if len(prefix) >= 2 else None
+        field: doubling_envelope(prefix, field) if len(prefix) >= 2 else None
         for field in ENVELOPE_FIELDS
     }
     envelopes = {
@@ -296,11 +301,12 @@ def _family_report(
 
 
 def _valid_worker_metrics(value: object) -> bool:
-    if type(value) is not dict:
+    metrics = _worker_mapping(value)
+    if metrics is None:
         return False
     required = (*ENVELOPE_FIELDS, *FORBIDDEN_EXECUTION_FIELDS, *ABSORPTION_FIELDS)
     return all(
-        type(value.get(field)) is int and value[field] >= 0 for field in required
+        type(metric := metrics.get(field)) is int and metric >= 0 for field in required
     )
 
 
@@ -310,30 +316,28 @@ def _runtime_executed(row: Mapping[str, object]) -> bool:
     Successful demand must be measured independently from action compilation.
     Full completed roots are intentionally not required for a point probe.
     """
-    metrics = row.get("metrics")
+    metrics = _worker_mapping(row.get("metrics"))
     horizon = row.get("horizon")
-    if type(horizon) is not int or horizon < 1:
+    if type(horizon) is not int or horizon < 1 or metrics is None:
         return False
     required_span = horizon - 1 if row.get("family") == "reverse" else horizon
-    return (
-        type(metrics) is dict
-        and all(
-            type(metrics.get(field)) is int and metrics[field] > 0
-            for field in (
-                "canonical_tile_nodes",
-                "tile_execution_memo_entries",
-                "powered_absorption_successes",
-                "powered_absorption_max_span",
-                "tile_fused_observation_descents",
-            )
-        )
-        and metrics["powered_absorption_max_span"] >= required_span
+    positive_fields = (
+        "canonical_tile_nodes",
+        "tile_execution_memo_entries",
+        "powered_absorption_successes",
+        "powered_absorption_max_span",
+        "tile_fused_observation_descents",
     )
+    values = tuple(metrics.get(field) for field in positive_fields)
+    if not all(type(value) is int and value > 0 for value in values):
+        return False
+    max_span = metrics.get("powered_absorption_max_span")
+    return type(max_span) is int and max_span >= required_span
 
 
 def _metric_observed(row: Mapping[str, object], field: str) -> bool:
-    metrics = row.get("metrics")
-    return type(metrics) is dict and metrics.get(field, 0) != 0
+    metrics = _worker_mapping(row.get("metrics"))
+    return metrics is not None and metrics.get(field, 0) != 0
 
 
 def run_probe() -> FieldProbeReport:
@@ -390,10 +394,11 @@ def run_probe() -> FieldProbeReport:
                             reason=f"invalid worker JSON: {error}",
                         )
                     else:
+                        parsed_fields = _worker_mapping(parsed)
                         if (
-                            type(parsed) is not dict
-                            or parsed.get("family") != family
-                            or parsed.get("horizon") != horizon
+                            parsed_fields is None
+                            or parsed_fields.get("family") != family
+                            or parsed_fields.get("horizon") != horizon
                         ):
                             row = _worker_failure(
                                 family,
@@ -404,7 +409,7 @@ def run_probe() -> FieldProbeReport:
                                 stderr=run.stderr,
                                 reason="worker identified another sample",
                             )
-                        elif not _valid_worker_metrics(parsed.get("metrics")):
+                        elif not _valid_worker_metrics(parsed_fields.get("metrics")):
                             row = _worker_failure(
                                 family,
                                 horizon,
@@ -415,7 +420,7 @@ def run_probe() -> FieldProbeReport:
                                 reason="worker returned missing or invalid metrics",
                             )
                         else:
-                            row = parsed
+                            row = dict(parsed_fields)
                             row["status"] = "passed"
             rows.append(row)
             timing = row.get("cold_seconds")

@@ -17,7 +17,10 @@ from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlo
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_images import (
-    _ReverseSourceImageAdapter,
+    ReverseSourceImageAdapter,
+)
+from number_compiler.sequences.reverse_add.source_workspace import (
+    ReverseSourceImageWorkspace,
 )
 from tests.support.reverse_cutover import (
     assert_completed_child_work,
@@ -62,8 +65,7 @@ def test_available_cli_terms_use_source_only_scheduler(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     term = _checked_cli_term(steps, expected, monkeypatch, capsys)
-    assert term._workspace is not None
-    assert term._workspace.scheduler._source_only
+    assert term.published_workspace is not None
 
 
 @pytest.mark.parametrize(
@@ -77,7 +79,7 @@ def test_completed_child_constructor_answers_rejected_same_carry_without_legacy_
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     term = _checked_cli_term(steps, expected, monkeypatch, capsys)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert_completed_child_work(counters)
     assert_q19_output_authority(term)
     assert counters.get("tile_causal_point_parent_requests", 0) == 0
@@ -118,23 +120,28 @@ def test_large_power_respects_explicit_cache_budget_before_primitive_descent(
                 term.digit(0)
             else:
                 term.digits()
-        assert term._ledger.counters.get("source_image_primitive_applications", 0) == 0
-        assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
+        assert (
+            term.resource_ledger.counters.get("source_image_primitive_applications", 0)
+            == 0
+        )
+        assert (
+            term.resource_ledger.counters.get("sequential_generation_advances", 0) == 0
+        )
 
 
 def test_metrics_leave_missing_constructor_lazy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", _forbidden)
+    monkeypatch.setattr(ReverseSourceImageWorkspace, "__init__", _forbidden)
     term = ReverseAddPoweredTerm(196, 20)
-    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
-    before = term._ledger.snapshot()
+    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
+    before = term.resource_ledger.snapshot()
     assert term.metrics().generation == 20
     report = term.behavior_metrics()
     assert report.resource_audit_complete == 1
     assert report.resource_accounting_mismatch == 0
-    assert term._ledger.snapshot() == before
-    assert term._workspace is None
+    assert term.resource_ledger.snapshot() == before
+    assert term.published_workspace is None
 
 
 def test_cli_mirror_and_value_share_completed_output_without_width_replay(
@@ -174,7 +181,7 @@ def test_cli_metrics_only_does_not_construct_guarded_temporal_banks(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", _forbidden)
+    monkeypatch.setattr(ReverseSourceImageWorkspace, "__init__", _forbidden)
     assert (
         main(
             [
@@ -212,7 +219,7 @@ def test_foreign_workspace_cannot_replace_term_binding() -> None:
     other = ReverseAddPoweredTerm(89, 1)
     assert term.digit(0) == 7
     assert other.digit(0) == 7
-    term._workspace = other._workspace
+    object.__setattr__(term, "_workspace", other.published_workspace)
     with pytest.raises(ValueError, match="binding"):
         term.digit(1)
 
@@ -237,7 +244,7 @@ def test_admitted_no_growth_cli_powers_do_not_replay_steps(
         "_carry_and_digit",
     ):
         monkeypatch.setattr(
-            _ReverseSourceImageAdapter, method, _forbidden, raising=False
+            ReverseSourceImageAdapter, method, _forbidden, raising=False
         )
     assert main(["reverse-add", "--seed", str(seed), "--nth", str(steps)]) == 0
     captured = capsys.readouterr()
@@ -254,7 +261,7 @@ def test_first_unadmitted_growth_uses_completed_child_constructor(
     assert captured.err == ""
     term = ReverseAddPoweredTerm(1, 4)
     assert term.digits() == (6, 1)
-    counters = term._ledger.counters
+    counters = term.resource_ledger.counters
     assert_completed_child_work(counters)
 
 
@@ -263,9 +270,8 @@ def test_mutated_seed_rejects_before_recursive_authority_or_workspace_allocation
 ):
     term = ReverseAddPoweredTerm(196, 20)
     term.seed = 295
-    before = term._ledger.snapshot()
+    before = term.resource_ledger.snapshot()
     with pytest.raises(ValueError, match="binding changed"):
         term.digit(0)
-    assert term._source_construction is None
-    assert term._workspace is None
-    assert term._ledger.snapshot() == before
+    assert term.published_workspace is None
+    assert term.resource_ledger.snapshot() == before

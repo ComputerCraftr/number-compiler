@@ -69,28 +69,28 @@ def terminal_linear_packet_rank_audit(
     )
 
 
-def _fold_negacyclic(values: list[int], M: int) -> tuple[int, ...]:
-    out = [0] * M
+def _fold_negacyclic(values: list[int], modulus: int) -> tuple[int, ...]:
+    out = [0] * modulus
     for degree, value in enumerate(values):
-        block, index = divmod(degree, M)
+        block, index = divmod(degree, modulus)
         out[index] += -value if block & 1 else value
     return tuple(out)
 
 
-def folded_x_sequence(M: int, terms: int) -> tuple[int, ...]:
+def folded_x_sequence(modulus: int, terms: int) -> tuple[int, ...]:
     """Small exact integer differential for [X](1+X)^e mod X^M+1."""
-    M, terms = int(M), int(terms)
-    if M < 2 or M & (M - 1) or terms < 1:
-        raise ValueError((M, terms))
-    state = (1,) + (0,) * (M - 1)
+    modulus, terms = int(modulus), int(terms)
+    if modulus < 2 or modulus & (modulus - 1) or terms < 1:
+        raise ValueError((modulus, terms))
+    state = (1,) + (0,) * (modulus - 1)
     out: list[int] = []
     for _ in range(terms):
         out.append(state[1])
-        raw = [0] * (M + 1)
+        raw = [0] * (modulus + 1)
         for j, value in enumerate(state):
             raw[j] += value
             raw[j + 1] += value
-        state = _fold_negacyclic(raw, M)
+        state = _fold_negacyclic(raw, modulus)
     return tuple(out)
 
 
@@ -98,9 +98,9 @@ def _matrix_rank_fraction(matrix: list[list[int]]) -> int:
     return fraction_matrix_rank(matrix)
 
 
-def small_hankel_rank_differential(M: int) -> int:
+def small_hankel_rank_differential(modulus: int) -> int:
     """Materialize only tiny M controls and verify the structural rank theorem."""
-    M = int(M)
-    seq = folded_x_sequence(M, 2 * M + 1)
-    hankel = [[seq[i + j] for j in range(M)] for i in range(M)]
+    modulus = int(modulus)
+    seq = folded_x_sequence(modulus, 2 * modulus + 1)
+    hankel = [[seq[i + j] for j in range(modulus)] for i in range(modulus)]
     return _matrix_rank_fraction(hankel)

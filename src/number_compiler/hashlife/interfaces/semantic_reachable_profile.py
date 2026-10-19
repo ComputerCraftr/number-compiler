@@ -31,14 +31,14 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
-from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 from number_compiler.hashlife.interfaces.semantic_state_codec import CodecRequest
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
+    StructureBuilder,
     StructuredNode,
     StructureID,
     _aliases,
-    _Builder,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -270,7 +270,7 @@ class SemanticProfileArena:
             return found
         definition = self.resolve(codec.profile).definition
         ports = codec.ports
-        builder = _Builder(structures)
+        builder = StructureBuilder(structures)
         outer = builder.circuit(ports)
         code = ports[0]
         valid = self._filter(outer, code, outer.one)
@@ -352,7 +352,7 @@ class SemanticProfileArena:
         return self._publish_decode(builder, function, key)
 
     def _publish_decode(
-        self, builder: _Builder, root: int, key: ReachableDecodeKey
+        self, builder: StructureBuilder, root: int, key: ReachableDecodeKey
     ) -> StructureID:
         from number_compiler.hashlife.interfaces.semantic_structure_publication import (
             prepare_structures,
@@ -397,7 +397,7 @@ class SemanticProfileArena:
             return found
         first = self.component(codec, 0, structures)
         second = self.component(codec, 1, structures)
-        builder = _Builder(structures)
+        builder = StructureBuilder(structures)
         circuit = builder.circuit(codec.ports)
         valid = self._filter(circuit, codec.ports[0], circuit.one)
         signature = FunctionSignature(
@@ -444,7 +444,7 @@ class SemanticProfileArena:
 
     def _lookup(
         self,
-        circuit: _Circuit,
+        circuit: BooleanCircuit,
         selector: FinitePort,
         leaves: dict[int, tuple[int, ...]],
         *,
@@ -484,13 +484,15 @@ class SemanticProfileArena:
             leaves = {
                 prefix: tuple(
                     circuit.tx.decision(circuit.signature, variable, low, high)
-                    for low, high in zip(leaves[prefix], leaves[prefix | (1 << bit)])
+                    for low, high in zip(
+                        leaves[prefix], leaves[prefix | (1 << bit)], strict=True
+                    )
                 )
                 for prefix in range(count)
             }
         return leaves[0]
 
-    def _filter(self, circuit: _Circuit, port: FinitePort, accepted: int) -> int:
+    def _filter(self, circuit: BooleanCircuit, port: FinitePort, accepted: int) -> int:
         size = 1 << port.bits
         self.ledger.bump(
             _interfaces_keys.SEMANTIC_REACHABLE_DECODER_DOMAIN_LEAF_ROWS,
@@ -551,7 +553,7 @@ class _FixedTableLookup:
     def __init__(
         self,
         arena: SemanticProfileArena,
-        circuit: _Circuit,
+        circuit: BooleanCircuit,
         port: FinitePort,
         width: int,
     ) -> None:
@@ -610,7 +612,7 @@ class _FixedTableLookup:
                     )
                     result = tuple(
                         circuit.tx.decision(circuit.signature, variable, left, right)
-                        for left, right in zip(low, high)
+                        for left, right in zip(low, high, strict=True)
                     )
                     ledger.bump(
                         _interfaces_keys.SEMANTIC_REACHABLE_DECODER_SUBTABLE_BIT_DECISIONS,

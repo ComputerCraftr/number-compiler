@@ -14,19 +14,28 @@ Nothing in this module grants a parity word or an unproved next-tail guard.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from math import gcd
+from typing import cast
 
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
     BooleanStateSpace,
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.weighted_transfer import (
+    WeightedTransfer,
+    WeightedTransferLaw,
+)
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
-from number_compiler.sequences.collatz.cross_family_port_power import (
-    CrossFamilyPortAction,
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.source_closed_port_action import (
     MacroTraceGrammar,
+    SourceClosedPortAction,
     SourceCongruence,
 )
 
@@ -34,6 +43,9 @@ _PAIR_MODULUS = 100
 _ALL_PAIRS = (1 << _PAIR_MODULUS) - 1
 _COLLATZ_PAIR_STATE_SPACE = BooleanStateSpace(
     "collatz.decimal-pair-index", tuple(range(_PAIR_MODULUS))
+)
+_COLLATZ_PAIR_WEIGHT_LAW = WeightedTransferLaw(
+    "collatz.decimal-pair-carries", ("tens-carry", "hundreds-carry")
 )
 
 
@@ -122,7 +134,7 @@ class BooleanPairMatrix:
         return self._relation.image(source_bitset)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class WeightedPairMatrix:
     """100x100 local Boolean matrix with (tens,hundreds) carry weights.
 
@@ -132,12 +144,12 @@ class WeightedPairMatrix:
     parity repeats; source guards must be joined by the caller.
     """
 
-    rows: tuple[tuple[tuple[int, int, int], ...], ...]
+    _transfer: WeightedTransfer[int]
 
-    def __post_init__(self) -> None:
-        if type(self.rows) is not tuple or len(self.rows) != 100:
+    def __init__(self, rows: tuple[tuple[tuple[int, int, int], ...], ...]) -> None:
+        if type(rows) is not tuple or len(rows) != 100:
             raise ValueError("weighted decimal matrix requires 100 rows")
-        for row in self.rows:
+        for row in rows:
             if type(row) is not tuple or any(
                 type(value) is not tuple
                 or len(value) != 3
@@ -148,6 +160,27 @@ class WeightedPairMatrix:
                 for value in row
             ):
                 raise ValueError("invalid weighted decimal pair transition")
+        object.__setattr__(
+            self,
+            "_transfer",
+            WeightedTransfer(_COLLATZ_PAIR_STATE_SPACE, _COLLATZ_PAIR_WEIGHT_LAW, rows),
+        )
+
+    @property
+    def rows(self) -> tuple[tuple[tuple[int, int, int], ...], ...]:
+        return cast(tuple[tuple[tuple[int, int, int], ...], ...], self._transfer.rows)
+
+    @classmethod
+    def _from_transfer(cls, transfer: WeightedTransfer[int]) -> WeightedPairMatrix:
+        if (
+            type(transfer) is not WeightedTransfer
+            or transfer.state_space is not _COLLATZ_PAIR_STATE_SPACE
+            or transfer.law is not _COLLATZ_PAIR_WEIGHT_LAW
+        ):
+            raise TypeError("weighted pair result has foreign algebra authority")
+        result = object.__new__(cls)
+        object.__setattr__(result, "_transfer", transfer)
+        return result
 
     @classmethod
     def identity(cls) -> WeightedPairMatrix:
@@ -155,6 +188,13 @@ class WeightedPairMatrix:
 
     @classmethod
     def even(cls, upper_parity: int) -> WeightedPairMatrix:
+        if type(upper_parity) is not int or upper_parity not in (0, 1):
+            raise ValueError("even half-step upper inlet must be a parity bit")
+        return cls._even_cached(upper_parity)
+
+    @classmethod
+    @lru_cache(maxsize=4)
+    def _even_cached(cls, upper_parity: int) -> WeightedPairMatrix:
         transfer = BooleanPairMatrix.even(upper_parity)
         return cls(
             tuple(
@@ -165,6 +205,15 @@ class WeightedPairMatrix:
 
     @classmethod
     def odd_half(cls, upper_parity: int, *, inlet: int = 1) -> WeightedPairMatrix:
+        if type(upper_parity) is not int or upper_parity not in (0, 1):
+            raise ValueError("odd half-step upper inlet must be a parity bit")
+        if type(inlet) is not int or inlet not in (0, 1, 2):
+            raise ValueError("decimal low-block carry inlet is outside 0..2")
+        return cls._odd_half_cached(upper_parity, inlet=inlet)
+
+    @classmethod
+    @lru_cache(maxsize=12)
+    def _odd_half_cached(cls, upper_parity: int, *, inlet: int) -> WeightedPairMatrix:
         transfer = BooleanPairMatrix.odd_half(upper_parity, inlet=inlet)
         return cls(
             tuple(
@@ -186,18 +235,9 @@ class WeightedPairMatrix:
     ) -> WeightedPairMatrix:
         if type(after) is not WeightedPairMatrix:
             raise TypeError("weighted multiplication requires matching matrices")
-        if type(max_row_entries) is not int or not 1 <= max_row_entries <= 10000:
-            raise ValueError("weighted matrix composition has invalid budget")
-        out: list[tuple[tuple[int, int, int], ...]] = []
-        for row in self.rows:
-            pairs: set[tuple[int, int, int]] = set()
-            for intermediate, c1, c2 in row:
-                for target, d1, d2 in after.rows[intermediate]:
-                    pairs.add((target, c1 + d1, c2 + d2))
-                    if len(pairs) > max_row_entries:
-                        raise ValueError("weighted matrix row exceeds admission budget")
-            out.append(tuple(sorted(pairs)))
-        return WeightedPairMatrix(tuple(out))
+        return self._from_transfer(
+            self._transfer.then(after._transfer, max_row_entries=max_row_entries)
+        )
 
     def power(self, exponent: int, *, max_row_entries: int = 512) -> WeightedPairMatrix:
         matrix, _, _ = self.power_with_work(exponent, max_row_entries=max_row_entries)
@@ -212,22 +252,10 @@ class WeightedPairMatrix:
         second isolates squarings. These count successful ``then`` calls,
         rather than estimating from the exponent's bit length.
         """
-        if type(exponent) is not int or exponent < 0:
-            raise ValueError("weighted matrix power needs a natural exponent")
-        result = WeightedPairMatrix.identity()
-        base = self
-        compositions = 0
-        squarings = 0
-        while exponent:
-            if exponent & 1:
-                result = result.then(base, max_row_entries=max_row_entries)
-                compositions += 1
-            exponent >>= 1
-            if exponent:
-                base = base.then(base, max_row_entries=max_row_entries)
-                compositions += 1
-                squarings += 1
-        return result, compositions, squarings
+        transfer, compositions, squarings = self._transfer.power_with_work(
+            exponent, max_row_entries=max_row_entries
+        )
+        return self._from_transfer(transfer), compositions, squarings
 
     def support(self) -> BooleanPairMatrix:
         return BooleanPairMatrix(
@@ -366,10 +394,10 @@ class GuardedDecimalPairTransfer:
     Boolean matrix product is not allowed to authorize a future parity word.
     """
 
-    port: CrossFamilyPortAction
+    port: SourceClosedPortAction
 
     def __post_init__(self) -> None:
-        if type(self.port) is not CrossFamilyPortAction:
+        if type(self.port) is not SourceClosedPortAction:
             raise TypeError("pair transfer requires a certified guarded action")
         self.port._verify_issued()
 
@@ -529,6 +557,66 @@ class PointedLowBorderCertificate:
     phase: UpperNumeratorF5Matrix | None
 
 
+def validate_pointed_pair_action(
+    pair: GuardedPairEntry,
+    source: int,
+    action: DyadicTerminalFieldAction,
+) -> int:
+    """Authenticate a previously built pair row against its exact action.
+
+    This lets the source/carry join consume the same point row instead of
+    reconstructing it through a second puncture evaluation.
+    """
+    if (
+        type(pair) is not GuardedPairEntry
+        or type(pair.input_pair) is not int
+        or not 0 <= pair.input_pair < _PAIR_MODULUS
+        or type(pair.output_pair) is not int
+        or not 0 <= pair.output_pair < _PAIR_MODULUS
+        or type(pair.guard) is not SourceCongruence
+        or type(pair.inlet) is not CollatzTwoSidedCylinder
+        or type(pair.target) is not CollatzTwoSidedCylinder
+        or type(source) is not int
+        or source <= 0
+        or type(action) is not DyadicTerminalFieldAction
+        or not action.producer_issued
+        or not action.certifies(source)
+    ):
+        raise ValueError("pointed pair/action authentication has invalid authority")
+    endpoint = action.endpoint(source)
+    source_guard = SourceCongruence(action.source_residue, action.source_modulus).meet(
+        SourceCongruence(source % 10, 10)
+    )
+    input_guard = (
+        None
+        if source_guard is None
+        else source_guard.meet(SourceCongruence(source % 100, 100))
+    )
+    output_guard = SourceCongruence(endpoint % 100, 100).pullback(action)
+    expected_guard = (
+        None
+        if input_guard is None or output_guard is None
+        else input_guard.meet(output_guard)
+    )
+    if (
+        expected_guard is None
+        or pair.guard != expected_guard
+        or pair.input_pair != source % 100
+        or pair.output_pair != endpoint % 100
+        or pair.inlet.count != 1
+        or pair.inlet.first != source
+        or pair.inlet.last != source
+        or not pair.inlet.contains(source)
+        or pair.target.count != 1
+        or pair.target.first != endpoint
+        or pair.target.last != endpoint
+        or not pair.target.contains(endpoint)
+        or pair.count != 1
+    ):
+        raise ArithmeticError("pointed pair row belongs to another source/action")
+    return endpoint
+
+
 def certify_pointed_low_border(
     source: int,
     endpoint: int,
@@ -565,7 +653,7 @@ def certify_pointed_low_border(
     guard = base_guard.meet(SourceCongruence(source % 10, 10))
     if guard is None or not guard.admits(source):
         raise ArithmeticError("decimal border admission lost source class")
-    port = CrossFamilyPortAction(
+    port = SourceClosedPortAction(
         action, guard, odd_events, None, MacroTraceGrammar.leaf(tails)
     )
     pair = GuardedDecimalPairTransfer(port).pointed_entry(source)
@@ -634,4 +722,5 @@ __all__ += [
     "PointedLowBorderCertificate",
     "certify_pointed_low_border",
     "demanded_trace_carry_counts",
+    "validate_pointed_pair_action",
 ]

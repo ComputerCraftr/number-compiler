@@ -128,7 +128,7 @@ def test_integer_normal_forms_match_independent_scalar_prefixes() -> None:
     normal = mahler_source_actions.MahlerSourceBoundSafetyAction()
     source, scale, offset = 7, Fraction(1), Fraction(0)
     cap: Fraction | None = None
-    for extent in range(513):
+    for _ in range(513):
         action = normal.to_action()
         actual_scale, actual_offset, actual_cap = rational_action_components(action)
         assert actual_scale == scale

@@ -17,6 +17,7 @@ from devtools.experiments.algebra.projection_observer import (
 )
 from devtools.verification import exact_oracle
 from devtools.verification.carry_action_quotient import CarryResetSignature
+from devtools.verification.quotient_synthesis import transition_conflict_count
 from number_compiler.arithmetic.fields.projection_field import (
     projection_field_summary_from_values,
 )
@@ -115,8 +116,10 @@ def reverse_add_projection_field_profile(
     seed: int = 196, *, steps: int = 256, base: int = 10
 ) -> ReverseAddProjectionFieldProfile:
     value = int(seed)
-    actions = []
-    features = []
+    actions: list[tuple[object, ...]] = []
+    features: list[
+        tuple[tuple[object, ...], tuple[object, ...], tuple[tuple[object, ...], ...]]
+    ] = []
     for _ in range(int(steps) + 1):
         action = _reverse_action(value, base)
         actions.append(action.canonical_key)
@@ -136,18 +139,8 @@ def reverse_add_projection_field_profile(
         value = _reverse_step(value, base)
     current = actions[:-1]
     nxt = actions[1:]
-    by: dict[tuple[object, ...], tuple[object, ...]] = {}
-    conflicts = 0
-    for a, b in zip(current, nxt):
-        old = by.setdefault(a, b)
-        if old != b:
-            conflicts += 1
-    byf: dict[tuple[object, ...], tuple[object, ...]] = {}
-    fconf = 0
-    for a, b in zip(features[:-1], actions[1:]):
-        old = byf.setdefault(a, b)
-        if old != b:
-            fconf += 1
+    conflicts = transition_conflict_count(zip(current, nxt, strict=True))
+    fconf = transition_conflict_count(zip(features[:-1], actions[1:], strict=True))
     return ReverseAddProjectionFieldProfile(
         int(seed),
         int(steps),
@@ -167,7 +160,7 @@ def collatz_projection_field_profile(
     summary = projection_field_summary_from_values(vals, degree=4, modulus=32)
     block = valuation_projection_from_runs(runs)
     raw_bits = sum(max(1, int(v).bit_length()) for v in vals)
-    residue_maps = []
+    residue_maps: list[tuple[int, int, int]] = []
     for m in (3, 5, 7, 11):
         a = collatz_slab_mod_odd(block.slab, m)
         residue_maps.append((m, a.multiplier, a.offset))
@@ -244,7 +237,7 @@ def special_projection_class_profile(
 def _feature_key(value: int, width: int, names: Sequence[str]) -> tuple[object, ...]:
     digits = digits_lsd(value, 2, width)
     summary = projection_field_summary_from_values(digits, degree=4, modulus=32)
-    out = []
+    out: list[tuple[int, ...]] = []
     for name in names:
         if name == "primary":
             out.append(summary.primary_jet.jet)
@@ -289,7 +282,7 @@ def special_digit_projection_feature_profile(
     by: dict[tuple[object, ...], tuple[bool, tuple[object, ...]]] = {}
     target_ok = True
     next_ok = True
-    keys = set()
+    keys: set[tuple[object, ...]] = set()
     for state in range(modulus):
         key = _feature_key(state, width, names)
         keys.add(key)

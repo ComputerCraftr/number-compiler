@@ -110,7 +110,10 @@ def test_zeckendorf_encoding_is_exact_but_not_a_smaller_prime_decision_domain_he
     weights = zeckendorf_weights(length - 1)
     for value in (0, 1, 2, 17, 255, 4095):
         digits = zeckendorf_digits(value, weights)
-        assert sum(bit * weight for bit, weight in zip(digits, weights)) == value
+        assert (
+            sum(bit * weight for bit, weight in zip(digits, weights, strict=False))
+            == value
+        )
         assert all(not (digits[i] and digits[i + 1]) for i in range(len(digits) - 1))
     fib = zeckendorf_bitmap_decision_metrics(
         projection.composite_mask, length, order="msb"

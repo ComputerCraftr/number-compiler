@@ -18,7 +18,9 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 from number_compiler.hashlife.execution.dyadic_return_transport import (
     balanced_residue_effect,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageDemand,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,

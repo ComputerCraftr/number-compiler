@@ -17,13 +17,15 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
     RecursiveOutputBranch,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.interfaces.semantic_structures import (
+    LocalInterfaceID,
+)
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
-from tests.support.reverse_higher_interface import _direct_step
+from tests.support.reverse_higher_interface import direct_step
 from tests.support.reverse_higher_runtime import (
     _fixture,
     _macro_composer,
-    _observed_macro,
+    observed_macro,
 )
 
 
@@ -35,7 +37,7 @@ def _spatial(
     _, primitive, semantics, runtime, interfaces, compiler, sources, binding = _fixture(
         word
     )
-    outputs, _unused_composer_binding, macro, left, right = _observed_macro(
+    outputs, _unused_composer_binding, macro, left, right = observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
     return outputs, macro.output, left, right
@@ -46,7 +48,7 @@ def _spatial(
 )
 def test_stream_crops_match_independent_primitive_fold(word: tuple[int, ...]) -> None:
     outputs, root, left, right = _spatial(word)
-    expected = _direct_step(word, 10)
+    expected = direct_step(word, 10)
     for lo in range(len(word) + 1):
         for hi in range(lo, len(word) + 1):
             assert (
@@ -62,7 +64,7 @@ def test_stream_visits_each_spatial_occurrence_once() -> None:
     outputs, root, left, right = _spatial(word)
     assert tuple(
         outputs.iter_observe_range(root, 0, len(word), left, right)
-    ) == _direct_step(word, 10)
+    ) == direct_step(word, 10)
     counters = outputs.ledger.counters
     assert counters["recursive_output_stream_node_visits"] == 2 * len(word) - 1
     assert counters["recursive_output_stream_boundary_evaluations"] == 2 * (
@@ -93,11 +95,11 @@ def test_partial_interleaved_streams_release_only_their_frames() -> None:
     outputs, root, left, right = _spatial(word)
     first = outputs.iter_observe_range(root, 0, 8, left, right)
     second = outputs.iter_observe_range(root, 1, 7, left, right)
-    assert next(first) == _direct_step(word, 10)[0]
-    assert next(second) == _direct_step(word, 10)[1]
+    assert next(first) == direct_step(word, 10)[0]
+    assert next(second) == direct_step(word, 10)[1]
     first.close()
     assert outputs._stream_frames
-    assert tuple(second) == _direct_step(word, 10)[2:7]
+    assert tuple(second) == direct_step(word, 10)[2:7]
     assert not outputs._stream_frames
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
@@ -124,7 +126,7 @@ def _started_stream() -> tuple[
     word = (7, 18, 7, 19)
     outputs, root, left, right = _spatial(word)
     first = outputs.iter_observe_range(root, 0, len(word), left, right)
-    assert next(first) == _direct_step(word, 10)[0]
+    assert next(first) == direct_step(word, 10)[0]
     return word, outputs, root, left, right, first
 
 
@@ -180,13 +182,13 @@ def test_first_emission_does_not_evaluate_pending_right_branches(
     try:
         with monkeypatch.context() as patch:
             patch.setattr(outputs, "_component", demanded_component)
-            assert next(stream) == _direct_step(word, 10)[0]
+            assert next(stream) == direct_step(word, 10)[0]
             assert (
                 outputs.ledger.counters["recursive_output_stream_boundary_evaluations"]
                 == len(word).bit_length() - 1
             )
         if not cancel:
-            assert tuple(stream) == _direct_step(word, 10)[1:]
+            assert tuple(stream) == direct_step(word, 10)[1:]
             assert outputs.ledger.counters[
                 "recursive_output_stream_boundary_evaluations"
             ] == 2 * (len(word) - 1)

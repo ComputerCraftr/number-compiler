@@ -47,7 +47,7 @@ def neighbor_xor() -> FiniteBlockEffect:
     )
 
 
-def _bound_projection_fixture() -> tuple[
+def bound_projection_fixture() -> tuple[
     ResourceLedger, BoundaryExpressionArena, ExprID, ExprID, ExprID, ExprID, ExprID
 ]:
     from tests.support.diamond_boundary_expr import context

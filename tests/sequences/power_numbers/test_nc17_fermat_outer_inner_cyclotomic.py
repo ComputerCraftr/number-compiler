@@ -130,8 +130,8 @@ def test_observer_alias_survives_even_full_mod99_100_join() -> None:
     m = (1 << 64) * 5**6
     alt = x + 99 * m
     assert (alt - x) % 9900 == 0
-    assert joint.cylinder._admitted(x) is not None
-    assert joint.cylinder._admitted(alt) is not None
+    assert joint.cylinder.admitted_edges(x) is not None
+    assert joint.cylinder.admitted_edges(alt) is not None
     assert (
         joint.outer_inner.verify_complete_fiber(alt)[0]
         == joint.outer_inner.clock.residue9900

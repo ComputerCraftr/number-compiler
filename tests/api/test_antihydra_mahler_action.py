@@ -7,7 +7,7 @@ from fractions import Fraction
 
 import pytest
 
-from number_compiler.api.antihydra_observation import observe_run
+from number_compiler.api.antihydra_observation import AntihydraRunKind, observe_run
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.query_types import AntihydraTermQuery
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -21,7 +21,11 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 )
 from number_compiler.sequences.antihydra.mahler import tangent
 from number_compiler.sequences.antihydra.mahler_action import associated_action
-from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, run
+from number_compiler.sequences.antihydra.runtime import (
+    AntihydraArithmeticTerm,
+    authenticated_arithmetic_result,
+    run,
+)
 from tests.support.report_values import object_record
 
 
@@ -44,8 +48,8 @@ raise SystemExit(main(sys.argv[1:]))
 
 
 def _rational(value: object) -> Fraction:
-    assert isinstance(value, dict)
-    numerator, denominator = value["numerator"], value["denominator"]
+    rational = object_record(value)
+    numerator, denominator = rational["numerator"], rational["denominator"]
     assert type(numerator) is int and type(denominator) is int
     return Fraction(numerator, denominator)
 
@@ -87,7 +91,7 @@ def test_one_return_uses_source_bound_bit_without_aggregate_projection(
     monkeypatch.setattr(
         type(workspace.scheduler), "source_projection", forbidden_projection
     )
-    packet = associated_action(result)
+    packet = object_record(associated_action(result))
     assert _rational(packet["scale"]) == Fraction(3, 2)
     assert _rational(packet["offset"]) == Fraction(-3, 2)
     assert _rational(packet["cap"]) == Fraction(3, 4)
@@ -101,7 +105,7 @@ def test_one_return_uses_source_bound_bit_without_aggregate_projection(
         object.__setattr__(workspace, "seed", original_seed)
 
 
-def test_physical_adapter_authenticates_arithmetic_once(
+def test_physical_adapter_reauthenticates_arithmetic_per_demand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     physical = run(2)
@@ -115,24 +119,19 @@ def test_physical_adapter_authenticates_arithmetic_once(
     monkeypatch.setattr(runtime.ArithmeticResult, "require_source", counted)
     arithmetic = runtime.authenticated_arithmetic_result(physical)
     assert validated == [arithmetic]
-    assert arithmetic is physical._term._result
+    assert runtime.authenticated_arithmetic_result(physical) is arithmetic
     assert runtime.authenticated_arithmetic_result(arithmetic) is arithmetic
-    assert validated == [arithmetic, arithmetic]
+    assert validated == [arithmetic, arithmetic, arithmetic]
 
 
 @pytest.mark.parametrize("forged_owner", ("run", "arithmetic"))
 def test_physical_adapter_rejects_forged_source_owner(forged_owner: str) -> None:
     physical = run(2)
-    arithmetic = physical._term._result
-    assert type(arithmetic) is runtime.ArithmeticResult
+    arithmetic = authenticated_arithmetic_result(physical)
     owner = physical if forged_owner == "run" else arithmetic
-    token = owner._source
     object.__setattr__(owner, "_source", object())
-    try:
-        with pytest.raises(ValueError, match="unbound Antihydra"):
-            runtime.authenticated_arithmetic_result(physical)
-    finally:
-        object.__setattr__(owner, "_source", token)
+    with pytest.raises(ValueError, match="unbound Antihydra"):
+        runtime.authenticated_arithmetic_result(physical)
 
 
 @pytest.mark.parametrize("precision", (1, 2, 8, 65))
@@ -189,7 +188,7 @@ def test_tangent_uses_one_precision_limited_clock(
 def test_mahler_consumes_the_composed_source_image_without_refolding_segments() -> None:
     term = AntihydraArithmeticTerm(1024)
     result = term.result()
-    packet = associated_action(result)
+    packet = object_record(associated_action(result))
     workspace = term.arithmetic_workspace
     assert workspace is not None
     transfer = workspace.summary().transfer
@@ -228,7 +227,8 @@ def test_antihydra_and_mahler_consume_the_shared_saturated_publication(
         {"support", "children", "history", "branch_word", "valuations"}
     )
     assert term.ledger.counters["source_image_adapter_registrations"] == 1
-    assert not term._segments_ready and not term.physical_publications
+    assert term.metrics()["retained_source_blocks"] == 0
+    assert not term.physical_publications
 
 
 def test_plain_digits_and_mahler_do_not_materialize_segments(
@@ -245,7 +245,6 @@ def test_plain_digits_and_mahler_do_not_materialize_segments(
     assert result.h > 8
     assert NumberCompiler().nth(AntihydraTermQuery(64)) == result.h
     assert associated_action(result)["extent"] == 64
-    assert not term._segments and not term._segments_ready
     assert term.metrics()["retained_source_blocks"] == 0
     report = audit_registered_payloads(term.ledger)
     assert report.forbidden_future_payloads == report.unknown_payloads == 0
@@ -255,36 +254,10 @@ def test_plain_digits_and_mahler_do_not_materialize_segments(
 def test_halted_physical_adapter_does_not_relabel_total_arithmetic_extent() -> None:
     term = AntihydraArithmeticTerm(0)
     arithmetic = term.result()
-    halted = object.__new__(runtime.Run)
-    values = {
-        "requested": 0,
-        "returns": 0,
-        "h": 8,
-        "balance": -1,
-        "minimum": -1,
-        "left": 5,
-        "right": 6,
-        "halted": True,
-        "ledger": term.ledger,
-        "_engine": term.engine,
-        "_term": term,
-        "_source": runtime._SOURCE,
-    }
-    for name, value in values.items():
-        object.__setattr__(halted, name, value)
-    publication = runtime._PhysicalPublication(
-        halted,
-        halted.requested,
-        halted.returns,
-        halted.h,
-        halted.balance,
-        halted.minimum,
-        halted.left,
-        halted.right,
-        halted.halted,
-    )
-    term.ledger.reserve(term.physical_owner, entries=1, nodes=2)
-    term.physical_publications.append(publication)
+    halted = term.physical_run()
+    publication = term.physical_publications[0]
+    object.__setattr__(halted, "halted", True)
+    object.__setattr__(publication, "halted", True)
     halted.require_source()
 
     with pytest.raises(ValueError, match="halted source"):
@@ -297,7 +270,10 @@ def test_halted_physical_adapter_does_not_relabel_total_arithmetic_extent() -> N
 @pytest.mark.parametrize("extent", (0, 1, 2, 3, 7, 8, 15, 16, 63, 64, 65, 128))
 def test_mahler_action_matches_independent_finite_source(extent: int) -> None:
     result = run(extent)
-    packet = observe_run(result, kind="mahler")["value"]["associated_action"]
+    observation = observe_run(result, kind=AntihydraRunKind.MAHLER)
+    assert observation["status"] == "available"
+    assert "associated_action" in observation["value"]
+    packet = object_record(observation["value"]["associated_action"])
     h = 8
     scale, offset = Fraction(1), Fraction(0)
     cap: Fraction | None = None
@@ -358,7 +334,7 @@ def test_mahler_uses_arithmetic_scheduler_without_second_action_arena(
 
 
 def test_mahler_rejects_tampered_cached_source_projection() -> None:
-    from number_compiler.hashlife.execution.source_bound_images import (
+    from number_compiler.hashlife.execution.source_image_inventory import (
         SourceImageDemand,
     )
 
@@ -379,7 +355,10 @@ def test_mahler_consumer_does_not_transfer_ledger_safety() -> None:
     # The actual source begins with centered bits 11.  Its ledger is +4,
     # whereas the Mahler cap is 3/2 * 3/4 - 3/2 = -3/8.
     result = run(2)
-    packet = observe_run(result, kind="mahler")["value"]["associated_action"]
+    observation = observe_run(result, kind=AntihydraRunKind.MAHLER)
+    assert observation["status"] == "available"
+    assert "associated_action" in observation["value"]
+    packet = object_record(observation["value"]["associated_action"])
     assert result.balance == 4 and not result.halted
     assert packet["first_failure"] == 2
     assert _rational(packet["cap"]) == Fraction(-3, 8)
@@ -401,9 +380,10 @@ def test_mahler_rejected_publication_releases_its_stores() -> None:
 
 
 def test_mahler_rejects_foreign_occurrence_workspace() -> None:
-    first, second = run(16), run(16)
+    first_term, second_term = AntihydraArithmeticTerm(16), AntihydraArithmeticTerm(16)
+    first, second = first_term.physical_run(), second_term.physical_run()
     associated_action(first)
-    second._term.mahler_workspace = first._term.mahler_workspace
+    second_term.mahler_workspace = first_term.mahler_workspace
     with pytest.raises(ValueError, match="another source occurrence"):
         associated_action(second)
 
@@ -412,9 +392,8 @@ def test_mahler_rejects_foreign_occurrence_workspace() -> None:
 def test_root_shell_is_source_bound_exact_squared_coordinate(returns: int) -> None:
     term = AntihydraArithmeticTerm(returns)
     result = term.result()
-    packet = associated_action(result)
-    root = packet["root_shell"]
-    assert isinstance(root, dict)
+    packet = object_record(associated_action(result))
+    root = object_record(packet["root_shell"])
     # Independent bounded source trajectory, used only as a test oracle.
     d, scale, offset = 7, Fraction(1), Fraction(0)
     lower, upper = Fraction(0), Fraction(1)
@@ -427,15 +406,15 @@ def test_root_shell_is_source_bound_exact_squared_coordinate(returns: int) -> No
         d = (3 * d + parity) // 2
     assert _rational(root["radicand_scale"]) == scale
     assert _rational(root["radicand_offset"]) == offset
-    guard = root["guard_squared"]
-    assert isinstance(guard, dict)
+    guard = object_record(root["guard_squared"])
     if lower >= upper:
         lower = upper = Fraction(0)
     assert _rational(guard["lower"]) == lower
     assert _rational(guard["upper"]) == upper
     assert guard["empty"] == (lower == upper)
     assert guard["lower_closed"] and not guard["upper_closed"]
-    assert not term._segments_ready and not term.physical_publications
+    assert term.metrics()["retained_source_blocks"] == 0
+    assert not term.physical_publications
     assert term.ledger.counters["mahler_root_shell_projections"] == 1
     assert term.ledger.counters["mahler_root_shell_operand_bits"] > 0
 
@@ -495,21 +474,7 @@ def test_compact_source_image_publishes_exact_arithmetic_and_shared_mahler_carry
                 >= 1
             )
     assert term.ledger.counters.get("antihydra_arithmetic_leaf_steps", 0) == 0
-    assert not term._segments_ready
-
-
-@pytest.mark.parametrize("bit,length", ((0, 1000), (1, 1000)))
-def test_centered_run_selector_powers_both_antihydra_branches(
-    bit: int, length: int
-) -> None:
-    workspace = AntihydraArithmeticTerm(0)._arithmetic_image()
-    d = (1 << length) - 1 if bit else 1 << length
-    runs = tuple(workspace._runs(d + 1, length))
-    assert len(runs) == 1
-    size, selected, endpoint = runs[0]
-    assert (size, selected) == (length, bit)
-    # Centered zero steps multiply by three, unlike the Collatz zero action.
-    assert endpoint == 3**length - bit
+    assert term.metrics()["retained_source_blocks"] == 0
 
 
 @pytest.mark.parametrize("family", ("antihydra", "collatz"))

@@ -9,7 +9,11 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_directed_transfer import directed_transfer
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.tile_kernel import _runtime, _runtime_source, _tile
+from tests.support.tile_kernel import (
+    make_tile_from_symbols,
+    make_tile_runtime,
+    make_tile_runtime_source,
+)
 
 
 @pytest.mark.parametrize("base", (2, 3, 4, 5, 10))
@@ -18,10 +22,12 @@ def test_directed_transfer_matches_every_finite_state(
     base: int,
     side: int,
 ) -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(base))
+    ledger, tiles, adapter, primitive, _scheduler = make_tile_runtime(
+        BaseBlockEffect(base)
+    )
     blank = tiles.alphabet(adapter.alphabet(primitive)).blank
     symbols = (0, base - 1, blank, 1, blank, 0, blank, blank)
-    source = _tile(tiles, adapter, primitive, symbols)
+    source = make_tile_from_symbols(tiles, adapter, primitive, symbols)
     law = adapter.primitive_law(primitive)
     count = law.left_count if side == 0 else law.right_count
     scan = symbols if side == 0 else tuple(reversed(symbols))
@@ -50,7 +56,7 @@ def test_warm_parent_transfer_bypasses_kernel_and_descendants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, _unused_tiles_binding, adapter, primitive, _scheduler, source = (
-        _runtime_source(BaseBlockEffect(3), (0, 1, 2, 3, 4, 5, 0, 1))
+        make_tile_runtime_source(BaseBlockEffect(3), (0, 1, 2, 3, 4, 5, 0, 1))
     )
     wiring = adapter.wiring(primitive)
     law = adapter.primitive_law(primitive)
@@ -80,7 +86,7 @@ def test_directed_workspace_releases_frames_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
-        _runtime_source(BaseBlockEffect(3), (0, 1, 2, 3))
+        make_tile_runtime_source(BaseBlockEffect(3), (0, 1, 2, 3))
     )
     wiring = adapter.wiring(primitive)
     law = adapter.primitive_law(primitive)
@@ -99,7 +105,9 @@ def test_directed_workspace_releases_frames_after_failure(
 
 
 def test_second_scheduler_rejects_before_ledger_mutation() -> None:
-    ledger, tiles, adapter, _primitive, scheduler = _runtime(BaseBlockEffect(3))
+    ledger, tiles, adapter, _primitive, scheduler = make_tile_runtime(
+        BaseBlockEffect(3)
+    )
     assert_rejected_atomically(
         ledger,
         lambda: TileScheduler(tiles, scheduler.results, adapter),

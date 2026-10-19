@@ -96,7 +96,7 @@ def minimize_unary_moore(
     def assign(keys: Sequence[Hashable]) -> dict[S, int]:
         ids: dict[Hashable, int] = {}
         out: dict[S, int] = {}
-        for state, key in zip(ordered, keys):
+        for state, key in zip(ordered, keys, strict=True):
             out[state] = ids.setdefault(key, len(ids))
         return out
 
@@ -133,10 +133,10 @@ def bounded_future_trace_classes(
     horizon = int(horizon)
     if horizon < 0:
         raise ValueError(horizon)
-    words = set()
+    words: set[tuple[ObservationT, ...]] = set()
     for source in states:
         state = source
-        word = []
+        word: list[ObservationT] = []
         for _ in range(horizon):
             word.append(observation(state))
             state = transition(state)
@@ -334,7 +334,7 @@ def special_square_sign_quotient_profile(
     outputs: dict[Hashable, bool] = {}
     successors: dict[Hashable, Hashable] = {}
     target_ok = next_ok = True
-    keys = []
+    keys: list[Hashable] = []
     for state in range(modulus):
         current = key(state)
         keys.append(current)

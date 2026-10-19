@@ -22,7 +22,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnLaw,
     DyadicReturnSupportID,
-    _SupportNode,
+    DyadicReturnSupportRecord,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
     balanced_residue_effect,
@@ -105,7 +105,7 @@ def _effect_germ(
     workspace: DyadicReturnImageWorkspace, source: int, width: int
 ) -> PoweredGerm:
     support = balanced_residue_macro(workspace, width, source % (1 << width))
-    node: _SupportNode = workspace.support_node(support)
+    node: DyadicReturnSupportRecord = workspace.support_node(support)
     transfer = node.transfer
     numerator = transfer.upper * source + transfer.offset
     target, remainder = divmod(numerator, transfer.lower)

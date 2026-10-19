@@ -11,11 +11,11 @@ from number_compiler.resources.metric_keys import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
+    from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
 
 
 def substitute_boolean(
-    circuit: _Circuit, root: int, replacements: Mapping[PortVariable, int]
+    circuit: BooleanCircuit, root: int, replacements: Mapping[PortVariable, int]
 ) -> int:
     """Simultaneous substitution shared across all roots in this circuit.
 

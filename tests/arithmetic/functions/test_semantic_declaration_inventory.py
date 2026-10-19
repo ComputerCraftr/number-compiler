@@ -14,7 +14,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena, _Circuit
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    BooleanCircuit,
+)
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
 )
@@ -139,10 +142,10 @@ def test_declaration_audit_rejects_unmasked_extra_port_storage_codes() -> None:
     value = arena.atom(arena.bits.constant(FunctionSignature((x,), BOOL), 1))
     arena.declare(value, (x, y))
     key = next(iter(arena._declarations))
-    circuit = _Circuit(arena.functions, (x, y))
+    circuit = BooleanCircuit(arena.functions, (x, y))
     one = circuit.one
     raw = circuit.normalized(FunctionSignature((x, y), BOOL), (one,), one)
-    bad = arena.atom(arena.bits._publish(circuit, (raw,))[0])
+    bad = arena.atom(arena.bits.publish_circuit(circuit, (raw,))[0])
     arena._declarations._data[key] = bad
     before = arena.ledger.snapshot()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0

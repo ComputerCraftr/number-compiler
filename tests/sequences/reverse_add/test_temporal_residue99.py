@@ -184,4 +184,4 @@ def test_seed_term_mod99_does_not_construct_workspace(
     got = term.temporal_residue99()
     assert got.target_mod99 == 11 * pow(2, 10**50 - 3, 99) % 99
     assert term._workspace is None
-    assert term._ledger.entries == term._ledger.nodes == 0
+    assert term.resource_ledger.entries == term.resource_ledger.nodes == 0

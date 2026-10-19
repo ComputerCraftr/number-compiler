@@ -82,7 +82,7 @@ _VALID = PlaneGate.build(
     lambda g, a, b: int((g == 1) == (a == 4 and b == 1)),
 )
 _SCALES = tuple(
-    PlaneGate.build(f"f5-scale-{k}", ("f5",), "f5", lambda a, k=k: (k * a) % 5)
+    PlaneGate(f"f5-scale-{k}", ("f5",), "f5", tuple((k * a) % 5 for a in range(5)))
     for k in range(5)
 )
 
@@ -181,10 +181,10 @@ class FactoredReverseCarrier:
         finally:
             p.clear_work()
 
-    def _add(self, left: PlaneID, right: PlaneID) -> PlaneID:
+    def add_planes(self, left: PlaneID, right: PlaneID) -> PlaneID:
         return self.planes.apply(_ADD, left, right)
 
-    def _scale(self, plane: PlaneID, scalar: int) -> PlaneID:
+    def scale_plane(self, plane: PlaneID, scalar: int) -> PlaneID:
         return self.planes.apply(_SCALES[scalar], plane)
 
     def successor(self, cell: TemporalCell) -> tuple[TemporalCell, int]:
@@ -218,10 +218,14 @@ class FactoredReverseCarrier:
                 source_alpha = p.concat(source_alpha, p.constant("f5", 0, 1))
                 carry = p.concat(carry, p.constant("bool", 1, 1))
             forcing = p.apply(_CAST, carry)
-            forcing = self._add(forcing, p.reverse(forcing))
+            forcing = self.add_planes(forcing, p.reverse(forcing))
             transport = F5SpatialTransport(no_growths=1 - growth, growths=growth)
             alpha = transport.apply_with_output_forcing(
-                source_alpha, forcing, shift=p.shift, add=self._add, scale=self._scale
+                source_alpha,
+                forcing,
+                shift=p.shift,
+                add=self.add_planes,
+                scale=self.scale_plane,
             )
             threshold = p.apply(_THRESHOLD, normal_alpha, p.reverse(normal_alpha))
             reflected_beta = p.reverse(normal_beta)

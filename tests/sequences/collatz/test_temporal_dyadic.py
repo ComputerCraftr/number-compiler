@@ -184,13 +184,20 @@ def test_public_astronomical_clock_preserves_earliest_cycle_entry() -> None:
 
     term = PoweredCollatzTerm(27, 10**12)
     assert term.materialize(max_bits=8) == 4
-    assert term._ledger.counters["collatz_physical_temporal_cycle_pump_requests"] == 1
     assert (
-        term._ledger.counters["collatz_physical_temporal_cycle_pump_repetitions"]
+        term.resource_ledger.counters["collatz_physical_temporal_cycle_pump_requests"]
+        == 1
+    )
+    assert (
+        term.resource_ledger.counters[
+            "collatz_physical_temporal_cycle_pump_repetitions"
+        ]
         == (10**12 - 111) // 3
     )
-    assert term._ledger.counters.get("source_image_primitive_applications", 0) == 0
-    assert term._ledger.peak_nodes < 1000
+    assert (
+        term.resource_ledger.counters.get("source_image_primitive_applications", 0) == 0
+    )
+    assert term.resource_ledger.peak_nodes < 1000
 
 
 def test_d8_cold_budget_rejects_before_discovery(

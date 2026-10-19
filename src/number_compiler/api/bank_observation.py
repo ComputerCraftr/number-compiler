@@ -6,6 +6,10 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from number_compiler.api.observation_types import ObservationId
+from number_compiler.arithmetic.fields.decimal_pair_partition import (
+    DECIMAL_PAIR_BAND_NAMES,
+    DECIMAL_PAIR_BANDS,
+)
 
 if TYPE_CHECKING:
     from number_compiler.api.cli_types import (
@@ -15,7 +19,7 @@ if TYPE_CHECKING:
     from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
-_PAIR_DOMAINS = ("lt_low", "lt_high", "eq", "gt_low", "gt_high")
+_PAIR_DOMAINS = DECIMAL_PAIR_BAND_NAMES
 _PAIR_CHANNELS = (*_PAIR_DOMAINS, "carry_xor")
 
 
@@ -136,7 +140,7 @@ def reverse_bank_packet(
             "start": bank.start,
             "count": count,
             "must_may_masks": {
-                channel: selected.must_may_masks(channel) for channel in _PAIR_DOMAINS
+                band.value: selected.must_may_masks(band) for band in DECIMAL_PAIR_BANDS
             },
             "scope": "one source-admitted successor; unresolved reflected carries stay conditional",
         }
@@ -220,6 +224,9 @@ def double_reverse_open_ring_packet(
 def reverse_open_ring_packet(
     term: ReverseAddPoweredTerm, options: ReverseAddObservationOptions
 ) -> dict[str, object]:
+    from number_compiler.sequences.reverse_add.temporal_ring_channels import (
+        ring_channel_wire_name,
+    )
     from number_compiler.sequences.reverse_add.temporal_ring_harmonics import (
         ReverseTemporalRingRefused,
     )
@@ -267,7 +274,17 @@ def reverse_open_ring_packet(
         "widths": bank.widths,
         "source_pair_domains": sources,
         "target_pair_domains": targets,
-        "harmonics": tuple(asdict(word) for word in bank.bank_words),
+        "harmonics": tuple(
+            {
+                "position": word.position,
+                "channel": ring_channel_wire_name(word.channel),
+                "lanes": word.lanes,
+                "f5_modes": word.f5_modes,
+                "candidate_period": word.candidate_period,
+                "future_period_certified": word.future_period_certified,
+            }
+            for word in bank.bank_words
+        ),
         "finite_moore_classes": bank.finite_moore_classes,
         "complete_integer_certified": bank.complete_integer_certified,
         "temporal_repeat_certified": bank.temporal_repeat_certified,

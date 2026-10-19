@@ -2,40 +2,65 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.execution.causal_frames import (
+    AdvanceFrame,
+    CausalTaskFrame,
+    OutputFrame,
+    PointFrame,
+    PromoteMidpointFrame,
+)
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
     lookup_causal_result,
     probe_causal_result,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame as _Frame
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.resources.causal_workspace import CausalResults
+from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
+from number_compiler.resources.causal_types import (
+    CausalTaskValue,
+    pop_boolean,
+    pop_causal_state,
+    pop_completed_output,
+    pop_exact_integer,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 
-def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> bool:
+
+def point_step(
+    self: CausalTileEngine,
+    frame: PointFrame,
+    frames: CausalFrameStack[CausalTaskFrame],
+    values: CausalResults[CausalTaskValue],
+) -> bool:
     """Probe a completed parent before requesting its demanded child."""
-    if frame.op != "point":
-        return False
     a = frame.args
     action, tile, coordinate, base_left, base_right = a
     if frame.stage == 4:
-        values.pop()
-        values.append(frame.saved[0])
+        pop_boolean(values)
+        match frame.saved:
+            case (symbol,):
+                values.append(symbol)
+            case _:
+                raise AssertionError("causal point lost its emitted symbol")
         return True
     if frame.stage in (2, 3):
         if frame.stage == 3:
-            emitted = values.pop()
-            symbol = self.tiles.resolve(emitted.output).symbol
-            if symbol is None:
+            emitted = pop_completed_output(values)
+            emitted_symbol = self.tiles.resolve(emitted.output).symbol
+            if emitted_symbol is None:
                 raise ValueError("causal point emitted a tile parent")
+            symbol = emitted_symbol
         else:
-            symbol = values.pop()
+            symbol = pop_exact_integer(values)
         if self._application is None:
             values.append(symbol)
             return True
@@ -43,8 +68,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
         frames.extend(
             (
                 frame,
-                _Frame(
-                    "promote_midpoint",
+                PromoteMidpointFrame(
                     (action, tile, base_left, base_right),
                 ),
             )
@@ -57,14 +81,17 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
         if not 0 <= coordinate < node.width:
             raise IndexError(coordinate)
         self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_PARENT_REQUESTS)
+        key: PoweredResultKey | None
         if self._children(action) is None:
+            if type(base_left) is not int or type(base_right) is not int:
+                raise TypeError("primitive causal point requires exact boundary ports")
             key, completed = probe_causal_result(
                 self.scheduler.results,
                 action,
                 tile,
                 PrimitiveCausalPorts(base_left, base_right),
                 self._wiring(action),
-                action_admission=self._action_admission_token,
+                action_admission=self.action_admission,
             )
         else:
             key = self._composite_key(action, tile, base_left, base_right)
@@ -74,10 +101,12 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
                 else lookup_causal_result(
                     self.scheduler.results,
                     key,
-                    action_admission=self._action_admission_token,
+                    action_admission=self.action_admission,
                 )
             )
         if completed is not None:
+            if key is None:
+                raise AssertionError("completed causal result has no request key")
             symbol = self.tiles.point(completed.output, coordinate)
             if self._application is None:
                 self._result_leases.append(completed)
@@ -107,7 +136,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
             frames.extend(
                 (
                     frame,
-                    _Frame("output", (action, tile, base_left, base_right)),
+                    OutputFrame((action, tile, base_left, base_right)),
                 )
             )
             return True
@@ -120,8 +149,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
         frames.extend(
             (
                 frame,
-                _Frame(
-                    "advance",
+                AdvanceFrame(
                     (
                         action,
                         1 - side,
@@ -137,7 +165,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
             )
         )
         return True
-    transferred = values.pop()
+    transferred = pop_causal_state(values)
     if node.left is None or node.right is None:
         raise ValueError("causal point parent omitted its children")
     side = int(coordinate >= node.width // 2)
@@ -150,8 +178,7 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
     frames.extend(
         (
             frame,
-            _Frame(
-                "point",
+            PointFrame(
                 (
                     action,
                     child,

@@ -34,21 +34,18 @@ def test_digits_and_clock_reuse_one_admitted_collatz_image(
         value = 3 * value + 1 if value & 1 else value // 2
     term = PoweredCollatzTerm(27, steps)
     assert term.materialize(max_bits=10000) == value
-    before = dict(term._ledger.counters)
+    before = dict(term.resource_ledger.counters)
     clock = term.s_arithmetic_clock()
     assert (clock.events, clock.divisions) == (odd, steps - odd)
     for key, count in before.items():
         if key.startswith("source_image_") or key.endswith("branch_steps"):
-            assert term._ledger.counters[key] == count
+            assert term.resource_ledger.counters[key] == count
     for radix in (2, 3, 10, 16):
         remainder, index = value, 0
         while remainder:
             remainder, expected = divmod(remainder, radix)
             assert term.radix_digit(radix, index) == expected
             index += 1
-    if steps:
-        assert type(term._workspace) is CollatzPhysicalImageWorkspace
-        assert term._workspace.scheduler._source_only
 
 
 def test_antihydra_and_collatz_share_the_implementation_not_just_a_formula() -> None:

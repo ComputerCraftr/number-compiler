@@ -9,9 +9,12 @@ from number_compiler.api.number_api import (
     ProjectedNumberTerm,
     ProjectionMetrics,
 )
-from number_compiler.api.observation_types import FamilyId
 from number_compiler.api.symbolic_terms import SymbolicExpression
-from number_compiler.arithmetic.fields.radix import bit_width
+from number_compiler.arithmetic.contracts.family_identity import FamilyId
+from number_compiler.arithmetic.fields.radix import (
+    bit_width,
+    pair_field_descriptor_bits,
+)
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import NumberCompiler
@@ -28,8 +31,8 @@ def project(compiler: NumberCompiler, query: CollatzTermQuery) -> ProjectedNumbe
             and owner._shared_cache is compiler._shared_cache
             and owner._max_context_nodes == compiler._max_context_nodes
             and owner._max_cache_entries == compiler._max_cache_entries
-            and owner._ledger.max_nodes == compiler._max_context_nodes
-            and owner._ledger.max_cache_entries == compiler._max_cache_entries
+            and owner.resource_ledger.max_nodes == compiler._max_context_nodes
+            and owner.resource_ledger.max_cache_entries == compiler._max_cache_entries
         )
 
     # Radix is a demand-time view, not part of the binary source owner key.
@@ -46,7 +49,9 @@ def project(compiler: NumberCompiler, query: CollatzTermQuery) -> ProjectedNumbe
         valid,
     )
     node_bits = bit_width(max(1, term.operator_nodes))
-    descriptor_bits = term.descriptor_bits + term.operator_nodes * max(1, node_bits + 2)
+    descriptor_bits = pair_field_descriptor_bits(
+        term.seed, term.steps
+    ) + term.operator_nodes * max(1, node_bits + 2)
     return ProjectedNumberTerm(
         FamilyId.COLLATZ,
         query.index,

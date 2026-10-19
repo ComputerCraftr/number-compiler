@@ -13,7 +13,7 @@ that the observed word continues periodically or controls arbitrary depths.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import chain
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from .q19_controlled_gt_bank import SourceGuardedGTBankAction
     from .q19_occurrence import ReversePairOutputOccurrence
     from .q19_output import ReversePairQ19OutputOwner
-    from .q19_word_summary import _Q19
+    from .q19_word_summary import Q19Summary
     from .temporal_inward_constraints import ReverseInwardConstraints
     from .temporal_ring_harmonics import ReverseAddTemporalRingBank
 
@@ -69,7 +69,7 @@ _BORDER_WIDTH_METRIC_KEYS = {
 @contextmanager
 def _border_width_scratch(
     owner: ReversePairQ19OutputOwner,
-) -> Iterator[Callable[[int, int], None]]:
+) -> Generator[Callable[[int, int], None], None, None]:
     """Dynamically reserve the live graph frontier on its owner ledger."""
     entries = nodes = 0
 
@@ -178,6 +178,10 @@ class CertifiedBorderGrowth:
             _typed_scalar_snapshot(self.physical_growth_certified),
             _typed_scalar_snapshot(self.full_integer_certified),
         )
+
+    def publication_snapshot(self) -> tuple[object, ...]:
+        """Return structural fields for the owning issuer's binding check."""
+        return self._snapshot()
 
     def __post_init__(self) -> None:
         if (
@@ -864,7 +868,7 @@ def _initial_pair_interval(
     source: ReversePairOutputOccurrence,
     start: int,
     end: int,
-) -> _Q19:
+) -> Q19Summary:
     """Fold an exact pair interval in source order without lowering the SLP."""
     width = source.pair_width
     half = owner._summaries[source.root].symbols

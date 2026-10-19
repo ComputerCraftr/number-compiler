@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     )
 
 
-def _source_cells(
+def source_cells(
     values: tuple[int, ...], base: int = 10
 ) -> tuple[ResourceLedger, SourceCellArena, SourceCellID]:
     ledger = ResourceLedger()
@@ -49,7 +49,9 @@ def _concatenate(before: object, after: object) -> object:
     return before + after
 
 
-def _arena(*, ledger: ResourceLedger | None = None) -> ReverseFieldActionArena:
+def reverse_action_arena(
+    *, ledger: ResourceLedger | None = None
+) -> ReverseFieldActionArena:
     return ReverseFieldActionArena(
         base=10,
         order=8,
@@ -65,7 +67,7 @@ def _arena(*, ledger: ResourceLedger | None = None) -> ReverseFieldActionArena:
 _DEFAULT_REVERSE_GEOMETRY = ReverseGeometry(0)
 
 
-def _atom(
+def reverse_action_atom(
     arena: ReverseFieldActionArena,
     name: str,
     *,

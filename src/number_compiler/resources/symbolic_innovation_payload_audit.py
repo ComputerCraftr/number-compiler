@@ -67,6 +67,7 @@ def audit_symbolic_innovation_payloads(
                 "_key_owner",
                 "_projection",
                 "_f5_compositions",
+                "_f5_composition_owner",
                 "_nodes",
                 "_keys",
                 "zero",
@@ -184,9 +185,11 @@ def _valid_f5_memo(
     except AttributeError:
         return False, set()
     if memo is None:
-        return True, set()
+        return root._f5_composition_owner is None, set()
     if (
         root._closed
+        or type(root._f5_composition_owner) is not int
+        or root._f5_composition_owner != memo.owner
         or type(memo) is not OwnedMemo
         or memo.ledger is not ledger
         or type(memo.owner) is not int
@@ -205,7 +208,7 @@ def _valid_f5_memo(
         row is None
         or row.disposed
         or row.role != "query_memo"
-        or row.name != f"innovation-F5-{root._node_owner}-{memo.owner}"
+        or row.name != f"innovation-F5-{id(root.owner):x}-{memo.owner}"
         or not row.evictable
         or row.accounting_delta != 0
         or dict(ledger.iter_containers()).get(memo.owner) is not memo._data
@@ -238,7 +241,7 @@ def _valid_handle(
     reference: object, root: SymbolicInnovationArena, *, expected: int
 ) -> bool:
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-    from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+    from number_compiler.arithmetic.fields.radial_innovation import InnovationID
 
     return (
         type(root.owner) is ArenaToken
@@ -266,26 +269,26 @@ def _valid_node(
     node: object, root: SymbolicInnovationArena, index: int
 ) -> tuple[bool, set[int]]:
     from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-    from number_compiler.arithmetic.fields.symbolic_innovation import (
+    from number_compiler.arithmetic.fields.radial_innovation import (
+        InnovationAdd,
+        InnovationAtom,
+        InnovationCharted,
+        InnovationInterval,
+        InnovationRadial,
+        InnovationScale,
+        InnovationZero,
         RadialMultiplier,
-        _Add,
-        _Atom,
-        _Charted,
-        _Interval,
-        _Radial,
-        _Scale,
-        _Zero,
     )
 
     metadata: set[int] = set()
-    if type(node) is _Zero:
+    if type(node) is InnovationZero:
         return index == 0, metadata
-    if type(node) is _Atom:
+    if type(node) is InnovationAtom:
         valid, semantic_metadata = _semantic_metadata(node.semantic)
         return valid, semantic_metadata
-    if type(node) is _Interval:
+    if type(node) is InnovationInterval:
         return type(node.length) is int and node.length > 0, metadata
-    if type(node) is _Radial:
+    if type(node) is InnovationRadial:
         multiplier = node.multiplier
         child = getattr(node.child, "local_id", -1)
         valid = (
@@ -296,10 +299,10 @@ def _valid_node(
             and multiplier.growth >= 0
             and not multiplier.is_identity
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child]) not in (_Zero, _Radial)
+            and type(root._nodes[child]) not in (InnovationZero, InnovationRadial)
         )
         return bool(valid), {id(multiplier), id(node.child)}
-    if type(node) is _Charted:
+    if type(node) is InnovationCharted:
         chart = node.chart
         child = getattr(node.child, "local_id", -1)
         valid = (
@@ -312,25 +315,28 @@ def _valid_node(
             and chart.extent_scale == chart.growth_scale == 0
             and (chart.slope, chart.offset) != (1, 0)
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child]) not in (_Zero, _Radial, _Charted)
+            and type(root._nodes[child])
+            not in (InnovationZero, InnovationRadial, InnovationCharted)
         )
         return valid, {id(chart), id(node.child)}
-    if type(node) is _Scale:
+    if type(node) is InnovationScale:
         child = getattr(node.child, "local_id", -1)
         valid = (
             type(node.coefficient) is int
             and node.coefficient not in (0, 1)
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child]) not in (_Zero, _Scale)
+            and type(root._nodes[child]) not in (InnovationZero, InnovationScale)
         )
         return valid, {id(node.child)}
-    if type(node) is _Add:
+    if isinstance(node, InnovationAdd):
+        if type(node) is not InnovationAdd:
+            return False, metadata
         valid = (
             _valid_child(node.left, root, index)
             and _valid_child(node.right, root, index)
             and node.left.local_id < node.right.local_id
-            and type(root._nodes[node.left.local_id]) is not _Zero
-            and type(root._nodes[node.right.local_id]) is not _Zero
+            and type(root._nodes[node.left.local_id]) is not InnovationZero
+            and type(root._nodes[node.right.local_id]) is not InnovationZero
         )
         return valid, {id(node.left), id(node.right)}
     return False, metadata
@@ -338,21 +344,25 @@ def _valid_node(
 
 def _innovation_node_units(node: object) -> int:
     from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-    from number_compiler.arithmetic.fields.symbolic_innovation import (
+    from number_compiler.arithmetic.fields.radial_innovation import (
+        InnovationCharted,
+        InnovationInterval,
+        InnovationRadial,
+        InnovationScale,
         RadialMultiplier,
-        _Charted,
-        _Interval,
-        _Radial,
-        _Scale,
     )
 
     def integer_limb_units(*values: int) -> int:
         retained_bits = sum(max(1, abs(value).bit_length()) for value in values)
         return max(1, (retained_bits + 63) // 64)
 
-    if type(node) is _Interval and type(node.length) is int and node.length >= 0:
+    if (
+        type(node) is InnovationInterval
+        and type(node.length) is int
+        and node.length >= 0
+    ):
         return integer_limb_units(node.length)
-    if type(node) is _Radial:
+    if type(node) is InnovationRadial:
         multiplier = node.multiplier
         if (
             type(multiplier) is not RadialMultiplier
@@ -361,7 +371,7 @@ def _innovation_node_units(node: object) -> int:
         ):
             return 1
         return integer_limb_units(multiplier.no_growth, multiplier.growth)
-    if type(node) is _Charted:
+    if type(node) is InnovationCharted:
         chart = node.chart
         if type(chart) is not CylinderChart or any(
             type(value) is not int
@@ -379,7 +389,7 @@ def _innovation_node_units(node: object) -> int:
             chart.extent_scale,
             chart.growth_scale,
         )
-    if type(node) is _Scale and type(node.coefficient) is int:
+    if type(node) is InnovationScale and type(node.coefficient) is int:
         return integer_limb_units(node.coefficient)
     return 1
 

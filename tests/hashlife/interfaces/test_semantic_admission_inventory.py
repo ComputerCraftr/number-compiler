@@ -16,7 +16,7 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     CompileStructuredExpression,
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from tests.support.diamond_continuation_reduction import machine
+from tests.support.collatz_diamond_fixtures import collatz_continuation_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 def fixture(
     paired: bool = False,
 ) -> tuple[DiamondRuntime, SemanticExpressionCompiler, ExprID]:
-    runtime, action = machine()
+    runtime, action = collatz_continuation_runtime()
     if paired:
         action = runtime.actions.compose(action, action)
     expressions = runtime.higher.expressions

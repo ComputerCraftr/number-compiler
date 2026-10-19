@@ -19,7 +19,7 @@ def normalized_trace(seed: int, steps: int) -> tuple[tuple[int, ...], int]:
         raise ValueError(
             "normalized Collatz trace requires a positive seed and step count"
         )
-    starts = []
+    starts: list[int] = []
     current = seed
     for _ in range(steps):
         starts.append(current)

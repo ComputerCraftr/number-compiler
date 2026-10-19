@@ -36,7 +36,7 @@ proof -
   consider (zero) "incoming = 0" | (one) "incoming = 1"
     using forcing_bit_cases[OF assms] by blast
   then show ?thesis
-    by cases (simp_all add: forcing_carry_step_def carry_from_domain)
+    by cases (simp_all add: forcing_carry_step_def carry_apply_decimal_threshold)
 qed
 
 theorem forcing_no_growth_beta_in_alphabet:

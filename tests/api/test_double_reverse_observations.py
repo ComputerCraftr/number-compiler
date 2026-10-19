@@ -17,7 +17,7 @@ def _forbidden(*args: object, **kwargs: object) -> None:
 def test_closed_form_cli_reads_exact_and_modular_endpoint_ports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli_render, "_render_value", _forbidden)
+    monkeypatch.setattr(cli_render, "render_value", _forbidden)
     arguments = [
         "2rev10",
         "--seed",
@@ -56,7 +56,7 @@ def test_metrics_alone_do_not_construct_closed_form_ports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(DoubleReverseTerm, "temporal_closed_form", _forbidden)
-    monkeypatch.setattr(cli_render, "_render_value", _forbidden)
+    monkeypatch.setattr(cli_render, "render_value", _forbidden)
     assert (
         cli.main(
             [
